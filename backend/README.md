@@ -15,6 +15,30 @@ uv run uvicorn app.main:app --reload
 
 `GET /health` verifica que la API arranca y que la DB responde.
 
+## Clerk (ADR-0004)
+
+El token de sesión por defecto de Clerk **no trae email ni nombre**. Hay que crear un **JWT
+template** en el dashboard de Clerk con estos claims:
+
+```json
+{ "email": "{{user.primary_email_address}}", "name": "{{user.full_name}}" }
+```
+
+El backend tolera que falten (el perfil queda en `NULL`), pero sin ellos no vas a poder
+identificar a los SMEs ni usar `set-role`.
+
+### Roles
+
+`assessors.role` es la **fuente de verdad** de la autorización. El primer login crea al
+`Assessor` como `evaluator` y **el login nunca cambia el rol** — autenticarse no puede
+escalar privilegios. La promoción es explícita:
+
+```bash
+uv run python -m app.cli set-role --email tu@email.com --role admin
+```
+
+La persona tiene que haber entrado al menos una vez para que exista su fila.
+
 ## Capas (Dependency Rule)
 
 | Carpeta | Capa | Puede importar |
@@ -42,7 +66,15 @@ uv run ruff check .      # lint
 uv run ruff format .     # formato
 ```
 
+## Unit of work
+
+`app/platform/uow.py` es el límite transaccional de cada use case: contiene la `Session`, el
+`OutboxEventPublisher` sobre esa misma sesión y el dispatcher. `uow.commit()` commitea y
+**después** despacha los eventos ya durables. Los use cases reciben `uow` + los ports que
+necesitan; los adapters concretos se inyectan desde el router.
+
 ## Estado
 
-Bloque 1 (scaffolding + migraciones + seed) completo. `app/modules/*` están vacíos a
-propósito: se llenan en los bloques 2–4 según `../docs/08-code.md §12`.
+Bloques 1 y 2 completos: scaffolding + migraciones + seed · identity (Clerk) ·
+content_registry. Faltan `evaluation`, `orchestration`, `golden_dataset` y `reporting`
+(bloques 3–4, `../docs/08-code.md §12`).
