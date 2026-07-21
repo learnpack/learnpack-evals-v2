@@ -205,10 +205,12 @@ Reporting **suscribe** `EvaluationSubmitted`, `AssignmentCreated/Cancelled`,
 - `GET /assignments/{id}` → metadata (filtrada por `metadata_view`) + `RubricSnapshot v1` +
   `consumable_url`.
 - `POST /assignments/{id}/open` → `AssignmentOpened` (opcional).
-- `POST /evaluations` → `SubmitEvaluation` `{assignmentId, scores:[{criterionId, score, comment?}]}`.
-  Valida cobertura exacta de los 5 criteria y score ∈ [1,5]. Si el `Assignment` ya está
-  `submitted` → **409** (anti-duplicación humana en el assignment; la `Evaluation` en sí no tiene
-  unicidad — ADR-0005).
+- `POST /evaluations` (endpoint en `evaluation`) → `SubmitEvaluation`
+  `{assignmentId, scores:[{criterionId, score, comment?}]}`. Lee la assignment por el **query port
+  de orchestration** (sync) para sacar content+rubricVersion. Valida cobertura exacta de los 5
+  criteria y score ∈ [1,5]. Si el `Assignment` ya está `submitted` → **409** (fast-fail;
+  anti-duplicación real = transición de la assignment vía policy, ADR-0005). La assignment la marca
+  `submitted` la policy de orchestration al oír `EvaluationSubmitted` (sin comando cruzado).
 
 Páginas: `/sign-in` (Clerk) · `/evaluations` (lista de pendientes) · `/evaluations/[assignmentId]`
 (flujo 3 pasos: **1** ver metadata → **2** consumir contenido (iframe si el sitio lo permite,
@@ -220,7 +222,8 @@ opcional, con hints de 1 y 5).
 - **Bulk import CLI** `import-learnpack --file <json>` → carga los ~50 cursos vía `RegisterContent`.
   Si el archivo trae la forma cruda de LearnPack, pasa por el **ACL** (lo vuelve código vivo); si
   trae la forma canónica (carga a mano), el ACL queda como seam. (Forma del export a confirmar.)
-- `POST /admin/campaigns`, `POST /admin/campaigns/{id}/assignments`,
+- `POST /admin/campaigns` (crea directo en `open`, `contentSet` no vacío; `Draft` no expuesto —
+  decisión C), `POST /admin/campaigns/{id}/assignments`,
   `POST /admin/assignments/{id}/cancel`
 - Invitaciones de evaluadores: vía Clerk (dashboard o Management API).
 - `GET /admin/progress` → quién evaluó qué / pendientes por evaluador y por curso.
@@ -256,10 +259,18 @@ No es dominio: vive en la UI.
 ## 12. Orden sugerido de implementación
 1. Scaffolding backend (platform: db, events, clerk, security) + migraciones + seed rubric v1.
 2. identity (Clerk) + content_registry (register + metadata).
-3. evaluation (SubmitEvaluation + invariantes) + orchestration (campaign/assignments + policy).
+3. **rubric_authoring (read-only: dtos/queries + repo, sin `domain` — ver decisión A)** +
+   evaluation (SubmitEvaluation + invariantes; endpoint lee la assignment por el query port de
+   orchestration, decisión B) + orchestration (campaign/assignments + policy de quórum).
 4. golden_dataset (coverage) + reporting (read models).
 5. frontend: sign-in, pendientes, flujo 3 pasos, vistas de admin.
 
+> Decisiones de bloque 3: **A** rubric_authoring read-only (domain rico = `[futuro]` con
+> `PublishRubric`). **B** submit vive en `evaluation`, lee assignment por query port de
+> orchestration (sync, permitido); la transición de la assignment la hace la policy vía evento
+> (sin comando cruzado); 409 = fast-fail. **C** `POST /admin/campaigns` crea directo en `open`
+> (contentSet no vacío); `Draft` en el dominio pero no expuesto.
+
 ## ADRs relacionados
-`adr/0003-postgres-neon-store-events.md` · `adr/0004-clerk-identity.md` (+ 0001 metadata, 0002
-campañas/assignments).
+`0001` metadata abierta · `0002` campañas/assignments/quórum · `0003` Postgres+events ·
+`0004` Clerk · `0005` identidad de Evaluation + versionado de contenido.
