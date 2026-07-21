@@ -6,9 +6,13 @@
 
 ## Content axis — qué se evalúa
 
-- **EducationalContent** (aka `ContentArtifact`) — lo que se evalúa. Concepto raíz del
-  target de evaluación.
+- **EducationalContent** (aka `ContentArtifact`) — lo que se evalúa. Un contenido registrado es
+  **una versión concreta** (identificada por `contentId`); el contenido *lógico* es la agrupación
+  `(GeneratingSystem, externalId)`. El target de evaluación es siempre una versión.
 - **Course** — un tipo concreto de `EducationalContent` (p.ej. un curso LearnPack).
+- **ContentVersion** — versión de un contenido lógico. Permite evaluar el mismo curso en `v1`,
+  `v2`… (mejora/regresión). Unicidad lógica: `(GeneratingSystem, externalId, version)`. MVP:
+  default `"1"`.
 - **GeneratingSystem** — el sistema que generó el contenido (p.ej. `LearnpackV1`).
 - **ContentMetadata** — colección **abierta y tipada** de `MetadataEntry` usada como *referencia*
   de evaluación; validada contra un `MetadataSchema` ligado al `GeneratingSystem`/tipo. El
@@ -57,7 +61,12 @@
 
 ## Evaluation & results
 
-- **Evaluation** — el acto: una `EvaluationSource` evalúa un target usando una `Rubric`.
+- **Evaluation** — un **acto** concreto de evaluación (no un hecho único): un `Assessor` evalúa
+  una versión de contenido usando una `Rubric`. Identidad = **id propio** (`evaluationId`) +
+  coordenadas `{assessorId, contentId (versión), rubricVersion, occurredAt/attempt}`. **No** hay
+  unicidad por `(assessor, content, rubric)`: se permiten **repeticiones** del mismo `Assessor`
+  sobre el mismo `(content, rubric)` (p.ej. un `LLMJudge` corrido N veces para medir dispersión).
+  La anti-duplicación humana del MVP vive en el `Assignment`, no acá. Ver ADR-0005.
 - **ComputedMetric** (aka `Signal`) — **medición cruda** producida por fuentes
   determinísticas/híbridas (p.ej. FK grade level, índice de cohesión, coseno de
   alineación). *No es un score*; se mapea a score vía `ScoringPolicy`.
@@ -79,6 +88,9 @@
   las assignments transaccionalmente**. Ver ADR-0002.
 - **Assignment** — invitación a un `Assessor` a evaluar un `Content` en una campaña; agregado
   chico con lifecycle `Assigned → Opened → Submitted | Cancelled`. Reassign = cancel + nueva.
+  **Es la unidad de anti-duplicación humana:** ≤1 assignment activa por
+  `(campaign, content, assessor)`, cumplida con **una** submission (re-enviar sobre una ya
+  `Submitted` → 409). Ver ADR-0005.
 - **quorum / requiredEvaluationsPerContent** — umbral de completitud: un contenido está
   `Completed` cuando el nº de **assessors distintos que enviaron** una evaluación válida alcanza
   el umbral. Las assignments canceladas/incompletas no cuentan.

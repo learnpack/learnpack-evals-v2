@@ -79,10 +79,11 @@ por eventos (§4) y por queries de solo-lectura (DTOs).
 assessors(id uuid pk, clerk_user_id text unique, email text, display_name text,
           role text check (role in ('admin','evaluator')), expertise text, created_at timestamptz)
 
--- content_registry
-contents(id uuid pk, generating_system text, external_id text, consumable_url text,
-         metadata jsonb not null default '{}', created_at timestamptz,
-         unique(generating_system, external_id))
+-- content_registry — cada fila es una VERSIÓN concreta (contentId = versión);
+-- contenido lógico = (generating_system, external_id). Ver ADR-0005.
+contents(id uuid pk, generating_system text, external_id text, version text not null default '1',
+         consumable_url text, metadata jsonb not null default '{}', created_at timestamptz,
+         unique(generating_system, external_id, version))
 metadata_schemas(generating_system text pk, spec jsonb)   -- seed 'LearnpackV1' (keys+tipos)
 
 -- rubric_authoring (seed desde docs/seed/rubric-v1.json)
@@ -98,6 +99,7 @@ pedagogical_frameworks(id text pk, citation text)         -- seed
 -- orchestration
 campaigns(id uuid pk, rubric_version_id text references rubric_versions(id),
           required_evaluations_per_content int, metadata_view jsonb,
+          golden_coverage_threshold numeric not null default 1.0,
           status text check (status in ('draft','open','closed')), created_at timestamptz)
 campaign_contents(campaign_id uuid, content_id uuid, primary key(campaign_id, content_id))
 assignments(id uuid pk, campaign_id uuid, content_id uuid, assessor_id uuid,
@@ -109,7 +111,13 @@ create unique index on assignments(campaign_id, content_id, assessor_id)
 
 -- evaluation
 evaluations(id uuid pk, assessor_id uuid, content_id uuid, rubric_version_id text,
-            submitted_at timestamptz, unique(assessor_id, content_id, rubric_version_id))
+            attempt int not null default 1, occurred_at timestamptz, submitted_at timestamptz)
+-- Identidad = id propio. SIN unicidad por (assessor, content, rubricVersion): se permiten
+-- REPETICIONES del mismo assessor sobre el mismo (content, rubric) — p.ej. LLMJudge N veces para
+-- dispersión — y distintas versiones de contenido (content_id es version-specific). CAMPAIGN-
+-- AGNOSTIC (sin campaign_id): el nexo con la campaña es el assignment; la completitud se cuenta
+-- por assignments con status='submitted' (§5). La anti-duplicación humana vive en el assignment
+-- (re-submit sobre uno ya 'submitted' → 409). Ver ADR-0005.
 criterion_scores(evaluation_id uuid references evaluations(id), criterion_id text,
                  score int check (score between 1 and 5), comment text,
                  primary key(evaluation_id, criterion_id))
@@ -153,8 +161,8 @@ pgvector no se usa en el MVP humano, pero la extensión ya está en Neon para el
 | AssignContent | `AssignmentCreated` | assignments | — |
 | OpenAssignment | `AssignmentOpened` | assignments.status | — |
 | CancelAssignment / Reassign | `AssignmentCancelled` (+ nuevo `AssignmentCreated`) | assignments | — |
-| SubmitEvaluation (evaluation) | `EvaluationSubmitted` | evaluations, criterion_scores | (orch) marca assignment `submitted`; cuenta distinct assessors → si `≥ required` → `ContentEvaluationCompleted` |
-| — (policy orchestration) | `ContentEvaluationCompleted` | content_evaluation_completions | (golden) recalcula coverage → si `≥ threshold` → `GoldenReferenceEstablished` |
+| SubmitEvaluation (evaluation) | `EvaluationSubmitted` | evaluations, criterion_scores | (orch) pone `status='submitted'` en TODAS las assignments abiertas de `(assessor, content)` con `campaign.rubric_version == rubricVersion`; para cada campaña afectada, si `COUNT(assignments submitted for (campaign, content)) ≥ required` → `ContentEvaluationCompleted` |
+| — (policy orchestration) | `ContentEvaluationCompleted` | content_evaluation_completions | (golden) recalcula coverage → si `≥ campaign.golden_coverage_threshold` (default 1.0) → `GoldenReferenceEstablished` |
 | — (policy golden) | `GoldenReferenceEstablished` | golden_references | — |
 
 Reporting **suscribe** `EvaluationSubmitted`, `AssignmentCreated/Cancelled`,
@@ -182,7 +190,9 @@ Reporting **suscribe** `EvaluationSubmitted`, `AssignmentCreated/Cancelled`,
   `consumable_url`.
 - `POST /assignments/{id}/open` → `AssignmentOpened` (opcional).
 - `POST /evaluations` → `SubmitEvaluation` `{assignmentId, scores:[{criterionId, score, comment?}]}`.
-  Valida cobertura exacta de los 5 criteria y score ∈ [1,5].
+  Valida cobertura exacta de los 5 criteria y score ∈ [1,5]. Si el `Assignment` ya está
+  `submitted` → **409** (anti-duplicación humana en el assignment; la `Evaluation` en sí no tiene
+  unicidad — ADR-0005).
 
 Páginas: `/sign-in` (Clerk) · `/evaluations` (lista de pendientes) · `/evaluations/[assignmentId]`
 (flujo 3 pasos: **1** ver metadata → **2** consumir contenido (iframe si el sitio lo permite,
@@ -218,10 +228,11 @@ No es dominio: vive en la UI.
 - **Neon:** connection string; extensión pgvector habilitada (para `[futuro]`).
 
 ## 11. Testing (foco mínimo, no exhaustivo)
-- Dominio: invariantes de `Evaluation` (cobertura exacta, score 1–5, unicidad) y del lifecycle de
-  `Assignment` (cancel solo si no submitted).
-- Policy de completitud: distinct submitted assessors ≥ quorum → `ContentEvaluationCompleted`
-  (incluye caso de reasignación).
+- Dominio: invariantes de `Evaluation` (cobertura exacta, score 1–5; **se permiten repeticiones**,
+  sin unicidad por assessor/content/rubric) y del lifecycle de `Assignment` (cancel solo si no
+  submitted; re-submit sobre `submitted` → 409).
+- Policy de completitud: `COUNT(assignments submitted) ≥ quorum` → `ContentEvaluationCompleted`
+  (incluye caso de reasignación y de una evaluación que satisface dos campañas).
 
 ## 12. Orden sugerido de implementación
 1. Scaffolding backend (platform: db, events, clerk, security) + migraciones + seed rubric v1.

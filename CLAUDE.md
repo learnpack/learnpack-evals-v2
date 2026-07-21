@@ -12,12 +12,12 @@ Guía para generar el código de este repositorio. **Leer `docs/` antes de escri
 - **Dependency Rule:** las dependencias apuntan **solo hacia adentro**
   (Frameworks → Adapters → Application → Domain). El **Domain es Python puro**: sin FastAPI,
   SQLAlchemy, LiteLLM ni I/O.
-- **Ports & adapters:** los ports se definen en Application/Domain; los adapters (Postgres,
-  Sheets, LiteLLM) se implementan afuera y se inyectan.
+- **Ports & adapters:** los ports se definen en Application/Domain; los adapters (Postgres/Neon,
+  Clerk, LiteLLM) se implementan afuera y se inyectan.
 - **Aislamiento de módulos:** los módulos hablan por **domain events + DTOs de query**; nunca
   se importa el dominio interno de otro módulo. ACL en los bordes externos (LearnPack, LLM).
 - **Events-first:** el estado evoluciona por domain events; las policies reaccionan; sin
-  comandos cruzados. En el MVP un evento puede ser un append de fila (Sheets).
+  comandos cruzados. En el MVP un evento es un `INSERT` en la tabla `events` (outbox, ADR-0003).
 
 ## Convenciones
 - **Ubiquitous language y código en inglés**; docs y comentarios de negocio pueden ir en
@@ -27,13 +27,14 @@ Guía para generar el código de este repositorio. **Leer `docs/` antes de escri
 
 ## Dos horizontes (crítico)
 - El **modelo objetivo** está documentado completo, pero **el MVP es una rebanada fina**
-  (evaluación humana, posible store en Google Sheets, sin deploys pagos). Ver alcance en
-  `01-align.md` y `04-strategize.md`.
+  (evaluación humana, deploy económico). Ver alcance en `01-align.md` y `04-strategize.md`.
 - **Mantener el MVP liviano**: no construir fuentes automáticas, métricas ni calibración
   (todo `[futuro]`). Respetar los límites documentados sin agregar ceremonia prematura.
 - Ante la duda: preferir lo que dice la doc del modelo objetivo para no cerrar puertas, pero
   implementar solo el slice del MVP.
 
-## Stack (referencia)
-Python/FastAPI · Next/Tailwind/shadcn · LiteLLM/OpenRouter · Postgres/pgvector ·
-LangGraph (solo si hace falta orquestar agentes). MVP: store liviano (Sheets) admitido.
+## Stack
+**MVP (confirmado):** Next/Tailwind/shadcn en Netlify · FastAPI en Render Starter ·
+Postgres/pgvector en Neon · Clerk (invite-only). Ver `08-code.md`, ADR-0003 y ADR-0004.
+**Target `[futuro]`:** LiteLLM/OpenRouter y LangGraph (solo si hace falta orquestar agentes) —
+no se usan en el MVP.

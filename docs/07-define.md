@@ -97,21 +97,25 @@ Observaciones que confirman/afinan el modelo:
 - **Ubiquitous language:** Evaluation, EvaluationResult, CriterionScore, Assessor, provenance.
 
 ### Aggregate Design Canvas — `Evaluation`
-- **Descripción:** registro de un `Assessor` puntuando un contenido contra una `rubricVersion`.
-  Root = `Evaluation`; contiene un `EvaluationResult` (los `CriterionScore` + comments).
+- **Descripción:** un **acto** concreto de evaluación. Root = `Evaluation` (id propio
+  `evaluationId`), con coordenadas `{assessorId, contentId (versión), rubricVersion,
+  occurredAt/attempt}`; contiene un `EvaluationResult` (los `CriterionScore` + comments).
 - **Ciclo de vida (MVP):** `Submitted`. (Draft/InProgress = `[futuro]`.)
 - **Invariantes:**
   1. Cobertura exacta: un `CriterionScore` por cada `criterionId` de la `rubricVersion` (ni
      falta ni sobra).
   2. score ∈ [1,5] entero; comment opcional.
-  3. Referencias válidas: `rubricVersion` publicada, `contentId` registrado, `assessorId`.
-  4. Unicidad: ≤1 `Evaluation` por `(assessorId, contentId, rubricVersion)`. Re-submit =
-     bloqueado o update → open question.
+  3. Referencias válidas: `rubricVersion` publicada, `contentId` (versión) registrado, `assessorId`.
+  4. **Identidad = `evaluationId` propio. NO hay unicidad por `(assessor, content, rubric)`:** se
+     permiten **repeticiones** del mismo `Assessor` sobre el mismo `(content, rubric)` (necesario
+     para dispersión de `LLMJudge`) y evaluar distintas `contentVersion`. La anti-duplicación
+     humana se enforcea en el `Assignment` (Orchestration), no acá. Ver ADR-0005.
   5. Inmutable una vez `Submitted` (MVP).
 - **Límite de consistencia:** `Evaluation` + `EvaluationResult` = unidad transaccional; submit
   atómico.
 - **Comando → evento:** `SubmitEvaluation → EvaluationSubmitted`.
-- **Corrective policies:** validación síncrona; rubric/criteria inválidos → rechazo.
+- **Corrective policies:** validación síncrona; rubric/criteria inválidos → rechazo. Enviar sobre
+  un `Assignment` ya `Submitted` → 409 (regla de Orchestration).
 - **Throughput/tamaño:** bajo, sin concurrencia; agregado chico (5 scores).
 - **Provenance:** `EvaluationSubmitted` lleva el `Assessor` (HumanExpert id), `mode=human`.
 
@@ -121,8 +125,9 @@ Observaciones que confirman/afinan el modelo:
 > inter-rater) queda como proyección de Reporting/Golden.
 
 ### Realización MVP
-`SubmitEvaluation` → append de fila(s) (`EvaluationSubmitted`): una fila por evaluación con
-columnas de score+comment por criterion (simple para Sheets y para reporting).
+`SubmitEvaluation` → `INSERT` en `evaluations` + `criterion_scores` y fila en `events`
+(`EvaluationSubmitted`), en una transacción (ADR-0003). La completitud la maneja Orchestration
+por status de assignment (ver 08 §5).
 
 ---
 
@@ -138,14 +143,17 @@ columnas de score+comment por criterion (simple para Sheets y para reporting).
   `ContentSnapshot { contentId, generatingSystem, externalId, consumableUrl, metadata: MetadataEntry[] }`.
 
 ### Aggregate Design Canvas — `EducationalContent`
-- Root = Content; posee su `ContentMetadata` (colección abierta de `MetadataEntry`).
-- **Invariantes:** único `(generatingSystem, externalId)`; `consumableUrl` presente; metadata
-  válida contra el `MetadataSchema` de su tipo (si existe). El dominio no referencia keys
+- Root = Content; **cada registro es una versión concreta** (`contentId` = versión). El contenido
+  *lógico* es `(generatingSystem, externalId)`. Posee su `ContentMetadata` (colección abierta de
+  `MetadataEntry`).
+- **Invariantes:** único `(generatingSystem, externalId, version)`; `consumableUrl` presente;
+  metadata válida contra el `MetadataSchema` de su tipo (si existe). El dominio no referencia keys
   concretas (ver ADR-0001).
 - **Comandos → eventos:** `RegisterContent→ContentRegistered`,
   `UpdateContentMetadata→ContentMetadataUpdated`.
 - **Realización MVP:** schema sembrado `learnpack-v1 = {learningObjectives, targetAudience,
-  prerequisites}`; metadata a mano; sin lessonPlan (los evaluadores reciben el curso completo).
+  prerequisites}`; metadata a mano; `version` default `"1"`; sin lessonPlan (los evaluadores
+  reciben el curso completo). Ver ADR-0005.
 
 ## Evaluation Orchestration (supporting) · refinado (ver ADR-0002)
 
@@ -173,17 +181,21 @@ columnas de score+comment por criterion (simple para Sheets y para reporting).
 - **Estados:** `Assigned → Opened → Submitted` · `Cancelled`. (Reassign = `Cancel` + nuevo
   `Assign` a otro assessor.)
 - **Invariantes:** a lo sumo una assignment **activa** (no cancelada) por
-  `(campaign, content, assessor)`; solo se cancela si no está `Submitted`.
+  `(campaign, content, assessor)`; solo se cancela si no está `Submitted`. **Unidad de
+  anti-duplicación humana:** se cumple con **una** submission; re-enviar sobre una ya `Submitted`
+  → 409 (ver ADR-0005).
 - **Comandos → eventos:** `AssignContent→AssignmentCreated`, `OpenAssignment→AssignmentOpened`,
   `CancelAssignment→AssignmentCancelled`. Al oír `EvaluationSubmitted` (contexto Evaluation) la
   assignment pasa a `Submitted`.
 
 ### Quórum = umbral de completitud sobre submissions (no provisioning)
-- Un contenido está `Completed` cuando el nº de **assessors distintos que enviaron** una
-  evaluación válida alcanza `requiredEvaluationsPerContent`. **Las assignments canceladas o
-  incompletas no afectan el conteo**; solo cuentan las submissions.
-- **Policy:** `EvaluationSubmitted` → cuenta distinct assessors del contenido; `≥ umbral` →
-  `ContentEvaluationCompleted`. Reasignaciones funcionan solas (cuenta quien envía).
+- Un contenido está `Completed` en una campaña cuando `COUNT(assignments de esa (campaign,
+  content) en status 'submitted') ≥ requiredEvaluationsPerContent`. **Las assignments canceladas
+  o incompletas no cuentan**; solo cuentan las submissions.
+- **Policy:** al `EvaluationSubmitted(assessor, content, rubricVersion)` se marcan `submitted`
+  todas las assignments abiertas de `(assessor, content)` con `campaign.rubricVersion` coincidente;
+  para cada campaña afectada, si el conteo `≥ umbral` → `ContentEvaluationCompleted`. Una misma
+  evaluación puede satisfacer varias campañas; las reasignaciones funcionan solas.
 - **Consistencia:** conteo/completitud **eventual** (policy sobre eventos), no invariante
   transaccional de un agregado grande.
 
@@ -193,8 +205,9 @@ columnas de score+comment por criterion (simple para Sheets y para reporting).
 - ¿cambiar N con la campaña abierta? (MVP: fijo).
 
 ### Realización MVP
-Hojas: `campaigns`, `assignments` (con `status`), `evaluations`. Pendientes y progreso = queries
-sobre esas hojas. `ContentEvaluationCompleted` puede ser vista computada (distinct submitted ≥ N).
+Tablas `campaigns`, `assignments` (con `status`), `evaluations` (ADR-0003). Pendientes y
+progreso = queries. Completitud de `(campaign, content)` = `COUNT(assignments submitted) ≥
+required` (ver 08 §5); `ContentEvaluationCompleted` puede materializarse en tabla o vista.
 
 ## Golden Dataset (supporting)
 
@@ -218,7 +231,7 @@ sobre esas hojas. `ContentEvaluationCompleted` puede ser vista computada (distin
   evaluador / global), inter-rater agreement.
 - **Inbound** — Suscribe: `EvaluationSubmitted`, `AssignmentCreated`, `AssignmentCancelled`,
   `ContentEvaluationCompleted`, `GoldenReferenceEstablished`. Sin agregado propio.
-- **Realización MVP:** proyecciones desde las filas (Sheets). La agregación cross-evaluador
+- **Realización MVP:** proyecciones = vistas/queries SQL sobre las tablas. La agregación cross-evaluador
   (media + inter-rater) vive acá.
 
 ## Identity & Access (generic)

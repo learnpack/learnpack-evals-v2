@@ -25,12 +25,20 @@ enviadas". Eso no soporta el aprovisionamiento incremental ni la rotación de as
 4. **Completitud eventual por policy:** `EvaluationSubmitted` → contar distinct assessors →
    `≥ umbral` → `ContentEvaluationCompleted`. No es invariante transaccional de un agregado grande.
 
+**Nota de implementación (alineada con 08 §5 y ADR-0005):** la `Evaluation` es **campaign-agnostic**
+(sin `campaign_id`). El nexo con la campaña es el `Assignment`: al enviar, se marcan `submitted`
+todas las assignments abiertas de `(assessor, content)` cuya `campaign.rubricVersion` coincida, y
+la completitud de `(campaign, content)` = `COUNT(assignments submitted) ≥ required`. Así una misma
+evaluación puede satisfacer varias campañas que la pidieron. La anti-duplicación humana (una
+submission por assignment) vive en el `Assignment`, no en una unicidad de `Evaluation` — ver
+ADR-0005.
+
 ## Consecuencias
 - (+) Se puede **empezar ya** con pocos expertos y sumar más sin reestructurar nada.
 - (+) Cancelar/reasignar es natural; solo mueven la aguja las entregas.
 - (+) `Assignment` chico → sin contención; escala bien.
-- (+) La unicidad de evaluación por `(assessor, content, rubricVersion)` (contexto Evaluation)
-  hace seguro contar assessors distintos.
+- (+) La anti-duplicación humana vive en el `Assignment` (una submission por assignment, ADR-0005),
+  así que contar `assignments submitted` es seguro sin depender de una unicidad de `Evaluation`.
 - (−) La completitud es eventual, no inmediata (aceptable: es un proceso humano asíncrono).
 
 ## Open questions (no bloquean el MVP)

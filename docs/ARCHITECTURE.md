@@ -13,8 +13,8 @@ mencionan en el código de las internas.
         outer  ───────────────►  inner      (las dependencias apuntan HACIA ADENTRO)
 ┌──────────────────────────────────────────────────────────────┐
 │ Frameworks & Drivers                                          │
-│  FastAPI · Postgres/pgvector · LiteLLM/OpenRouter ·           │
-│  Next.js/Tailwind/shadcn · Google Sheets · event bus          │
+│  FastAPI · Postgres/pgvector (Neon) · Clerk · LiteLLM/OpenRouter · │
+│  Next.js/Tailwind/shadcn · event bus                          │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ Interface Adapters                                      │  │
 │  │  controllers · repository impls · source adapters       │  │
@@ -42,8 +42,8 @@ Consecuencias obligatorias:
   (interfaces/Protocols) que necesita.
 - **Interface Adapters** dependen de Application + Domain. Implementan los ports (repos, source
   adapters, event bus, ACLs) y traducen entre el mundo externo y el modelo.
-- **Frameworks & Drivers** es lo más externo (FastAPI, Postgres/pgvector, LiteLLM, Next,
-  Sheets). Nada interno los importa.
+- **Frameworks & Drivers** es lo más externo (FastAPI, Postgres/pgvector, Clerk, LiteLLM,
+  Next). Nada interno los importa.
 
 ## 2. Dependency Inversion (ports & adapters)
 
@@ -52,7 +52,7 @@ implementan en las externas**. Ejemplos de ports:
 `EvaluationSourcePort` (uno por tipo: Human/LLM/Deterministic/Hybrid), `RubricRepositoryPort`,
 `ContentRepositoryPort`, `EvaluationResultRepositoryPort`, `EventPublisherPort`,
 `CalibrationStatusPort`. El dominio depende de la abstracción; el adapter concreto
-(Postgres, Sheets, LiteLLM) se inyecta desde afuera.
+(Postgres/Neon, Clerk, LiteLLM) se inyecta desde afuera.
 
 ## 3. Aislamiento de módulos (regla horizontal, además de la vertical)
 
@@ -67,8 +67,9 @@ Cada subdominio (ver `03-decompose.md`) es un **módulo** con su propio dominio.
 
 - El estado evoluciona publicando **domain events**; las *policies* reaccionan (ver
   `02-discover.md`). No hay comandos cruzados entre módulos.
-- En el MVP, "publicar un evento" puede realizarse como **append de fila** (Sheets). Los
-  eventos son *lógicos*; el contrato no cambia al migrar a un bus real.
+- En el MVP, "publicar un evento" se realiza como **`INSERT` en la tabla `events`** dentro de la
+  misma transacción del agregado (outbox) + dispatch in-process (ADR-0003). Los eventos son
+  *lógicos*; el contrato no cambia al migrar a un bus real.
 - `QualityJudgmentPublished` (y candidatos) pueden convertirse en **integration events**
   salientes vía outbox/relay.
 
