@@ -18,9 +18,11 @@ Reporting.
    entre pares + % de acuerdo exacto. Interpretable con 2-3 raters, respeta la escala ordinal 1-5,
    sin dependencias nuevas. Suficiente para detectar criteria/cursos conflictivos al construir el
    golden.
-3. **Repeticiones del mismo assessor:** colapsar a **la más reciente** por assessor (una
-   re-evaluación humana es una corrección que supersede), y recién ahí promediar entre assessors —
-   consistente con el quórum, que cuenta assessors distintos.
+3. **Repeticiones del mismo assessor:** colapsar a **la más reciente** por
+   `(assessor, content, rubricVersion)` (la definición de repetición de ADR-0005 — **no** por
+   assessor solo: eso colapsaría cursos distintos del mismo evaluador), porque una re-evaluación
+   humana es una corrección que supersede; y recién ahí promediar entre assessors — consistente
+   con el quórum, que cuenta assessors distintos.
 
 ## Consecuencias
 - (+) Respeta la regla de aislamiento (Reporting extraíble; nadie acopla su schema).

@@ -64,7 +64,8 @@ backend/app/
     golden_dataset/
       domain/ application/ infrastructure/   # coverage rule → GoldenReferenceEstablished
     reporting/
-      infrastructure/         # read models (SQL views/queries): pendientes, scores, promedios
+      application/            # aggregation.py PURA (media, dispersión, collapse) — sin I/O
+      infrastructure/         # composición vía public.py de otros módulos + reports + router
 ```
 
 Regla: `domain` sin imports de framework; `application` define los ports (Protocols); los
