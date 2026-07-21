@@ -31,9 +31,9 @@ def _prepare_database() -> None:
     if not USING_LOCAL_TEST_DB:
         return
 
-    from alembic import command
     from alembic.config import Config
 
+    from alembic import command
     from app.cli import DEFAULT_SEED_FILE, run_seed
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
