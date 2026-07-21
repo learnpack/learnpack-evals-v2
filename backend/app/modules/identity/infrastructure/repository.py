@@ -44,6 +44,29 @@ class SqlAlchemyAssessorRepository:
     def get_by_email(self, email: str) -> Assessor | None:
         return self._one("lower(email) = lower(:v)", {"v": email})
 
+    def list_by_ids(self, assessor_ids: list[UUID]) -> list[Assessor]:
+        if not assessor_ids:
+            return []
+        rows = (
+            self._session.execute(
+                text(f"SELECT {_COLUMNS} FROM assessors WHERE id = ANY(:ids)"),
+                {"ids": assessor_ids},
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            Assessor(
+                id=row["id"],
+                clerk_user_id=row["clerk_user_id"],
+                email=row["email"],
+                display_name=row["display_name"],
+                role=row["role"],
+                expertise=row["expertise"],
+            )
+            for row in rows
+        ]
+
     def add(self, assessor: Assessor) -> None:
         self._session.execute(
             text(

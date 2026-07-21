@@ -9,13 +9,24 @@ from app.modules.identity.application.dtos import AssessorDTO
 from app.modules.identity.application.ports import AssessorRepositoryPort
 
 
-def get_assessor(assessors: AssessorRepositoryPort, assessor_id: UUID) -> AssessorDTO | None:
-    assessor = assessors.get_by_id(assessor_id)
-    if assessor is None:
-        return None
+def _to_dto(assessor) -> AssessorDTO:  # noqa: ANN001 — domain entity
     return AssessorDTO(
         assessor_id=assessor.id,
         role=str(assessor.role),
         email=assessor.email,
         display_name=assessor.display_name,
     )
+
+
+def get_assessor(assessors: AssessorRepositoryPort, assessor_id: UUID) -> AssessorDTO | None:
+    assessor = assessors.get_by_id(assessor_id)
+    return None if assessor is None else _to_dto(assessor)
+
+
+def list_assessors(
+    assessors: AssessorRepositoryPort, assessor_ids: list[UUID]
+) -> dict[UUID, AssessorDTO]:
+    """Batch lookup, keyed by id — how reports put a name on an `assessorId`."""
+    if not assessor_ids:
+        return {}
+    return {a.id: _to_dto(a) for a in assessors.list_by_ids(assessor_ids)}
