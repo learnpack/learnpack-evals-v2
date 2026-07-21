@@ -16,6 +16,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.modules.identity.domain.assessor import InvalidAssessor, Role
+from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.db import SessionLocal
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -155,12 +157,44 @@ def run_seed(seed_file: Path) -> None:
     )
 
 
+def run_set_role(email: str, role: str) -> int:
+    """Promote/demote an Assessor.
+
+    `assessors.role` is the source of truth for authorisation, and only this command writes
+    it — logging in never changes a role, so authentication cannot escalate privileges.
+    """
+    with SessionLocal() as session:
+        repository = SqlAlchemyAssessorRepository(session)
+        assessor = repository.get_by_email(email)
+        if assessor is None:
+            print(
+                f"no assessor with email {email!r}. "
+                "They must sign in once before a role can be assigned.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            assessor.assign_role(role)
+        except InvalidAssessor as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        repository.update(assessor)
+        session.commit()
+
+    print(f"{email} is now {role}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     seed_parser = subparsers.add_parser("seed", help="seed rubric v1 + metadata schema")
     seed_parser.add_argument("--file", type=Path, default=DEFAULT_SEED_FILE)
+
+    role_parser = subparsers.add_parser("set-role", help="assign a role to an assessor")
+    role_parser.add_argument("--email", required=True)
+    role_parser.add_argument("--role", required=True, choices=[r.value for r in Role])
 
     args = parser.parse_args(argv)
 
@@ -169,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"seed file not found: {args.file}", file=sys.stderr)
             return 1
         run_seed(args.file)
+    elif args.command == "set-role":
+        return run_set_role(args.email, args.role)
     return 0
 
 
