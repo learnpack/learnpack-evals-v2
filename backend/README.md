@@ -48,8 +48,19 @@ La persona tiene que haber entrado al menos una vez para que exista su fila.
 | `app/modules/*/infrastructure` | Adapters | application + domain (repos, routers, ACLs) |
 | `app/platform`, `app/main.py` | Frameworks | todo; inyecta las dependencias |
 
-Ningún módulo importa el dominio interno de otro: se hablan por **domain events**
-(`app/platform/events.py`) y por **DTOs de query** de solo lectura.
+## Superficie pública de un módulo (ARCHITECTURE.md §3)
+
+Cada módulo expone su contrato en `modules/<m>/public.py`: DTOs de query, nombres de sus
+eventos, y un proveedor `get_<m>_queries` para inyectar por `Depends` que **arma su propio
+repo adentro**. Los módulos ajenos importan **solo** de ahí — nunca de
+`modules/<otro>/infrastructure` (eso los acoplaría al adapter concreto en vez de al port) ni
+de `modules/<otro>/domain`.
+
+Única excepción: el composition root (`main.py`, `cli.py`, `platform/`), cuyo trabajo *es*
+inyectar adapters concretos.
+
+`tests/test_architecture.py` hace la regla ejecutable: falla el build si alguien la rompe.
+Corre en cada `pytest`, sin DB.
 
 ## Events-first (ADR-0003)
 
@@ -61,10 +72,24 @@ por `event_type + aggregate_id`, para poder reprocesar desde la tabla `events`.
 ## Comandos
 
 ```bash
-uv run pytest            # tests (los que necesitan DB se saltean sin DATABASE_URL)
+docker compose up -d     # Postgres local para los tests (una sola vez)
+uv run pytest            # tests
 uv run ruff check .      # lint
 uv run ruff format .     # formato
 ```
+
+### Por qué los tests corren contra Postgres local
+
+La suite está **limitada por latencia**, no por CPU: cada consulta a Neon (`us-east-1`) cuesta
+~150 ms desde Latam, y un test de integración hace más de cien. Eso son ~20 s por test
+y +10 min de suite. Contra Postgres local la misma consulta cuesta ~0,3 ms.
+
+Con `TEST_DATABASE_URL` seteada (ver `.env.example`), `tests/conftest.py` redirige la suite a
+esa DB y la **migra y siembra sola**. Sin ella, los tests corren contra `DATABASE_URL` — es
+válido, solo lento; en ese caso conftest **no** migra ni siembra nada (no se toca el store real
+automáticamente).
+
+Neon sigue siendo el store de verdad: migraciones, deploy y la verificación de humo final.
 
 ## Unit of work
 
@@ -73,8 +98,26 @@ uv run ruff format .     # formato
 **después** despacha los eventos ya durables. Los use cases reciben `uow` + los ports que
 necesitan; los adapters concretos se inyectan desde el router.
 
+## Policy de completitud (ADR-0002)
+
+Única policy del MVP. Al oír `EvaluationSubmitted`, `orchestration` marca `submitted` todas
+las assignments abiertas de `(assessor, content)` cuya campaña use la misma `rubricVersion`
+—así una evaluación puede satisfacer varias campañas— y publica
+`ContentEvaluationCompleted` cuando `COUNT(assignments submitted) ≥ required`.
+
+Corre **después** del commit de la evaluación, en su propia transacción: la completitud es
+**eventual**, no un invariante transaccional. Es idempotente (`ON CONFLICT DO NOTHING` +
+publicar solo si insertó), así que reprocesar desde `events` es seguro.
+
+## Carga masiva de cursos
+
+```bash
+uv run python -m app.cli import-learnpack --file cursos.json        # forma canónica
+uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma cruda de LearnPack
+```
+
 ## Estado
 
-Bloques 1 y 2 completos: scaffolding + migraciones + seed · identity (Clerk) ·
-content_registry. Faltan `evaluation`, `orchestration`, `golden_dataset` y `reporting`
-(bloques 3–4, `../docs/08-code.md §12`).
+Bloques 1–3 completos: scaffolding + seed · identity · content_registry · rubric_authoring
+(read-only) · evaluation · orchestration. Faltan `golden_dataset` y `reporting` (bloque 4) y
+el frontend (bloque 5) — ver `../docs/08-code.md §12`.
