@@ -58,8 +58,15 @@ implementan en las externas**. Ejemplos de ports:
 
 Cada subdominio (ver `03-decompose.md`) es un **módulo** con su propio dominio. Entre módulos:
 - Se comunican por **domain events publicados + DTOs de query** (el Published Language de cada
-  módulo; ver `05-connect.md`). 
-- **Nunca** se importa el dominio interno de otro módulo. Nada de reachar agregados ajenos.
+  módulo; ver `05-connect.md`).
+- **Superficie pública del módulo:** cada módulo expone su contrato de lectura (*query interface +
+  DTOs*), sus eventos, y un proveedor de queries `get_<m>_queries` (para inyectar por `Depends`),
+  todo en una `modules/<m>/public.py`. El módulo dueño arma su propio repo **dentro** de ese
+  proveedor.
+- **Nunca** se importa el dominio interno **ni la `infrastructure`** de otro módulo, ni se nombra
+  su repo/adapter concreto. Los módulos ajenos importan **solo** desde la `public.py` del módulo.
+- **Regla lint-eable:** ningún import a `modules/*/infrastructure` (ni a `modules/*/domain`) desde
+  fuera de ese mismo módulo; única excepción, `platform`/`main` (composition root).
 - Los bordes con sistemas externos (LearnPack, providers LLM) pasan por un **ACL** en el
   adapter, que traduce el modelo externo al nuestro.
 

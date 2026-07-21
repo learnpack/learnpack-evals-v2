@@ -229,10 +229,18 @@ required` (ver 08 §5); `ContentEvaluationCompleted` puede materializarse en tab
 
 - **Propósito:** read models (CQRS read side): pendientes, scores por curso, promedios (curso /
   evaluador / global), inter-rater agreement.
-- **Inbound** — Suscribe: `EvaluationSubmitted`, `AssignmentCreated`, `AssignmentCancelled`,
-  `ContentEvaluationCompleted`, `GoldenReferenceEstablished`. Sin agregado propio.
-- **Realización MVP:** proyecciones = vistas/queries SQL sobre las tablas. La agregación cross-evaluador
-  (media + inter-rater) vive acá.
+- **Inbound** — Lee **por query ports** (public.py) de los módulos dueños (evaluation expone una
+  query de scores; orchestration, assignments/progreso; content, contents; identity, assessors).
+  Sin agregado propio.
+- **Realización MVP (ver ADR-0006):** **composición vía query ports + agregación en Python** — NO
+  vistas/JOINs cross-módulo (rompería el aislamiento) ni proyecciones CQRS por eventos (over-
+  engineering para supporting-generic; = `[futuro]`). A escala MVP (~750 scores) el costo es nulo;
+  usar queries **batch** para evitar N+1.
+  - **Inter-rater por criterion:** dispersión simple (desvío + diferencia absoluta media entre
+    pares + % de acuerdo exacto). Formal (Krippendorff's α) = `[futuro]` con calibración.
+  - **Repeticiones del mismo assessor:** colapsar a **la más reciente** por assessor (corrección),
+    luego promediar entre assessors — consistente con el quórum (assessors distintos). El muestreo
+    automático intencional (media por assessor + dispersión intra) = `[futuro]`.
 
 ## Identity & Access (generic)
 

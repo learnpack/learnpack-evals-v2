@@ -181,8 +181,9 @@ Notas de implementación (decisiones concretas):
 | — (policy orchestration) | `ContentEvaluationCompleted` | content_evaluation_completions | (golden) recalcula coverage → si `≥ campaign.golden_coverage_threshold` (default 1.0) → `GoldenReferenceEstablished` |
 | — (policy golden) | `GoldenReferenceEstablished` | golden_references | — |
 
-Reporting **suscribe** `EvaluationSubmitted`, `AssignmentCreated/Cancelled`,
-`ContentEvaluationCompleted`, `GoldenReferenceEstablished` y proyecta read models (§7).
+Reporting (MVP) **lee on-demand por los query ports** (public.py) de los módulos dueños y
+**agrega en Python** (media + inter-rater), sin proyecciones por eventos ni JOINs cross-módulo
+(ADR-0006). Las proyecciones CQRS alimentadas por eventos = `[futuro]`.
 
 ## 6. Identidad con Clerk (ADR-0004)
 
@@ -219,16 +220,18 @@ opcional, con hints de 1 y 5).
 
 **Admin** (`require_admin`)
 - `POST /admin/contents`, `PATCH /admin/contents/{id}/metadata`
-- **Bulk import CLI** `import-learnpack --file <json>` → carga los ~50 cursos vía `RegisterContent`.
-  Si el archivo trae la forma cruda de LearnPack, pasa por el **ACL** (lo vuelve código vivo); si
-  trae la forma canónica (carga a mano), el ACL queda como seam. (Forma del export a confirmar.)
+- **Carga de contenido = manual, de a un curso** (`POST /admin/contents` + form de metadata en la
+  admin UI, bloque 5). No hay export de LearnPack → el **ACL `acl_learnpack.py` queda como seam
+  documentado y testeado (no conectado)**. Bulk import CLI = `[futuro]` opcional cuando exista un
+  JSON canónico (`import-content --file <canonical.json>`, sin ACL).
 - `POST /admin/campaigns` (crea directo en `open`, `contentSet` no vacío; `Draft` no expuesto —
   decisión C), `POST /admin/campaigns/{id}/assignments`,
   `POST /admin/assignments/{id}/cancel`
 - Invitaciones de evaluadores: vía Clerk (dashboard o Management API).
 - `GET /admin/progress` → quién evaluó qué / pendientes por evaluador y por curso.
 - `GET /admin/reports/scores` → scores por curso (individual y promedio), promedio por evaluador,
-  global, e inter-rater. (Read models de Reporting: vistas SQL sobre criterion_scores/evaluations.)
+  global, e inter-rater. (Reporting **compone vía query ports + agrega en Python**, no vistas
+  SQL cross-módulo — ADR-0006. `evaluation.public` expone una query de scores.)
 
 ## 8. iframe del contenido — riesgo a verificar
 Muchos sitios bloquean el iframe con `X-Frame-Options`/`CSP frame-ancestors`. **Verificar
@@ -263,7 +266,9 @@ No es dominio: vive en la UI.
    evaluation (SubmitEvaluation + invariantes; endpoint lee la assignment por el query port de
    orchestration, decisión B) + orchestration (campaign/assignments + policy de quórum).
 4. golden_dataset (coverage) + reporting (read models).
-5. frontend: sign-in, pendientes, flujo 3 pasos, vistas de admin.
+5. frontend: sign-in (Clerk), pendientes del evaluador, flujo 3 pasos; **admin: form de alta
+   manual de curso + creación de campaña + asignación** (no solo vistas de lectura) — habilita el
+   happy-path del demo (alta de cursos → campaña → evaluar).
 
 > Decisiones de bloque 3: **A** rubric_authoring read-only (domain rico = `[futuro]` con
 > `PublishRubric`). **B** submit vive en `evaluation`, lee assignment por query port de
