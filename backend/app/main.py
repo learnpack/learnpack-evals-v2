@@ -15,7 +15,21 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.modules.content_registry.infrastructure.router import router as content_registry_router
+from app.modules.evaluation.infrastructure.router import router as evaluation_router
+from app.modules.golden_dataset.infrastructure.policies import (
+    register_policies as register_golden_policies,
+)
+from app.modules.golden_dataset.infrastructure.router import router as golden_dataset_router
+from app.modules.orchestration.infrastructure.policies import register_policies
+from app.modules.orchestration.infrastructure.router import (
+    admin_router as orchestration_admin_router,
+)
+from app.modules.orchestration.infrastructure.router import (
+    evaluator_router as orchestration_evaluator_router,
+)
+from app.modules.reporting.infrastructure.router import router as reporting_router
 from app.platform.db import get_session
+from app.platform.events import dispatcher
 from app.platform.security import CurrentAssessor
 
 settings = get_settings()
@@ -61,3 +75,15 @@ def me(assessor: CurrentAssessor) -> MeResponse:
 
 
 app.include_router(content_registry_router)
+app.include_router(orchestration_admin_router)
+app.include_router(orchestration_evaluator_router)
+app.include_router(evaluation_router)
+app.include_router(golden_dataset_router)
+app.include_router(reporting_router)
+
+# Policies subscribe here, at wiring time. The MVP's chain (08-code.md §5):
+#   EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
+#                       → (golden) GoldenReferenceEstablished
+# Swapping the in-process dispatcher for a real bus later touches only these lines.
+register_policies(dispatcher)
+register_golden_policies(dispatcher)

@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = ""
+    # When set, the test suite runs against this database instead of `database_url`.
+    # Only tests read it (see tests/conftest.py); the app never does.
+    test_database_url: str = ""
 
     clerk_issuer: str = ""
     # Derived from the issuer when left empty (see `jwks_url`).

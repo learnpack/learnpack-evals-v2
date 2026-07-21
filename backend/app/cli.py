@@ -16,9 +16,23 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.modules.content_registry.application.register_content import (
+    DuplicateContent,
+    RegisterContent,
+    RegisterContentCommand,
+    UnknownGeneratingSystem,
+)
+from app.modules.content_registry.domain.content import InvalidContent
+from app.modules.content_registry.domain.metadata import InvalidMetadata
+from app.modules.content_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.content_registry.infrastructure.repository import (
+    SqlAlchemyContentRepository,
+    SqlAlchemyMetadataSchemaRepository,
+)
 from app.modules.identity.domain.assessor import InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.db import SessionLocal
+from app.platform.uow import UnitOfWork
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
@@ -185,6 +199,59 @@ def run_set_role(email: str, role: str) -> int:
     return 0
 
 
+def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
+    """Bulk-register courses, reusing the `RegisterContent` use case.
+
+    `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
+    shape); without it the file is expected in our canonical shape. Which one becomes the
+    default depends on the real LearnPack export.
+    """
+    raw_courses = json.loads(seed_file.read_text(encoding="utf-8"))
+    if not isinstance(raw_courses, list):
+        print("the file must contain a JSON list of courses", file=sys.stderr)
+        return 1
+
+    created = duplicated = failed = 0
+    for raw in raw_courses:
+        with SessionLocal() as session:
+            uow = UnitOfWork(session)
+            use_case = RegisterContent(
+                contents=SqlAlchemyContentRepository(session),
+                schemas=SqlAlchemyMetadataSchemaRepository(session),
+                publisher=uow.events,
+                uow=uow,
+            )
+            try:
+                command = (
+                    to_register_command(raw)
+                    if use_acl
+                    else RegisterContentCommand(
+                        generating_system=raw["generating_system"],
+                        external_id=raw["external_id"],
+                        consumable_url=raw["consumable_url"],
+                        version=str(raw.get("version", "1")),
+                        metadata=raw.get("metadata", {}),
+                    )
+                )
+                content = use_case(command)
+                created += 1
+                print(f"  created  {content.external_id} v{content.version}")
+            except DuplicateContent:
+                duplicated += 1
+                print(
+                    f"  skipped  {raw.get('external_id') or raw.get('slug')} (already registered)"
+                )
+            except (InvalidContent, InvalidMetadata, UnknownGeneratingSystem, KeyError) as exc:
+                failed += 1
+                print(
+                    f"  INVALID  {raw.get('external_id') or raw.get('slug')}: {exc}",
+                    file=sys.stderr,
+                )
+
+    print(f"\n{created} created, {duplicated} already present, {failed} invalid")
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -196,6 +263,16 @@ def main(argv: list[str] | None = None) -> int:
     role_parser.add_argument("--email", required=True)
     role_parser.add_argument("--role", required=True, choices=[r.value for r in Role])
 
+    import_parser = subparsers.add_parser(
+        "import-learnpack", help="bulk register courses from a JSON list"
+    )
+    import_parser.add_argument("--file", type=Path, required=True)
+    import_parser.add_argument(
+        "--acl",
+        action="store_true",
+        help="treat the file as LearnPack's raw shape and translate it through the ACL",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -205,6 +282,11 @@ def main(argv: list[str] | None = None) -> int:
         run_seed(args.file)
     elif args.command == "set-role":
         return run_set_role(args.email, args.role)
+    elif args.command == "import-learnpack":
+        if not args.file.exists():
+            print(f"file not found: {args.file}", file=sys.stderr)
+            return 1
+        return run_import_learnpack(args.file, args.acl)
     return 0
 
 
