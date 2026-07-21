@@ -140,6 +140,8 @@ Notas de implementación (decisiones concretas):
 - `contents.metadata` es JSONB abierto (ADR-0001), validado en app contra `metadata_schemas`.
   **Spec seed `LearnpackV1`:** `learningObjectives: string_list (required)` ·
   `targetAudience: string (required)` · `prerequisites: string_list (optional)`. Sin lessonPlan.
+  **Validate-on-write / trust-on-read:** la validación contra el schema corre solo al *escribir*;
+  al leer se rehidrata sin revalidar (un cambio futuro de schema no rompe lecturas ya guardadas).
 - **Convención de `rubric_versions.id`:** `{rubricId}-{version}` (p.ej. `learnpack-pedagogical-v1`),
   determinístico e inmutable → seed idempotente.
 - **FKs:** intra-módulo → siempre. Cross-módulo (p.ej. `evaluations.assessor_id→assessors`,
@@ -215,6 +217,9 @@ opcional, con hints de 1 y 5).
 
 **Admin** (`require_admin`)
 - `POST /admin/contents`, `PATCH /admin/contents/{id}/metadata`
+- **Bulk import CLI** `import-learnpack --file <json>` → carga los ~50 cursos vía `RegisterContent`.
+  Si el archivo trae la forma cruda de LearnPack, pasa por el **ACL** (lo vuelve código vivo); si
+  trae la forma canónica (carga a mano), el ACL queda como seam. (Forma del export a confirmar.)
 - `POST /admin/campaigns`, `POST /admin/campaigns/{id}/assignments`,
   `POST /admin/assignments/{id}/cancel`
 - Invitaciones de evaluadores: vía Clerk (dashboard o Management API).
