@@ -1,7 +1,8 @@
 """SQLAlchemy engine and session (frameworks & drivers layer).
 
-Synchronous sessions on purpose: the outbox pattern (aggregate + `events` row in one
-commit, ADR-0003) is much simpler to reason about, and the MVP's volume is low.
+Synchronous sessions on purpose: they are simpler and the MVP's workload needs no async
+concurrency. Async would *not* break the outbox's atomicity — sync is just preferable here.
+Revisable if concurrency grows (08-code.md §3).
 """
 
 from collections.abc import Iterator
