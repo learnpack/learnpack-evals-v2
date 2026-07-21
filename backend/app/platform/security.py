@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.config import get_settings
 from app.modules.identity.application.dtos import AssessorDTO
 from app.modules.identity.application.resolve_assessor import ClerkIdentity, ResolveAssessor
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
@@ -56,7 +57,12 @@ def get_current_assessor(
         email=claims.get("email"),
         display_name=claims.get("name"),
     )
-    resolve = ResolveAssessor(SqlAlchemyAssessorRepository(uow.session), uow)
+    resolve = ResolveAssessor(
+        SqlAlchemyAssessorRepository(uow.session),
+        uow,
+        # Bootstrap allowlist: only ever applied when creating a new assessor.
+        bootstrap_admins=get_settings().bootstrap_admin_emails,
+    )
     return resolve(identity)
 
 

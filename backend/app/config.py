@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     # Only tests read it (see tests/conftest.py); the app never does.
     test_database_url: str = ""
 
+    # Comma-separated emails created as admin on their FIRST login. Bootstrap only: it never
+    # changes an existing assessor's role (see ResolveAssessor._initial_role).
+    admin_emails: str = ""
+
     clerk_issuer: str = ""
     # Derived from the issuer when left empty (see `jwks_url`).
     clerk_jwks_url: str = ""
@@ -33,6 +37,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+    @property
+    def bootstrap_admin_emails(self) -> list[str]:
+        return [email.strip() for email in self.admin_emails.split(",") if email.strip()]
 
 
 @lru_cache

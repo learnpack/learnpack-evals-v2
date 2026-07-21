@@ -27,17 +27,60 @@ template** en el dashboard de Clerk con estos claims:
 El backend tolera que falten (el perfil queda en `NULL`), pero sin ellos no vas a poder
 identificar a los SMEs ni usar `set-role`.
 
-### Roles
+**Creá el template antes de que entre nadie.** El claim `email` es además lo que decide el rol
+inicial del primer admin, y esa decisión se toma **una sola vez** — ver el orden en
+[Preparar el demo](#preparar-el-demo--el-orden-importa).
 
-`assessors.role` es la **fuente de verdad** de la autorización. El primer login crea al
-`Assessor` como `evaluator` y **el login nunca cambia el rol** — autenticarse no puede
-escalar privilegios. La promoción es explícita:
+### Roles y el primer admin (ADR-0007)
+
+`assessors.role` es la **fuente de verdad** de la autorización, y **el login nunca cambia el
+rol de nadie** — autenticarse no puede escalar privilegios.
+
+Para el arranque (hace falta un admin antes de que exista un admin que pueda crearlo), está
+`ADMIN_EMAILS`: una allowlist de **aprovisionamiento**, no de autorización. Solo decide el rol
+**con el que se crea** un assessor nuevo:
+
+```bash
+ADMIN_EMAILS=vos@tuempresa.com,otro@tuempresa.com
+```
+
+- Email en la lista y la persona **nunca entró** → se crea `admin`.
+- Email en la lista pero la persona **ya existe** como `evaluator` → **sigue** `evaluator`.
+- Un `admin` existente al que **sacás** de la lista → **sigue** `admin`.
+- Sin claim `email` (falta el JWT template) → `evaluator`.
+
+Es seguro **porque el acceso es invite-only**: nadie puede registrarse con el email de un admin
+sin la invitación. Si alguna vez desactivás invite-only, revisá ADR-0007.
+
+Para cambiar el rol de alguien que ya existe, el único camino es:
 
 ```bash
 uv run python -m app.cli set-role --email tu@email.com --role admin
 ```
 
-La persona tiene que haber entrado al menos una vez para que exista su fila.
+### Preparar el demo — **el orden importa**
+
+> ⚠️ **El JWT template con el claim `email` tiene que existir ANTES del primer login del
+> admin.** Sin ese claim el assessor se crea como `evaluator` (degrade seguro), y como la
+> allowlist se aplica **una sola vez, al crear la fila**, agregar el template después ya no lo
+> rescata. Dos comportamientos correctos por separado que, en el orden equivocado, dejan al
+> admin nacido evaluador.
+
+1. **Render:** `ADMIN_EMAILS=<email del admin>` (y esperá a que termine el redeploy).
+2. **Clerk:** creá el **JWT template** con el claim `email` (ver arriba) e invitá las dos
+   cuentas. Todavía **nadie entra**.
+3. **Recién ahora:** que entre el admin. Verificá con `GET /me` que dice `"role": "admin"`.
+4. Que entre el evaluador → queda `evaluator`.
+5. Cargá los cursos (`import-learnpack`) y abrí la campaña desde la UI de admin.
+
+**Si te equivocaste de orden** (el admin ya entró y quedó `evaluator`): no hay que borrar nada
+ni tocar la allowlist, se arregla con
+
+```bash
+uv run python -m app.cli set-role --email <email del admin> --role admin
+```
+
+que es el único mecanismo para cambiar el rol de alguien que ya existe.
 
 ## Capas (Dependency Rule)
 

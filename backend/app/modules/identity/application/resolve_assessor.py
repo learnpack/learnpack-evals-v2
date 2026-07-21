@@ -5,6 +5,7 @@ logins only refresh the profile. The role is deliberately never touched here —
 the CLI's job, so a login can never escalate privileges.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from app.modules.identity.application.dtos import AssessorDTO
@@ -24,9 +25,16 @@ class ClerkIdentity:
 
 
 class ResolveAssessor:
-    def __init__(self, assessors: AssessorRepositoryPort, uow: UnitOfWorkPort) -> None:
+    def __init__(
+        self,
+        assessors: AssessorRepositoryPort,
+        uow: UnitOfWorkPort,
+        bootstrap_admins: Iterable[str] = (),
+    ) -> None:
         self._assessors = assessors
         self._uow = uow
+        # Provisioning allowlist, NOT an authorisation source — see `_initial_role`.
+        self._bootstrap_admins = frozenset(e.strip().lower() for e in bootstrap_admins if e)
 
     def __call__(self, identity: ClerkIdentity) -> AssessorDTO:
         assessor = self._assessors.get_by_clerk_user_id(identity.clerk_user_id)
@@ -37,11 +45,13 @@ class ResolveAssessor:
                 clerk_user_id=identity.clerk_user_id,
                 email=identity.email,
                 display_name=identity.display_name,
-                role=Role.EVALUATOR,
+                role=self._initial_role(identity.email),
             )
             self._assessors.add(assessor)
             self._uow.commit()
         elif assessor.update_profile(identity.email, identity.display_name):
+            # Note what is *not* here: the role. An existing assessor's role never changes
+            # on login, whatever the allowlist says — logging in cannot escalate privileges.
             self._assessors.update(assessor)
             self._uow.commit()
 
@@ -51,3 +61,19 @@ class ResolveAssessor:
             email=assessor.email,
             display_name=assessor.display_name,
         )
+
+    def _initial_role(self, email: str | None) -> Role:
+        """The role a brand-new assessor is created with.
+
+        The allowlist solves bootstrapping only: someone has to be able to register content
+        and open a campaign before any admin exists to run `set-role`. It applies **at
+        creation and never again**, so `assessors.role` stays the single source of truth
+        and the allowlist behaves like a default, not like a permission.
+
+        Safe because access is invite-only (ADR-0004): an attacker cannot sign up with an
+        admin's address, they would need the invitation. If invite-only were ever turned
+        off, this would become an escalation path — revisit it then.
+        """
+        if email and email.strip().lower() in self._bootstrap_admins:
+            return Role.ADMIN
+        return Role.EVALUATOR
