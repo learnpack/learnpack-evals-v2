@@ -136,9 +136,23 @@ events(id bigserial pk, occurred_at timestamptz default now(), event_type text,
        aggregate_type text, aggregate_id text, payload jsonb, dispatched_at timestamptz)
 ```
 
-Notas: `contents.metadata` es JSONB abierto (ADR-0001), validado en app contra `metadata_schemas`
-(seed `LearnpackV1 = {learningObjectives, targetAudience, prerequisites}`, sin lessonPlan).
-pgvector no se usa en el MVP humano, pero la extensión ya está en Neon para el `[futuro]`.
+Notas de implementación (decisiones concretas):
+- `contents.metadata` es JSONB abierto (ADR-0001), validado en app contra `metadata_schemas`.
+  **Spec seed `LearnpackV1`:** `learningObjectives: string_list (required)` ·
+  `targetAudience: string (required)` · `prerequisites: string_list (optional)`. Sin lessonPlan.
+- **Convención de `rubric_versions.id`:** `{rubricId}-{version}` (p.ej. `learnpack-pedagogical-v1`),
+  determinístico e inmutable → seed idempotente.
+- **FKs:** intra-módulo → siempre. Cross-módulo (p.ej. `evaluations.assessor_id→assessors`,
+  `assignments.content_id→contents`, `campaigns.rubric_version_id→rubric_versions`) → declaradas en
+  el MVP (una sola DB, integridad), pero la columna referencia el *id (Published Language)* del
+  módulo dueño; el código **no hace JOINs cross-módulo** (lecturas por query port). Si un módulo se
+  extrae a su DB, esa FK pasa a chequeo a nivel de app.
+- **CHECKs** en todos los campos de estado/rol: `assessors.role`, `rubric_versions.status`,
+  `campaigns.status`, `assignments.status`.
+- pgvector no se usa en el MVP humano, pero la extensión ya está en Neon para el `[futuro]`.
+- **Sesiones SQLAlchemy síncronas** en el MVP (no async): más simples, y el workload no necesita
+  concurrencia async; el outbox es atómico igual (async no lo rompería, pero sync es preferible
+  acá). Revisable si crece la concurrencia.
 
 ## 4. Events-first sobre Postgres (ADR-0003)
 
