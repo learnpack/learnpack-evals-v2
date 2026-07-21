@@ -31,7 +31,8 @@ en **Neon** · **Clerk** (invite-only) como identidad. Detalle en `08-code.md`.
 - `GLOSSARY.md` — lenguaje ubicuo.
 - `research/deterministic-evaluation-landscape.md` — insumo (evaluación determinística/híbrida).
 - `adr/` — decisiones: 0001 metadata abierta · 0002 campañas/assignments · 0003 Postgres+events ·
-  0004 Clerk.
+  0004 Clerk · 0005 identidad de Evaluation + versionado de contenido · 0006 Reporting por query
+  ports · 0007 bootstrap de admin (allowlist de aprovisionamiento).
 - `seed/rubric-v1.json` — seed de la rubric del MVP.
 - `diagrams/` — diagramas exportados del diseño (opcional, versionables).
 
