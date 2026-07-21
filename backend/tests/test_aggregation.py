@@ -22,17 +22,30 @@ class FakeScore:
     comment: str | None = None
 
 
+CONTENT = uuid4()
+RUBRIC = "learnpack-pedagogical-v1"
+
+
 @dataclass
 class FakeEvaluation:
     assessor_id: UUID
     scores: list[FakeScore]
+    content_id: UUID = CONTENT
+    rubric_version_id: str = RUBRIC
     submitted_at: datetime | None = NOW
     evaluation_id: UUID = field(default_factory=uuid4)
 
 
-def evaluation(assessor_id: UUID, /, submitted_at: datetime | None = NOW, **scores):
+def evaluation(
+    assessor_id: UUID,
+    /,
+    submitted_at: datetime | None = NOW,
+    content_id: UUID = CONTENT,
+    **scores,
+):
     return FakeEvaluation(
         assessor_id=assessor_id,
+        content_id=content_id,
         submitted_at=submitted_at,
         scores=[FakeScore(criterion_id=c, score=s) for c, s in scores.items()],
     )
@@ -108,6 +121,44 @@ def test_collapse_does_not_touch_other_assessors():
 
 def test_collapse_of_nothing():
     assert aggregation.collapse_latest_per_assessor([]) == []
+
+
+def test_the_same_assessor_on_different_contents_is_not_a_repetition():
+    """A repetition is same assessor + same (content, rubric) — ADR-0005.
+
+    Regression: keying only on the assessor made one evaluator's average collapse to a
+    single course. Every test then had a single course, so nothing caught it.
+    """
+    ada = uuid4()
+    other_content = uuid4()
+    collapsed = aggregation.collapse_latest_per_assessor(
+        [
+            evaluation(ada, content_id=CONTENT, q=4),
+            evaluation(ada, content_id=other_content, q=5),
+        ]
+    )
+    assert len(collapsed) == 2
+
+
+def test_an_assessor_average_spans_their_courses():
+    ada = uuid4()
+    evaluations = [
+        evaluation(ada, content_id=CONTENT, q=4),
+        evaluation(ada, content_id=uuid4(), q=5),
+    ]
+    assert aggregation.overall_average(evaluations) == 4.5
+
+
+def test_repetitions_still_collapse_within_one_content():
+    ada = uuid4()
+    other_content = uuid4()
+    evaluations = [
+        evaluation(ada, content_id=CONTENT, submitted_at=NOW - timedelta(hours=1), q=1),
+        evaluation(ada, content_id=CONTENT, submitted_at=NOW, q=4),
+        evaluation(ada, content_id=other_content, q=5),
+    ]
+    # The superseded 1 is dropped; the two courses both count → (4 + 5) / 2
+    assert aggregation.overall_average(evaluations) == 4.5
 
 
 def test_missing_timestamps_do_not_crash():

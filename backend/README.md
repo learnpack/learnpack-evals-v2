@@ -109,6 +109,29 @@ Corre **después** del commit de la evaluación, en su propia transacción: la c
 **eventual**, no un invariante transaccional. Es idempotente (`ON CONFLICT DO NOTHING` +
 publicar solo si insertó), así que reprocesar desde `events` es seguro.
 
+## Golden Dataset y reportes (bloque 4)
+
+La cadena completa del MVP, toda por eventos (08-code.md §5):
+
+```
+EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
+                    → (golden)        GoldenReferenceEstablished
+```
+
+Golden no lleva su propio conteo: le pide la cobertura a orchestration por su query port y
+aplica su regla (`coverage ≥ threshold`). Es idempotente igual que la de quórum.
+
+**Reporting** (ADR-0006) compone los demás módulos por sus `public.py` y agrega en Python —
+sin JOINs cross-módulo y sin tablas de read model. Endpoints: `GET /admin/reports/scores`
+(scores por curso, promedios por evaluador y global, dispersión inter-rater) y
+`GET /admin/progress` (quién evaluó qué, cross-campaña).
+
+Dos reglas de agregación que conviene no confundir:
+- Una **repetición** es el mismo assessor sobre el mismo `(content, rubricVersion)` — se
+  colapsa a la más reciente, porque es una corrección. Evaluar **dos cursos distintos** no es
+  una repetición.
+- La dispersión con un solo rater es `null`, no `0`: no hay acuerdo que medir.
+
 ## Carga masiva de cursos
 
 ```bash
@@ -118,6 +141,6 @@ uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma crud
 
 ## Estado
 
-Bloques 1–3 completos: scaffolding + seed · identity · content_registry · rubric_authoring
-(read-only) · evaluation · orchestration. Faltan `golden_dataset` y `reporting` (bloque 4) y
-el frontend (bloque 5) — ver `../docs/08-code.md §12`.
+**Backend completo** (bloques 1–4): scaffolding + seed · identity · content_registry ·
+rubric_authoring (read-only) · evaluation · orchestration · golden_dataset · reporting.
+Falta el frontend (bloque 5) — ver `../docs/08-code.md §12`.

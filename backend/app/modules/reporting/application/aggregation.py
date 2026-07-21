@@ -23,6 +23,8 @@ class ScoreLike(Protocol):
 
 class EvaluationLike(Protocol):
     assessor_id: UUID
+    content_id: UUID
+    rubric_version_id: str
     submitted_at: datetime | None
     scores: Sequence[ScoreLike]
 
@@ -45,21 +47,27 @@ class Dispersion:
 
 
 def collapse_latest_per_assessor[E: EvaluationLike](evaluations: Sequence[E]) -> list[E]:
-    """Keep one evaluation per assessor: the most recent.
+    """Drop superseded repetitions, keeping the most recent one.
 
-    A human re-evaluation is a **correction** that supersedes the previous one, so an
-    assessor never weighs twice — consistent with the quorum, which counts distinct
-    assessors (ADR-0006).
+    A repetition is the same assessor evaluating **the same `(content, rubricVersion)`**
+    more than once (ADR-0005), so that triple — not the assessor alone — is the key. A
+    human re-evaluation is a **correction** that supersedes the previous one, so an assessor
+    never weighs twice; consistent with the quorum, which counts distinct assessors
+    (ADR-0006).
+
+    Keying on the full triple makes this correct whatever the caller passes in: evaluations
+    of one content, or every evaluation by one assessor across many contents.
 
     `[futuro]` Deliberate automated sampling (e.g. an `LLMJudge` run N times) needs a
     *different* aggregation for a different purpose: mean per assessor plus intra-assessor
     dispersion (self-consistency). Do not reuse this function for that.
     """
-    latest: dict[UUID, E] = {}
+    latest: dict[tuple[UUID, UUID, str], E] = {}
     for evaluation in evaluations:
-        current = latest.get(evaluation.assessor_id)
+        key = (evaluation.assessor_id, evaluation.content_id, evaluation.rubric_version_id)
+        current = latest.get(key)
         if current is None or _ordering_key(evaluation) >= _ordering_key(current):
-            latest[evaluation.assessor_id] = evaluation
+            latest[key] = evaluation
     return list(latest.values())
 
 

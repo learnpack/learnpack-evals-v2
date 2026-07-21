@@ -252,6 +252,50 @@ def test_per_evaluator_and_global_averages(admin, evaluator, content, campaign):
     assert report["global_average"] == 3.0
 
 
+def test_evaluator_average_spans_every_course_they_evaluated(
+    admin, evaluator, content, cleanup, unique
+):
+    """Regression: every other test had a single course, so a collapse keyed only on the
+    assessor looked correct. With two courses it silently dropped one (ADR-0005/0006).
+    """
+    second = admin.post(
+        "/admin/contents",
+        json={
+            "generating_system": "LearnpackV1",
+            "external_id": f"second-{unique}",
+            "consumable_url": COURSE_URL,
+            "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
+        },
+    ).json()["content_id"]
+    cleanup["contents"].append(second)
+
+    both = admin.post(
+        "/admin/campaigns",
+        json={
+            "rubric_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "content_ids": [content, second],
+        },
+    ).json()["campaign_id"]
+    cleanup["campaigns"].append(both)
+
+    ada, ada_id = evaluator("ada")
+    ada.post(
+        "/evaluations",
+        json={"assignment_id": assign(admin, both, content, ada_id), "scores": scores(2)},
+    )
+    ada.post(
+        "/evaluations",
+        json={"assignment_id": assign(admin, both, second, ada_id), "scores": scores(5)},
+    )
+
+    report = admin.get("/admin/reports/scores").json()
+    average = next(a for a in report["assessors"] if a["assessor_id"] == ada_id)
+    assert average["average"] == 3.5  # (2 + 5) / 2, not just the latest course
+    assert average["evaluation_count"] == 2
+    assert report["global_average"] == 3.5
+
+
 def test_content_without_evaluations_reports_null_average(admin, content):
     course = find_content(admin.get("/admin/reports/scores").json(), content)
     assert course["average"] is None
