@@ -31,6 +31,10 @@ class IdentityQueries:
         """Batch lookup keyed by id (ADR-0006)."""
         return _queries.list_assessors(self._assessors, assessor_ids)
 
+    def list_all_assessors(self) -> list[AssessorDTO]:
+        """Every assessor — the admin console's assign picker."""
+        return _queries.list_all_assessors(self._assessors)
+
 
 def get_identity_queries(uow: Annotated[UnitOfWork, Depends(get_uow)]) -> IdentityQueries:
     return IdentityQueries(uow.session)

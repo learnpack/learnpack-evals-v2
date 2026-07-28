@@ -30,3 +30,8 @@ def list_assessors(
     if not assessor_ids:
         return {}
     return {a.id: _to_dto(a) for a in assessors.list_by_ids(assessor_ids)}
+
+
+def list_all_assessors(assessors: AssessorRepositoryPort) -> list[AssessorDTO]:
+    """Every assessor — the admin console's assign picker (08-code.md §7)."""
+    return [_to_dto(a) for a in assessors.list_all()]

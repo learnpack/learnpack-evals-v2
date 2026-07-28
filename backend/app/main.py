@@ -20,6 +20,7 @@ from app.modules.golden_dataset.infrastructure.policies import (
     register_policies as register_golden_policies,
 )
 from app.modules.golden_dataset.infrastructure.router import router as golden_dataset_router
+from app.modules.identity.infrastructure.router import admin_router as identity_admin_router
 from app.modules.orchestration.infrastructure.policies import register_policies
 from app.modules.orchestration.infrastructure.router import (
     admin_router as orchestration_admin_router,
@@ -75,6 +76,7 @@ def me(assessor: CurrentAssessor) -> MeResponse:
 
 
 app.include_router(content_registry_router)
+app.include_router(identity_admin_router)
 app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)
 app.include_router(evaluation_router)

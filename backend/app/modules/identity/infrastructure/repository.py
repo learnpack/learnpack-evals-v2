@@ -26,14 +26,7 @@ class SqlAlchemyAssessorRepository:
         )
         if row is None:
             return None
-        return Assessor(
-            id=row["id"],
-            clerk_user_id=row["clerk_user_id"],
-            email=row["email"],
-            display_name=row["display_name"],
-            role=row["role"],
-            expertise=row["expertise"],
-        )
+        return self._hydrate(row)
 
     def get_by_clerk_user_id(self, clerk_user_id: str) -> Assessor | None:
         return self._one("clerk_user_id = :v", {"v": clerk_user_id})
@@ -55,17 +48,28 @@ class SqlAlchemyAssessorRepository:
             .mappings()
             .all()
         )
-        return [
-            Assessor(
-                id=row["id"],
-                clerk_user_id=row["clerk_user_id"],
-                email=row["email"],
-                display_name=row["display_name"],
-                role=row["role"],
-                expertise=row["expertise"],
+        return [self._hydrate(row) for row in rows]
+
+    def list_all(self) -> list[Assessor]:
+        rows = (
+            self._session.execute(
+                text(f"SELECT {_COLUMNS} FROM assessors ORDER BY created_at")
             )
-            for row in rows
-        ]
+            .mappings()
+            .all()
+        )
+        return [self._hydrate(row) for row in rows]
+
+    @staticmethod
+    def _hydrate(row) -> Assessor:  # noqa: ANN001 — SQLAlchemy row mapping
+        return Assessor(
+            id=row["id"],
+            clerk_user_id=row["clerk_user_id"],
+            email=row["email"],
+            display_name=row["display_name"],
+            role=row["role"],
+            expertise=row["expertise"],
+        )
 
     def add(self, assessor: Assessor) -> None:
         self._session.execute(

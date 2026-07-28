@@ -153,6 +153,13 @@ def _assignment_response(assignment, rubric_version_id: str) -> AssignmentRespon
 # --------------------------------------------------------------------------- admin
 
 
+@admin_router.get("/campaigns", response_model=list[CampaignResponse])
+def list_campaigns(admin: AdminAssessor, uow: Uow) -> list[CampaignResponse]:
+    """Every campaign, newest-created last — the admin console's campaign list."""
+    campaigns = SqlAlchemyCampaignRepository(uow.session).list_all()
+    return [_campaign_response(c) for c in campaigns]
+
+
 @admin_router.post(
     "/campaigns", status_code=status.HTTP_201_CREATED, response_model=CampaignResponse
 )
@@ -258,6 +265,21 @@ def close_campaign(campaign_id: UUID, admin: AdminAssessor, uow: Uow) -> Campaig
     except InvalidCampaign as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _campaign_response(campaign)
+
+
+@admin_router.get(
+    "/campaigns/{campaign_id}/assignments", response_model=list[AssignmentResponse]
+)
+def list_campaign_assignments(
+    campaign_id: UUID, admin: AdminAssessor, uow: Uow
+) -> list[AssignmentResponse]:
+    """Every assignment in a campaign — the roster the admin cancels/reassigns from."""
+    campaigns = SqlAlchemyCampaignRepository(uow.session)
+    campaign = campaigns.get(campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
+    assignments = SqlAlchemyAssignmentRepository(uow.session).list_for_campaign(campaign_id)
+    return [_assignment_response(a, campaign.rubric_version_id) for a in assignments]
 
 
 @admin_router.get("/campaigns/{campaign_id}/progress", response_model=CampaignProgressResponse)
