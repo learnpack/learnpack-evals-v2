@@ -1,0 +1,13 @@
+# Netlify build for the Next.js frontend (08-code.md §10).
+# Set the site's base directory to /frontend in the Netlify UI, or rely on this file.
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Env vars set in the Netlify dashboard (not committed):
+#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, NEXT_PUBLIC_API_URL
+# Remember to add the Netlify origin to the backend's ALLOWED_ORIGINS.
