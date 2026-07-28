@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ChevronDown } from "lucide-react";
@@ -55,6 +55,10 @@ export function ScoreForm({ criteria, scaleMin, scaleMax, submitting, onSubmit }
   });
 
   const scale = Array.from({ length: scaleMax - scaleMin + 1 }, (_, i) => scaleMin + i);
+
+  // Progress replaces the old wizard stepper: how many criteria already have a score.
+  const values = useWatch({ control });
+  const scored = criteria.filter((c) => typeof values?.[c.criterion_id]?.score === "number").length;
 
   return (
     <form onSubmit={submit} className="space-y-8">
@@ -120,7 +124,14 @@ export function ScoreForm({ criteria, scaleMin, scaleMax, submitting, onSubmit }
         );
       })}
 
-      <div className="flex items-center justify-end gap-3 border-t pt-6">
+      {/* Stays in reach while scrolling a long rubric (bleeds out of the section padding). */}
+      <div className="sticky bottom-0 -mx-5 -mb-5 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-5 py-3 backdrop-blur">
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {scored}/{criteria.length}
+          </span>{" "}
+          scored
+        </p>
         <Button type="submit" disabled={submitting}>
           {submitting ? <Spinner /> : null}
           Submit evaluation

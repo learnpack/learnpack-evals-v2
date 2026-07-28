@@ -7,7 +7,8 @@ const config: Config = {
     container: {
       center: true,
       padding: "2rem",
-      screens: { "2xl": "1400px" },
+      // Ancho generoso: la pantalla de evaluación pone el curso y el formulario lado a lado.
+      screens: { "2xl": "1600px" },
     },
     extend: {
       colors: {

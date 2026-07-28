@@ -1,13 +1,14 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, ExternalLink, Maximize2, Minimize2 } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { MetadataList } from "@/components/metadata-list";
 import { ConsumeContent } from "@/components/evaluator/consume-content";
@@ -16,8 +17,11 @@ import { useAssignment, useOpenAssignment, useSubmitEvaluation } from "@/lib/api
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
-const STEPS = ["Course details", "Review content", "Score"] as const;
-
+/**
+ * One working screen instead of a wizard: the course stays pinned on the left while the
+ * evaluator reads the metadata and scores on the right. Both right-hand panels start open and
+ * can be collapsed; "Focus" hands the whole width to the course.
+ */
 export default function AssignmentPage({
   params,
 }: {
@@ -26,17 +30,19 @@ export default function AssignmentPage({
   const { assignmentId } = use(params);
   const router = useRouter();
   const { data: assignment, isLoading, error } = useAssignment(assignmentId);
-  const openAssignment = useOpenAssignment();
+  const { mutate: markOpened } = useOpenAssignment();
   const submitEvaluation = useSubmitEvaluation();
-  const [step, setStep] = useState(0);
+  const [focus, setFocus] = useState(false);
 
   const alreadyDone = assignment?.status === "submitted" || assignment?.status === "cancelled";
 
-  function goToConsume() {
-    // Mark opened (idempotent, best-effort — never blocks the flow).
-    openAssignment.mutate(assignmentId);
-    setStep(1);
-  }
+  // Mark opened once the assignment is on screen (idempotent, best-effort — never blocks).
+  const openedRef = useRef(false);
+  useEffect(() => {
+    if (!assignment || openedRef.current || alreadyDone) return;
+    openedRef.current = true;
+    markOpened(assignmentId);
+  }, [assignment, alreadyDone, assignmentId, markOpened]);
 
   function handleSubmit(scores: { criterion_id: string; score: number; comment: string | null }[]) {
     submitEvaluation.mutate(
@@ -62,14 +68,7 @@ export default function AssignmentPage({
   return (
     <>
       <AppHeader subtitle="Evaluator" />
-      <main className="container max-w-3xl py-8">
-        <Link
-          href="/evaluations"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to your evaluations
-        </Link>
-
+      <main className="container py-6">
         {isLoading ? (
           <LoadingState />
         ) : error ? (
@@ -77,7 +76,7 @@ export default function AssignmentPage({
         ) : !assignment ? (
           <ErrorState message="Assignment not found." />
         ) : alreadyDone ? (
-          <Card>
+          <Card className="mx-auto max-w-2xl">
             <CardContent className="py-10 text-center">
               <p className="font-medium">This assignment is {assignment.status}.</p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -90,84 +89,76 @@ export default function AssignmentPage({
           </Card>
         ) : (
           <>
-            <Stepper step={step} />
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <Link
+                href="/evaluations"
+                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" /> Back to your evaluations
+              </Link>
+              <div className="flex items-center gap-2">
+                <a href={assignment.consumable_url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm" type="button">
+                    Open in new tab <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => setFocus((v) => !v)}
+                  aria-pressed={focus}
+                  className="hidden lg:inline-flex"
+                >
+                  {focus ? (
+                    <>
+                      <Minimize2 className="h-4 w-4" /> Exit focus
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="h-4 w-4" /> Focus on course
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
 
-            {step === 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Course details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <MetadataList metadata={assignment.metadata} />
-                  <div className="flex justify-end">
-                    <Button onClick={goToConsume}>Continue</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : step === 1 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Review the content</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <ConsumeContent url={assignment.consumable_url} />
-                  <div className="flex justify-between">
-                    <Button variant="outline" onClick={() => setStep(0)}>
-                      Back
-                    </Button>
-                    <Button onClick={() => setStep(2)}>Continue to scoring</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Score the {assignment.criteria.length} criteria</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-6">
-                    <Button variant="outline" size="sm" onClick={() => setStep(1)}>
-                      <ArrowLeft className="h-4 w-4" /> Back to content
-                    </Button>
-                  </div>
-                  <ScoreForm
-                    criteria={[...assignment.criteria].sort((a, b) => a.order - b.order)}
-                    scaleMin={assignment.scale_min}
-                    scaleMax={assignment.scale_max}
-                    submitting={submitEvaluation.isPending}
-                    onSubmit={handleSubmit}
-                  />
-                </CardContent>
-              </Card>
-            )}
+            <div
+              className={cn(
+                "grid items-start gap-6",
+                !focus && "lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_460px]",
+              )}
+            >
+              {/* Pinned to the viewport on desktop, so the course stays visible while scoring. */}
+              <ConsumeContent
+                url={assignment.consumable_url}
+                className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-6.5rem)]"
+              />
+
+              {!focus ? (
+                <div className="space-y-4">
+                  <CollapsibleSection title="Course details">
+                    <MetadataList metadata={assignment.metadata} />
+                  </CollapsibleSection>
+
+                  <CollapsibleSection
+                    title="Score"
+                    badge={`${assignment.criteria.length} criteria`}
+                  >
+                    <ScoreForm
+                      criteria={[...assignment.criteria].sort((a, b) => a.order - b.order)}
+                      scaleMin={assignment.scale_min}
+                      scaleMax={assignment.scale_max}
+                      submitting={submitEvaluation.isPending}
+                      onSubmit={handleSubmit}
+                    />
+                  </CollapsibleSection>
+                </div>
+              ) : null}
+            </div>
           </>
         )}
       </main>
     </>
-  );
-}
-
-function Stepper({ step }: { step: number }) {
-  return (
-    <ol className="mb-6 flex items-center gap-2 text-sm">
-      {STEPS.map((label, i) => (
-        <li key={label} className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
-              i < step
-                ? "bg-primary text-primary-foreground"
-                : i === step
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground",
-            )}
-          >
-            {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
-          </span>
-          <span className={cn(i === step ? "font-medium" : "text-muted-foreground")}>{label}</span>
-          {i < STEPS.length - 1 ? <span className="mx-1 text-muted-foreground">→</span> : null}
-        </li>
-      ))}
-    </ol>
   );
 }
