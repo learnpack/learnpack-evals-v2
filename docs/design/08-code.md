@@ -1,12 +1,12 @@
 # 08 — Code (plan de implementación del MVP)
 
-> Paso 8 del DDD Starter Modelling Process. Estado: **implementado** — bloques 1→5 del §12
-> completos y verificados en local (suite en verde, iframe e identidad Clerk probados end-to-end,
-> 2026-07-30). Lo único abierto del plan es el **deploy** (§10). Este doc queda como referencia
-> del diseño, no como backlog.
+> Paso 8 del DDD Starter Modelling Process. **Snapshot congelado**: es el plan tal como se
+> escribió antes de implementar, no un backlog vivo. En qué punto está el desarrollo hoy →
+> `../../STATUS.md`. Reglas vigentes → `../ARCHITECTURE.md` y los READMEs de `backend/` y
+> `frontend/`.
 > Alcance: slice humano del MVP. Stack confirmado: **Next.js/Tailwind/shadcn en Netlify ·
 > FastAPI en Render Starter · Postgres/pgvector en Neon · Clerk (invite-only) como identidad**.
-> Reglas duras: `ARCHITECTURE.md`. Nombres: `GLOSSARY.md`. Este plan **no** cierra puertas al
+> Reglas duras: `../ARCHITECTURE.md`. Nombres: `../GLOSSARY.md`. Este plan **no** cierra puertas al
 > modelo objetivo (fuentes automáticas, calibración = `[futuro]`).
 
 ## Principio rector para este plan
@@ -237,12 +237,14 @@ opcional, con hints de 1 y 5).
   global, e inter-rater. (Reporting **compone vía query ports + agrega en Python**, no vistas
   SQL cross-módulo — ADR-0006. `evaluation.public` expone una query de scores.)
 
-## 8. iframe del contenido — ✔ verificado
-Riesgo original: muchos sitios bloquean el iframe con `X-Frame-Options`/`CSP frame-ancestors`.
-**Probado con una `consumable_url` real de LearnPack: el embed funciona**, así que el paso 2 del
-flujo consume el contenido dentro de la app. El fallback "abrir en pestaña nueva" se mantiene
-igual (botón siempre visible + aviso si el iframe no reporta carga), porque el bloqueo depende
-del sitio de cada curso y puede cambiar. No es dominio: vive en la UI.
+## 8. iframe del contenido — riesgo a verificar
+Muchos sitios bloquean el iframe con `X-Frame-Options`/`CSP frame-ancestors`. **Verificar
+`https://<curso>.learn-pack.com/` al empezar**; si bloquea → fallback "abrir en pestaña nueva".
+No es dominio: vive en la UI.
+
+> Desenlace (fuera del snapshot): el embed funciona con LearnPack y el fallback se mantiene igual,
+> porque el bloqueo depende del sitio de cada curso. Ver `../../frontend/README.md` y
+> `../../STATUS.md`.
 
 ## 9. Seed y migraciones
 - Alembic para el schema.

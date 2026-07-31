@@ -55,7 +55,7 @@ Content Registry → Orchestration → Golden Dataset → Reporting → Identity
 `PedagogicalFramework`, `PedagogicalDimension`, `Quality` — CRUD mínimo; en el MVP se siembran.
 Los criteria los referencian por id (`groundedIn[]`, dimensión/quality).
 
-### Rubric v1 — instanciada (seed en `seed/rubric-v1.json`)
+### Rubric v1 — instanciada (seed en `../seed/rubric-v1.json`)
 5 criteria (uno por dimensión; cada criterion colapsa las qualities de su dimensión en una
 pregunta 1–5). Anchors genéricos (1 = not at all/very low, 5 = fully/very high). Scope: calidad
 pedagógica del **contenido** (objetivos, lecciones, coherencia, progresión); **excluye
@@ -258,7 +258,7 @@ Dos concerns separados para no contaminar el dominio:
    presentar/requerir al evaluador. → "varía por campaña".
 
 El dominio nunca ramifica sobre keys concretas; la presentación vive en adapters/UI. Detalle y
-alternativas en `adr/0001-open-content-metadata.md`.
+alternativas en `../adr/0001-open-content-metadata.md`.
 
 ## Estado
 Define del **MVP slice: completo** (Rubric Authoring · Evaluation · Content Registry ·

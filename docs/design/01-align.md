@@ -77,7 +77,7 @@ Las proyecciones/reportes pueden venir después.
 
 ## Modelado conceptual acordado en Align
 
-Ver `GLOSSARY.md`. Puntos clave que gobiernan el diseño:
+Ver `../GLOSSARY.md`. Puntos clave que gobiernan el diseño:
 
 1. **Framework como grounding, no como contenedor.** `Criterion` cita frameworks (N:M);
    los frameworks/dimensiones/qualities son *reference data versionada*, no están

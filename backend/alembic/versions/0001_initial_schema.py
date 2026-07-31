@@ -1,6 +1,6 @@
 """Initial schema — MVP human slice.
 
-Transcribes docs/08-code.md §3. Names follow docs/GLOSSARY.md.
+Transcribes docs/design/08-code.md §3. Names follow docs/GLOSSARY.md.
 
 Revision ID: 0001
 Revises:

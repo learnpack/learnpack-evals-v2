@@ -1,0 +1,9 @@
+# Notas de trabajo (working docs) — efímeras por diseño.
+# Si algo de acá tiene que sobrevivir a la tarea, se promueve: ADR, reference o docs/design/.
+# Ver "Documentación" en CLAUDE.md.
+notes/*
+!notes/README.md
+
+# OS
+.DS_Store
+Thumbs.db

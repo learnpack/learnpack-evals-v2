@@ -1,7 +1,9 @@
 # frontend
 
 Next.js (App Router) + TypeScript + Tailwind + Clerk. Consume el FastAPI del `../backend`.
-Diseño en `../docs/` — **es la fuente de verdad** (bloque 5 de `../docs/08-code.md`).
+Diseño en `../docs/` — **es la fuente de verdad** (bloque 5 de `../docs/design/08-code.md`).
+En qué punto está el desarrollo hoy: `../STATUS.md` (este README describe **cómo funciona**, no
+en qué estado está).
 
 ## Stack
 
@@ -24,10 +26,8 @@ El backend tiene que estar corriendo (`../backend`, por defecto en `:8000`) y su
 
 ## Clerk (ADR-0004) — leer antes del primer login
 
-> **Estado:** ya configurado y funcionando en la instancia de Clerk actual (JWT template con
-> `email`/`name`, invite-only, login de admin y de evaluador probados end-to-end). Los pasos de
-> abajo quedan como runbook **para montar un entorno nuevo** (p.ej. la instancia de producción
-> al deployar) — no hay nada pendiente en el entorno de desarrollo.
+Esta configuración se hace **una vez por entorno** (una instancia de Clerk = un entorno), antes
+del primer login.
 
 El token de sesión **por defecto de Clerk no trae `email` ni `name`**, y el backend los
 necesita para poblar el `Assessor` y decidir el rol del primer admin (`ADMIN_EMAILS`,
@@ -67,14 +67,15 @@ src/
 `src/lib/api/types.ts` es el espejo TypeScript del contrato de FastAPI (snake_case, 1:1 con
 los `response_model` de los routers).
 
-## iframe del contenido (§8) — ✔ verificado
+## iframe del contenido (§8)
 
-Muchos cursos bloquean el embed con `X-Frame-Options`/CSP `frame-ancestors`. **Probado con una
-`consumable_url` real de LearnPack: embebe bien**, el evaluador consume el curso sin salir de la
-app. El fallback sigue en pie porque el bloqueo depende del sitio de cada curso: el paso 2
-(`components/evaluator/consume-content.tsx`) intenta el iframe y, si no reporta carga en ~3.5 s,
-muestra un aviso de "no se puede embeber"; el botón **"Abrir en pestaña nueva"** está siempre
-visible. Volvé a chequearlo si aparece un curso servido desde otro dominio.
+Los cursos de LearnPack **se dejan embeber**, así que el evaluador consume el contenido sin salir
+de la app. Pero el embed depende del sitio que sirve cada curso —`X-Frame-Options`/CSP
+`frame-ancestors` lo bloquean sin avisar y el iframe simplemente queda en blanco—, por eso el
+paso 2 (`components/evaluator/consume-content.tsx`) siempre tiene red: intenta el iframe y, si no
+reporta carga en ~3.5 s, muestra un aviso de "no se puede embeber"; el botón **"Abrir en pestaña
+nueva"** está visible siempre. Si aparece un curso servido desde otro dominio, chequear que siga
+funcionando.
 
 ## Deploy (Netlify, §10)
 

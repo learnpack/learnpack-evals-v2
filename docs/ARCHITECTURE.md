@@ -56,9 +56,10 @@ implementan en las externas**. Ejemplos de ports:
 
 ## 3. Aislamiento de módulos (regla horizontal, además de la vertical)
 
-Cada subdominio (ver `03-decompose.md`) es un **módulo** con su propio dominio. Entre módulos:
+Cada subdominio (ver `design/03-decompose.md`) es un **módulo** con su propio dominio. Entre
+módulos:
 - Se comunican por **domain events publicados + DTOs de query** (el Published Language de cada
-  módulo; ver `05-connect.md`).
+  módulo; ver `design/05-connect.md`).
 - **Superficie pública del módulo:** cada módulo expone su contrato de lectura (*query interface +
   DTOs*), sus eventos, y un proveedor de queries `get_<m>_queries` (para inyectar por `Depends`),
   todo en una `modules/<m>/public.py`. El módulo dueño arma su propio repo **dentro** de ese
@@ -73,7 +74,7 @@ Cada subdominio (ver `03-decompose.md`) es un **módulo** con su propio dominio.
 ## 4. Events-first
 
 - El estado evoluciona publicando **domain events**; las *policies* reaccionan (ver
-  `02-discover.md`). No hay comandos cruzados entre módulos.
+  `design/02-discover.md`). No hay comandos cruzados entre módulos.
 - En el MVP, "publicar un evento" se realiza como **`INSERT` en la tabla `events`** dentro de la
   misma transacción del agregado (outbox) + dispatch in-process (ADR-0003). Los eventos son
   *lógicos*; el contrato no cambia al migrar a un bus real.
@@ -87,5 +88,5 @@ Cada subdominio (ver `03-decompose.md`) es un **módulo** con su propio dominio.
   entities crudas por la API.
 
 ## Referencias
-`GLOSSARY.md` (lenguaje), `03-decompose.md` (módulos), `05-connect.md` (contratos entre
-módulos), `07-define.md` (agregados e invariantes por contexto — en curso).
+`GLOSSARY.md` (lenguaje), `design/03-decompose.md` (módulos), `design/05-connect.md` (contratos
+entre módulos), `design/07-define.md` (agregados e invariantes por contexto — en curso).

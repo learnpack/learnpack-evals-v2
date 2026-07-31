@@ -2,6 +2,8 @@
 
 FastAPI + Postgres (Neon). Diseño en `../docs/` — **es la fuente de verdad**.
 Reglas duras: `../docs/ARCHITECTURE.md`. Nombres: `../docs/GLOSSARY.md`.
+En qué punto está el desarrollo hoy: `../STATUS.md` (este README describe **cómo funciona**, no
+en qué estado está).
 
 ## Setup
 
@@ -29,7 +31,7 @@ identificar a los SMEs ni usar `set-role`.
 
 **Creá el template antes de que entre nadie.** El claim `email` es además lo que decide el rol
 inicial del primer admin, y esa decisión se toma **una sola vez** — ver el orden en
-[Preparar el demo](#preparar-el-demo--el-orden-importa).
+[Preparar un entorno](#preparar-un-entorno--el-orden-importa).
 
 ### Roles y el primer admin (ADR-0007)
 
@@ -58,11 +60,10 @@ Para cambiar el rol de alguien que ya existe, el único camino es:
 uv run python -m app.cli set-role --email tu@email.com --role admin
 ```
 
-### Preparar el demo — **el orden importa**
+### Preparar un entorno — **el orden importa**
 
-> **Estado:** ya ejecutado en el entorno actual (JWT template creado, admin y evaluador con el
-> rol correcto, verificado por `GET /me`). Esta secuencia queda como runbook **para un entorno
-> nuevo** — típicamente la instancia de Clerk de producción cuando se haga el deploy.
+Esta secuencia se corre **una vez por entorno** (una instancia de Clerk = un entorno), antes de
+que entre nadie.
 
 > ⚠️ **El JWT template con el claim `email` tiene que existir ANTES del primer login del
 > admin.** Sin ese claim el assessor se crea como `evaluator` (degrade seguro), y como la
@@ -158,7 +159,7 @@ publicar solo si insertó), así que reprocesar desde `events` es seguro.
 
 ## Golden Dataset y reportes (bloque 4)
 
-La cadena completa del MVP, toda por eventos (08-code.md §5):
+La cadena completa del MVP, toda por eventos (`../docs/design/08-code.md` §5):
 
 ```
 EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
@@ -186,15 +187,11 @@ uv run python -m app.cli import-learnpack --file cursos.json        # forma can�
 uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma cruda de LearnPack
 ```
 
-## Estado
+## Módulos
 
-**Backend completo** (bloques 1–4): scaffolding + seed · identity · content_registry ·
-rubric_authoring (read-only) · evaluation · orchestration · golden_dataset · reporting.
-**Frontend completo** (bloque 5) — ver `../frontend/README.md`.
+scaffolding + seed · identity · content_registry · rubric_authoring (read-only) · evaluation ·
+orchestration · golden_dataset · reporting. Cada uno con `domain/`, `application/` e
+`infrastructure/`, y su contrato en `public.py`.
 
-Verificado en local el 2026-07-30: **173 tests en verde** contra Postgres local (~9 s), identidad
-Clerk end-to-end (admin + evaluador con el rol correcto) y el iframe del contenido embebiendo una
-`consumable_url` real. El plan de `../docs/08-code.md` está implementado de punta a punta.
-
-**Lo único abierto: el deploy** (`../docs/08-code.md §10`) — Render + Netlify + `ALLOWED_ORIGINS`
-cruzado, y el runbook de Clerk repetido en la instancia de producción. La DB ya es Neon.
+El plan que los originó está congelado en `../docs/design/08-code.md`; el estado de avance, en
+`../STATUS.md`.
