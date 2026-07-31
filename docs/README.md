@@ -20,7 +20,7 @@ IA**, siguiendo el DDD Starter Modelling Process (ddd-crew). Documentos vivos (v
 | `05-connect.md` | Connect (Context Map) | ✔ cerrado |
 | `06-organise.md` | Organise | ✔ placeholder |
 | `07-define.md` | Define (Bounded/Aggregate Design Canvas) | ✔ MVP slice completo · modelo objetivo pendiente |
-| `08-code.md` | Code (plan de implementación del MVP) | ✔ listo para implementar |
+| `08-code.md` | Code (plan de implementación del MVP) | ✔ implementado (bloques 1–5) · falta deploy |
 
 ## Stack del MVP (confirmado)
 Next.js/Tailwind/shadcn en **Netlify** · **FastAPI** en **Render Starter** · Postgres/pgvector

@@ -60,6 +60,10 @@ uv run python -m app.cli set-role --email tu@email.com --role admin
 
 ### Preparar el demo — **el orden importa**
 
+> **Estado:** ya ejecutado en el entorno actual (JWT template creado, admin y evaluador con el
+> rol correcto, verificado por `GET /me`). Esta secuencia queda como runbook **para un entorno
+> nuevo** — típicamente la instancia de Clerk de producción cuando se haga el deploy.
+
 > ⚠️ **El JWT template con el claim `email` tiene que existir ANTES del primer login del
 > admin.** Sin ese claim el assessor se crea como `evaluator` (degrade seguro), y como la
 > allowlist se aplica **una sola vez, al crear la fila**, agregar el template después ya no lo
@@ -186,4 +190,11 @@ uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma crud
 
 **Backend completo** (bloques 1–4): scaffolding + seed · identity · content_registry ·
 rubric_authoring (read-only) · evaluation · orchestration · golden_dataset · reporting.
-Falta el frontend (bloque 5) — ver `../docs/08-code.md §12`.
+**Frontend completo** (bloque 5) — ver `../frontend/README.md`.
+
+Verificado en local el 2026-07-30: **173 tests en verde** contra Postgres local (~9 s), identidad
+Clerk end-to-end (admin + evaluador con el rol correcto) y el iframe del contenido embebiendo una
+`consumable_url` real. El plan de `../docs/08-code.md` está implementado de punta a punta.
+
+**Lo único abierto: el deploy** (`../docs/08-code.md §10`) — Render + Netlify + `ALLOWED_ORIGINS`
+cruzado, y el runbook de Clerk repetido en la instancia de producción. La DB ya es Neon.

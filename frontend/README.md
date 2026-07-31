@@ -24,6 +24,11 @@ El backend tiene que estar corriendo (`../backend`, por defecto en `:8000`) y su
 
 ## Clerk (ADR-0004) — leer antes del primer login
 
+> **Estado:** ya configurado y funcionando en la instancia de Clerk actual (JWT template con
+> `email`/`name`, invite-only, login de admin y de evaluador probados end-to-end). Los pasos de
+> abajo quedan como runbook **para montar un entorno nuevo** (p.ej. la instancia de producción
+> al deployar) — no hay nada pendiente en el entorno de desarrollo.
+
 El token de sesión **por defecto de Clerk no trae `email` ni `name`**, y el backend los
 necesita para poblar el `Assessor` y decidir el rol del primer admin (`ADMIN_EMAILS`,
 ADR-0007). Por eso:
@@ -62,12 +67,14 @@ src/
 `src/lib/api/types.ts` es el espejo TypeScript del contrato de FastAPI (snake_case, 1:1 con
 los `response_model` de los routers).
 
-## iframe del contenido (§8)
+## iframe del contenido (§8) — ✔ verificado
 
-Muchos cursos bloquean el embed con `X-Frame-Options`/CSP `frame-ancestors`. El paso 2 del
-flujo (`components/evaluator/consume-content.tsx`) intenta el iframe y, si no reporta carga en
-~3.5 s, muestra un aviso de "no se puede embeber"; el botón **"Abrir en pestaña nueva"** está
-siempre visible. Verificá el comportamiento con una `consumable_url` real.
+Muchos cursos bloquean el embed con `X-Frame-Options`/CSP `frame-ancestors`. **Probado con una
+`consumable_url` real de LearnPack: embebe bien**, el evaluador consume el curso sin salir de la
+app. El fallback sigue en pie porque el bloqueo depende del sitio de cada curso: el paso 2
+(`components/evaluator/consume-content.tsx`) intenta el iframe y, si no reporta carga en ~3.5 s,
+muestra un aviso de "no se puede embeber"; el botón **"Abrir en pestaña nueva"** está siempre
+visible. Volvé a chequearlo si aparece un curso servido desde otro dominio.
 
 ## Deploy (Netlify, §10)
 
