@@ -1,4 +1,4 @@
-"""Admin CLI: `python -m app.cli seed`.
+"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -12,10 +12,12 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.modules.content_registry.application.register_content import (
     DuplicateContent,
     RegisterContent,
@@ -29,10 +31,23 @@ from app.modules.content_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyMetadataSchemaRepository,
 )
-from app.modules.identity.domain.assessor import InvalidAssessor, Role
+from app.modules.content_registry.public import ContentRegistryQueries
+from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+from app.modules.orchestration.application.commands import (
+    AssignContent,
+    AssignContentCommand,
+    DuplicateAssignment,
+    OpenCampaign,
+    OpenCampaignCommand,
+)
+from app.modules.orchestration.infrastructure.repository import (
+    SqlAlchemyAssignmentRepository,
+    SqlAlchemyCampaignRepository,
+)
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
+from app.shared.domain.ids import new_id
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
@@ -252,6 +267,350 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
     return 1 if failed else 0
 
 
+# --------------------------------------------------------------------------- seed-demo
+# A ready-to-use local dataset (ADR-0008), for contributors who work on rubrics, metrics and
+# evaluations and should not need a Clerk account or a Neon database to run the app.
+#
+# It goes through the real use cases instead of raw INSERTs, so the events are published and
+# the policies run exactly as they would in production.
+
+DEMO_RUBRIC_VERSION_ID = "learnpack-pedagogical-v1"
+DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
+DEMO_METADATA_VIEW = ["learningObjectives", "targetAudience", "prerequisites"]
+
+# (email, display name, role). `clerk_user_id` mirrors what auth_local builds from the header,
+# and the display names are exactly what `display_name_for` derives from these emails — so
+# signing in refreshes the profile to the same value instead of silently renaming people.
+DEMO_ASSESSORS: list[tuple[str, str, Role]] = [
+    ("admin@local.dev", "Admin", Role.ADMIN),
+    ("ada.lovelace@local.dev", "Ada Lovelace", Role.EVALUATOR),
+    ("grace.hopper@local.dev", "Grace Hopper", Role.EVALUATOR),
+]
+
+DEMO_CONTENTS: list[dict[str, Any]] = [
+    {
+        "generating_system": "LearnpackV1",
+        "external_id": "introduction-to-generative-ai",
+        "version": "1",
+        "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
+        "metadata": {
+            "learningObjectives": [
+                "Explain how a large language model produces text",
+                "Write prompts that constrain a model's output",
+                "Recognise when a model is hallucinating",
+            ],
+            "targetAudience": "Junior developers new to AI",
+            "prerequisites": ["Basic Python", "Familiarity with the command line"],
+        },
+    },
+    {
+        "generating_system": "LearnpackV1",
+        "external_id": "object-representation-in-python",
+        "version": "1",
+        "consumable_url": "https://object-representation-in-python.learn-pack.com/",
+        "metadata": {
+            "learningObjectives": [
+                "Define Python classes with __init__, attributes, and methods that operate on instance state",
+                "Create and use object instances with dot notation",
+                "Manipulate collections of objects and objects nested within objects",
+            ],
+            "targetAudience": "Beginner developers who understand OOP concepts and are ready to write Python class syntax",
+            "prerequisites": ["Basic Python", "Object-oriented programming concepts"],
+        },
+    },
+]
+
+
+def _demo_local_mode_only() -> bool:
+    """The guard that keeps demo data out of the real store.
+
+    `seed-demo` writes wherever DATABASE_URL points, so it refuses to run unless the process
+    is configured for local development.
+    """
+    if get_settings().is_local_auth:
+        return True
+    print(
+        "seed-demo only runs with AUTH_MODE=local: it writes demo users, courses and a "
+        "campaign, which must never land in a real database.",
+        file=sys.stderr,
+    )
+    return False
+
+
+def _seed_demo_assessors(session: Session) -> dict[str, UUID]:
+    """Create the demo users, and align the role of any that already exist.
+
+    Aligning matters: signing in as `admin@local.dev` before seeding creates that assessor as
+    an `evaluator` (ResolveAssessor's default). Leaving it would make this command print
+    "admin" for someone who then gets 403 everywhere. This is a seeder, not a login path — the
+    ADR-0007 invariant it must not break is that *logging in* never changes a role.
+    """
+    repository = SqlAlchemyAssessorRepository(session)
+    ids: dict[str, UUID] = {}
+
+    for email, display_name, role in DEMO_ASSESSORS:
+        assessor = repository.get_by_email(email)
+        if assessor is None:
+            assessor = Assessor(
+                id=new_id(),
+                # Must match what auth_local derives from `X-Dev-User`, or the sign-in would
+                # create a second assessor for the same person.
+                clerk_user_id=f"local|{email.lower()}",
+                email=email,
+                display_name=display_name,
+                role=role,
+            )
+            repository.add(assessor)
+            session.commit()
+        elif assessor.role is not role:
+            previous = assessor.role
+            assessor.assign_role(role)
+            repository.update(assessor)
+            session.commit()
+            print(f"  {email}: role {previous} -> {role.value}")
+        ids[email] = assessor.id
+
+    return ids
+
+
+def _seed_demo_contents() -> dict[str, UUID]:
+    """Register the demo courses through `RegisterContent`; reuse them if already there."""
+    ids: dict[str, UUID] = {}
+
+    for raw in DEMO_CONTENTS:
+        with SessionLocal() as session:
+            uow = UnitOfWork(session)
+            register = RegisterContent(
+                contents=SqlAlchemyContentRepository(session),
+                schemas=SqlAlchemyMetadataSchemaRepository(session),
+                publisher=uow.events,
+                uow=uow,
+            )
+            try:
+                content = register(RegisterContentCommand(**raw))
+                ids[raw["external_id"]] = content.id
+            except DuplicateContent:
+                snapshot = next(
+                    s
+                    for s in ContentRegistryQueries(session).list_content_snapshots()
+                    if s.generating_system == raw["generating_system"]
+                    and s.external_id == raw["external_id"]
+                    and s.version == raw["version"]
+                )
+                ids[raw["external_id"]] = snapshot.content_id
+
+    return ids
+
+
+def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
+    """One open campaign over the demo courses. Reuses the existing one if it is still open."""
+    wanted = set(content_ids)
+
+    with SessionLocal() as session:
+        campaigns = SqlAlchemyCampaignRepository(session)
+        for campaign in campaigns.list_all():
+            if (
+                campaign.status == "open"
+                and campaign.rubric_version_id == DEMO_RUBRIC_VERSION_ID
+                and wanted.issubset(set(campaign.content_ids))
+            ):
+                return campaign.id
+
+        uow = UnitOfWork(session)
+        campaign = OpenCampaign(campaigns, uow.events, uow)(
+            OpenCampaignCommand(
+                rubric_version_id=DEMO_RUBRIC_VERSION_ID,
+                required_evaluations_per_content=DEMO_REQUIRED_EVALUATIONS,
+                content_ids=content_ids,
+                metadata_view=DEMO_METADATA_VIEW,
+            )
+        )
+        return campaign.id
+
+
+def _seed_demo_assignments(
+    campaign_id: UUID, content_ids: list[UUID], evaluator_ids: list[UUID]
+) -> int:
+    """Every evaluator gets every course. Nothing is evaluated: the demo starts pending."""
+    created = 0
+
+    for assessor_id in evaluator_ids:
+        for content_id in content_ids:
+            with SessionLocal() as session:
+                uow = UnitOfWork(session)
+                assign = AssignContent(
+                    campaigns=SqlAlchemyCampaignRepository(session),
+                    assignments=SqlAlchemyAssignmentRepository(session),
+                    publisher=uow.events,
+                    uow=uow,
+                )
+                try:
+                    assign(
+                        AssignContentCommand(
+                            campaign_id=campaign_id,
+                            content_id=content_id,
+                            assessor_id=assessor_id,
+                        )
+                    )
+                    created += 1
+                except DuplicateAssignment:
+                    pass
+
+    return created
+
+
+def _reset_demo(session: Session) -> None:
+    """Delete the demo dataset in FK order (same order as tests/conftest.py::cleanup)."""
+    emails = [email for email, _, _ in DEMO_ASSESSORS]
+    external_ids = [content["external_id"] for content in DEMO_CONTENTS]
+
+    content_ids = [
+        row[0]
+        for row in session.execute(
+            text("SELECT id FROM contents WHERE external_id = ANY(:external_ids)"),
+            {"external_ids": external_ids},
+        )
+    ]
+    campaign_ids = (
+        [
+            row[0]
+            for row in session.execute(
+                text(
+                    "SELECT DISTINCT campaign_id FROM campaign_contents "
+                    "WHERE content_id = ANY(:ids)"
+                ),
+                {"ids": content_ids},
+            )
+        ]
+        if content_ids
+        else []
+    )
+
+    if content_ids:
+        session.execute(
+            text(
+                "DELETE FROM criterion_scores WHERE evaluation_id IN "
+                "(SELECT id FROM evaluations WHERE content_id = ANY(:ids))"
+            ),
+            {"ids": content_ids},
+        )
+        session.execute(
+            text(
+                "DELETE FROM events WHERE aggregate_id IN "
+                "(SELECT id::text FROM evaluations WHERE content_id = ANY(:ids))"
+            ),
+            {"ids": content_ids},
+        )
+        session.execute(
+            text("DELETE FROM evaluations WHERE content_id = ANY(:ids)"), {"ids": content_ids}
+        )
+
+    if campaign_ids:
+        session.execute(
+            text("DELETE FROM golden_references WHERE campaign_id = ANY(:ids)"),
+            {"ids": campaign_ids},
+        )
+        session.execute(
+            text("DELETE FROM content_evaluation_completions WHERE campaign_id = ANY(:ids)"),
+            {"ids": campaign_ids},
+        )
+        session.execute(
+            text(
+                "DELETE FROM events WHERE aggregate_id IN "
+                "(SELECT id::text FROM assignments WHERE campaign_id = ANY(:ids))"
+            ),
+            {"ids": campaign_ids},
+        )
+        session.execute(
+            text("DELETE FROM assignments WHERE campaign_id = ANY(:ids)"), {"ids": campaign_ids}
+        )
+        session.execute(
+            text("DELETE FROM campaign_contents WHERE campaign_id = ANY(:ids)"),
+            {"ids": campaign_ids},
+        )
+        session.execute(
+            text("DELETE FROM events WHERE aggregate_id = ANY(:ids)"),
+            {"ids": [str(campaign_id) for campaign_id in campaign_ids]},
+        )
+        session.execute(text("DELETE FROM campaigns WHERE id = ANY(:ids)"), {"ids": campaign_ids})
+
+    if content_ids:
+        session.execute(
+            text("DELETE FROM events WHERE aggregate_id = ANY(:ids)"),
+            {"ids": [str(content_id) for content_id in content_ids]},
+        )
+        session.execute(text("DELETE FROM contents WHERE id = ANY(:ids)"), {"ids": content_ids})
+
+    # Whatever the demo users did OUTSIDE the demo dataset — a campaign someone opened by hand
+    # over their own course, and assigned to Ada — still references `assessors.id` by FK. Clear
+    # it too, or the delete below aborts halfway through with an IntegrityError.
+    assessor_ids = [
+        row[0]
+        for row in session.execute(
+            text("SELECT id FROM assessors WHERE email = ANY(:emails)"), {"emails": emails}
+        )
+    ]
+    if assessor_ids:
+        session.execute(
+            text(
+                "DELETE FROM criterion_scores WHERE evaluation_id IN "
+                "(SELECT id FROM evaluations WHERE assessor_id = ANY(:ids))"
+            ),
+            {"ids": assessor_ids},
+        )
+        session.execute(
+            text(
+                "DELETE FROM events WHERE aggregate_id IN "
+                "(SELECT id::text FROM evaluations WHERE assessor_id = ANY(:ids))"
+            ),
+            {"ids": assessor_ids},
+        )
+        session.execute(
+            text("DELETE FROM evaluations WHERE assessor_id = ANY(:ids)"), {"ids": assessor_ids}
+        )
+        session.execute(
+            text(
+                "DELETE FROM events WHERE aggregate_id IN "
+                "(SELECT id::text FROM assignments WHERE assessor_id = ANY(:ids))"
+            ),
+            {"ids": assessor_ids},
+        )
+        session.execute(
+            text("DELETE FROM assignments WHERE assessor_id = ANY(:ids)"), {"ids": assessor_ids}
+        )
+        session.execute(text("DELETE FROM assessors WHERE id = ANY(:ids)"), {"ids": assessor_ids})
+
+    session.commit()
+
+
+def run_seed_demo(reset: bool) -> int:
+    """Users + courses + an open campaign + assignments, all pending. Idempotent."""
+    if not _demo_local_mode_only():
+        return 1
+
+    with SessionLocal() as session:
+        if reset:
+            _reset_demo(session)
+            print("removed the previous demo dataset")
+        assessor_ids = _seed_demo_assessors(session)
+
+    content_ids = _seed_demo_contents()
+    campaign_id = _seed_demo_campaign(list(content_ids.values()))
+    evaluator_ids = [
+        assessor_ids[email] for email, _, role in DEMO_ASSESSORS if role is Role.EVALUATOR
+    ]
+    created = _seed_demo_assignments(campaign_id, list(content_ids.values()), evaluator_ids)
+
+    print(
+        f"\ndemo ready: {len(content_ids)} courses, 1 open campaign "
+        f"(quorum {DEMO_REQUIRED_EVALUATIONS}), {created} new assignments\n"
+    )
+    for email, display_name, role in DEMO_ASSESSORS:
+        print(f"  {role.value:<9} {email:<24} {display_name}")
+    print("\nsign in at http://localhost:3000 - start with admin@local.dev")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -273,6 +632,13 @@ def main(argv: list[str] | None = None) -> int:
         help="treat the file as LearnPack's raw shape and translate it through the ACL",
     )
 
+    demo_parser = subparsers.add_parser(
+        "seed-demo", help="local-only: demo users, courses, campaign and assignments"
+    )
+    demo_parser.add_argument(
+        "--reset", action="store_true", help="delete the previous demo dataset first"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -287,6 +653,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
         return run_import_learnpack(args.file, args.acl)
+    elif args.command == "seed-demo":
+        return run_seed_demo(args.reset)
     return 0
 
 
