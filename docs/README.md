@@ -35,7 +35,8 @@ nota cuando la tarea termina— están en `../CLAUDE.md`, sección **Documentaci
 **Decisiones (`adr/`, inmutables)**
 `0001` metadata abierta · `0002` campañas/assignments/quórum · `0003` Postgres + events ·
 `0004` Clerk · `0005` identidad de Evaluation + versionado de contenido · `0006` Reporting por
-query ports · `0007` bootstrap de admin (allowlist de aprovisionamiento).
+query ports · `0007` bootstrap de admin (allowlist de aprovisionamiento) · `0008` modo local
+(correr sin Clerk ni Neon).
 
 **Snapshots (`design/`, congelados)**
 Pasos 01–08 del proceso de modelado + `research/`. Ver `design/README.md`.

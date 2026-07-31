@@ -11,6 +11,9 @@ _Última actualización: 2026-07-31._
 
 **MVP completo y verificado en local. Falta el deploy.**
 
+El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el quickstart del
+`README.md` de la raíz.
+
 | Bloque (`docs/design/08-code.md` §12) | Estado |
 |---|---|
 | 1. Scaffolding + migraciones + seed | ✔ |
@@ -22,8 +25,11 @@ _Última actualización: 2026-07-31._
 
 ## Verificado
 
-- **Suite backend en verde: 173 tests** contra Postgres local (~9 s). Requiere
+- **Suite backend en verde: 179 tests** contra Postgres local (~9 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
+- **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`,
+  `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
+  ninguna clave de Clerk**.
 - **Typecheck del frontend** limpio (`npx tsc --noEmit`).
 - **Identidad Clerk end-to-end**: JWT template con `email`/`name`, invite-only, admin y evaluador
   entrando con el rol correcto. El runbook de `backend/README.md` ya se corrió en el entorno de
