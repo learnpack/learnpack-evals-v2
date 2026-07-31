@@ -27,7 +27,7 @@ uv run python -m app.cli seed-demo   # usuarios, cursos, campaña abierta y assi
 uv run uvicorn app.main:app --reload
 
 # 3. Frontend  (http://localhost:3000)
-cd ../frontend
+cd frontend
 cp .env.local.example .env.local     # ya viene en NEXT_PUBLIC_AUTH_MODE=local
 npm install
 npm run dev
