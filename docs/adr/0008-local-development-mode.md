@@ -50,6 +50,12 @@ Complementos que hacen el modo usable de verdad:
   seeder y no un login, **alinea el rol** de un usuario demo que ya exista: quien se logueó
   antes de sembrar nació `evaluator` y quedaría con 403 en toda la consola de admin. El
   invariante de ADR-0007 que no se toca es que *loguearse* nunca cambia un rol.
+- **`--reset` vacía el dataset local entero** (cursos, campañas, evaluaciones y usuarios
+  `local|`), no "lo que las listas del código dicen hoy". Editar esas listas es la forma normal
+  de armar un demo, y un borrado acotado deja huérfano lo que creó la versión anterior —un
+  usuario renombrado que sigue apareciendo en el selector, un curso reemplazado sin campaña— sin
+  ninguna forma de limpiarlo. Es seguro precisamente por el guard: solo corre contra una base
+  local.
 - **Selector de usuario** en `/sign-in`, alimentado por `GET /dev/identities` (la DB es la fuente
   de verdad, no una lista hardcodeada en el front). Cambiar de usuario recarga la página para
   descartar la caché de queries del anterior.

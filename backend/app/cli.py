@@ -310,11 +310,15 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
         "consumable_url": "https://object-representation-in-python.learn-pack.com/",
         "metadata": {
             "learningObjectives": [
-                "Define Python classes with __init__, attributes, and methods that operate on instance state",
+                "Define Python classes with __init__, attributes, and methods that operate "
+                "on instance state",
                 "Create and use object instances with dot notation",
                 "Manipulate collections of objects and objects nested within objects",
             ],
-            "targetAudience": "Beginner developers who understand OOP concepts and are ready to write Python class syntax",
+            "targetAudience": (
+                "Beginner developers who understand OOP concepts and are ready to write "
+                "Python class syntax"
+            ),
             "prerequisites": ["Basic Python", "Object-oriented programming concepts"],
         },
     },
@@ -460,126 +464,31 @@ def _seed_demo_assignments(
 
 
 def _reset_demo(session: Session) -> None:
-    """Delete the demo dataset in FK order (same order as tests/conftest.py::cleanup)."""
-    emails = [email for email, _, _ in DEMO_ASSESSORS]
-    external_ids = [content["external_id"] for content in DEMO_CONTENTS]
+    """Wipe the local dataset: everything the app writes, minus the seeded reference data.
 
-    content_ids = [
-        row[0]
-        for row in session.execute(
-            text("SELECT id FROM contents WHERE external_id = ANY(:external_ids)"),
-            {"external_ids": external_ids},
-        )
-    ]
-    campaign_ids = (
-        [
-            row[0]
-            for row in session.execute(
-                text(
-                    "SELECT DISTINCT campaign_id FROM campaign_contents "
-                    "WHERE content_id = ANY(:ids)"
-                ),
-                {"ids": content_ids},
-            )
-        ]
-        if content_ids
-        else []
-    )
+    Deliberately wholesale rather than "delete what DEMO_ASSESSORS/DEMO_CONTENTS list today".
+    Editing those lists is the normal way to shape a demo, and a scoped delete strands every
+    row the previous version created: a renamed user keeps showing up in the sign-in picker, a
+    replaced course lingers with no campaign, and no reset can ever reach them.
 
-    if content_ids:
-        session.execute(
-            text(
-                "DELETE FROM criterion_scores WHERE evaluation_id IN "
-                "(SELECT id FROM evaluations WHERE content_id = ANY(:ids))"
-            ),
-            {"ids": content_ids},
-        )
-        session.execute(
-            text(
-                "DELETE FROM events WHERE aggregate_id IN "
-                "(SELECT id::text FROM evaluations WHERE content_id = ANY(:ids))"
-            ),
-            {"ids": content_ids},
-        )
-        session.execute(
-            text("DELETE FROM evaluations WHERE content_id = ANY(:ids)"), {"ids": content_ids}
-        )
-
-    if campaign_ids:
-        session.execute(
-            text("DELETE FROM golden_references WHERE campaign_id = ANY(:ids)"),
-            {"ids": campaign_ids},
-        )
-        session.execute(
-            text("DELETE FROM content_evaluation_completions WHERE campaign_id = ANY(:ids)"),
-            {"ids": campaign_ids},
-        )
-        session.execute(
-            text(
-                "DELETE FROM events WHERE aggregate_id IN "
-                "(SELECT id::text FROM assignments WHERE campaign_id = ANY(:ids))"
-            ),
-            {"ids": campaign_ids},
-        )
-        session.execute(
-            text("DELETE FROM assignments WHERE campaign_id = ANY(:ids)"), {"ids": campaign_ids}
-        )
-        session.execute(
-            text("DELETE FROM campaign_contents WHERE campaign_id = ANY(:ids)"),
-            {"ids": campaign_ids},
-        )
-        session.execute(
-            text("DELETE FROM events WHERE aggregate_id = ANY(:ids)"),
-            {"ids": [str(campaign_id) for campaign_id in campaign_ids]},
-        )
-        session.execute(text("DELETE FROM campaigns WHERE id = ANY(:ids)"), {"ids": campaign_ids})
-
-    if content_ids:
-        session.execute(
-            text("DELETE FROM events WHERE aggregate_id = ANY(:ids)"),
-            {"ids": [str(content_id) for content_id in content_ids]},
-        )
-        session.execute(text("DELETE FROM contents WHERE id = ANY(:ids)"), {"ids": content_ids})
-
-    # Whatever the demo users did OUTSIDE the demo dataset — a campaign someone opened by hand
-    # over their own course, and assigned to Ada — still references `assessors.id` by FK. Clear
-    # it too, or the delete below aborts halfway through with an IntegrityError.
-    assessor_ids = [
-        row[0]
-        for row in session.execute(
-            text("SELECT id FROM assessors WHERE email = ANY(:emails)"), {"emails": emails}
-        )
-    ]
-    if assessor_ids:
-        session.execute(
-            text(
-                "DELETE FROM criterion_scores WHERE evaluation_id IN "
-                "(SELECT id FROM evaluations WHERE assessor_id = ANY(:ids))"
-            ),
-            {"ids": assessor_ids},
-        )
-        session.execute(
-            text(
-                "DELETE FROM events WHERE aggregate_id IN "
-                "(SELECT id::text FROM evaluations WHERE assessor_id = ANY(:ids))"
-            ),
-            {"ids": assessor_ids},
-        )
-        session.execute(
-            text("DELETE FROM evaluations WHERE assessor_id = ANY(:ids)"), {"ids": assessor_ids}
-        )
-        session.execute(
-            text(
-                "DELETE FROM events WHERE aggregate_id IN "
-                "(SELECT id::text FROM assignments WHERE assessor_id = ANY(:ids))"
-            ),
-            {"ids": assessor_ids},
-        )
-        session.execute(
-            text("DELETE FROM assignments WHERE assessor_id = ANY(:ids)"), {"ids": assessor_ids}
-        )
-        session.execute(text("DELETE FROM assessors WHERE id = ANY(:ids)"), {"ids": assessor_ids})
-
+    Safe because it can only ever run against a local database: `run_seed_demo` requires
+    AUTH_MODE=local, and `Settings` refuses that mode unless DATABASE_URL is local (ADR-0008).
+    Assessors are still scoped to `local|`, the identities this mode creates — a real Clerk
+    identity is never touched.
+    """
+    for statement in (
+        "DELETE FROM criterion_scores",
+        "DELETE FROM evaluations",
+        "DELETE FROM content_evaluation_completions",
+        "DELETE FROM golden_references",
+        "DELETE FROM assignments",
+        "DELETE FROM campaign_contents",
+        "DELETE FROM campaigns",
+        "DELETE FROM contents",
+        "DELETE FROM events",
+        "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
+    ):
+        session.execute(text(statement))
     session.commit()
 
 
@@ -591,7 +500,7 @@ def run_seed_demo(reset: bool) -> int:
     with SessionLocal() as session:
         if reset:
             _reset_demo(session)
-            print("removed the previous demo dataset")
+            print("wiped the local dataset (courses, campaigns, evaluations, local users)")
         assessor_ids = _seed_demo_assessors(session)
 
     content_ids = _seed_demo_contents()
@@ -636,7 +545,9 @@ def main(argv: list[str] | None = None) -> int:
         "seed-demo", help="local-only: demo users, courses, campaign and assignments"
     )
     demo_parser.add_argument(
-        "--reset", action="store_true", help="delete the previous demo dataset first"
+        "--reset",
+        action="store_true",
+        help="wipe the local dataset first (courses, campaigns, evaluations, local users)",
     )
 
     args = parser.parse_args(argv)

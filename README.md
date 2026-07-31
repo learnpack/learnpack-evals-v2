@@ -41,8 +41,8 @@ En `/sign-in` elegís con quién entrar:
 | `ada.lovelace@local.dev` | evaluator | evaluar |
 | `grace.hopper@local.dev` | evaluator | evaluar (el segundo rater: sin él no hay inter-rater) |
 
-Se cambia de usuario desde el menú del header. Para volver a empezar:
-`uv run python -m app.cli seed-demo --reset`.
+Se cambia de usuario desde el menú del header. Para volver a empezar de cero —vacía el dataset
+local y lo vuelve a sembrar—: `uv run python -m app.cli seed-demo --reset`.
 
 ### Iterar sobre la rúbrica
 

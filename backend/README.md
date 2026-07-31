@@ -38,6 +38,13 @@ uv run python -m app.cli seed
 uv run python -m app.cli seed-demo         # --reset para empezar de cero
 ```
 
+`--reset` **vacía el dataset local** (cursos, campañas, evaluaciones y usuarios `local|`) y
+vuelve a sembrar; no toca la rúbrica ni los metadata schemas. Es a propósito más amplio que
+"borrar lo que la lista dice hoy": editar `DEMO_ASSESSORS`/`DEMO_CONTENTS` es la forma normal de
+armar un demo, y un borrado acotado deja huérfano todo lo que creó la versión anterior —un
+usuario renombrado sigue apareciendo en el selector, un curso reemplazado queda sin campaña— sin
+forma de limpiarlo. Solo puede correr contra una base local, así que no hay nada que perder.
+
 `seed-demo` deja 3 usuarios (`admin@local.dev`, `ada.lovelace@local.dev`,
 `grace.hopper@local.dev`), 2 cursos y una campaña abierta con **quórum 2** y sus 4 assignments,
 todo **pendiente de evaluar**. Dos evaluadores es el mínimo para que haya dispersión inter-rater
