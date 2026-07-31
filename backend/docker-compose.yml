@@ -1,8 +1,10 @@
-# Local Postgres for the test suite only.
+# Local Postgres. Two databases, deliberately in two containers:
 #
-# The suite is latency-bound, not CPU-bound: against Neon (us-east-1) every query costs
-# ~150 ms of round trip, which dominates everything. Locally it is ~0.3 ms.
-# Neon stays the real store — migrations, deploy and the final smoke check run there.
+#   db      (5433) — the test suite.
+#   db-dev  (5434) — local development (AUTH_MODE=local, ADR-0008). Separate because the
+#                    suite's `cleanup` fixture deletes rows, which would eat your demo data.
+#
+# Neon stays the production store — migrations, deploy and the final smoke check run there.
 services:
   db:
     image: postgres:17-alpine
@@ -19,3 +21,24 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+
+  db-dev:
+    image: postgres:17-alpine
+    container_name: learnpack-evals-dev-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: learnpack_evals_dev
+    ports:
+      - "5434:5432"
+    volumes:
+      # Unlike the test database, this one keeps its data between restarts.
+      - learnpack-evals-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d learnpack_evals_dev"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  learnpack-evals-dev-data:
