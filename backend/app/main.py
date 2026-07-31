@@ -29,11 +29,20 @@ from app.modules.orchestration.infrastructure.router import (
     evaluator_router as orchestration_evaluator_router,
 )
 from app.modules.reporting.infrastructure.router import router as reporting_router
+from app.platform.auth_local import DEV_USER_HEADER
 from app.platform.db import get_session
+from app.platform.dev_router import router as dev_router
 from app.platform.events import dispatcher
 from app.platform.security import CurrentAssessor
 
 settings = get_settings()
+
+if settings.is_local_auth:
+    # Loud on purpose: this process authenticates nobody (ADR-0008). Settings refuses to
+    # combine this mode with ENVIRONMENT=production, so this can only be a dev box.
+    # ASCII only: a Windows console (cp1252) raises UnicodeEncodeError on anything else,
+    # which would turn a warning into a boot failure.
+    print(f"WARNING: AUTH_MODE=local - no authentication, identity comes from {DEV_USER_HEADER}")
 
 app = FastAPI(
     title="LearnPack Evals API",
@@ -47,7 +56,9 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    # `X-Dev-User` only carries an identity under AUTH_MODE=local; it is inert otherwise, so
+    # allowing it unconditionally keeps one CORS config instead of two.
+    allow_headers=["Authorization", "Content-Type", DEV_USER_HEADER],
 )
 
 
@@ -82,6 +93,7 @@ app.include_router(orchestration_evaluator_router)
 app.include_router(evaluation_router)
 app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
+app.include_router(dev_router)  # 404s unless AUTH_MODE=local
 
 # Policies subscribe here, at wiring time. The MVP's chain (08-code.md §5):
 #   EvaluationSubmitted → (orchestration) ContentEvaluationCompleted

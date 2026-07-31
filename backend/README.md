@@ -17,6 +17,51 @@ uv run uvicorn app.main:app --reload
 
 `GET /health` verifica que la API arranca y que la DB responde.
 
+## Modo local: sin Clerk y sin Neon (ADR-0008)
+
+`AUTH_MODE` decide de dónde sale la identidad de un request:
+
+| Modo | Identidad | Cuándo |
+|---|---|---|
+| `clerk` (default) | JWT de sesión verificado contra el JWKS | producción y cualquier entorno real |
+| `local` | el header `X-Dev-User: <email>`, sin verificar | desarrollo, sin cuentas ni nube |
+
+Debajo del claim **es el mismo código en los dos modos**: `ResolveAssessor`, `assessors.role`,
+`require_admin`. El modo local no bifurca reglas de negocio, solo reemplaza de dónde sale la
+identidad — el mismo corte que usa la suite de tests.
+
+```bash
+docker compose up -d                       # levanta db (5433, tests) y db-dev (5434, desarrollo)
+cp .env.example .env                       # el ejemplo ya viene en modo local
+uv run alembic upgrade head
+uv run python -m app.cli seed
+uv run python -m app.cli seed-demo         # --reset para empezar de cero
+```
+
+`seed-demo` deja 3 usuarios (`admin@local.dev`, `ada.lovelace@local.dev`,
+`grace.hopper@local.dev`), 2 cursos y una campaña abierta con **quórum 2** y sus 4 assignments,
+todo **pendiente de evaluar**. Dos evaluadores es el mínimo para que haya dispersión inter-rater
+y para que se dispare `ContentEvaluationCompleted → GoldenReferenceEstablished`.
+
+Va por los use cases reales, así que publica los mismos eventos que produciría la UI. Es
+idempotente: correrlo dos veces no duplica nada.
+
+Lo que impide que esto se filtre a un entorno real:
+
+- El default del código es `clerk` (el `.env.example` trae `local` porque es la plantilla de
+  desarrollo; en producción las variables las pone Render). Un valor que no sea `clerk` ni
+  `local` **no arranca**: es un error de configuración, no algo que se degrade en silencio.
+- `AUTH_MODE=local` con `ENVIRONMENT=production` → **la app no arranca**.
+- `AUTH_MODE=local` con un `DATABASE_URL` que no apunte a localhost → **tampoco arranca**.
+  Son dos chequeos porque cada uno cubre el punto ciego del otro: `ENVIRONMENT` es una etiqueta
+  que nadie garantiza (puede estar sin setear en el server), mientras que el host de la base es
+  un hecho sobre dónde viven los datos.
+- En modo `clerk` el header `X-Dev-User` **no se lee**: no es un fallback cuando falta el token,
+  es otro adapter.
+- `seed-demo` aborta si el modo no es `local` (no puede escribir datos demo en Neon por error).
+- `GET /dev/identities` —la lista que alimenta el selector de usuario del front— da 404 fuera del
+  modo local.
+
 ## Clerk (ADR-0004)
 
 El token de sesión por defecto de Clerk **no trae email ni nombre**. Hay que crear un **JWT
@@ -120,7 +165,7 @@ por `event_type + aggregate_id`, para poder reprocesar desde la tabla `events`.
 ## Comandos
 
 ```bash
-docker compose up -d     # Postgres local para los tests (una sola vez)
+docker compose up -d     # Postgres local: db (tests) + db-dev (desarrollo)
 uv run pytest            # tests
 uv run ruff check .      # lint
 uv run ruff format .     # formato

@@ -10,13 +10,14 @@ layer is allowed (dependencies point inwards, ARCHITECTURE.md §1). This is the 
 
 from typing import Annotated, Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import get_settings
 from app.modules.identity.application.dtos import AssessorDTO
 from app.modules.identity.application.resolve_assessor import ClerkIdentity, ResolveAssessor
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+from app.platform.auth_local import claims_from_header
 from app.platform.clerk import ClerkTokenVerifier, InvalidToken, get_verifier
 from app.platform.uow import UnitOfWork, get_uow
 
@@ -24,9 +25,25 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_verified_claims(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     verifier: Annotated[ClerkTokenVerifier, Depends(get_verifier)],
 ) -> dict[str, Any]:
+    """The only place a request becomes an identity — Clerk's JWT or, in local mode, a header.
+
+    The choice is made per request (not at import time) so the mode is testable without
+    rebuilding the app. In `clerk` mode the dev header is not read at all: this is a second
+    adapter, not a fallback that could be triggered by omitting the token (ADR-0008).
+    """
+    if get_settings().is_local_auth:
+        try:
+            return dict(claims_from_header(request))
+        except InvalidToken as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=str(exc),
+            ) from exc
+
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
