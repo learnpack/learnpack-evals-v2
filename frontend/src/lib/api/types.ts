@@ -215,3 +215,10 @@ export interface AssignContentRequest {
   content_id: Uuid;
   assessor_id: Uuid;
 }
+
+/** `GET /dev/identities` — only exists under AUTH_MODE=local (ADR-0008). */
+export interface DevIdentity {
+  email: string;
+  display_name: string | null;
+  role: string; // "admin" | "evaluator"
+}

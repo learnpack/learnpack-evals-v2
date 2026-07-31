@@ -1,4 +1,4 @@
-import { SignIn } from "@clerk/nextjs";
+import { IS_LOCAL_AUTH, SignInScreen } from "@/lib/auth";
 
 export default function SignInPage() {
   return (
@@ -6,10 +6,11 @@ export default function SignInPage() {
       <div className="text-center">
         <h1 className="text-2xl font-semibold tracking-tight">LearnPack Evals</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pedagogical quality evaluation · invite-only access
+          Pedagogical quality evaluation ·{" "}
+          {IS_LOCAL_AUTH ? "local development mode" : "invite-only access"}
         </p>
       </div>
-      <SignIn />
+      <SignInScreen />
     </main>
   );
 }

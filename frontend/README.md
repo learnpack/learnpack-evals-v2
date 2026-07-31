@@ -9,20 +9,39 @@ en qué estado está).
 
 - **Next.js 15** (App Router, `src/`) + **React 19** + **TypeScript**.
 - **Tailwind** con un kit de UI propio estilo shadcn en `src/components/ui/` (sin Radix).
-- **Clerk** (`@clerk/nextjs`) para identidad, invite-only.
+- **Clerk** (`@clerk/nextjs`) para identidad, invite-only — o **modo local sin identidad**
+  (ADR-0008), detrás del mismo seam.
 - **TanStack Query** para data-fetching/estado del servidor.
 - **react-hook-form + zod** en el formulario de scoring.
 
 ## Setup
 
 ```bash
-cp .env.local.example .env.local     # completar claves de Clerk + NEXT_PUBLIC_API_URL
+cp .env.local.example .env.local     # viene en modo local: nada que completar
 npm install
 npm run dev                          # http://localhost:3000
 ```
 
+Para usar Clerk en su lugar, sacá `NEXT_PUBLIC_AUTH_MODE=local` y completá las claves (abajo).
+
 El backend tiene que estar corriendo (`../backend`, por defecto en `:8000`) y su
 `ALLOWED_ORIGINS` tiene que incluir `http://localhost:3000`.
+
+## Modo local: sin Clerk (ADR-0008)
+
+Con `NEXT_PUBLIC_AUTH_MODE=local` (lo que trae `.env.local.example`) la app no usa Clerk:
+`/sign-in` muestra la lista de usuarios locales y elegís con cuál entrar. Se cambia de usuario
+desde el menú del header — recarga la página a propósito, para que no sobreviva en pantalla la
+caché de queries del usuario anterior.
+
+El backend tiene que estar corriendo con el `AUTH_MODE=local` correspondiente: la lista sale de
+`GET /dev/identities`, que solo existe en ese modo, y las llamadas se identifican con el header
+`X-Dev-User` en lugar del `Authorization: Bearer`.
+
+Cualquier otro valor —o ninguno— usa Clerk. El seam está en `src/lib/auth/`: `mode.ts` decide y
+los adapters `clerk.tsx` / `local.tsx` exponen la misma interfaz (`AuthProvider`,
+`useAuthHeaders`, `UserMenu`, `SignInScreen`). **Ningún componente importa `@clerk/nextjs`
+directamente**; todos pasan por `@/lib/auth`, así que cambiar de modo no toca código de feature.
 
 ## Clerk (ADR-0004) — leer antes del primer login
 
@@ -51,7 +70,7 @@ evaluadores aparecen en el selector de asignación **después de su primer sign-
 src/
   app/
     page.tsx                       # redirige según rol (admin → /admin, si no → /evaluations)
-    sign-in/[[...sign-in]]/        # <SignIn/> de Clerk
+    sign-in/[[...sign-in]]/        # <SignInScreen/> del adapter activo
     evaluations/                   # flujo del evaluador (lista + wizard 3 pasos)
     admin/                         # consola admin (courses, campaigns, reports)
   components/
@@ -59,9 +78,10 @@ src/
     evaluator/                     # consume-content (iframe+fallback), score-form
     admin/                         # content-form, campaign-form, assign-form
   lib/
-    api/                           # client.ts (fetch+Bearer), types.ts, hooks.ts (TanStack)
+    auth/                          # seam de identidad: mode.ts + clerk.tsx / local.tsx
+    api/                           # client.ts (fetch+headers), types.ts, hooks.ts (TanStack)
     constants.ts                   # rubric id, LearnpackV1 metadata keys
-  middleware.ts                    # clerkMiddleware: protege todo salvo /sign-in
+  middleware.ts                    # protege todo salvo /sign-in (Clerk o cookie local)
 ```
 
 `src/lib/api/types.ts` es el espejo TypeScript del contrato de FastAPI (snake_case, 1:1 con

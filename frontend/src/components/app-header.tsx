@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
+import { UserMenu } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export function AppHeader({
@@ -38,7 +38,7 @@ export function AppHeader({
             </nav>
           ) : null}
         </div>
-        <UserButton afterSignOutUrl="/sign-in" />
+        <UserMenu />
       </div>
     </header>
   );

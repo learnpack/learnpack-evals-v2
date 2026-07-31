@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import {
   useMutation,
   useQuery,
@@ -8,6 +7,7 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useAuthHeaders } from "@/lib/auth";
 import { apiFetch, type RequestOptions } from "./client";
 import type {
   AssessorResponse,
@@ -28,19 +28,14 @@ import type {
   Uuid,
 } from "./types";
 
-// If a named Clerk JWT template carries the email/name claims, set this; otherwise the
-// (customized) default session token is used. See .env.local.example.
-const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE;
-
-/** A fetcher that injects the current Clerk token on every call. */
+/** A fetcher that injects the current identity headers on every call (see `lib/auth`). */
 export function useApi() {
-  const { getToken } = useAuth();
+  const getAuthHeaders = useAuthHeaders();
   return useCallback(
-    async <T>(path: string, options: Omit<RequestOptions, "token"> = {}): Promise<T> => {
-      const token = await getToken(JWT_TEMPLATE ? { template: JWT_TEMPLATE } : undefined);
-      return apiFetch<T>(path, { ...options, token });
+    async <T>(path: string, options: Omit<RequestOptions, "headers"> = {}): Promise<T> => {
+      return apiFetch<T>(path, { ...options, headers: await getAuthHeaders() });
     },
-    [getToken],
+    [getAuthHeaders],
   );
 }
 

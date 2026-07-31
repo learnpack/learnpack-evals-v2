@@ -1,7 +1,9 @@
 /**
  * Typed fetch client for the FastAPI backend.
  *
- * The Clerk session JWT rides in `Authorization: Bearer` (ADR-0004, cross-origin — no cookie).
+ * Identity travels in headers, never in a cookie: the Clerk session JWT as `Authorization:
+ * Bearer` (ADR-0004, cross-origin), or `X-Dev-User` in local mode (ADR-0008). Which one is
+ * decided by `lib/auth`; this client only forwards what it is given.
  * FastAPI error bodies are `{ detail: ... }`: `detail` is a string for our HTTPExceptions, but
  * a list for metadata-validation (422) and for FastAPI's own body validation (422). We
  * normalize both into `ApiError`.
@@ -59,19 +61,19 @@ function normalizeError(status: number, body: unknown): ApiError {
 export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
-  /** Clerk session token; obtained by callers via getToken(). */
-  token: string | null;
+  /** Identity headers for this call; built by `useAuthHeaders()` (lib/auth). */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
 }
 
 export async function apiFetch<T>(path: string, options: RequestOptions): Promise<T> {
-  const { method = "GET", body, token, signal } = options;
+  const { method = "GET", body, headers, signal } = options;
 
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
