@@ -57,14 +57,19 @@
   contiene. Set inicial: Merrill (First Principles), Biggs (Constructive Alignment),
   Revised Bloom (Anderson & Krathwohl), SOLO, Schmidt (Coherence), Learning Progressions.
 - **PedagogicalDimension** — agrupación de qualities (las "dimensiones" del equipo).
-- **Quality** — cualidad pedagógica granular, evaluable. `grounded_in` uno o varios
-  `PedagogicalFramework` (relación N:M). *(Naming abierto: quizá `PedagogicalAttribute`.)*
-- **EvaluationCriterion** — operacionalización de una `Quality`/`Dimension` en algo
-  medible. **Cita** su grounding (N:M); no lo contiene. Declara sus `eligible_sources` y los
-  **datos que requiere** (ids, ADR-0014). ADR-0010 redefine la unidad de juicio: **condición de
-  pase verificable + modos de falla enumerados**, desenlace tri-estado
-  (`scored (pass/fail) | not_applicable | no_evidence`) — no una escala de apreciación.
-  (La escala 1–5 con anchors sobrevive solo en `Rubric v1`; ver ADR-0010 §Alcance y migración.)
+- **Quality** — cualidad pedagógica granular, evaluable: la **variable del modelo del examinado**
+  (ECD). Los `Claim`s afirman *sobre* ella. `grounded_in` uno o varios `PedagogicalFramework`
+  (relación N:M). Es la **columna estable del lenguaje**: claims y criteria cambian entre
+  versiones de instrumento; los `qualityId` persisten y dan continuidad temática entre líneas de
+  studies. *(Naming abierto: quizá `PedagogicalAttribute`.)*
+- **EvaluationCriterion** — la unidad de juicio verificable. Con claims (ADR-0013), el criterion
+  **evidencia claims** y alcanza la `Quality` a través de ellos — el claim media; en `Rubric v1`
+  (legacy) la operacionalización criterion↔dimension es directa. **Cita** su grounding (N:M); no
+  lo contiene. Declara sus `eligible_sources` y los **datos que requiere** (ids, ADR-0014).
+  ADR-0010 define su forma: **condición de pase verificable + modos de falla enumerados**,
+  desenlace tri-estado (`scored (pass/fail) | not_applicable | no_evidence`) — no una escala de
+  apreciación. (La escala 1–5 con anchors sobrevive solo en `Rubric v1`; ver ADR-0010 §Alcance y
+  migración.)
 - **Rubric** (aka `EvaluationInstrument`) — conjunto ordenado y **versionado** de criteria.
   Unidad intercambiable. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
   Génesis (ADR-0012): un instrumento nace del **propósito + tipo de contenido** (designed-for);
@@ -88,10 +93,12 @@
 - **AlternativeExplanation** — enumeradas *por adelantado* por claim: qué produciría la misma
   observación sin que el claim aplique (extracción fallida, formato atípico, criterion ambiguo).
   Formaliza el diagnóstico del bucle de mejora y el canal de impugnación.
-- **TaskModelBinding** — la ligadura **por tipo de contenido**: dónde vive cada dato requerido en
-  ese formato, y las **variables de contexto** que condicionan el juicio (nivel esperado,
-  audiencia — la "referencia contextual" del `ScoringPolicy`). Claims y evidence models son
-  portables; solo el binding se rehace por tipo.
+- **TaskModelBinding** — la ligadura **por tipo de contenido**, del lado del instrumento:
+  aplicabilidad declarada (`designedFor`) + **task variables** que condicionan el juicio (nivel
+  esperado, audiencia — la "referencia contextual" del `ScoringPolicy`) + criteria condicionales.
+  El **dónde vive cada dato en el formato** NO está acá: es el mapeo del adapter de extracción
+  (Content Profiling). Claims y evidence models son portables; solo el binding se rehace por
+  tipo — reusar un instrumento sobre un tipo nuevo = **nueva versión que agrega el binding**.
 - **EvaluationStudy** — el **encargo**: una ronda de evaluación con propósito (inicial /
   regresión / comparación), que liga claims + instrumento + dataset + informe, con un acto de
   **publicación** ("estos resultados son confiables"). Comparable entre rondas (regresión
