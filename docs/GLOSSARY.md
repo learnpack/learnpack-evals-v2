@@ -13,7 +13,26 @@
 - **ContentVersion** — versión de un contenido lógico. Permite evaluar el mismo curso en `v1`,
   `v2`… (mejora/regresión). Unicidad lógica: `(GeneratingSystem, externalId, version)`. MVP:
   default `"1"`.
-- **GeneratingSystem** — el sistema que generó el contenido (p.ej. `LearnpackV1`).
+- **GeneratingSystem** — el sistema que generó el contenido (p.ej. `LearnpackV1`). Como *formato*
+  identifica el tipo de contenido (adapter de extracción); como **examinado** del QA se versiona
+  vía `GeneratorConfiguration`.
+- **GeneratorConfiguration** — la configuración **versionada e identificable** del
+  `GeneratingSystem` como examinado: modelo base, prompts, pipeline. Cambio de configuración ⇒
+  **otro examinado** ⇒ los claims acumulados no transfieren — simetría exacta con
+  `SourceConfiguration`/`Assessor`. Es la clave de acumulación de los claims a nivel generador
+  (ADR-0013). Incluye registrar si el contenido es salida pura o con **edición humana**
+  (provenance de edición). *(Naming abierto.)*
+- **ContentPackage** — el work product **completo** que entrega el generador para un contenido:
+  artefactos consumibles (lecciones, ejercicios) **y artefactos internos** (manifests con
+  objetivos, knowledge graph de prerequisitos, banco de ítems). El registro captura el paquete,
+  no solo una `consumable_url`; los artefactos internos suelen ser la mejor evidencia
+  (`declared_structured`, ADR-0009). Puede haber artefactos **a nivel generador** (compartidos
+  entre contenidos). *(Naming abierto.)*
+- **GenerationBrief** — el encargo con el que el generador produjo un contenido (prompt,
+  syllabus, parámetros, audiencia). Habilita: comparación **pareada** entre versiones del
+  generador (mismos briefs, productos distintos), variables del task model ("se pidió
+  introductorio") y descarte de explicaciones alternativas ("no tiene prerequisitos porque no se
+  pidieron"). *(Naming abierto.)*
 - **ContentMetadata** — colección **abierta y tipada** de `MetadataEntry` usada como *referencia*
   de evaluación; validada contra un `MetadataSchema` ligado al `GeneratingSystem`/tipo. El
   dominio no referencia keys concretas. MVP: schema `learnpack-v1` =
@@ -21,6 +40,16 @@
 - **MetadataEntry** — `{key, value, valueType}`.
 - **MetadataSchema** — declara keys permitidas/requeridas + tipos por `GeneratingSystem`/tipo
   (reference data).
+- **ContentProfile** — representación **canónica** de lo que un `ContentPackage` contiene
+  pedagógicamente, producida por un extraction adapter por `GeneratingSystem`. Datos keyados por
+  los ids de datos de ADR-0014, cada uno con su `EvidenceProvenance`. **Se persiste** (reusable
+  entre instrumentos) y lleva la **versión del adapter** en su provenance. Los criteria operan
+  sobre el profile, nunca sobre el contenido crudo.
+- **EvidenceProvenance** — origen de cada dato extraído:
+  `declared_structured | declared_in_content | absent`, con **locator** (cita verbatim +
+  ubicación). No existe `inferred`: el motor no completa lo que el contenido no dice (ADR-0009).
+  Distinta de la provenance del `Assessor`: aquella dice *quién juzgó*; esta, *de dónde salió el
+  dato juzgado*.
 
 ## Criteria axis — qué se mide (el "qué")
 
@@ -31,10 +60,46 @@
 - **Quality** — cualidad pedagógica granular, evaluable. `grounded_in` uno o varios
   `PedagogicalFramework` (relación N:M). *(Naming abierto: quizá `PedagogicalAttribute`.)*
 - **EvaluationCriterion** — operacionalización de una `Quality`/`Dimension` en algo
-  medible: enunciado, guía, escala 1–5, anchors (qué es 1, qué es 5). **Cita** su grounding
-  (N:M); no lo contiene. Declara sus `eligible_sources`.
+  medible. **Cita** su grounding (N:M); no lo contiene. Declara sus `eligible_sources` y los
+  **datos que requiere** (ids, ADR-0014). ADR-0010 redefine la unidad de juicio: **condición de
+  pase verificable + modos de falla enumerados**, desenlace tri-estado
+  (`scored (pass/fail) | not_applicable | no_evidence`) — no una escala de apreciación.
+  (La escala 1–5 con anchors sobrevive solo en `Rubric v1`; ver ADR-0010 §Alcance y migración.)
 - **Rubric** (aka `EvaluationInstrument`) — conjunto ordenado y **versionado** de criteria.
   Unidad intercambiable. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
+  Génesis (ADR-0012): un instrumento nace del **propósito + tipo de contenido** (designed-for);
+  los frameworks **fundamentan** (warrant), no originan. Reusarlo sobre otro tipo = acto
+  deliberado, re-ligando el task model.
+
+## Evaluation design — el argumento evidencial (ECD-lite, ADRs 0012–0014)
+
+- **Claim** — afirmación evaluable sobre la calidad, de **una frase**, con: evidencia requerida,
+  warrant (framework) y explicaciones alternativas. **Dos granos:** sobre un contenido y sobre el
+  **generador** (acumulada a través de contenidos — el producto central del QA interno). Estatus
+  evidencial: `soportado | refutado | evidencia insuficiente`. Los findings se organizan **bajo
+  el claim que comprometen**. El diseño corre hacia atrás: claims → evidencia → observables →
+  requisitos de extracción (ADR-0013).
+- **EvidenceModel** — para cada claim: qué evidencia lo soporta/refuta, qué observables la
+  constituyen y qué **datos requiere** (ahí se mintean los ids — ADR-0014; el "diccionario" es
+  una vista generada, no un artefacto).
+- **Assembly** — cuánta evidencia basta **por claim**, decidido en diseño. En el camino
+  automático reemplaza la noción de quórum (el quórum humano de ADR-0002 sigue rigiendo las
+  campañas con evaluadores humanos).
+- **AlternativeExplanation** — enumeradas *por adelantado* por claim: qué produciría la misma
+  observación sin que el claim aplique (extracción fallida, formato atípico, criterion ambiguo).
+  Formaliza el diagnóstico del bucle de mejora y el canal de impugnación.
+- **TaskModelBinding** — la ligadura **por tipo de contenido**: dónde vive cada dato requerido en
+  ese formato, y las **variables de contexto** que condicionan el juicio (nivel esperado,
+  audiencia — la "referencia contextual" del `ScoringPolicy`). Claims y evidence models son
+  portables; solo el binding se rehace por tipo.
+- **EvaluationStudy** — el **encargo**: una ronda de evaluación con propósito (inicial /
+  regresión / comparación), que liga claims + instrumento + dataset + informe, con un acto de
+  **publicación** ("estos resultados son confiables"). Comparable entre rondas (regresión
+  pedagógica del generador) si el instrumento y los briefs se mantienen. *(Naming abierto:
+  `Study` / `Round` / `Encargo`.)*
+- **EvaluationSet** — el dataset de contenidos de un study, **fijado** (conjunto o receta), con
+  composición estratificada según qué claims necesitan qué variedad (content module, ADR-0013).
+  Distinto del `GoldenDataset` (que es de *resultados humanos*). *(Naming abierto.)*
 
 ## Source axis — cómo se produce el juicio (el "cómo")
 
@@ -72,11 +137,19 @@
   alineación). *No es un score*; se mapea a score vía `ScoringPolicy`.
 - **ScoringPolicy** — cómo se mapea `ComputedMetric` → score (mapeo + umbral/referencia),
   y cómo se **agregan/componen** varios scores/results.
-- **CriterionScore** — score 1–5 por criterion (+ `Comment` opcional).
+- **CriterionScore** — el desenlace de un criterion sobre un contenido (+ `Comment` opcional).
+  Forma ADR-0010: tri-estado `scored (pass/fail) | not_applicable | no_evidence`, **con la cita
+  que lo sostiene**. (El score 1–5 sobrevive solo en el flujo humano de `Rubric v1`.)
 - **EvaluationResult** — el conjunto de `CriterionScore` (+ comentarios) de una `Evaluation`.
-- **QualityJudgment** — el juicio de calidad publicado sobre un contenido: scores agregados
-  por criterion + **provenance** (`assessor` + `assessorCalibrationStatus`). Evento:
-  `QualityJudgmentPublished`.
+- **QualityJudgment** — el juicio de calidad publicado sobre un contenido: **perfil por
+  criterion** (nunca un score agregado único, ADR-0011) + **cobertura** (evaluados / no aplican /
+  sin evidencia) + **provenance** (`assessor` + `assessorCalibrationStatus`). Con ECD-lite
+  (ADR-0013) se comunica como **claims con estatus evidencial** y findings bajo cada claim.
+  Evento: `QualityJudgmentPublished`.
+- **Finding** — hallazgo derivado de un criterion no cumplido: qué falló, la **cita**, y la
+  sugerencia que sale del modo de falla declarado (la falla *es* la sugerencia). **Inmutable y
+  derivado** de la evaluación; las impugnaciones son hechos separados *sobre* un finding, que
+  alimentan la mejora del instrumento — no el score.
 
 ## Orchestration & calibration (supporting)
 
