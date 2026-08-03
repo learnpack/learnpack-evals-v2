@@ -1,3 +1,6 @@
+> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)**. Sigue siendo cierto en espíritu (equipo chico, un solo
+> dueño); la serie vigente es `09`–`12`.
+
 # 06 — Organise
 
 > Paso 6 del DDD Starter Modelling Process. Estado: **cerrado (placeholder)**.

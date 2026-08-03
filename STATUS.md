@@ -26,17 +26,22 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 5. frontend (evaluador + consola admin) | ✔ |
 | Deploy (§10: Render + Netlify) | ✗ pendiente |
 
-### Slice 2 — diseño en curso
+### Slice 2 — diseño completo y promovido; falta el plan de código
 
-Rediseño con el DDD Starter Modelling Process para el alcance **QA interno de generadores de
-contenido** (la generación queda fuera del sistema). Align, Discover y Decompose rehechos y
-acordados; próximos pasos del proceso: Strategize → Connect → Define.
+El rediseño (DDD Starter Modelling Process, segunda vuelta, alcance **QA interno de
+generadores**) está **cerrado y promovido a docs**:
 
-- **Decisiones asentadas:** ADR-0009 … ADR-0014 (sin inferencia · criteria verificables · sin
-  score único · génesis de instrumentos · ECD-lite/claims · vocabulario en evidence models).
-- **`docs/GLOSSARY.md`** ya incorpora el lenguaje nuevo (Claim, ContentProfile,
-  GeneratorConfiguration, …; varios con naming abierto).
-- El working set de la exploración vive en `notes/` (gitignored, efímero por diseño).
+- **`docs/design/09` … `12`** — la serie vigente (Align/Discover · Decompose/Strategize ·
+  Connect · Define autocontenido). Los `01…08` quedaron como históricos con banner.
+- **ADR-0009 … ADR-0015** — las decisiones (sin inferencia · criteria verificables · sin score
+  único · génesis/tríada · ECD-lite/claims · vocabulario en evidence models · referencia humana
+  en dos capas).
+- **`docs/GLOSSARY.md`** — lenguaje del slice 2 completo + tabla de equivalencias con la
+  industria de evals. **`docs/ARCHITECTURE.md`** y **`CLAUDE.md`** re-apuntados a la serie
+  nueva.
+- **Falta:** el plan de código del slice 2 (análogo al `08-code.md` del slice 1) y su primer
+  incremento (Design con pocos claims · un adapter LearnpackV1 · Evaluation automático mínimo ·
+  Studies thin).
 
 ## Verificado
 

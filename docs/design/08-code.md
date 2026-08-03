@@ -1,3 +1,7 @@
+> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — plan del slice 1, ya implementado. El diseño vigente
+> es la serie `09`–`12`; el plan de código del slice 2 se escribirá como doc propio. **No usar
+> este doc como fuente para código nuevo.**
+
 # 08 — Code (plan de implementación del MVP)
 
 > Paso 8 del DDD Starter Modelling Process. **Snapshot congelado**: es el plan tal como se

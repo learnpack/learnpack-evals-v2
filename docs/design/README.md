@@ -11,20 +11,33 @@ Contrato de esta carpeta:
 - **No describen el estado actual.** Para eso está `../../STATUS.md`.
 - Se leen para entender **el porqué** de un límite o de un nombre, no para saber cómo está hoy
   el sistema.
+- **Supersession:** un cierre del proceso deja su snapshot; la vuelta siguiente lo supersede con
+  docs nuevos y un banner en los viejos (mismo modelo que los ADRs).
 
-Única excepción viva: **`07-define.md`** sigue abierto — el slice del MVP está cerrado, pero el
-diseño táctico del modelo objetivo se sigue completando.
+## Serie vigente — segunda vuelta (ago-2026): QA interno de generadores
 
-## Contenido
+| Doc | Pasos | Contenido |
+|---|---|---|
+| `09-align-discover-qa.md` | Align + Discover | propósito QA interno, tríada de génesis, ECD-lite, los dos bucles, recorrido del usuario, referencia humana en dos capas |
+| `10-decompose-strategize-qa.md` | Decompose + Strategize | 9 subdominios, eventos, flujo, líneas de study, core chart, guía de inversión |
+| `11-connect-qa.md` | Connect | context map, reglas de integración, queries compuestas (matching/readiness), ACLs, published language |
+| `12-define-qa.md` | Define | canvases de los 5 contextos + los 4 por referencia (autocontenido), invariantes, deferrals, marcas de primer incremento |
+
+Decisiones con alternativas: `../adr/0009` … `0015`. Insumos: `research/qa-evals-landscape.md`.
+
+## Serie histórica — primera vuelta (jul-2026): diseño del slice 1 (MVP humano)
+
+**No usar como fuente para código nuevo** (banner en cada doc).
 
 | Doc | Paso | Estado al congelar |
 |---|---|---|
-| `01-align.md` | Align | cerrado |
-| `02-discover.md` | Discover (Big-Picture EventStorming) | cerrado |
-| `03-decompose.md` | Decompose (subdominios) | cerrado |
-| `04-strategize.md` | Strategize (Core Domain Chart) | cerrado |
-| `05-connect.md` | Connect (Context Map) | cerrado |
-| `06-organise.md` | Organise | placeholder (equipo chico, un solo dueño) |
-| `07-define.md` | Define (Bounded/Aggregate Design Canvas) | **abierto** — MVP completo, modelo objetivo en curso |
-| `08-code.md` | Code (plan de implementación del MVP) | cerrado — implementado, ver `../../STATUS.md` |
-| `research/` | Insumos externos fechados | cerrado |
+| `01-align.md` | Align | cerrado — superseded por 09 |
+| `02-discover.md` | Discover | cerrado — superseded por 09 |
+| `03-decompose.md` | Decompose | cerrado — superseded por 10 |
+| `04-strategize.md` | Strategize | cerrado — superseded por 10 |
+| `05-connect.md` | Connect | cerrado — superseded por 11 |
+| `06-organise.md` | Organise | placeholder (sigue cierto en espíritu) |
+| `07-define.md` | Define | cerrado — superseded por 12 (autocontenido) |
+| `08-code.md` | Code (plan del MVP) | cerrado — implementado; el plan del slice 2 será doc propio |
+| `research/` | Insumos externos fechados | `deterministic-evaluation-landscape.md` (jul) · `qa-evals-landscape.md` (ago) |
+</content>

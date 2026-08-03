@@ -1,3 +1,9 @@
+> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño táctico que produjo el slice 1 (MVP humano).
+> **Superseded por `12-define-qa.md`** (autocontenido — incluye los contextos de este doc con
+> sus ajustes). **No usar este doc como fuente para código nuevo.** Nota: la invariante
+> "score ∈ [1,5], cobertura exacta" de Evaluation fue superseded por el tri-estado (ADR-0010,
+> `12-define-qa.md`); `Rubric v1` pervive como instrumento de referencia (ADR-0015).
+
 # 07 — Define (opción B: MVP slice)
 
 > Paso 7 del DDD Starter Modelling Process. Estado: **en curso**.

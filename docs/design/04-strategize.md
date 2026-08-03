@@ -1,3 +1,7 @@
+> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño que produjo el slice 1 (MVP humano). El diseño
+> vigente es la serie **`09-align-discover-qa.md` … `12-define-qa.md`** (QA interno). **No usar
+> este doc como fuente para código nuevo.**
+
 # 04 — Strategize (Core Domain Chart)
 
 > Paso 4 del DDD Starter Modelling Process. Estado: **cerrado (v0, living)**.

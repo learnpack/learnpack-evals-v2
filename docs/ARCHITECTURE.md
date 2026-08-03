@@ -18,15 +18,15 @@ mencionan en el código de las internas.
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ Interface Adapters                                      │  │
 │  │  controllers · repository impls · source adapters       │  │
-│  │  (HumanExpert / LLMJudge / Deterministic / Hybrid) ·    │  │
-│  │  ACLs · event publisher / outbox · read-model projectors│  │
+│  │  (Human/LLM/Deterministic/Hybrid) · extraction adapters │  │
+│  │  (por PackageFormat) · ACLs · outbox · projectors       │  │
 │  │  ┌──────────────────────────────────────────────────┐  │  │
 │  │  │ Application (use cases)                           │  │  │
 │  │  │  orquesta el dominio · DEFINE los ports (interfaces)│ │  │
 │  │  │  ┌────────────────────────────────────────────┐  │  │  │
 │  │  │  │ Domain (entities / value objects)           │  │  │  │
-│  │  │  │  Rubric · Criterion · Assessor ·            │  │  │  │
-│  │  │  │  Evaluation · ScoringPolicy · domain events │  │  │  │
+│  │  │  │  Instrument (claims·criteria) · Assessor · │  │  │  │
+│  │  │  │  Evaluation · ContentProfile · events      │  │  │  │
 │  │  │  │  PURO — cero imports de framework           │  │  │  │
 │  │  │  └────────────────────────────────────────────┘  │  │  │
 │  │  └──────────────────────────────────────────────────┘  │  │
@@ -49,17 +49,19 @@ Consecuencias obligatorias:
 
 Los **ports se definen en las capas internas** (Application/Domain); los **adapters se
 implementan en las externas**. Ejemplos de ports:
-`EvaluationSourcePort` (uno por tipo: Human/LLM/Deterministic/Hybrid), `RubricRepositoryPort`,
-`ContentRepositoryPort`, `EvaluationResultRepositoryPort`, `EventPublisherPort`,
-`CalibrationStatusPort`. El dominio depende de la abstracción; el adapter concreto
-(Postgres/Neon, Clerk, LiteLLM) se inyecta desde afuera.
+`EvaluationSourcePort` (uno por tipo: Human/LLM/Deterministic/Hybrid), `ContentExtractorPort`
+(extracción por `PackageFormat`), `DesignAssistancePort` (borradores de claims/criteria),
+`InstrumentRepositoryPort` (antes `RubricRepositoryPort`), `ContentRepositoryPort`,
+`EvaluationResultRepositoryPort`, `EventPublisherPort`, `CalibrationStatusPort`. El dominio
+depende de la abstracción; el adapter concreto (Postgres/Neon, Clerk, LiteLLM, frameworks de
+observabilidad/evals) se inyecta desde afuera.
 
 ## 3. Aislamiento de módulos (regla horizontal, además de la vertical)
 
-Cada subdominio (ver `design/03-decompose.md`) es un **módulo** con su propio dominio. Entre
-módulos:
+Cada subdominio (ver `design/10-decompose-strategize-qa.md`) es un **módulo** con su propio
+dominio. Entre módulos:
 - Se comunican por **domain events publicados + DTOs de query** (el Published Language de cada
-  módulo; ver `design/05-connect.md`).
+  módulo; ver `design/11-connect-qa.md`).
 - **Superficie pública del módulo:** cada módulo expone su contrato de lectura (*query interface +
   DTOs*), sus eventos, y un proveedor de queries `get_<m>_queries` (para inyectar por `Depends`),
   todo en una `modules/<m>/public.py`. El módulo dueño arma su propio repo **dentro** de ese
@@ -74,7 +76,7 @@ módulos:
 ## 4. Events-first
 
 - El estado evoluciona publicando **domain events**; las *policies* reaccionan (ver
-  `design/02-discover.md`). No hay comandos cruzados entre módulos.
+  `design/09-align-discover-qa.md`). No hay comandos cruzados entre módulos.
 - En el MVP, "publicar un evento" se realiza como **`INSERT` en la tabla `events`** dentro de la
   misma transacción del agregado (outbox) + dispatch in-process (ADR-0003). Los eventos son
   *lógicos*; el contrato no cambia al migrar a un bus real.
@@ -88,5 +90,6 @@ módulos:
   entities crudas por la API.
 
 ## Referencias
-`GLOSSARY.md` (lenguaje), `design/03-decompose.md` (módulos), `design/05-connect.md` (contratos
-entre módulos), `design/07-define.md` (agregados e invariantes por contexto — en curso).
+`GLOSSARY.md` (lenguaje), `design/10-decompose-strategize-qa.md` (módulos),
+`design/11-connect-qa.md` (contratos entre módulos), `design/12-define-qa.md` (agregados e
+invariantes por contexto). Serie histórica del slice 1: `design/01…08` (con banner).

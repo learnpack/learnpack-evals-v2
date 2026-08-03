@@ -4,11 +4,15 @@ Guía para generar el código de este repositorio. **Leer `docs/` antes de escri
 
 ## Orden de lectura
 1. `docs/ARCHITECTURE.md` — invariantes no negociables (empezar acá).
-2. `docs/GLOSSARY.md` — ubiquitous language (los nombres del código salen de acá).
-3. `docs/design/01-align.md` … `docs/design/05-connect.md` — el diseño estratégico (por qué de
-   cada límite).
-4. `docs/design/07-define.md` — diseño táctico por contexto (agregados, invariantes). *(en curso)*
+2. `docs/GLOSSARY.md` — ubiquitous language (los nombres del código salen de acá; incluye la
+   **tabla de equivalencias con la industria de evals**).
+3. `docs/design/09-align-discover-qa.md` … `12-define-qa.md` — **el diseño vigente** (QA
+   interno de generadores): estratégico (09–11) y táctico por contexto (12).
+4. `docs/adr/` — decisiones inmutables: 0001–0008 (slice 1) · **0009–0015 (slice 2)**.
 5. `STATUS.md` — en qué punto está el desarrollo **hoy**.
+
+⚠️ `docs/design/01-…-08` son **snapshots históricos** del diseño que produjo el slice 1 —
+llevan banner y **no se usan como fuente para código nuevo**.
 
 ## No negociables (resumen de ARCHITECTURE.md)
 - **Dependency Rule:** las dependencias apuntan **solo hacia adentro**
@@ -55,17 +59,23 @@ Reglas que no se negocian:
 ## Convenciones
 - **Ubiquitous language y código en inglés**; docs y comentarios de negocio pueden ir en
   español. Usar exactamente los nombres del `docs/GLOSSARY.md`.
-- Distinguir siempre: `EvaluationSource` (tipo/port) vs. `Assessor` (instancia concreta) ·
-  `ComputedMetric` (medición) vs. `CriterionScore` (juicio) · `rubricVersion` inmutable.
+- Distinguir siempre: `EvaluationSource` (tipo/port) vs. `Assessor` (instancia versionada) ·
+  `Criterion` (qué se verifica) vs. `Assessor` (quién/cómo lo produce) · `ComputedMetric`
+  (medición) vs. `CriterionScore` (desenlace tri-estado + cita) · `instrumentVersion` inmutable
+  + **pinning** por study.
+- **Los términos de la industria de evals** (experiment, scorer, run, dataset…) no nombran
+  conceptos de dominio: aparecen solo en adapters (ACL) y en la tabla de equivalencias del
+  `GLOSSARY.md`.
 
 ## Dos horizontes (crítico)
-- El **modelo objetivo** está documentado completo, pero **el MVP es una rebanada fina**
-  (evaluación humana, deploy económico). Ver alcance en `docs/design/01-align.md` y
-  `docs/design/04-strategize.md`.
-- **Mantener el MVP liviano**: no construir fuentes automáticas, métricas ni calibración
-  (todo `[futuro]`). Respetar los límites documentados sin agregar ceremonia prematura.
-- Ante la duda: preferir lo que dice la doc del modelo objetivo para no cerrar puertas, pero
-  implementar solo el slice del MVP.
+- El **modelo vigente** (QA interno de generadores) está completo en `docs/design/09–12`, pero
+  **el primer incremento es una rebanada fina** — ver las marcas "primer incremento: thin/no"
+  en `12-define-qa.md` y los **deferrals explícitos a Code** (assembly, métricas de validez,
+  annotation queues): son deliberados, no huecos a rellenar.
+- `[futuro]` explícitos: calibración de assessors, claims de grano generador con regla propia,
+  deliberación, integration events salientes. No construirlos sin decisión.
+- Ante la duda: implementar el slice mínimo **sin cerrar puertas** al modelo de 09–12; si una
+  decisión nueva contradice el diseño, se escribe un ADR primero.
 
 ## Stack
 **MVP (confirmado):** Next/Tailwind/shadcn en Netlify · FastAPI en Render Starter ·
