@@ -59,12 +59,13 @@ acordados; próximos pasos del proceso: Strategize → Connect → Define.
   runbook de Clerk en la instancia de producción. La DB ya es Neon.
 - **Sin CI** (no hay `.github/`) y sin tests de frontend. No estaba en el plan del MVP; es lo que
   falta si se quiere red de seguridad automática antes de deployar.
-- **Deudas del slice 1 que se resuelven durante el desarrollo del slice 2** (decisión
-  deliberada, no olvido): `Rubric v1` sigue en escala 1–5 (forma pre-ADR-0010) y Reporting aún
-  publica `overall_average`/`global_average` (contra ADR-0011). Van a cambiar en grande con el
-  rediseño; migrarlos ahora sería trabajo doble. **Condición de seguridad: no lanzar recolección
-  humana real sobre `Rubric v1` antes de ese ajuste** — cada evaluación cargada encarece la
-  migración.
+- **Deudas del slice 1 que se resuelven durante el desarrollo del slice 2**: Reporting aún
+  publica `overall_average`/`global_average` (contra ADR-0011); se retiran con el rediseño de
+  reporting. La migración de `Rubric v1` **se canceló** (ADR-0015): v1 no se migra a la forma
+  ADR-0010 — se **estabiliza como instrumento de referencia** de la calibración (panel humano
+  por dimensión); queda una revisión ligera (anchors, definiciones) antes de la primera campaña
+  de referencia. La condición de seguridad anterior desaparece: recolectar evaluación humana
+  sobre v1 es ahora su **uso previsto** — después de esa revisión.
 - `docs/design/07-define.md`: diseño táctico del **modelo objetivo** en curso (el slice del MVP
   está cerrado).
 
