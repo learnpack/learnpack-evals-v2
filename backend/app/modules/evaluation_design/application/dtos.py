@@ -9,6 +9,7 @@ invariants — are `[futuro]`.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,68 @@ class CriterionDTO:
     qualities: list[str]
     grounded_in: list[str]
     eligible_sources: list[str]
+
+
+@dataclass(frozen=True)
+class ClaimDTO:
+    claim_id: str
+    statement: str
+    quality_ids: list[str]
+    warrants: list[str]
+    alternative_explanations: list[str]
+    sufficiency_rule: str
+
+
+@dataclass(frozen=True)
+class CriterionSpecDTO:
+    criterion_id: str
+    statement: str | None
+    pass_condition: str
+    failure_modes: list[str]
+    claim_ids: list[str]
+    required_data: list[str]
+    on_missing_evidence: str
+    eligible_sources: list[str]
+    condition: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class BindingDTO:
+    package_format: str
+    task_variables: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class InstrumentSnapshot:
+    """Self-contained published language of an instrument version (11-connect)."""
+
+    instrument_version_id: str
+    instrument_id: str
+    version: str
+    name: str
+    purpose: str
+    status: str
+    claims: list[ClaimDTO]
+    criteria: list[CriterionSpecDTO]
+    bindings: list[BindingDTO]
+
+    @property
+    def criterion_ids(self) -> list[str]:
+        """The exact set an Evaluation must cover, tri-state (design 12, invariant 1)."""
+        return [c.criterion_id for c in self.criteria]
+
+    @property
+    def is_published(self) -> bool:
+        return self.status == "published"
+
+
+@dataclass(frozen=True)
+class DataRequirementDTO:
+    id: str
+    definition: str
+    aliases: list[str]
+    value_domain: dict[str, Any] | None
+    grounded_in: list[str]
 
 
 @dataclass(frozen=True)

@@ -78,6 +78,8 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         "campaigns": [],
         "generators": [],
         "briefs": [],
+        "instruments": [],
+        "data_requirements": [],
     }
     yield created
 
@@ -140,6 +142,12 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         for brief_id in created["briefs"]:
             s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(brief_id)})
             s.execute(text("DELETE FROM generation_briefs WHERE id = :id"), {"id": brief_id})
+        for instrument_id in created["instruments"]:
+            # Children go with the row (ON DELETE CASCADE).
+            s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": instrument_id})
+            s.execute(text("DELETE FROM instrument_versions WHERE id = :id"), {"id": instrument_id})
+        for requirement_id in created["data_requirements"]:
+            s.execute(text("DELETE FROM data_requirements WHERE id = :id"), {"id": requirement_id})
         for assessor_id in created["assessors"]:
             s.execute(text("DELETE FROM assessors WHERE id = :id"), {"id": assessor_id})
         s.commit()

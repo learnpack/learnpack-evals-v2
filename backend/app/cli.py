@@ -1,4 +1,5 @@
-"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo`.
+"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
+import-instrument | publish-instrument`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -35,6 +36,25 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyMetadataSchemaRepository,
 )
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
+from app.modules.evaluation_design.application.import_instrument_draft import (
+    ImportInstrumentDraft,
+    ImportInstrumentDraftCommand,
+    InstrumentImportError,
+)
+from app.modules.evaluation_design.application.publish_instrument import (
+    InstrumentNotFound,
+    PublishInstrument,
+    PublishInstrumentCommand,
+)
+from app.modules.evaluation_design.domain.instrument import (
+    InstrumentImmutable,
+    InvalidInstrument,
+)
+from app.modules.evaluation_design.infrastructure.repository import (
+    SqlAlchemyDataRequirementRepository,
+    SqlAlchemyInstrumentRepository,
+    SqlAlchemyReferenceDataRepository,
+)
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
@@ -277,6 +297,72 @@ def run_set_role(email: str, role: str) -> int:
         session.commit()
 
     print(f"{email} is now {role}")
+    return 0
+
+
+def run_import_instrument(spec_file: Path) -> int:
+    """Create or replace an instrument DRAFT from an authored YAML (13-code-qa §3.3).
+
+    Publishing stays a separate, human act (`publish-instrument` or the admin endpoint):
+    nothing produced by assistance reaches Published without one (design 12, inv. 5).
+    """
+    spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = ImportInstrumentDraft(
+            instruments=SqlAlchemyInstrumentRepository(session),
+            data_requirements=SqlAlchemyDataRequirementRepository(session),
+            uow=uow,
+        )
+        try:
+            result = use_case(ImportInstrumentDraftCommand(spec=spec))
+        except InstrumentImportError as exc:
+            for problem in exc.problems:
+                print(f"  LINT  {problem}", file=sys.stderr)
+            return 1
+        except (InvalidInstrument, InstrumentImmutable) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    instrument = result.instrument
+    minted = (
+        f", minted data requirements: {', '.join(result.minted_data_requirements)}"
+        if result.minted_data_requirements
+        else ""
+    )
+    print(
+        f"draft {instrument.id}: {len(instrument.claims)} claims, "
+        f"{len(instrument.criteria)} criteria, {len(instrument.bindings)} binding(s){minted}"
+    )
+    return 0
+
+
+def run_publish_instrument(instrument_version_id: str, email: str) -> int:
+    """The human act: publish a draft, validating the full evidential argument."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+        uow = UnitOfWork(session)
+        use_case = PublishInstrument(
+            instruments=SqlAlchemyInstrumentRepository(session),
+            data_requirements=SqlAlchemyDataRequirementRepository(session),
+            reference=SqlAlchemyReferenceDataRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            instrument = use_case(
+                PublishInstrumentCommand(
+                    instrument_version_id=instrument_version_id, published_by=assessor.id
+                )
+            )
+        except (InstrumentNotFound, InstrumentImmutable, InvalidInstrument) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"published {instrument.id} (by {email})")
     return 0
 
 
@@ -620,6 +706,19 @@ def main(argv: list[str] | None = None) -> int:
         help="wipe the local dataset first (courses, campaigns, evaluations, local users)",
     )
 
+    import_instrument_parser = subparsers.add_parser(
+        "import-instrument", help="create or replace an instrument DRAFT from a YAML spec"
+    )
+    import_instrument_parser.add_argument("--file", type=Path, required=True)
+
+    publish_instrument_parser = subparsers.add_parser(
+        "publish-instrument", help="publish a draft instrument (the human act)"
+    )
+    publish_instrument_parser.add_argument("--id", required=True, dest="instrument_version_id")
+    publish_instrument_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (published_by)"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -636,6 +735,13 @@ def main(argv: list[str] | None = None) -> int:
         return run_import_learnpack(args.file, args.acl)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
+    elif args.command == "import-instrument":
+        if not args.file.exists():
+            print(f"file not found: {args.file}", file=sys.stderr)
+            return 1
+        return run_import_instrument(args.file)
+    elif args.command == "publish-instrument":
+        return run_publish_instrument(args.instrument_version_id, args.email)
     return 0
 
 

@@ -19,6 +19,7 @@ from app.modules.evaluand_registry.infrastructure.router import (
 )
 from app.modules.evaluand_registry.infrastructure.router import router as evaluand_registry_router
 from app.modules.evaluation.infrastructure.router import router as evaluation_router
+from app.modules.evaluation_design.infrastructure.router import router as evaluation_design_router
 from app.modules.golden_dataset.infrastructure.policies import (
     register_policies as register_golden_policies,
 )
@@ -91,6 +92,7 @@ def me(assessor: CurrentAssessor) -> MeResponse:
 
 app.include_router(evaluand_registry_router)
 app.include_router(evaluand_admin_router)
+app.include_router(evaluation_design_router)
 app.include_router(identity_admin_router)
 app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)
