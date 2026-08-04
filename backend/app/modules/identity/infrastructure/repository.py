@@ -52,9 +52,7 @@ class SqlAlchemyAssessorRepository:
 
     def list_all(self) -> list[Assessor]:
         rows = (
-            self._session.execute(
-                text(f"SELECT {_COLUMNS} FROM assessors ORDER BY created_at")
-            )
+            self._session.execute(text(f"SELECT {_COLUMNS} FROM assessors ORDER BY created_at"))
             .mappings()
             .all()
         )
