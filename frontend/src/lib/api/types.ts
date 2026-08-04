@@ -84,6 +84,44 @@ export interface RegisterBriefRequest {
   fields?: Record<string, unknown>;
 }
 
+export interface InstrumentClaim {
+  claim_id: string;
+  statement: string;
+  quality_ids: string[];
+  warrants: string[];
+  alternative_explanations: string[];
+  sufficiency_rule: string;
+}
+
+export interface InstrumentCriterion {
+  criterion_id: string;
+  statement: string | null;
+  pass_condition: string;
+  failure_modes: string[];
+  claim_ids: string[];
+  required_data: string[];
+  on_missing_evidence: string;
+  eligible_sources: string[];
+  condition: Record<string, unknown> | null;
+}
+
+export interface InstrumentBinding {
+  package_format: string;
+  task_variables: Record<string, unknown>;
+}
+
+export interface InstrumentResponse {
+  instrument_version_id: string;
+  instrument_id: string;
+  version: string;
+  name: string;
+  purpose: string;
+  status: "draft" | "published" | "deprecated";
+  claims: InstrumentClaim[];
+  criteria: InstrumentCriterion[];
+  bindings: InstrumentBinding[];
+}
+
 export interface AssessorResponse {
   assessor_id: Uuid;
   role: string;

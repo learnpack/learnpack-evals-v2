@@ -22,6 +22,7 @@ import type {
   GeneratorArtifactResponse,
   GeneratorVersionResponse,
   GoldenStatus,
+  InstrumentResponse,
   Me,
   OpenCampaignRequest,
   ProgressReport,
@@ -53,6 +54,7 @@ export const queryKeys = {
   generators: ["admin", "generators"] as const,
   generatorArtifacts: (id: Uuid) => ["admin", "generators", id, "artifacts"] as const,
   briefs: ["admin", "briefs"] as const,
+  instruments: ["admin", "instruments"] as const,
   campaigns: ["admin", "campaigns"] as const,
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
@@ -173,6 +175,14 @@ export function useCreateGeneratorArtifact(generatorId: Uuid) {
       }),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: queryKeys.generatorArtifacts(generatorId) }),
+  });
+}
+
+export function useInstruments() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.instruments,
+    queryFn: () => api<InstrumentResponse[]>("/admin/instruments"),
   });
 }
 

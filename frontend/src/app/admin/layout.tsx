@@ -8,6 +8,9 @@ import { useMe } from "@/lib/api/hooks";
 
 const NAV = [
   { href: "/admin/contents", label: "Courses" },
+  { href: "/admin/generators", label: "Generators" },
+  { href: "/admin/briefs", label: "Briefs" },
+  { href: "/admin/instruments", label: "Instruments" },
   { href: "/admin/campaigns", label: "Campaigns" },
   { href: "/admin/reports", label: "Reports" },
 ];
