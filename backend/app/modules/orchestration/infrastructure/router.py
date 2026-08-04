@@ -12,6 +12,7 @@ from app.modules.evaluand_registry.public import (
     EvaluandRegistryQueries,
     get_evaluand_registry_queries,
 )
+from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
 from app.modules.orchestration.application import queries
 from app.modules.orchestration.application.commands import (
     AssignContent,
@@ -32,7 +33,6 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
 )
-from app.modules.rubric_authoring.public import RubricQueries, get_rubric_queries
 from app.platform.security import AdminAssessor, CurrentAssessor
 from app.platform.uow import UnitOfWork, get_uow
 

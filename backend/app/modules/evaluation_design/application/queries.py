@@ -4,8 +4,8 @@ Evaluation stores only the `rubricVersion` and reads the rubric through here; it
 touches `rubric_versions` / `criteria` itself.
 """
 
-from app.modules.rubric_authoring.application.dtos import RubricSnapshot
-from app.modules.rubric_authoring.application.ports import RubricRepositoryPort
+from app.modules.evaluation_design.application.dtos import RubricSnapshot
+from app.modules.evaluation_design.application.ports import RubricRepositoryPort
 
 
 def get_rubric(rubrics: RubricRepositoryPort, rubric_version_id: str) -> RubricSnapshot | None:

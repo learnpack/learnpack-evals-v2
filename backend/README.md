@@ -246,7 +246,7 @@ uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma crud
 
 ## Módulos
 
-scaffolding + seed · identity · evaluand_registry · rubric_authoring (read-only) · evaluation ·
+scaffolding + seed · identity · evaluand_registry · evaluation_design (read-only) · evaluation ·
 orchestration · golden_dataset · reporting. Cada uno con `domain/`, `application/` e
 `infrastructure/`, y su contrato en `public.py`.
 

@@ -1,7 +1,8 @@
-"""Public surface of Rubric Authoring (ARCHITECTURE.md §3).
+"""Public surface of Evaluation Design (ARCHITECTURE.md §3).
 
-Evaluation stores only a `rubricVersion` and reads the instrument through here
-(`getRubric(version)`, 05-connect.md).
+Today this exposes only the legacy read surface for `Rubric v1` — the reference
+instrument (ADR-0015), which keeps its Rubric* names on purpose. Evaluation
+stores only an instrument version id and reads the instrument through here.
 """
 
 from typing import Annotated
@@ -9,16 +10,12 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.modules.rubric_authoring.application import queries as _queries
-from app.modules.rubric_authoring.application.dtos import CriterionDTO, RubricSnapshot
-from app.modules.rubric_authoring.infrastructure.repository import SqlAlchemyRubricRepository
+from app.modules.evaluation_design.application import queries as _queries
+from app.modules.evaluation_design.application.dtos import CriterionDTO, RubricSnapshot
+from app.modules.evaluation_design.infrastructure.repository import SqlAlchemyRubricRepository
 from app.platform.uow import UnitOfWork, get_uow
 
-# Published when a rubric version is locked. Seeded in the MVP (08-code.md §9).
-RUBRIC_PUBLISHED = "RubricPublished"
-
 __all__ = [
-    "RUBRIC_PUBLISHED",
     "CriterionDTO",
     "RubricQueries",
     "RubricSnapshot",

@@ -23,8 +23,8 @@ from app.modules.evaluation.application.submit_evaluation import (
 )
 from app.modules.evaluation.domain.evaluation import InvalidEvaluation
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
+from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
 from app.modules.orchestration.public import OrchestrationQueries, get_orchestration_queries
-from app.modules.rubric_authoring.public import RubricQueries, get_rubric_queries
 from app.platform.security import CurrentAssessor
 from app.platform.uow import UnitOfWork, get_uow
 
