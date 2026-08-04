@@ -228,8 +228,9 @@ aplica su regla (`coverage ≥ threshold`). Es idempotente igual que la de quór
 
 **Reporting** (ADR-0006) compone los demás módulos por sus `public.py` y agrega en Python —
 sin JOINs cross-módulo y sin tablas de read model. Endpoints: `GET /admin/reports/scores`
-(scores por curso, promedios por evaluador y global, dispersión inter-rater) y
-`GET /admin/progress` (quién evaluó qué, cross-campaña).
+(perfil por criterion de cada curso: promedio por criterion entre assessors + dispersión
+inter-rater; **sin score agregado entre criteria**, ADR-0011) y `GET /admin/progress` (quién
+evaluó qué, cross-campaña).
 
 Dos reglas de agregación que conviene no confundir:
 - Una **repetición** es el mismo assessor sobre el mismo `(content, instrumentVersion)` — se

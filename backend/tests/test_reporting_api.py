@@ -110,8 +110,6 @@ def test_scores_report_averages_across_evaluators(admin, evaluator, content, cam
     # (2 + 4) / 2 = 3.0
     assert criteria["objectives-quality"]["average"] == 3.0
     assert criteria["instructional-design"]["average"] == 4.0
-    # 9 scores of 4 plus one of 2 → 38/10
-    assert course["average"] == 3.8
 
 
 def test_dispersion_reflects_the_disagreement(admin, evaluator, content, campaign):
@@ -205,8 +203,9 @@ def test_a_repeated_assessor_does_not_weigh_twice(admin, evaluator, content, cam
         "/evaluations",
         json={"assignment_id": assign(admin, campaign, content, bob_id), "scores": scores(5)},
     )
-    # Without collapsing: (1 + 5) / 2 = 3.0
-    assert find_content(admin.get("/admin/reports/scores").json(), content)["average"] == 3.0
+    # Without collapsing: (1 + 5) / 2 = 3.0 on every criterion
+    before = find_content(admin.get("/admin/reports/scores").json(), content)
+    assert all(c["average"] == 3.0 for c in before["criteria"])
 
     # Ada corrects herself: all 3s, submitted later.
     import uuid as _uuid
@@ -224,35 +223,14 @@ def test_a_repeated_assessor_does_not_weigh_twice(admin, evaluator, content, cam
     session.commit()
 
     course = find_content(admin.get("/admin/reports/scores").json(), content)
-    # Ada's 1s are superseded → (3 + 5) / 2 = 4.0, not (1 + 3 + 5) / 3 = 3.0
-    assert course["average"] == 4.0
+    # Ada's 1s are superseded → (3 + 5) / 2 = 4.0 per criterion, not (1 + 3 + 5) / 3 = 3.0
+    assert all(c["average"] == 4.0 for c in course["criteria"])
     assert course["evaluator_count"] == 2
     assert len(course["evaluations"]) == 3  # all three stay visible
     assert sum(1 for e in course["evaluations"] if e["superseded"]) == 1
 
 
-def test_per_evaluator_and_global_averages(admin, evaluator, content, campaign):
-    ada, ada_id = evaluator("ada")
-    bob, bob_id = evaluator("bob")
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, ada_id), "scores": scores(2)},
-    )
-    bob.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, bob_id), "scores": scores(4)},
-    )
-
-    report = admin.get("/admin/reports/scores").json()
-    averages = {a["assessor_id"]: a for a in report["assessors"]}
-
-    assert averages[ada_id]["average"] == 2.0
-    assert averages[ada_id]["display_name"] == "ada"
-    assert averages[bob_id]["average"] == 4.0
-    assert report["global_average"] == 3.0
-
-
-def test_evaluator_average_spans_every_course_they_evaluated(
+def test_an_evaluator_counts_on_every_course_they_evaluated(
     admin, evaluator, content, cleanup, unique
 ):
     """Regression: every other test had a single course, so a collapse keyed only on the
@@ -290,15 +268,17 @@ def test_evaluator_average_spans_every_course_they_evaluated(
     )
 
     report = admin.get("/admin/reports/scores").json()
-    average = next(a for a in report["assessors"] if a["assessor_id"] == ada_id)
-    assert average["average"] == 3.5  # (2 + 5) / 2, not just the latest course
-    assert average["evaluation_count"] == 2
-    assert report["global_average"] == 3.5
+    first = find_content(report, content)
+    second_course = find_content(report, second)
+    # If the collapse keyed on the assessor alone, one course would have lost its evaluation.
+    assert first["evaluator_count"] == 1
+    assert second_course["evaluator_count"] == 1
+    assert all(c["average"] == 2.0 for c in first["criteria"])
+    assert all(c["average"] == 5.0 for c in second_course["criteria"])
 
 
-def test_content_without_evaluations_reports_null_average(admin, content):
+def test_content_without_evaluations_reports_empty_profile(admin, content):
     course = find_content(admin.get("/admin/reports/scores").json(), content)
-    assert course["average"] is None
     assert course["evaluator_count"] == 0
     assert course["criteria"] == []
 

@@ -52,26 +52,16 @@ class ContentScoresDTO:
     external_id: str
     package_format: str
     version: str
-    average: float | None
     evaluator_count: int
     criteria: list[CriterionSummaryDTO]
     evaluations: list[IndividualEvaluationDTO]
 
 
 @dataclass(frozen=True)
-class AssessorAverageDTO:
-    assessor_id: UUID
-    display_name: str | None
-    email: str | None
-    evaluation_count: int
-    average: float | None
-
-
-@dataclass(frozen=True)
 class ScoresReportDTO:
+    """A per-criterion profile per content — never a score across criteria (ADR-0011)."""
+
     contents: list[ContentScoresDTO]
-    assessors: list[AssessorAverageDTO]
-    global_average: float | None
 
 
 def build_scores_report(
@@ -90,15 +80,12 @@ def build_scores_report(
     assessor_names = identity.list_assessors(list({e.assessor_id for e in all_evaluations}))
 
     content_reports = []
-    counted_per_assessor: dict[UUID, list[EvaluationDTO]] = {}
 
     for snapshot in snapshots:
         found = by_content.get(snapshot.content_id, [])
         # Repetitions are corrections: only the latest per assessor counts (ADR-0006).
         counted = aggregation.collapse_latest_per_assessor(found)
         counted_ids = {e.evaluation_id for e in counted}
-        for evaluation in counted:
-            counted_per_assessor.setdefault(evaluation.assessor_id, []).append(evaluation)
 
         averages = aggregation.average_by_criterion(found)
         dispersions = aggregation.dispersion_by_criterion(found)
@@ -109,7 +96,6 @@ def build_scores_report(
                 external_id=snapshot.external_id,
                 package_format=snapshot.package_format,
                 version=snapshot.version,
-                average=aggregation.overall_average(found),
                 evaluator_count=len(counted),
                 criteria=[
                     CriterionSummaryDTO(
@@ -139,25 +125,7 @@ def build_scores_report(
             )
         )
 
-    assessor_reports = [
-        AssessorAverageDTO(
-            assessor_id=assessor_id,
-            display_name=_name_of(assessor_names, assessor_id),
-            email=(assessor_names[assessor_id].email if assessor_id in assessor_names else None),
-            evaluation_count=len(evaluation_list),
-            average=aggregation.overall_average(evaluation_list),
-        )
-        for assessor_id, evaluation_list in sorted(
-            counted_per_assessor.items(), key=lambda item: str(item[0])
-        )
-    ]
-
-    every_counted = [e for group in counted_per_assessor.values() for e in group]
-    return ScoresReportDTO(
-        contents=content_reports,
-        assessors=assessor_reports,
-        global_average=aggregation.overall_average(every_counted),
-    )
+    return ScoresReportDTO(contents=content_reports)
 
 
 def _name_of(names: dict, assessor_id: UUID) -> str | None:

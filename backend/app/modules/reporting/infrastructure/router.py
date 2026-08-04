@@ -60,24 +60,15 @@ class ContentScoresResponse(BaseModel):
     external_id: str
     package_format: str
     version: str
-    average: float | None
     evaluator_count: int
     criteria: list[CriterionSummaryResponse]
     evaluations: list[IndividualEvaluationResponse]
 
 
-class AssessorAverageResponse(BaseModel):
-    assessor_id: UUID
-    display_name: str | None
-    email: str | None
-    evaluation_count: int
-    average: float | None
-
-
 class ScoresReportResponse(BaseModel):
+    """Per-criterion profile per content; no aggregate across criteria (ADR-0011)."""
+
     contents: list[ContentScoresResponse]
-    assessors: list[AssessorAverageResponse]
-    global_average: float | None
 
 
 class AssignmentCountsResponse(BaseModel):
@@ -122,7 +113,7 @@ def scores_report(
     evaluations: Evaluations,
     identity: Identity,
 ) -> ScoresReportResponse:
-    """Scores per course (individual and averaged), per evaluator, global, and inter-rater."""
+    """Per-course criterion profile (averages per criterion, inter-rater dispersion)."""
     report = reports.build_scores_report(contents, evaluations, identity)
     return ScoresReportResponse(
         contents=[
@@ -131,7 +122,6 @@ def scores_report(
                 external_id=c.external_id,
                 package_format=c.package_format,
                 version=c.version,
-                average=c.average,
                 evaluator_count=c.evaluator_count,
                 criteria=[
                     CriterionSummaryResponse(
@@ -165,17 +155,6 @@ def scores_report(
             )
             for c in report.contents
         ],
-        assessors=[
-            AssessorAverageResponse(
-                assessor_id=a.assessor_id,
-                display_name=a.display_name,
-                email=a.email,
-                evaluation_count=a.evaluation_count,
-                average=a.average,
-            )
-            for a in report.assessors
-        ],
-        global_average=report.global_average,
     )
 
 

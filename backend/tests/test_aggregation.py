@@ -140,13 +140,15 @@ def test_the_same_assessor_on_different_contents_is_not_a_repetition():
     assert len(collapsed) == 2
 
 
-def test_an_assessor_average_spans_their_courses():
+def test_an_assessor_counts_once_per_course():
+    """Regression (ADR-0005): collapsing keys on (assessor, content, instrument), never
+    on the assessor alone — two courses by the same evaluator both count."""
     ada = uuid4()
     evaluations = [
         evaluation(ada, content_id=CONTENT, q=4),
         evaluation(ada, content_id=uuid4(), q=5),
     ]
-    assert aggregation.overall_average(evaluations) == 4.5
+    assert aggregation.average_by_criterion(evaluations) == {"q": 4.5}
 
 
 def test_repetitions_still_collapse_within_one_content():
@@ -158,7 +160,7 @@ def test_repetitions_still_collapse_within_one_content():
         evaluation(ada, content_id=other_content, q=5),
     ]
     # The superseded 1 is dropped; the two courses both count → (4 + 5) / 2
-    assert aggregation.overall_average(evaluations) == 4.5
+    assert aggregation.average_by_criterion(evaluations) == {"q": 4.5}
 
 
 def test_missing_timestamps_do_not_crash():
@@ -202,12 +204,3 @@ def test_dispersion_by_criterion_uses_one_score_per_assessor():
     result = aggregation.dispersion_by_criterion(evaluations)["a"]
     assert result.rater_count == 2
     assert result.exact_agreement_pct == 100.0
-
-
-def test_overall_average_spans_every_criterion():
-    ada = uuid4()
-    assert aggregation.overall_average([evaluation(ada, a=4, b=5, c=3)]) == 4.0
-
-
-def test_overall_average_of_nothing_is_none():
-    assert aggregation.overall_average([]) is None

@@ -148,24 +148,14 @@ export interface ContentScores {
   external_id: string;
   package_format: string;
   version: string;
-  average: number | null;
   evaluator_count: number;
   criteria: CriterionSummary[];
   evaluations: IndividualEvaluation[];
 }
 
-export interface AssessorAverage {
-  assessor_id: Uuid;
-  display_name: string | null;
-  email: string | null;
-  evaluation_count: number;
-  average: number | null;
-}
-
+/** Per-criterion profile per content — never a score across criteria (ADR-0011). */
 export interface ScoresReport {
   contents: ContentScores[];
-  assessors: AssessorAverage[];
-  global_average: number | null;
 }
 
 export interface AssignmentCounts {

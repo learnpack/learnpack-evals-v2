@@ -6,6 +6,10 @@ assessors; inter-rater is simple dispersion.
 
 Everything here works structurally on anything shaped like an evaluation, so it stays
 independent of the Evaluation module and is unit-testable with trivial fakes.
+
+Only the *same* criterion is ever aggregated across assessors. Collapsing distinct criteria
+into one number is forbidden (ADR-0011): the result of evaluating a content is a
+per-criterion profile, not a score.
 """
 
 import statistics
@@ -117,15 +121,3 @@ def dispersion(scores: Sequence[int]) -> Dispersion:
         exact_agreement_pct=round(100 * agreeing / len(pairs), 1),
         rater_count=count,
     )
-
-
-def overall_average(evaluations: Sequence[EvaluationLike]) -> float | None:
-    """Mean across every criterion of every (collapsed) evaluation."""
-    all_scores = [
-        score.score
-        for evaluation in collapse_latest_per_assessor(evaluations)
-        for score in evaluation.scores
-    ]
-    if not all_scores:
-        return None
-    return round(statistics.fmean(all_scores), 2)

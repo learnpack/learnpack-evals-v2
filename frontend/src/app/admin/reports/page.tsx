@@ -18,7 +18,7 @@ export default function ReportsPage() {
     <div className="max-w-5xl">
       <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Aggregated scores, inter-rater agreement and progress.
+        Per-criterion score profiles, inter-rater agreement and progress.
       </p>
 
       <div className="mt-6 mb-6 inline-flex rounded-lg border bg-muted/40 p-1">
@@ -54,45 +54,11 @@ function ScoresReport() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Global average" value={fmt(data.global_average)} />
-        <Stat label="Courses" value={String(data.contents.length)} />
-        <Stat label="Evaluators" value={String(data.assessors.length)} />
-      </div>
-
       {!hasData ? (
         <EmptyState title="No evaluations submitted yet" hint="Scores appear once evaluators submit." />
       ) : (
         data.contents.map((content) => <ContentCard key={content.content_id} content={content} />)
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Per-evaluator averages</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Evaluator</TableHead>
-                <TableHead>Evaluations</TableHead>
-                <TableHead>Average</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.assessors.map((a) => (
-                <TableRow key={a.assessor_id}>
-                  <TableCell className="font-medium">
-                    {a.display_name ?? a.email ?? a.assessor_id.slice(0, 8)}
-                  </TableCell>
-                  <TableCell>{a.evaluation_count}</TableCell>
-                  <TableCell>{fmt(a.average)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -103,10 +69,7 @@ function ContentCard({ content }: { content: ContentScores }) {
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <CardTitle>{content.external_id}</CardTitle>
-          <div className="flex items-center gap-2 text-sm">
-            <Badge variant="secondary">{content.evaluator_count} raters</Badge>
-            <span className="font-semibold">avg {fmt(content.average)}</span>
-          </div>
+          <Badge variant="secondary">{content.evaluator_count} evaluators</Badge>
         </div>
       </CardHeader>
       <CardContent className="p-0">
@@ -212,16 +175,5 @@ function ProgressReport() {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <Card>
-      <CardContent className="py-5">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="mt-1 text-2xl font-semibold">{value}</p>
-      </CardContent>
-    </Card>
   );
 }
