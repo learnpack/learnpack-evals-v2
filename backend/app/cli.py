@@ -1,4 +1,5 @@
-"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo`.
+"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
+import-instrument | publish-instrument`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import yaml
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,25 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyMetadataSchemaRepository,
 )
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
+from app.modules.evaluation_design.application.import_instrument_draft import (
+    ImportInstrumentDraft,
+    ImportInstrumentDraftCommand,
+    InstrumentImportError,
+)
+from app.modules.evaluation_design.application.publish_instrument import (
+    InstrumentNotFound,
+    PublishInstrument,
+    PublishInstrumentCommand,
+)
+from app.modules.evaluation_design.domain.instrument import (
+    InstrumentImmutable,
+    InvalidInstrument,
+)
+from app.modules.evaluation_design.infrastructure.repository import (
+    SqlAlchemyDataRequirementRepository,
+    SqlAlchemyInstrumentRepository,
+    SqlAlchemyReferenceDataRepository,
+)
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
@@ -53,6 +74,7 @@ from app.shared.domain.ids import new_id
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
+DEFAULT_REFERENCE_FILE = REPO_ROOT / "docs" / "seed" / "pedagogical-reference.yaml"
 
 # Content metadata is an open collection validated against this schema (ADR-0001).
 # The domain never references these keys; only the schema and the UI know them.
@@ -167,11 +189,68 @@ def seed_metadata_schema(session: Session) -> None:
     )
 
 
-def run_seed(seed_file: Path) -> None:
+def seed_reference_data(session: Session, reference: dict[str, Any]) -> None:
+    """Upsert the norm-side reference data (design 12): dimensions, qualities, frameworks.
+
+    Qualities are the stable column of the language — same anchor for new instruments and
+    for the human reference panel (ADR-0015). Idempotent.
+    """
+    for framework in reference.get("frameworks", []):
+        session.execute(
+            text(
+                """
+                UPDATE pedagogical_frameworks
+                   SET name = :name, scope_note = :scope_note
+                 WHERE id = :id
+                """
+            ),
+            {
+                "id": framework["id"],
+                "name": framework.get("name"),
+                "scope_note": framework.get("scope_note"),
+            },
+        )
+    for dimension in reference.get("dimensions", []):
+        session.execute(
+            text(
+                """
+                INSERT INTO pedagogical_dimensions (id, name)
+                VALUES (:id, :name)
+                ON CONFLICT (id) DO UPDATE SET name = excluded.name
+                """
+            ),
+            {"id": dimension["id"], "name": dimension["name"]},
+        )
+    for quality in reference.get("qualities", []):
+        session.execute(
+            text(
+                """
+                INSERT INTO qualities (id, name, definition, dimension_id, grounded_in)
+                VALUES (:id, :name, :definition, :dimension_id, cast(:grounded_in as jsonb))
+                ON CONFLICT (id) DO UPDATE SET
+                    name = excluded.name,
+                    definition = excluded.definition,
+                    dimension_id = excluded.dimension_id,
+                    grounded_in = excluded.grounded_in
+                """
+            ),
+            {
+                "id": quality["id"],
+                "name": quality["name"],
+                "definition": quality["definition"],
+                "dimension_id": quality["dimension"],
+                "grounded_in": json.dumps(quality.get("grounded_in", [])),
+            },
+        )
+
+
+def run_seed(seed_file: Path, reference_file: Path = DEFAULT_REFERENCE_FILE) -> None:
     rubric = json.loads(seed_file.read_text(encoding="utf-8"))
+    reference = yaml.safe_load(reference_file.read_text(encoding="utf-8"))
     with SessionLocal() as session:
         seed_rubric(session, rubric)
         seed_metadata_schema(session)
+        seed_reference_data(session, reference)
         session.commit()
 
         criteria_count = session.execute(
@@ -181,10 +260,15 @@ def run_seed(seed_file: Path) -> None:
         frameworks_count = session.execute(
             text("SELECT count(*) FROM pedagogical_frameworks")
         ).scalar_one()
+        dimensions_count = session.execute(
+            text("SELECT count(*) FROM pedagogical_dimensions")
+        ).scalar_one()
+        qualities_count = session.execute(text("SELECT count(*) FROM qualities")).scalar_one()
 
     print(
         f"seeded {rubric['name']} ({_rubric_version_id(rubric)}): "
-        f"{criteria_count} criteria, {frameworks_count} frameworks, 1 metadata schema"
+        f"{criteria_count} criteria, {frameworks_count} frameworks, 1 metadata schema, "
+        f"{dimensions_count} dimensions, {qualities_count} qualities"
     )
 
 
@@ -213,6 +297,72 @@ def run_set_role(email: str, role: str) -> int:
         session.commit()
 
     print(f"{email} is now {role}")
+    return 0
+
+
+def run_import_instrument(spec_file: Path) -> int:
+    """Create or replace an instrument DRAFT from an authored YAML (13-code-qa §3.3).
+
+    Publishing stays a separate, human act (`publish-instrument` or the admin endpoint):
+    nothing produced by assistance reaches Published without one (design 12, inv. 5).
+    """
+    spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = ImportInstrumentDraft(
+            instruments=SqlAlchemyInstrumentRepository(session),
+            data_requirements=SqlAlchemyDataRequirementRepository(session),
+            uow=uow,
+        )
+        try:
+            result = use_case(ImportInstrumentDraftCommand(spec=spec))
+        except InstrumentImportError as exc:
+            for problem in exc.problems:
+                print(f"  LINT  {problem}", file=sys.stderr)
+            return 1
+        except (InvalidInstrument, InstrumentImmutable) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    instrument = result.instrument
+    minted = (
+        f", minted data requirements: {', '.join(result.minted_data_requirements)}"
+        if result.minted_data_requirements
+        else ""
+    )
+    print(
+        f"draft {instrument.id}: {len(instrument.claims)} claims, "
+        f"{len(instrument.criteria)} criteria, {len(instrument.bindings)} binding(s){minted}"
+    )
+    return 0
+
+
+def run_publish_instrument(instrument_version_id: str, email: str) -> int:
+    """The human act: publish a draft, validating the full evidential argument."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+        uow = UnitOfWork(session)
+        use_case = PublishInstrument(
+            instruments=SqlAlchemyInstrumentRepository(session),
+            data_requirements=SqlAlchemyDataRequirementRepository(session),
+            reference=SqlAlchemyReferenceDataRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            instrument = use_case(
+                PublishInstrumentCommand(
+                    instrument_version_id=instrument_version_id, published_by=assessor.id
+                )
+            )
+        except (InstrumentNotFound, InstrumentImmutable, InvalidInstrument) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"published {instrument.id} (by {email})")
     return 0
 
 
@@ -556,6 +706,19 @@ def main(argv: list[str] | None = None) -> int:
         help="wipe the local dataset first (courses, campaigns, evaluations, local users)",
     )
 
+    import_instrument_parser = subparsers.add_parser(
+        "import-instrument", help="create or replace an instrument DRAFT from a YAML spec"
+    )
+    import_instrument_parser.add_argument("--file", type=Path, required=True)
+
+    publish_instrument_parser = subparsers.add_parser(
+        "publish-instrument", help="publish a draft instrument (the human act)"
+    )
+    publish_instrument_parser.add_argument("--id", required=True, dest="instrument_version_id")
+    publish_instrument_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (published_by)"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -572,6 +735,13 @@ def main(argv: list[str] | None = None) -> int:
         return run_import_learnpack(args.file, args.acl)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
+    elif args.command == "import-instrument":
+        if not args.file.exists():
+            print(f"file not found: {args.file}", file=sys.stderr)
+            return 1
+        return run_import_instrument(args.file)
+    elif args.command == "publish-instrument":
+        return run_publish_instrument(args.instrument_version_id, args.email)
     return 0
 
 

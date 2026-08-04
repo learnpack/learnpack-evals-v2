@@ -1,0 +1,155 @@
+# Norm-side reference data (design 12 §Evaluation Design; seeded, minting is rare).
+#
+# Dimensions and qualities are derived from Rubric v1's five dimensions — deliberately:
+# the qualities are the STABLE COLUMN of the language (claims assert about them, and the
+# human reference panel anchors on them, ADR-0015), so both worlds share the same anchor.
+# Ids are minted here; definitions are one-liners written for this seed (the rubric JSON
+# only carries names).
+
+frameworks:
+  - id: "Merrill"
+    name: "First Principles of Instruction"
+    scope_note: "Effective instruction: task-centered, activation, demonstration, application, integration."
+  - id: "Biggs"
+    name: "Constructive Alignment"
+    scope_note: "Objectives, activities and assessment aligned at the same cognitive level."
+  - id: "Revised Bloom"
+    name: "Revised Bloom's Taxonomy"
+    scope_note: "Cognitive process levels and the observable verbs that express them."
+  - id: "SOLO"
+    name: "SOLO Taxonomy"
+    scope_note: "Structural complexity of learning outcomes, from unistructural to extended abstract."
+  - id: "Schmidt"
+    name: "Curriculum Coherence"
+    scope_note: "Focus, rigor and articulation of content across a curriculum."
+  - id: "Learning Progressions"
+    name: "Learning Progressions"
+    scope_note: "Plausible developmental trajectories from prior conceptions to sophistication."
+
+dimensions:
+  - id: objectives-quality
+    name: "Quality and soundness of objectives"
+  - id: constructive-alignment
+    name: "Constructive alignment (objective <-> content)"
+  - id: instructional-design
+    name: "Instructional design of the lesson"
+  - id: inter-lesson-coherence
+    name: "Coherence and continuity between lessons"
+  - id: learning-progression
+    name: "Learning progression"
+
+qualities:
+  # --- objectives-quality -------------------------------------------------
+  - id: objectives-observable
+    dimension: objectives-quality
+    name: "Explicit and observable objectives"
+    definition: "Learning objectives are stated explicitly and phrased with observable action verbs."
+    grounded_in: ["Biggs", "Revised Bloom"]
+  - id: objectives-cognitive-level
+    dimension: objectives-quality
+    name: "Appropriate cognitive level and aligned verb"
+    definition: "Each objective's verb matches a cognitive level appropriate for the audience."
+    grounded_in: ["Revised Bloom", "SOLO"]
+  - id: objectives-progression
+    dimension: objectives-quality
+    name: "Progression of complexity in objectives"
+    definition: "The set of objectives advances from lower to higher cognitive demand."
+    grounded_in: ["Revised Bloom", "SOLO"]
+  - id: objectives-specificity
+    dimension: objectives-quality
+    name: "Appropriate specificity and granularity"
+    definition: "Objectives are specific enough to be verifiable, neither vague nor micro-fragmented."
+    grounded_in: ["Biggs"]
+
+  # --- constructive-alignment ---------------------------------------------
+  - id: alignment-coverage
+    dimension: constructive-alignment
+    name: "Objective coverage by content"
+    definition: "Every declared objective is developed by some part of the content."
+    grounded_in: ["Biggs"]
+  - id: alignment-no-orphans
+    dimension: constructive-alignment
+    name: "Absence of orphaned content"
+    definition: "No substantial content section serves none of the declared objectives."
+    grounded_in: ["Biggs"]
+  - id: alignment-cognitive-consistency
+    dimension: constructive-alignment
+    name: "Consistency of cognitive level"
+    definition: "Content works at the same cognitive level its objective demands."
+    grounded_in: ["Biggs", "Revised Bloom"]
+  - id: alignment-assessment
+    dimension: constructive-alignment
+    name: "Alignment with assessment"
+    definition: "Included assessment items measure the declared objectives, when present."
+    grounded_in: ["Biggs"]
+
+  # --- instructional-design -----------------------------------------------
+  - id: instruction-authentic-tasks
+    dimension: instructional-design
+    name: "Anchoring in authentic problems or tasks"
+    definition: "Lessons start from real problems or tasks rather than abstract exposition."
+    grounded_in: ["Merrill"]
+  - id: instruction-prior-knowledge
+    dimension: instructional-design
+    name: "Activation of prior knowledge"
+    definition: "Lessons connect new material to what the learner already knows."
+    grounded_in: ["Merrill"]
+  - id: instruction-demonstration
+    dimension: instructional-design
+    name: "Demonstration / modeling"
+    definition: "New skills are demonstrated with worked examples before practice."
+    grounded_in: ["Merrill"]
+  - id: instruction-application
+    dimension: instructional-design
+    name: "Opportunities for application"
+    definition: "Learners get structured practice applying what is taught."
+    grounded_in: ["Merrill"]
+  - id: instruction-integration
+    dimension: instructional-design
+    name: "Integration and transfer"
+    definition: "Lessons close by integrating what was learned into the learner's world."
+    grounded_in: ["Merrill"]
+
+  # --- inter-lesson-coherence ----------------------------------------------
+  - id: coherence-logical-sequence
+    dimension: inter-lesson-coherence
+    name: "Logical sequencing of content"
+    definition: "Lessons follow an order where each builds on the previous ones."
+    grounded_in: ["Schmidt"]
+  - id: coherence-reinforcement
+    dimension: inter-lesson-coherence
+    name: "Consistency and reinforcement between units"
+    definition: "Terminology stays consistent and earlier concepts are revisited, not juxtaposed."
+    grounded_in: ["Schmidt"]
+  - id: coherence-focus-depth
+    dimension: inter-lesson-coherence
+    name: "Focus and depth (not dispersion)"
+    definition: "The course develops few ideas with depth instead of many superficially."
+    grounded_in: ["Schmidt"]
+  - id: coherence-explicit-links
+    dimension: inter-lesson-coherence
+    name: "Explicit connections between ideas"
+    definition: "Relations between lessons and concepts are stated, not left implicit."
+    grounded_in: ["Schmidt"]
+
+  # --- learning-progression -------------------------------------------------
+  - id: progression-sophistication
+    dimension: learning-progression
+    name: "Trajectory of increasing sophistication"
+    definition: "The course advances gradually toward more sophisticated reasoning."
+    grounded_in: ["Learning Progressions", "SOLO"]
+  - id: progression-prerequisites
+    dimension: learning-progression
+    name: "Respect for prerequisites and dependencies"
+    definition: "No concept is used before its prerequisite has been introduced."
+    grounded_in: ["Learning Progressions", "Schmidt"]
+  - id: progression-starting-point
+    dimension: learning-progression
+    name: "Starting point anchored in prior conceptions"
+    definition: "The course starts at a point reachable from the audience's declared background."
+    grounded_in: ["Learning Progressions", "Merrill"]
+  - id: progression-cognitive-demand
+    dimension: learning-progression
+    name: "Increasing and level-appropriate cognitive demand"
+    definition: "Cognitive demand grows across the course and stays appropriate for the audience."
+    grounded_in: ["Learning Progressions", "Revised Bloom"]

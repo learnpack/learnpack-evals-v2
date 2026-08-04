@@ -52,6 +52,37 @@ def test_seed_is_idempotent(requires_db):
     ]
 
 
+def test_reference_data_seeded(requires_db):
+    """Dimensions and qualities mirror Rubric v1's five dimensions — the stable column of
+    the language (ADR-0015 anchors the human reference panel on the same qualities)."""
+    run_seed(DEFAULT_SEED_FILE)
+    run_seed(DEFAULT_SEED_FILE)  # idempotent
+
+    with SessionLocal() as session:
+        dimensions = session.execute(
+            text("SELECT count(*) FROM pedagogical_dimensions")
+        ).scalar_one()
+        qualities = session.execute(text("SELECT count(*) FROM qualities")).scalar_one()
+        undefined = session.execute(
+            text("SELECT count(*) FROM qualities WHERE definition = ''")
+        ).scalar_one()
+        named_frameworks = session.execute(
+            text("SELECT count(*) FROM pedagogical_frameworks WHERE name IS NOT NULL")
+        ).scalar_one()
+        orphan_qualities = session.execute(
+            text(
+                "SELECT count(*) FROM qualities q LEFT JOIN pedagogical_dimensions d "
+                "ON q.dimension_id = d.id WHERE d.id IS NULL"
+            )
+        ).scalar_one()
+
+    assert dimensions == 5
+    assert qualities == 21
+    assert undefined == 0
+    assert named_frameworks == 6
+    assert orphan_qualities == 0
+
+
 def test_metadata_schema_seeded(requires_db):
     run_seed(DEFAULT_SEED_FILE)
 

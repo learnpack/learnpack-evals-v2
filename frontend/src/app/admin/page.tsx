@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, Bot, ClipboardList, BarChart3, FileText } from "lucide-react";
+import { BookOpen, Bot, ClipboardList, BarChart3, FileText, Ruler } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const CARDS = [
@@ -22,6 +22,12 @@ const CARDS = [
     icon: FileText,
     title: "Briefs",
     description: "Generation assignments — the key of paired comparison.",
+  },
+  {
+    href: "/admin/instruments",
+    icon: Ruler,
+    title: "Instruments",
+    description: "Evidential arguments: claims, verifiable criteria and bindings.",
   },
   {
     href: "/admin/campaigns",

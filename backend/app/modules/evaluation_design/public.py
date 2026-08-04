@@ -11,16 +11,63 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.modules.evaluation_design.application import queries as _queries
-from app.modules.evaluation_design.application.dtos import CriterionDTO, RubricSnapshot
-from app.modules.evaluation_design.infrastructure.repository import SqlAlchemyRubricRepository
+from app.modules.evaluation_design.application.dtos import (
+    BindingDTO,
+    ClaimDTO,
+    CriterionDTO,
+    CriterionSpecDTO,
+    DataRequirementDTO,
+    InstrumentSnapshot,
+    RubricSnapshot,
+)
+from app.modules.evaluation_design.infrastructure.repository import (
+    SqlAlchemyDataRequirementRepository,
+    SqlAlchemyInstrumentRepository,
+    SqlAlchemyRubricRepository,
+)
 from app.platform.uow import UnitOfWork, get_uow
 
+# Events this module publishes — the contract subscribers rely on.
+# The payload of InstrumentVersionPublished IS the full snapshot (11-connect).
+INSTRUMENT_VERSION_PUBLISHED = "InstrumentVersionPublished"
+
 __all__ = [
+    "INSTRUMENT_VERSION_PUBLISHED",
+    "BindingDTO",
+    "ClaimDTO",
     "CriterionDTO",
+    "CriterionSpecDTO",
+    "DataRequirementDTO",
+    "InstrumentQueries",
+    "InstrumentSnapshot",
     "RubricQueries",
     "RubricSnapshot",
+    "get_instrument_queries",
     "get_rubric_queries",
 ]
+
+
+class InstrumentQueries:
+    """Read-only contract of Evaluation Design (`getInstrument(version)`, 11-connect)."""
+
+    def __init__(self, session: Session) -> None:
+        self._instruments = SqlAlchemyInstrumentRepository(session)
+        self._data_requirements = SqlAlchemyDataRequirementRepository(session)
+
+    def get_instrument(self, instrument_version_id: str) -> InstrumentSnapshot | None:
+        return _queries.get_instrument(self._instruments, instrument_version_id)
+
+    def list_instruments(self) -> list[InstrumentSnapshot]:
+        return _queries.list_instruments(self._instruments)
+
+    def get_data_requirements(self) -> list[DataRequirementDTO]:
+        return _queries.get_data_requirements(self._data_requirements)
+
+
+def get_instrument_queries(
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+) -> InstrumentQueries:
+    return InstrumentQueries(uow.session)
 
 
 class RubricQueries:
