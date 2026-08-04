@@ -640,6 +640,8 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM assignments",
         "DELETE FROM campaign_contents",
         "DELETE FROM campaigns",
+        "DELETE FROM content_profiles",  # entries/extras cascade; before contents (FK)
+        "DELETE FROM extraction_acceptances",
         "DELETE FROM contents",
         "DELETE FROM events",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
