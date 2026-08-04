@@ -2,7 +2,7 @@
 
 An `Evaluation` is a concrete **act**, not a unique fact: a given `Assessor` evaluating a
 given content version with a given rubric. Identity is its own `evaluationId`; there is
-deliberately **no** uniqueness on `(assessor, content, rubricVersion)`, so repetitions coexist
+deliberately **no** uniqueness on `(assessor, content, instrumentVersion)`, so repetitions coexist
 — an `LLMJudge` run N times to measure dispersion is a first-class case (ADR-0005).
 
 Human anti-duplication lives in the `Assignment` (Orchestration), not here.
@@ -64,7 +64,7 @@ class Evaluation:
     id: UUID
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     result: EvaluationResult
     attempt: int = 1
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -76,7 +76,7 @@ class Evaluation:
         evaluation_id: UUID,
         assessor_id: UUID,
         content_id: UUID,
-        rubric_version_id: str,
+        instrument_version_id: str,
         scores: list[CriterionScore],
         rubric_criterion_ids: list[str],
         attempt: int = 1,
@@ -111,7 +111,7 @@ class Evaluation:
             id=evaluation_id,
             assessor_id=assessor_id,
             content_id=content_id,
-            rubric_version_id=rubric_version_id,
+            instrument_version_id=instrument_version_id,
             result=result,
             attempt=attempt,
             occurred_at=now,

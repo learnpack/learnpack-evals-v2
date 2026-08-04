@@ -43,7 +43,7 @@ def on_content_evaluation_completed(event: DomainEvent) -> None:
         use_case(
             CampaignCoverage(
                 campaign_id=campaign_id,
-                rubric_version_id=progress.rubric_version_id,
+                instrument_version_id=progress.instrument_version_id,
                 coverage=progress.coverage,
                 threshold=progress.golden_coverage_threshold,
             )

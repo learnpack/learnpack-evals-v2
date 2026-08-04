@@ -52,7 +52,7 @@ def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, uniqu
     created = admin.post(
         "/admin/campaigns",
         json={
-            "rubric_version_id": RUBRIC,
+            "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 2,
             "content_ids": [content],
             "metadata_view": ["targetAudience"],
@@ -64,7 +64,7 @@ def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, uniqu
     assert listing.status_code == 200
 
     row = next(c for c in listing.json() if c["campaign_id"] == created["campaign_id"])
-    assert row["rubric_version_id"] == RUBRIC
+    assert row["instrument_version_id"] == RUBRIC
     assert row["required_evaluations_per_content"] == 2
     assert row["content_ids"] == [content]
     assert row["metadata_view"] == ["targetAudience"]
@@ -80,7 +80,7 @@ def test_list_campaign_assignments_returns_the_roster(admin, evaluator, cleanup,
     campaign = admin.post(
         "/admin/campaigns",
         json={
-            "rubric_version_id": RUBRIC,
+            "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [content],
         },

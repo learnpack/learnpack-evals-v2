@@ -24,7 +24,7 @@ class CampaignCoverage:
     """What Golden Dataset needs to know about a campaign — read via its query port."""
 
     campaign_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     coverage: float
     threshold: float
 
@@ -47,7 +47,7 @@ class EstablishGoldenReference:
 
         reference = GoldenReference(
             campaign_id=coverage.campaign_id,
-            rubric_version_id=coverage.rubric_version_id,
+            instrument_version_id=coverage.instrument_version_id,
             coverage=coverage.coverage,
         )
         # Publish only if we actually recorded it — replays must not re-emit the event.

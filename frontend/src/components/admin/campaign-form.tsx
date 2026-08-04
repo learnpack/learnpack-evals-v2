@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState, Spinner } from "@/components/ui/states";
 import { useContents, useCreateCampaign } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import { METADATA_KEYS, RUBRIC_VERSION_ID } from "@/lib/constants";
+import { METADATA_KEYS, INSTRUMENT_VERSION_ID } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function CampaignForm({ onDone }: { onDone: () => void }) {
@@ -33,7 +33,7 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
     }
     createCampaign.mutate(
       {
-        rubric_version_id: RUBRIC_VERSION_ID,
+        instrument_version_id: INSTRUMENT_VERSION_ID,
         required_evaluations_per_content: required,
         content_ids: contentIds,
         metadata_view: metadataView,

@@ -1,6 +1,6 @@
 """Read-only query port of Orchestration (05-connect.md).
 
-`get_assignment` is how Evaluation resolves `assignmentId → (content, rubricVersion)` without
+`get_assignment` is how Evaluation resolves `assignmentId → (content, instrumentVersion)` without
 touching orchestration's tables or domain.
 """
 
@@ -26,7 +26,7 @@ def _to_dto(assignment: Assignment, campaign: EvaluationCampaign) -> AssignmentD
         content_id=assignment.content_id,
         assessor_id=assignment.assessor_id,
         status=str(assignment.status),
-        rubric_version_id=campaign.rubric_version_id,
+        instrument_version_id=campaign.instrument_version_id,
         metadata_view=campaign.metadata_view,
     )
 
@@ -82,7 +82,7 @@ def get_campaign_progress(
 
     return CampaignProgressDTO(
         campaign_id=campaign.id,
-        rubric_version_id=campaign.rubric_version_id,
+        instrument_version_id=campaign.instrument_version_id,
         status=str(campaign.status),
         required_evaluations_per_content=campaign.required_evaluations_per_content,
         contents=contents,

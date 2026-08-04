@@ -22,7 +22,7 @@ Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_querie
 
 class GoldenStatusResponse(BaseModel):
     campaign_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     coverage: float
     threshold: float
     usable: bool
@@ -37,10 +37,10 @@ def golden_status(
     if progress is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
 
-    reference = golden.get_golden_reference(campaign_id, progress.rubric_version_id)
+    reference = golden.get_golden_reference(campaign_id, progress.instrument_version_id)
     return GoldenStatusResponse(
         campaign_id=campaign_id,
-        rubric_version_id=progress.rubric_version_id,
+        instrument_version_id=progress.instrument_version_id,
         coverage=progress.coverage,
         threshold=progress.golden_coverage_threshold,
         # Live coverage, so the answer is right even before the policy has run.

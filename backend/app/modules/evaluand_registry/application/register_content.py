@@ -71,7 +71,5 @@ class RegisterContent:
     def _require_schema(self, package_format: str) -> MetadataSchema:
         schema = self._schemas.get(package_format)
         if schema is None:
-            raise UnknownPackageFormat(
-                f"no metadata schema registered for '{package_format}'"
-            )
+            raise UnknownPackageFormat(f"no metadata schema registered for '{package_format}'")
         return schema

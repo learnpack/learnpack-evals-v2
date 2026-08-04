@@ -50,7 +50,7 @@ class EvaluationResponse(BaseModel):
     evaluation_id: UUID
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     scores: list[ScoreRequest]
 
 
@@ -81,7 +81,7 @@ def submit_evaluation(
             detail="this assignment has already been submitted",
         )
 
-    rubric = rubrics.get_rubric(assignment.rubric_version_id)
+    rubric = rubrics.get_rubric(assignment.instrument_version_id)
     if rubric is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rubric not found")
 
@@ -93,7 +93,7 @@ def submit_evaluation(
             SubmitEvaluationCommand(
                 assessor_id=assessor.assessor_id,
                 content_id=assignment.content_id,
-                rubric_version_id=assignment.rubric_version_id,
+                instrument_version_id=assignment.instrument_version_id,
                 scores=[
                     ScoreInput(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
                     for s in request.scores
@@ -110,7 +110,7 @@ def submit_evaluation(
         evaluation_id=evaluation.id,
         assessor_id=evaluation.assessor_id,
         content_id=evaluation.content_id,
-        rubric_version_id=evaluation.rubric_version_id,
+        instrument_version_id=evaluation.instrument_version_id,
         scores=[
             ScoreRequest(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
             for s in evaluation.result.scores

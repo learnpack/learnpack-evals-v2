@@ -274,7 +274,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
 # It goes through the real use cases instead of raw INSERTs, so the events are published and
 # the policies run exactly as they would in production.
 
-DEMO_RUBRIC_VERSION_ID = "learnpack-pedagogical-v1"
+DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v1"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 DEMO_METADATA_VIEW = ["learningObjectives", "targetAudience", "prerequisites"]
 
@@ -415,7 +415,7 @@ def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
         for campaign in campaigns.list_all():
             if (
                 campaign.status == "open"
-                and campaign.rubric_version_id == DEMO_RUBRIC_VERSION_ID
+                and campaign.instrument_version_id == DEMO_INSTRUMENT_VERSION_ID
                 and wanted.issubset(set(campaign.content_ids))
             ):
                 return campaign.id
@@ -423,7 +423,7 @@ def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
         uow = UnitOfWork(session)
         campaign = OpenCampaign(campaigns, uow.events, uow)(
             OpenCampaignCommand(
-                rubric_version_id=DEMO_RUBRIC_VERSION_ID,
+                instrument_version_id=DEMO_INSTRUMENT_VERSION_ID,
                 required_evaluations_per_content=DEMO_REQUIRED_EVALUATIONS,
                 content_ids=content_ids,
                 metadata_view=DEMO_METADATA_VIEW,

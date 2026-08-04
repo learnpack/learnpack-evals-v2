@@ -24,7 +24,7 @@ class ScoreLike(Protocol):
 class EvaluationLike(Protocol):
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     submitted_at: datetime | None
     scores: Sequence[ScoreLike]
 
@@ -49,7 +49,7 @@ class Dispersion:
 def collapse_latest_per_assessor[E: EvaluationLike](evaluations: Sequence[E]) -> list[E]:
     """Drop superseded repetitions, keeping the most recent one.
 
-    A repetition is the same assessor evaluating **the same `(content, rubricVersion)`**
+    A repetition is the same assessor evaluating **the same `(content, instrumentVersion)`**
     more than once (ADR-0005), so that triple — not the assessor alone — is the key. A
     human re-evaluation is a **correction** that supersedes the previous one, so an assessor
     never weighs twice; consistent with the quorum, which counts distinct assessors
@@ -64,7 +64,7 @@ def collapse_latest_per_assessor[E: EvaluationLike](evaluations: Sequence[E]) ->
     """
     latest: dict[tuple[UUID, UUID, str], E] = {}
     for evaluation in evaluations:
-        key = (evaluation.assessor_id, evaluation.content_id, evaluation.rubric_version_id)
+        key = (evaluation.assessor_id, evaluation.content_id, evaluation.instrument_version_id)
         current = latest.get(key)
         if current is None or _ordering_key(evaluation) >= _ordering_key(current):
             latest[key] = evaluation

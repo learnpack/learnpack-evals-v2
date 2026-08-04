@@ -26,7 +26,7 @@ class InvalidCampaign(Exception):
 @dataclass
 class EvaluationCampaign:
     id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID] = field(default_factory=list)
     # Which metadata keys the evaluator is shown — the "per campaign" variability of
@@ -38,8 +38,8 @@ class EvaluationCampaign:
     def __post_init__(self) -> None:
         if not isinstance(self.status, CampaignStatus):
             self.status = CampaignStatus(self.status)
-        if not self.rubric_version_id:
-            raise InvalidCampaign("rubric_version_id is required")
+        if not self.instrument_version_id:
+            raise InvalidCampaign("instrument_version_id is required")
         if self.required_evaluations_per_content < 1:
             raise InvalidCampaign("required_evaluations_per_content must be at least 1")
         if not 0 < self.golden_coverage_threshold <= 1:

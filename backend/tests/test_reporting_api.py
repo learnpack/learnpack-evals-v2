@@ -62,7 +62,7 @@ def campaign(admin, cleanup, content):
     body = admin.post(
         "/admin/campaigns",
         json={
-            "rubric_version_id": RUBRIC,
+            "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 2,
             "content_ids": [content],
         },
@@ -215,7 +215,7 @@ def test_a_repeated_assessor_does_not_weigh_twice(admin, evaluator, content, cam
         evaluation_id=new_id(),
         assessor_id=_uuid.UUID(ada_id),
         content_id=_uuid.UUID(content),
-        rubric_version_id=RUBRIC,
+        instrument_version_id=RUBRIC,
         scores=[CriterionScore(criterion_id=c, score=3) for c in CRITERIA],
         rubric_criterion_ids=CRITERIA,
         attempt=2,
@@ -272,7 +272,7 @@ def test_evaluator_average_spans_every_course_they_evaluated(
     both = admin.post(
         "/admin/campaigns",
         json={
-            "rubric_version_id": RUBRIC,
+            "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [content, second],
         },

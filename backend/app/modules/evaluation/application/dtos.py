@@ -22,7 +22,7 @@ class EvaluationDTO:
     evaluation_id: UUID
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     scores: list[CriterionScoreDTO]
     attempt: int = 1
     submitted_at: datetime | None = None

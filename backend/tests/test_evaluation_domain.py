@@ -29,7 +29,7 @@ def submit(scores, **kwargs) -> Evaluation:
         "evaluation_id": new_id(),
         "assessor_id": new_id(),
         "content_id": new_id(),
-        "rubric_version_id": "learnpack-pedagogical-v1",
+        "instrument_version_id": "learnpack-pedagogical-v1",
         "scores": scores,
         "rubric_criterion_ids": RUBRIC_CRITERIA,
     }

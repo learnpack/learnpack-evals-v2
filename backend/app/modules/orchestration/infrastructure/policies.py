@@ -27,7 +27,7 @@ def on_evaluation_submitted(event: DomainEvent) -> None:
     fact = EvaluationSubmittedFact(
         assessor_id=published.assessor_id,
         content_id=published.content_id,
-        rubric_version_id=published.rubric_version_id,
+        instrument_version_id=published.instrument_version_id,
     )
 
     session = SessionLocal()

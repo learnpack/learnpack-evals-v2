@@ -31,7 +31,7 @@ class FakeEvaluation:
     assessor_id: UUID
     scores: list[FakeScore]
     content_id: UUID = CONTENT
-    rubric_version_id: str = RUBRIC
+    instrument_version_id: str = RUBRIC
     submitted_at: datetime | None = NOW
     evaluation_id: UUID = field(default_factory=uuid4)
 

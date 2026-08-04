@@ -41,7 +41,7 @@ export default function EvaluationsPage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">Course {a.content_id.slice(0, 8)}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Rubric {a.rubric_version_id}
+                      Instrument {a.instrument_version_id}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

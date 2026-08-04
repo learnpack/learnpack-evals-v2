@@ -206,7 +206,7 @@ necesitan; los adapters concretos se inyectan desde el router.
 ## Policy de completitud (ADR-0002)
 
 Única policy del MVP. Al oír `EvaluationSubmitted`, `orchestration` marca `submitted` todas
-las assignments abiertas de `(assessor, content)` cuya campaña use la misma `rubricVersion`
+las assignments abiertas de `(assessor, content)` cuya campaña use la misma `instrumentVersion`
 —así una evaluación puede satisfacer varias campañas— y publica
 `ContentEvaluationCompleted` cuando `COUNT(assignments submitted) ≥ required`.
 
@@ -232,7 +232,7 @@ sin JOINs cross-módulo y sin tablas de read model. Endpoints: `GET /admin/repor
 `GET /admin/progress` (quién evaluó qué, cross-campaña).
 
 Dos reglas de agregación que conviene no confundir:
-- Una **repetición** es el mismo assessor sobre el mismo `(content, rubricVersion)` — se
+- Una **repetición** es el mismo assessor sobre el mismo `(content, instrumentVersion)` — se
   colapsa a la más reciente, porque es una corrección. Evaluar **dos cursos distintos** no es
   una repetición.
 - La dispersión con un solo rater es `null`, no `0`: no hay acuerdo que medir.

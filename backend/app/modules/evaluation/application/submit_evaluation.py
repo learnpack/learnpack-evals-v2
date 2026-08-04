@@ -26,7 +26,7 @@ class ScoreInput:
 class SubmitEvaluationCommand:
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     scores: list[ScoreInput]
     # The rubric's criteria, passed in as plain data so the domain stays independent of
     # Rubric Authoring (ARCHITECTURE.md §3).
@@ -49,7 +49,7 @@ class SubmitEvaluation:
             evaluation_id=new_id(),
             assessor_id=command.assessor_id,
             content_id=command.content_id,
-            rubric_version_id=command.rubric_version_id,
+            instrument_version_id=command.instrument_version_id,
             scores=[
                 CriterionScore(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
                 for s in command.scores
