@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import yaml
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -53,6 +54,7 @@ from app.shared.domain.ids import new_id
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
+DEFAULT_REFERENCE_FILE = REPO_ROOT / "docs" / "seed" / "pedagogical-reference.yaml"
 
 # Content metadata is an open collection validated against this schema (ADR-0001).
 # The domain never references these keys; only the schema and the UI know them.
@@ -167,11 +169,68 @@ def seed_metadata_schema(session: Session) -> None:
     )
 
 
-def run_seed(seed_file: Path) -> None:
+def seed_reference_data(session: Session, reference: dict[str, Any]) -> None:
+    """Upsert the norm-side reference data (design 12): dimensions, qualities, frameworks.
+
+    Qualities are the stable column of the language — same anchor for new instruments and
+    for the human reference panel (ADR-0015). Idempotent.
+    """
+    for framework in reference.get("frameworks", []):
+        session.execute(
+            text(
+                """
+                UPDATE pedagogical_frameworks
+                   SET name = :name, scope_note = :scope_note
+                 WHERE id = :id
+                """
+            ),
+            {
+                "id": framework["id"],
+                "name": framework.get("name"),
+                "scope_note": framework.get("scope_note"),
+            },
+        )
+    for dimension in reference.get("dimensions", []):
+        session.execute(
+            text(
+                """
+                INSERT INTO pedagogical_dimensions (id, name)
+                VALUES (:id, :name)
+                ON CONFLICT (id) DO UPDATE SET name = excluded.name
+                """
+            ),
+            {"id": dimension["id"], "name": dimension["name"]},
+        )
+    for quality in reference.get("qualities", []):
+        session.execute(
+            text(
+                """
+                INSERT INTO qualities (id, name, definition, dimension_id, grounded_in)
+                VALUES (:id, :name, :definition, :dimension_id, cast(:grounded_in as jsonb))
+                ON CONFLICT (id) DO UPDATE SET
+                    name = excluded.name,
+                    definition = excluded.definition,
+                    dimension_id = excluded.dimension_id,
+                    grounded_in = excluded.grounded_in
+                """
+            ),
+            {
+                "id": quality["id"],
+                "name": quality["name"],
+                "definition": quality["definition"],
+                "dimension_id": quality["dimension"],
+                "grounded_in": json.dumps(quality.get("grounded_in", [])),
+            },
+        )
+
+
+def run_seed(seed_file: Path, reference_file: Path = DEFAULT_REFERENCE_FILE) -> None:
     rubric = json.loads(seed_file.read_text(encoding="utf-8"))
+    reference = yaml.safe_load(reference_file.read_text(encoding="utf-8"))
     with SessionLocal() as session:
         seed_rubric(session, rubric)
         seed_metadata_schema(session)
+        seed_reference_data(session, reference)
         session.commit()
 
         criteria_count = session.execute(
@@ -181,10 +240,15 @@ def run_seed(seed_file: Path) -> None:
         frameworks_count = session.execute(
             text("SELECT count(*) FROM pedagogical_frameworks")
         ).scalar_one()
+        dimensions_count = session.execute(
+            text("SELECT count(*) FROM pedagogical_dimensions")
+        ).scalar_one()
+        qualities_count = session.execute(text("SELECT count(*) FROM qualities")).scalar_one()
 
     print(
         f"seeded {rubric['name']} ({_rubric_version_id(rubric)}): "
-        f"{criteria_count} criteria, {frameworks_count} frameworks, 1 metadata schema"
+        f"{criteria_count} criteria, {frameworks_count} frameworks, 1 metadata schema, "
+        f"{dimensions_count} dimensions, {qualities_count} qualities"
     )
 
 
