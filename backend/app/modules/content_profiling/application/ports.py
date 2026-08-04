@@ -46,6 +46,8 @@ class ContentGatewayPort(Protocol):
 
     def get_package(self, content_id: UUID) -> PackageDTO | None: ...
 
+    def list_content_ids(self, package_format: str) -> list[UUID]: ...
+
 
 class DataRequirementNamespacePort(Protocol):
     """The canonical demand-side namespace minted by Evaluation Design (ADR-0014)."""

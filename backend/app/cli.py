@@ -1,5 +1,5 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
-import-instrument | publish-instrument`.
+import-instrument | publish-instrument | profile-content | accept-extraction | reprofile`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -20,6 +20,32 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.modules.content_profiling.application.accept_extraction import (
+    AcceptExtraction,
+    AcceptExtractionCommand,
+)
+from app.modules.content_profiling.application.ports import PackageFetcherPort
+from app.modules.content_profiling.application.profile_content import (
+    ContentNotFound,
+    NoAdapterForFormat,
+    ProfileAlreadyExists,
+    ProfileContent,
+    ProfileContentCommand,
+)
+from app.modules.content_profiling.domain.profile import ContentProfile, InvalidProfile
+from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
+from app.modules.content_profiling.infrastructure.fetchers import (
+    FilesystemPackageFetcher,
+    HttpPackageFetcher,
+)
+from app.modules.content_profiling.infrastructure.gateways import (
+    DesignNamespaceGateway,
+    RegistryContentGateway,
+)
+from app.modules.content_profiling.infrastructure.repository import (
+    SqlAlchemyAcceptanceRepository,
+    SqlAlchemyProfileRepository,
+)
 from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
@@ -364,6 +390,133 @@ def run_publish_instrument(instrument_version_id: str, email: str) -> int:
 
     print(f"published {instrument.id} (by {email})")
     return 0
+
+
+# ----------------------------------------------------------------- content profiling
+
+
+def _package_fetcher(base_dir: Path | None) -> PackageFetcherPort:
+    """HTTP against real packages; `--base-dir` resolves locators as local paths."""
+    return FilesystemPackageFetcher(base_dir) if base_dir else HttpPackageFetcher()
+
+
+def _build_profile_content(session: Session, base_dir: Path | None) -> ProfileContent:
+    uow = UnitOfWork(session)
+    return ProfileContent(
+        profiles=SqlAlchemyProfileRepository(session),
+        contents=RegistryContentGateway(session),
+        namespace=DesignNamespaceGateway(session),
+        adapters=ADAPTERS_BY_FORMAT,
+        fetcher=_package_fetcher(base_dir),
+        publisher=uow.events,
+        uow=uow,
+    )
+
+
+def _describe_profile(profile: ContentProfile) -> str:
+    if profile.status == "failed":
+        return f"FAILED {profile.content_id}: {profile.error}"
+    absent = sum(1 for e in profile.entries if e.provenance == "absent")
+    return (
+        f"ok {profile.content_id}: {len(profile.entries)} entries "
+        f"({absent} absent), {len(profile.extras)} extras "
+        f"[adapter {profile.package_format}/{profile.adapter_version}]"
+    )
+
+
+def run_profile_content(raw_content_id: str, base_dir: Path | None) -> int:
+    """Manual profiling — works without an acceptance: this is how the samples that earn
+    the `ExtractionAccepted` act are produced (13-code-qa §3.4)."""
+    try:
+        content_id = UUID(raw_content_id)
+    except ValueError:
+        print(f"not a content id: {raw_content_id!r}", file=sys.stderr)
+        return 1
+    with SessionLocal() as session:
+        use_case = _build_profile_content(session, base_dir)
+        try:
+            profile = use_case(ProfileContentCommand(content_id=content_id))
+        except ProfileAlreadyExists as exc:
+            print(str(exc))
+            return 0
+        except (ContentNotFound, NoAdapterForFormat, InvalidProfile) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(_describe_profile(profile))
+    return 0
+
+
+def run_accept_extraction(package_format: str, email: str) -> int:
+    """The human act (ADR-0012): accept the CURRENT adapter version for a format."""
+    adapter = ADAPTERS_BY_FORMAT.get(package_format)
+    if adapter is None:
+        known = ", ".join(sorted(ADAPTERS_BY_FORMAT)) or "none"
+        print(
+            f"no extraction adapter for {package_format!r} (registered: {known})",
+            file=sys.stderr,
+        )
+        return 1
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+        uow = UnitOfWork(session)
+        use_case = AcceptExtraction(
+            acceptances=SqlAlchemyAcceptanceRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        newly = use_case(
+            AcceptExtractionCommand(
+                package_format=package_format,
+                adapter_version=adapter.adapter_version,
+                accepted_by=assessor.id,
+            )
+        )
+    verdict = "accepted" if newly else "was already accepted"
+    print(f"extraction {package_format}/{adapter.adapter_version} {verdict} (by {email})")
+    return 0
+
+
+def run_reprofile(
+    package_format: str, raw_content_ids: list[str] | None, base_dir: Path | None
+) -> int:
+    """Explicit batch re-profiling — never a cascade (12-define). One transaction per
+    content; contents already profiled ok by the current adapter version are skipped."""
+    if package_format not in ADAPTERS_BY_FORMAT:
+        print(f"no extraction adapter for {package_format!r}", file=sys.stderr)
+        return 1
+    try:
+        selected = [UUID(raw) for raw in raw_content_ids or []]
+    except ValueError as exc:
+        print(f"not a content id: {exc}", file=sys.stderr)
+        return 1
+    if not selected:
+        with SessionLocal() as session:
+            selected = RegistryContentGateway(session).list_content_ids(package_format)
+
+    profiled = failed = skipped = errors = 0
+    for content_id in selected:
+        with SessionLocal() as session:
+            use_case = _build_profile_content(session, base_dir)
+            try:
+                profile = use_case(ProfileContentCommand(content_id=content_id))
+            except ProfileAlreadyExists:
+                skipped += 1
+                continue
+            except (ContentNotFound, NoAdapterForFormat, InvalidProfile) as exc:
+                print(f"  ERROR {content_id}: {exc}", file=sys.stderr)
+                errors += 1
+                continue
+        print(f"  {_describe_profile(profile)}")
+        profiled += profile.status == "ok"
+        failed += profile.status == "failed"
+    print(
+        f"reprofiled {package_format}: {profiled} ok, {failed} failed, "
+        f"{skipped} skipped, {errors} errors"
+    )
+    return 0 if errors == 0 else 1
 
 
 def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
@@ -721,6 +874,31 @@ def main(argv: list[str] | None = None) -> int:
         "--email", required=True, help="the admin performing the act (published_by)"
     )
 
+    profile_parser = subparsers.add_parser(
+        "profile-content", help="extract a cited profile for one content (manual)"
+    )
+    profile_parser.add_argument("--content-id", required=True)
+    profile_parser.add_argument(
+        "--base-dir", type=Path, help="resolve artifact locators as paths under this dir"
+    )
+
+    accept_parser = subparsers.add_parser(
+        "accept-extraction", help="accept the current adapter version for a package format"
+    )
+    accept_parser.add_argument("--package-format", required=True)
+    accept_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (accepted_by)"
+    )
+
+    reprofile_parser = subparsers.add_parser(
+        "reprofile", help="explicit batch re-profiling for a package format"
+    )
+    reprofile_parser.add_argument("--package-format", required=True)
+    reprofile_parser.add_argument(
+        "--content-id", action="append", dest="content_ids", help="repeatable; default: all"
+    )
+    reprofile_parser.add_argument("--base-dir", type=Path)
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -744,6 +922,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_import_instrument(args.file)
     elif args.command == "publish-instrument":
         return run_publish_instrument(args.instrument_version_id, args.email)
+    elif args.command == "profile-content":
+        return run_profile_content(args.content_id, args.base_dir)
+    elif args.command == "accept-extraction":
+        return run_accept_extraction(args.package_format, args.email)
+    elif args.command == "reprofile":
+        return run_reprofile(args.package_format, args.content_ids, args.base_dir)
     return 0
 
 
