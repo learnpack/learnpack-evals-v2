@@ -44,6 +44,7 @@ files = [
     "app/platform/db.py",
     "app/platform/uow.py",
     "app/platform/events.py",
+    "app/modules/evaluand_registry",
 ]
 
 [build-system]
