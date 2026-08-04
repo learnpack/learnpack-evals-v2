@@ -69,8 +69,10 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
     """Collect rows created by a test and remove them afterwards.
 
     Deletion follows the FK order: evaluations/completions → assignments → campaigns →
-    contents → generators/briefs → assessors. Outbox rows are keyed by the aggregate id
-    that produced them.
+    profiles → contents → generators/briefs → assessors. Outbox rows are keyed by the
+    aggregate id that produced them. `acceptances` holds (package_format, adapter_version)
+    tuples — an acceptance is global, so any test that creates one MUST register it here
+    or every later content registration in the session would get auto-profiled.
     """
     created: dict[str, list] = {
         "contents": [],
@@ -80,6 +82,7 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         "briefs": [],
         "instruments": [],
         "data_requirements": [],
+        "acceptances": [],
     }
     yield created
 
@@ -126,6 +129,18 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
             s.execute(text("DELETE FROM campaigns WHERE id = :id"), {"id": campaign_id})
 
         for content_id in created["contents"]:
+            # Profiles (and their outbox rows) go before the content they reference;
+            # entries/extras cascade with the profile row.
+            s.execute(
+                text(
+                    "DELETE FROM events WHERE aggregate_id IN "
+                    "(SELECT id::text FROM content_profiles WHERE content_id = :id)"
+                ),
+                {"id": content_id},
+            )
+            s.execute(
+                text("DELETE FROM content_profiles WHERE content_id = :id"), {"id": content_id}
+            )
             s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(content_id)})
             # content_package_artifacts cascade with the content row.
             s.execute(text("DELETE FROM contents WHERE id = :id"), {"id": content_id})
@@ -148,6 +163,18 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
             s.execute(text("DELETE FROM instrument_versions WHERE id = :id"), {"id": instrument_id})
         for requirement_id in created["data_requirements"]:
             s.execute(text("DELETE FROM data_requirements WHERE id = :id"), {"id": requirement_id})
+        for package_format, adapter_version in created["acceptances"]:
+            s.execute(
+                text("DELETE FROM events WHERE aggregate_id = :id"),
+                {"id": f"{package_format}:{adapter_version}"},
+            )
+            s.execute(
+                text(
+                    "DELETE FROM extraction_acceptances "
+                    "WHERE package_format = :f AND adapter_version = :v"
+                ),
+                {"f": package_format, "v": adapter_version},
+            )
         for assessor_id in created["assessors"]:
             s.execute(text("DELETE FROM assessors WHERE id = :id"), {"id": assessor_id})
         s.commit()

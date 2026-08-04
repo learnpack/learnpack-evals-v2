@@ -25,6 +25,8 @@ import type {
   InstrumentResponse,
   Me,
   OpenCampaignRequest,
+  ProfileCapabilitiesResponse,
+  ProfileResponse,
   ProgressReport,
   RegisterBriefRequest,
   RegisterContentRequest,
@@ -55,6 +57,8 @@ export const queryKeys = {
   generatorArtifacts: (id: Uuid) => ["admin", "generators", id, "artifacts"] as const,
   briefs: ["admin", "briefs"] as const,
   instruments: ["admin", "instruments"] as const,
+  profiles: ["admin", "profiles"] as const,
+  profilingCapabilities: ["admin", "profiling", "capabilities"] as const,
   campaigns: ["admin", "campaigns"] as const,
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
@@ -183,6 +187,22 @@ export function useInstruments() {
   return useQuery({
     queryKey: queryKeys.instruments,
     queryFn: () => api<InstrumentResponse[]>("/admin/instruments"),
+  });
+}
+
+export function useProfiles() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.profiles,
+    queryFn: () => api<ProfileResponse[]>("/admin/profiles"),
+  });
+}
+
+export function useProfilingCapabilities() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.profilingCapabilities,
+    queryFn: () => api<ProfileCapabilitiesResponse[]>("/admin/profiling/capabilities"),
   });
 }
 

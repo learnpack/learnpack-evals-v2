@@ -10,8 +10,7 @@ _Última actualización: 2026-08-04._
 ## Dónde estamos
 
 **Slice 1 (MVP humano): completo y verificado en local; falta el deploy.
-Slice 2 (motor de QA de generadores): diseño y plan de código cerrados; arranca la
-implementación.**
+Slice 2 (motor de QA de generadores): en implementación por bloques — 5 de 7 hechos.**
 
 El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el quickstart del
 `README.md` de la raíz.
@@ -27,7 +26,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 5. frontend (evaluador + consola admin) | ✔ |
 | Deploy (§10: Render + Netlify) | ✗ pendiente |
 
-### Slice 2 — plan de código cerrado; implementación no iniciada
+### Slice 2 — en implementación por bloques
 
 - **Diseño:** serie `docs/design/09…12` + ADRs 0009–0015 (promovido antes).
 - **Plan de código:** **`docs/design/13-code-qa.md`** (promovido) + **ADR-0016** (assessors
@@ -40,7 +39,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 2. Renames + retiro de promedios (ADR-0011) | ✔ |
 | 3. Evaluand Registry ensanchado | ✔ |
 | 4. Evaluation Design (instrumento + primer YAML real) | ✔ |
-| 5. Content Profiling (adapter LearnpackV1 + visor) | ✗ |
+| 5. Content Profiling (adapter LearnpackV1 + visor) | ✔ |
 | 6. Evaluation automático (primer assessor) | ✗ |
 | 7. Evaluation Studies thin | ✗ |
 
@@ -54,15 +53,23 @@ las ramas de trabajo; Marta revisa y mergea. Cada PR con la suite completa en ve
 asistencia) y **publicarlo** cuando el equipo lo haga suyo
 (`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>` o
 `POST /admin/instruments/{id}/publish`). Hasta entonces queda en `draft` — la publicación es
-acto humano (12-define, invariante 5). Los `data_requirement` ids ya minteados
+acto humano (12-define, invariante 5). Los `data_requirement` ids minteados
 (`learning_objectives`, `target_audience`, `prerequisites`, `practice_exercises`) son el
-contrato contra el que el adapter de Profiling (bloque 5) declara capacidades.
+contrato contra el que el adapter `LearnpackV1` (bloque 5) declara sus capacidades.
+
+**Segundo input pendiente del equipo (bloque 5):** revisar las muestras de profile
+(`/admin/profiles` o `app.cli profile-content`) y **aceptar la extracción** cuando el equipo
+confíe en ella (`python -m app.cli accept-extraction --package-format LearnpackV1 --email
+<admin>`). Hasta entonces el perfilado automático al registrar contenido queda desarmado —
+la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en modo local.
 
 ## Verificado
 
-- **Suite backend en verde: 233 tests** contra Postgres local (~10 s). Requiere
+- **Suite backend en verde: 267 tests** contra Postgres local (~12 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
-- **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`,
+- **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`
+  (ahora también importa el draft del instrumento, acepta la extracción `LearnpackV1` y
+  perfila los cursos demo — con `practice_exercises: absent`, el showcase de ADR-0009),
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
   ninguna clave de Clerk**.
 - **Typecheck del frontend** limpio (`npx tsc --noEmit`).

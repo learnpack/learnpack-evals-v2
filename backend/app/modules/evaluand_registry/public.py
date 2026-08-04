@@ -5,7 +5,8 @@ and the events, and provides `get_evaluand_registry_queries` for `Depends` — w
 repositories itself, so callers never name a concrete adapter.
 """
 
-from typing import Annotated
+from dataclasses import dataclass
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends
@@ -44,12 +45,32 @@ __all__ = [
     "BriefDTO",
     "ContentPackageDTO",
     "ContentSnapshot",
+    "ContentVersionRegisteredFact",
     "EvaluandRegistryQueries",
     "GeneratorVersionDTO",
     "MetadataEntryDTO",
     "PackageArtifactDTO",
     "get_evaluand_registry_queries",
 ]
+
+
+@dataclass(frozen=True)
+class ContentVersionRegisteredFact:
+    """The Published Language of `ContentVersionRegistered` — what subscribers may rely on.
+
+    Artifacts stay out on purpose: consumers read the package via `get_content_package`.
+    """
+
+    content_id: UUID
+    package_format: str
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "ContentVersionRegisteredFact":
+        return cls(
+            content_id=UUID(payload["contentId"]),
+            # Old rows in `events` carry the pre-rename key; both replay fine.
+            package_format=payload.get("packageFormat") or payload["generatingSystem"],
+        )
 
 
 class EvaluandRegistryQueries:

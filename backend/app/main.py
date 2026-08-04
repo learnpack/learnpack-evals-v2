@@ -14,6 +14,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.modules.content_profiling.infrastructure.policies import (
+    register_policies as register_profiling_policies,
+)
+from app.modules.content_profiling.infrastructure.router import router as content_profiling_router
 from app.modules.evaluand_registry.infrastructure.router import (
     evaluand_router as evaluand_admin_router,
 )
@@ -93,6 +97,7 @@ def me(assessor: CurrentAssessor) -> MeResponse:
 app.include_router(evaluand_registry_router)
 app.include_router(evaluand_admin_router)
 app.include_router(evaluation_design_router)
+app.include_router(content_profiling_router)
 app.include_router(identity_admin_router)
 app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)
@@ -104,6 +109,8 @@ app.include_router(dev_router)  # 404s unless AUTH_MODE=local
 # Policies subscribe here, at wiring time. The MVP's chain (08-code.md §5):
 #   EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
 #                       → (golden) GoldenReferenceEstablished
+# Slice 2 (13-code-qa §5): ContentVersionRegistered → (profiling) profile if accepted.
 # Swapping the in-process dispatcher for a real bus later touches only these lines.
 register_policies(dispatcher)
 register_golden_policies(dispatcher)
+register_profiling_policies(dispatcher)
