@@ -39,7 +39,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 1. CI (workflow + mypy scoped a módulos nuevos) | ✔ |
 | 2. Renames + retiro de promedios (ADR-0011) | ✔ |
 | 3. Evaluand Registry ensanchado | ✔ |
-| 4. Evaluation Design (instrumento + primer YAML real) | ✗ |
+| 4. Evaluation Design (instrumento + primer YAML real) | ✔ |
 | 5. Content Profiling (adapter LearnpackV1 + visor) | ✗ |
 | 6. Evaluation automático (primer assessor) | ✗ |
 | 7. Evaluation Studies thin | ✗ |
@@ -49,12 +49,18 @@ describen **el cambio** (feature/fix), nunca etapas del plan; Claude commitea so
 las ramas de trabajo; Marta revisa y mergea. Cada PR con la suite completa en verde.
 (`13-code-qa.md` §8 menciona un esquema de nombres viejo — snapshot congelado, no se corrige.)
 
-**Input pendiente del equipo (no bloquea bloques 1–3):** los claims del primer instrumento
-real (YAML del bloque 4).
+**Input pendiente del equipo:** revisar y editar el borrador del primer instrumento
+(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 3 claims / 6 criteria, redactado como
+asistencia) y **publicarlo** cuando el equipo lo haga suyo
+(`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>` o
+`POST /admin/instruments/{id}/publish`). Hasta entonces queda en `draft` — la publicación es
+acto humano (12-define, invariante 5). Los `data_requirement` ids ya minteados
+(`learning_objectives`, `target_audience`, `prerequisites`, `practice_exercises`) son el
+contrato contra el que el adapter de Profiling (bloque 5) declara capacidades.
 
 ## Verificado
 
-- **Suite backend en verde: 201 tests** contra Postgres local (~10 s). Requiere
+- **Suite backend en verde: 233 tests** contra Postgres local (~10 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`,
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
