@@ -122,6 +122,42 @@ export interface InstrumentResponse {
   bindings: InstrumentBinding[];
 }
 
+export interface ProfileEntryResponse {
+  data_requirement_id: string;
+  provenance: "declared_structured" | "declared_in_content" | "absent";
+  value: unknown;
+  quote: string | null;
+  locator: Record<string, unknown> | null;
+}
+
+export interface ProfileExtraResponse {
+  name: string;
+  value: unknown;
+  quote: string | null;
+  locator: Record<string, unknown> | null;
+}
+
+export interface ProfileResponse {
+  profile_id: Uuid;
+  content_id: Uuid;
+  external_id: string | null;
+  content_version: string | null;
+  package_format: string;
+  adapter_version: string;
+  status: "ok" | "failed";
+  error: string | null;
+  profiled_at: string | null;
+  entries: ProfileEntryResponse[];
+  extras: ProfileExtraResponse[];
+}
+
+export interface ProfileCapabilitiesResponse {
+  package_format: string;
+  adapter_version: string;
+  capabilities: string[];
+  accepted: boolean;
+}
+
 export interface AssessorResponse {
   assessor_id: Uuid;
   role: string;
