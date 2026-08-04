@@ -803,8 +803,47 @@ def _reset_demo(session: Session) -> None:
     session.commit()
 
 
+DEMO_INSTRUMENT_SPEC = REPO_ROOT / "docs" / "seed" / "instruments" / "learnpack-course-qa-v1.yaml"
+
+
+def _seed_demo_acceptance(admin_id: UUID) -> None:
+    """Accept the current LearnpackV1 adapter so registration auto-profiles (demo only —
+    in the real store this is the team's deliberate act, ADR-0012)."""
+    adapter = ADAPTERS_BY_FORMAT["LearnpackV1"]
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        AcceptExtraction(
+            acceptances=SqlAlchemyAcceptanceRepository(session), publisher=uow.events, uow=uow
+        )(
+            AcceptExtractionCommand(
+                package_format="LearnpackV1",
+                adapter_version=adapter.adapter_version,
+                accepted_by=admin_id,
+            )
+        )
+
+
+def _seed_demo_profiles(content_ids: dict[str, UUID]) -> int:
+    """Profile any course the policy did not reach (reused contents emit no event).
+
+    The demo courses carry declared metadata but no package artifacts, so the profiles
+    show `practice_exercises: absent` — the deliberate showcase of ADR-0009: absence is
+    a first-class finding, not a gap.
+    """
+    profiled = 0
+    for content_id in content_ids.values():
+        with SessionLocal() as session:
+            use_case = _build_profile_content(session, base_dir=None)
+            try:
+                use_case(ProfileContentCommand(content_id=content_id))
+                profiled += 1
+            except ProfileAlreadyExists:
+                pass
+    return profiled
+
+
 def run_seed_demo(reset: bool) -> int:
-    """Users + courses + an open campaign + assignments, all pending. Idempotent."""
+    """Users + courses + profiles + an open campaign + assignments, all pending. Idempotent."""
     if not _demo_local_mode_only():
         return 1
 
@@ -814,7 +853,14 @@ def run_seed_demo(reset: bool) -> int:
             print("wiped the local dataset (courses, campaigns, evaluations, local users)")
         assessor_ids = _seed_demo_assessors(session)
 
-    content_ids = _seed_demo_contents()
+    # The instrument draft mints the data_requirements the extraction conforms to
+    # (ADR-0014). It stays a DRAFT: publishing is the team's act, never the seeder's.
+    if run_import_instrument(DEMO_INSTRUMENT_SPEC) != 0:
+        return 1
+    _seed_demo_acceptance(assessor_ids["admin@local.dev"])
+
+    content_ids = _seed_demo_contents()  # new registrations auto-profile via the policy
+    profiled = _seed_demo_profiles(content_ids)
     campaign_id = _seed_demo_campaign(list(content_ids.values()))
     evaluator_ids = [
         assessor_ids[email] for email, _, role in DEMO_ASSESSORS if role is Role.EVALUATOR
@@ -822,8 +868,8 @@ def run_seed_demo(reset: bool) -> int:
     created = _seed_demo_assignments(campaign_id, list(content_ids.values()), evaluator_ids)
 
     print(
-        f"\ndemo ready: {len(content_ids)} courses, 1 open campaign "
-        f"(quorum {DEMO_REQUIRED_EVALUATIONS}), {created} new assignments\n"
+        f"\ndemo ready: {len(content_ids)} courses ({profiled} newly profiled), "
+        f"1 open campaign (quorum {DEMO_REQUIRED_EVALUATIONS}), {created} new assignments\n"
     )
     for email, display_name, role in DEMO_ASSESSORS:
         print(f"  {role.value:<9} {email:<24} {display_name}")
