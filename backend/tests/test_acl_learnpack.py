@@ -4,7 +4,7 @@ Pure mapping, no DB. This is the seam that absorbs LearnPack's field names so th
 leak into the domain.
 """
 
-from app.modules.content_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
 
 RAW = {
     "slug": "introduction-to-generative-ai",

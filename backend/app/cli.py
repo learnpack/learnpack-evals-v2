@@ -18,20 +18,20 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.modules.content_registry.application.register_content import (
+from app.modules.evaluand_registry.application.register_content import (
     DuplicateContent,
     RegisterContent,
     RegisterContentCommand,
     UnknownGeneratingSystem,
 )
-from app.modules.content_registry.domain.content import InvalidContent
-from app.modules.content_registry.domain.metadata import InvalidMetadata
-from app.modules.content_registry.infrastructure.acl_learnpack import to_register_command
-from app.modules.content_registry.infrastructure.repository import (
+from app.modules.evaluand_registry.domain.content import InvalidContent
+from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
+from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyMetadataSchemaRepository,
 )
-from app.modules.content_registry.public import ContentRegistryQueries
+from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
@@ -396,7 +396,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
             except DuplicateContent:
                 snapshot = next(
                     s
-                    for s in ContentRegistryQueries(session).list_content_snapshots()
+                    for s in EvaluandRegistryQueries(session).list_content_snapshots()
                     if s.generating_system == raw["generating_system"]
                     and s.external_id == raw["external_id"]
                     and s.version == raw["version"]

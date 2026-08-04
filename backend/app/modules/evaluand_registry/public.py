@@ -1,7 +1,7 @@
 """Public surface of Content Registry (ARCHITECTURE.md §3).
 
 The **only** module in this package other modules may import. It re-exports the query DTOs
-and the events, and provides `get_content_registry_queries` for `Depends` — which builds the
+and the events, and provides `get_evaluand_registry_queries` for `Depends` — which builds the
 repositories itself, so callers never name a concrete adapter.
 """
 
@@ -11,29 +11,29 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.modules.content_registry.application import queries as _queries
-from app.modules.content_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
-from app.modules.content_registry.infrastructure.repository import (
+from app.modules.evaluand_registry.application import queries as _queries
+from app.modules.evaluand_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
+from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyMetadataSchemaRepository,
 )
 from app.platform.uow import UnitOfWork, get_uow
 
 # Events this module publishes — the contract subscribers rely on.
-CONTENT_REGISTERED = "ContentRegistered"
+CONTENT_VERSION_REGISTERED = "ContentVersionRegistered"
 CONTENT_METADATA_UPDATED = "ContentMetadataUpdated"
 
 __all__ = [
     "CONTENT_METADATA_UPDATED",
-    "CONTENT_REGISTERED",
-    "ContentRegistryQueries",
+    "CONTENT_VERSION_REGISTERED",
+    "EvaluandRegistryQueries",
     "ContentSnapshot",
     "MetadataEntryDTO",
-    "get_content_registry_queries",
+    "get_evaluand_registry_queries",
 ]
 
 
-class ContentRegistryQueries:
+class EvaluandRegistryQueries:
     """Read-only contract of Content Registry (`getContentSnapshot`, `getContentMetadata`)."""
 
     def __init__(self, session: Session) -> None:
@@ -50,7 +50,7 @@ class ContentRegistryQueries:
         return _queries.list_content_snapshots(self._contents, self._schemas)
 
 
-def get_content_registry_queries(
+def get_evaluand_registry_queries(
     uow: Annotated[UnitOfWork, Depends(get_uow)],
-) -> ContentRegistryQueries:
-    return ContentRegistryQueries(uow.session)
+) -> EvaluandRegistryQueries:
+    return EvaluandRegistryQueries(uow.session)

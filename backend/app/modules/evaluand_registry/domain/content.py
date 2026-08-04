@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-from app.modules.content_registry.domain.metadata import ContentMetadata, MetadataSchema
+from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 
 DEFAULT_VERSION = "1"
 

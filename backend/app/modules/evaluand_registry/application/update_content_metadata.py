@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from app.modules.content_registry.application.ports import (
+from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     MetadataSchemaRepositoryPort,
 )
-from app.modules.content_registry.application.register_content import UnknownGeneratingSystem
-from app.modules.content_registry.domain import events
-from app.modules.content_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.application.register_content import UnknownGeneratingSystem
+from app.modules.evaluand_registry.domain import events
+from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 
 

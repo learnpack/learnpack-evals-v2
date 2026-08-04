@@ -6,7 +6,7 @@ know that 'learningObjectives' exists.
 
 import pytest
 
-from app.modules.content_registry.domain.metadata import (
+from app.modules.evaluand_registry.domain.metadata import (
     ContentMetadata,
     InvalidMetadata,
     MetadataSchema,

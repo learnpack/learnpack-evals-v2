@@ -8,9 +8,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.modules.content_registry.public import (
-    ContentRegistryQueries,
-    get_content_registry_queries,
+from app.modules.evaluand_registry.public import (
+    EvaluandRegistryQueries,
+    get_evaluand_registry_queries,
 )
 from app.modules.orchestration.application import queries
 from app.modules.orchestration.application.commands import (
@@ -38,7 +38,7 @@ from app.platform.uow import UnitOfWork, get_uow
 
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 # Other modules are reached only through their public query surface (ARCHITECTURE.md §3).
-Contents = Annotated[ContentRegistryQueries, Depends(get_content_registry_queries)]
+Contents = Annotated[EvaluandRegistryQueries, Depends(get_evaluand_registry_queries)]
 Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
 
 admin_router = APIRouter(prefix="/admin", tags=["orchestration-admin"])

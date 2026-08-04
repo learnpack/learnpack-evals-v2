@@ -2,12 +2,12 @@
 
 import pytest
 
-from app.modules.content_registry.domain.content import (
+from app.modules.evaluand_registry.domain.content import (
     DEFAULT_VERSION,
     EducationalContent,
     InvalidContent,
 )
-from app.modules.content_registry.domain.metadata import (
+from app.modules.evaluand_registry.domain.metadata import (
     ContentMetadata,
     InvalidMetadata,
     MetadataSchema,

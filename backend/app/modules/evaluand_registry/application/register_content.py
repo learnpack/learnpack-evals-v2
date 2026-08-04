@@ -1,15 +1,15 @@
-"""RegisterContent → ContentRegistered (02-discover.md phase 1, 08-code.md §5)."""
+"""RegisterContent → ContentVersionRegistered (02-discover.md phase 1, 08-code.md §5)."""
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.modules.content_registry.application.ports import (
+from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     MetadataSchemaRepositoryPort,
 )
-from app.modules.content_registry.domain import events
-from app.modules.content_registry.domain.content import DEFAULT_VERSION, EducationalContent
-from app.modules.content_registry.domain.metadata import ContentMetadata, MetadataSchema
+from app.modules.evaluand_registry.domain import events
+from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, EducationalContent
+from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 from app.shared.domain.ids import new_id
 
@@ -64,7 +64,7 @@ class RegisterContent:
 
         self._contents.add(content)
         # Aggregate + event in the same transaction (ADR-0003).
-        self._publisher.publish(events.content_registered(content))
+        self._publisher.publish(events.content_version_registered(content))
         self._uow.commit()
         return content
 

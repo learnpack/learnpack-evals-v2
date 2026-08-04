@@ -7,9 +7,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.modules.content_registry.public import (
-    ContentRegistryQueries,
-    get_content_registry_queries,
+from app.modules.evaluand_registry.public import (
+    EvaluandRegistryQueries,
+    get_evaluand_registry_queries,
 )
 from app.modules.evaluation.public import EvaluationQueries, get_evaluation_queries
 from app.modules.identity.public import IdentityQueries, get_identity_queries
@@ -19,7 +19,7 @@ from app.platform.security import AdminAssessor
 
 router = APIRouter(prefix="/admin", tags=["reporting"])
 
-Contents = Annotated[ContentRegistryQueries, Depends(get_content_registry_queries)]
+Contents = Annotated[EvaluandRegistryQueries, Depends(get_evaluand_registry_queries)]
 Evaluations = Annotated[EvaluationQueries, Depends(get_evaluation_queries)]
 Identity = Annotated[IdentityQueries, Depends(get_identity_queries)]
 Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_queries)]

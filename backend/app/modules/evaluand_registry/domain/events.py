@@ -1,14 +1,14 @@
 """Domain events published by Content Registry (02-discover.md, phase 1)."""
 
-from app.modules.content_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.shared.domain.events import DomainEvent
 
 AGGREGATE_TYPE = "EducationalContent"
 
 
-def content_registered(content: EducationalContent) -> DomainEvent:
+def content_version_registered(content: EducationalContent) -> DomainEvent:
     return DomainEvent(
-        event_type="ContentRegistered",
+        event_type="ContentVersionRegistered",
         aggregate_type=AGGREGATE_TYPE,
         aggregate_id=str(content.id),
         payload={

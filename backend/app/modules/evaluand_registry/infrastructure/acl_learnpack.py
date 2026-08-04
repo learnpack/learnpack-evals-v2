@@ -7,8 +7,8 @@ real, nothing outside this file changes.
 
 from typing import Any
 
-from app.modules.content_registry.application.register_content import RegisterContentCommand
-from app.modules.content_registry.domain.content import DEFAULT_VERSION
+from app.modules.evaluand_registry.application.register_content import RegisterContentCommand
+from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION
 
 GENERATING_SYSTEM = "LearnpackV1"
 

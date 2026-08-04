@@ -1,7 +1,7 @@
 """Content Registry's Published Language (07-define.md).
 
 `ContentSnapshot` is what Evaluation and Orchestration consume. They never import
-`content_registry.domain`.
+`evaluand_registry.domain`.
 """
 
 from dataclasses import dataclass

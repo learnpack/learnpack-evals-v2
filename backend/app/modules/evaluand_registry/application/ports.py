@@ -3,8 +3,8 @@
 from typing import Protocol
 from uuid import UUID
 
-from app.modules.content_registry.domain.content import EducationalContent
-from app.modules.content_registry.domain.metadata import MetadataSchema
+from app.modules.evaluand_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.metadata import MetadataSchema
 
 
 class ContentRepositoryPort(Protocol):

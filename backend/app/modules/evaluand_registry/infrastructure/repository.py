@@ -9,8 +9,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.modules.content_registry.domain.content import EducationalContent
-from app.modules.content_registry.domain.metadata import ContentMetadata, MetadataSchema
+from app.modules.evaluand_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 
 _COLUMNS = "id, generating_system, external_id, version, consumable_url, metadata"
 

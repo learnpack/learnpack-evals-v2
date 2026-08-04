@@ -45,7 +45,7 @@ def test_register_content_writes_aggregate_and_event(admin_client, cleanup, sess
         text("SELECT event_type FROM events WHERE aggregate_id = :id"),
         {"id": body["content_id"]},
     ).scalar_one()
-    assert event_type == "ContentRegistered"
+    assert event_type == "ContentVersionRegistered"
 
 
 def test_duplicate_version_is_rejected(admin_client, cleanup, unique):
@@ -126,7 +126,7 @@ def test_update_metadata_writes_aggregate_and_event(admin_client, cleanup, sessi
         .scalars()
         .all()
     )
-    assert event_types == ["ContentRegistered", "ContentMetadataUpdated"]
+    assert event_types == ["ContentVersionRegistered", "ContentMetadataUpdated"]
 
 
 def test_invalid_metadata_update_leaves_the_content_untouched(admin_client, cleanup, unique):

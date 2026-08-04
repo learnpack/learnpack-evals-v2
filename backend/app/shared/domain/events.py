@@ -14,7 +14,7 @@ from typing import Any
 class DomainEvent:
     """A past fact about an aggregate.
 
-    `event_type` uses the ubiquitous language verbatim (GLOSSARY.md): `ContentRegistered`,
+    `event_type` uses the ubiquitous language verbatim (GLOSSARY.md): `ContentVersionRegistered`,
     `EvaluationSubmitted`, `ContentEvaluationCompleted`, ...
     """
 

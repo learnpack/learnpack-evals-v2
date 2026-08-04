@@ -6,12 +6,12 @@ content — never by joining against `contents` themselves (08-code.md §3, FK r
 
 from uuid import UUID
 
-from app.modules.content_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
-from app.modules.content_registry.application.ports import (
+from app.modules.evaluand_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
+from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     MetadataSchemaRepositoryPort,
 )
-from app.modules.content_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.content import EducationalContent
 
 
 def _to_snapshot(

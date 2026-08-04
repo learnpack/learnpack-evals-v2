@@ -10,22 +10,22 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.modules.content_registry.application import queries
-from app.modules.content_registry.application.dtos import ContentSnapshot
-from app.modules.content_registry.application.register_content import (
+from app.modules.evaluand_registry.application import queries
+from app.modules.evaluand_registry.application.dtos import ContentSnapshot
+from app.modules.evaluand_registry.application.register_content import (
     DuplicateContent,
     RegisterContent,
     RegisterContentCommand,
     UnknownGeneratingSystem,
 )
-from app.modules.content_registry.application.update_content_metadata import (
+from app.modules.evaluand_registry.application.update_content_metadata import (
     ContentNotFound,
     UpdateContentMetadata,
     UpdateContentMetadataCommand,
 )
-from app.modules.content_registry.domain.content import DEFAULT_VERSION, InvalidContent
-from app.modules.content_registry.domain.metadata import InvalidMetadata
-from app.modules.content_registry.infrastructure.repository import (
+from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, InvalidContent
+from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
+from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyMetadataSchemaRepository,
 )

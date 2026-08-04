@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from app.modules.content_registry.public import ContentRegistryQueries
+from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 from app.modules.evaluation.public import EvaluationDTO, EvaluationQueries
 from app.modules.identity.public import IdentityQueries
 from app.modules.orchestration.public import OrchestrationQueries
@@ -75,7 +75,7 @@ class ScoresReportDTO:
 
 
 def build_scores_report(
-    contents: ContentRegistryQueries,
+    contents: EvaluandRegistryQueries,
     evaluations: EvaluationQueries,
     identity: IdentityQueries,
 ) -> ScoresReportDTO:
@@ -202,7 +202,7 @@ class ProgressReportDTO:
 
 def build_progress_report(
     orchestration: OrchestrationQueries,
-    contents: ContentRegistryQueries,
+    contents: EvaluandRegistryQueries,
     identity: IdentityQueries,
 ) -> ProgressReportDTO:
     """Who evaluated what, across campaigns (08-code.md §7).
