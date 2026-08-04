@@ -1,7 +1,7 @@
 """Content Registry's Published Language (07-define.md).
 
 `ContentSnapshot` is what Evaluation and Orchestration consume. They never import
-`content_registry.domain`.
+`evaluand_registry.domain`.
 """
 
 from dataclasses import dataclass
@@ -19,7 +19,7 @@ class MetadataEntryDTO:
 @dataclass(frozen=True)
 class ContentSnapshot:
     content_id: UUID
-    generating_system: str
+    package_format: str
     external_id: str
     version: str
     consumable_url: str
@@ -36,7 +36,7 @@ class ContentSnapshot:
         allowed = set(keys)
         return ContentSnapshot(
             content_id=self.content_id,
-            generating_system=self.generating_system,
+            package_format=self.package_format,
             external_id=self.external_id,
             version=self.version,
             consumable_url=self.consumable_url,

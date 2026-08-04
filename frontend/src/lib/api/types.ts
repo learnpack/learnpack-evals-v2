@@ -21,7 +21,7 @@ export interface MetadataEntry {
 
 export interface ContentResponse {
   content_id: Uuid;
-  generating_system: string;
+  package_format: string;
   external_id: string;
   version: string;
   consumable_url: string;
@@ -41,7 +41,7 @@ export interface AssignmentResponse {
   content_id: Uuid;
   assessor_id: Uuid;
   status: string; // assigned | opened | submitted | cancelled
-  rubric_version_id: string;
+  instrument_version_id: string;
 }
 
 export interface Criterion {
@@ -60,7 +60,7 @@ export interface AssignmentDetail {
   content_id: Uuid;
   consumable_url: string;
   metadata: MetadataEntry[];
-  rubric_version_id: string;
+  instrument_version_id: string;
   scale_min: number;
   scale_max: number;
   criteria: Criterion[];
@@ -81,13 +81,13 @@ export interface EvaluationResponse {
   evaluation_id: Uuid;
   assessor_id: Uuid;
   content_id: Uuid;
-  rubric_version_id: string;
+  instrument_version_id: string;
   scores: ScoreInput[];
 }
 
 export interface CampaignResponse {
   campaign_id: Uuid;
-  rubric_version_id: string;
+  instrument_version_id: string;
   required_evaluations_per_content: number;
   content_ids: Uuid[];
   metadata_view: string[];
@@ -103,7 +103,7 @@ export interface ContentProgress {
 
 export interface CampaignProgress {
   campaign_id: Uuid;
-  rubric_version_id: string;
+  instrument_version_id: string;
   status: string;
   required_evaluations_per_content: number;
   coverage: number;
@@ -112,7 +112,7 @@ export interface CampaignProgress {
 
 export interface GoldenStatus {
   campaign_id: Uuid;
-  rubric_version_id: string;
+  instrument_version_id: string;
   coverage: number;
   threshold: number;
   usable: boolean;
@@ -146,26 +146,16 @@ export interface IndividualEvaluation {
 export interface ContentScores {
   content_id: Uuid;
   external_id: string;
-  generating_system: string;
+  package_format: string;
   version: string;
-  average: number | null;
   evaluator_count: number;
   criteria: CriterionSummary[];
   evaluations: IndividualEvaluation[];
 }
 
-export interface AssessorAverage {
-  assessor_id: Uuid;
-  display_name: string | null;
-  email: string | null;
-  evaluation_count: number;
-  average: number | null;
-}
-
+/** Per-criterion profile per content — never a score across criteria (ADR-0011). */
 export interface ScoresReport {
   contents: ContentScores[];
-  assessors: AssessorAverage[];
-  global_average: number | null;
 }
 
 export interface AssignmentCounts {
@@ -196,7 +186,7 @@ export interface ProgressReport {
 // --- Requests --------------------------------------------------------------
 
 export interface RegisterContentRequest {
-  generating_system: string;
+  package_format: string;
   external_id: string;
   consumable_url: string;
   version?: string;
@@ -204,7 +194,7 @@ export interface RegisterContentRequest {
 }
 
 export interface OpenCampaignRequest {
-  rubric_version_id: string;
+  instrument_version_id: string;
   required_evaluations_per_content: number;
   content_ids: Uuid[];
   metadata_view: string[];

@@ -44,12 +44,12 @@ def test_coverage_rule():
 def test_reference_rejects_impossible_coverage():
     for coverage in (-0.1, 1.5):
         with pytest.raises(InvalidGoldenReference):
-            GoldenReference(campaign_id=new_id(), rubric_version_id=RUBRIC, coverage=coverage)
+            GoldenReference(campaign_id=new_id(), instrument_version_id=RUBRIC, coverage=coverage)
 
 
 def test_reference_requires_a_rubric_version():
     with pytest.raises(InvalidGoldenReference):
-        GoldenReference(campaign_id=new_id(), rubric_version_id="", coverage=1.0)
+        GoldenReference(campaign_id=new_id(), instrument_version_id="", coverage=1.0)
 
 
 # --------------------------------------------------------------------------- chain
@@ -70,7 +70,7 @@ def make_content(admin, cleanup, unique):
         body = admin.post(
             "/admin/contents",
             json={
-                "generating_system": "LearnpackV1",
+                "package_format": "LearnpackV1",
                 "external_id": f"{label}-{unique}",
                 "consumable_url": COURSE_URL,
                 "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
@@ -97,7 +97,7 @@ def open_campaign(admin, cleanup, content_ids, required=1, threshold=1.0):
     body = admin.post(
         "/admin/campaigns",
         json={
-            "rubric_version_id": RUBRIC,
+            "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": required,
             "content_ids": content_ids,
             "golden_coverage_threshold": threshold,
@@ -132,7 +132,7 @@ def test_full_chain_establishes_the_golden_reference(
             text(
                 """
                 SELECT coverage, established_at FROM golden_references
-                 WHERE campaign_id = :c AND rubric_version_id = :r
+                 WHERE campaign_id = :c AND instrument_version_id = :r
                 """
             ),
             {"c": campaign_id, "r": RUBRIC},

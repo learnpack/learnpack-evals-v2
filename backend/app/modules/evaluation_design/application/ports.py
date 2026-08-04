@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from app.modules.rubric_authoring.application.dtos import RubricSnapshot
+from app.modules.evaluation_design.application.dtos import RubricSnapshot
 
 
 class RubricRepositoryPort(Protocol):

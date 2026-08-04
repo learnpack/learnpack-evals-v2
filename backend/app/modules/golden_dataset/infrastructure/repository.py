@@ -12,17 +12,17 @@ class SqlAlchemyGoldenReferenceRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get(self, campaign_id: UUID, rubric_version_id: str) -> GoldenReference | None:
+    def get(self, campaign_id: UUID, instrument_version_id: str) -> GoldenReference | None:
         row = (
             self._session.execute(
                 text(
                     """
-                    SELECT campaign_id, rubric_version_id, coverage, established_at
+                    SELECT campaign_id, instrument_version_id, coverage, established_at
                       FROM golden_references
-                     WHERE campaign_id = :campaign_id AND rubric_version_id = :rubric
+                     WHERE campaign_id = :campaign_id AND instrument_version_id = :rubric
                     """
                 ),
-                {"campaign_id": campaign_id, "rubric": rubric_version_id},
+                {"campaign_id": campaign_id, "rubric": instrument_version_id},
             )
             .mappings()
             .first()
@@ -31,7 +31,7 @@ class SqlAlchemyGoldenReferenceRepository:
             return None
         return GoldenReference(
             campaign_id=row["campaign_id"],
-            rubric_version_id=row["rubric_version_id"],
+            instrument_version_id=row["instrument_version_id"],
             coverage=float(row["coverage"]),
             established_at=row["established_at"],
         )
@@ -42,14 +42,14 @@ class SqlAlchemyGoldenReferenceRepository:
             text(
                 """
                 INSERT INTO golden_references
-                    (campaign_id, rubric_version_id, coverage)
+                    (campaign_id, instrument_version_id, coverage)
                 VALUES (:campaign_id, :rubric, :coverage)
-                ON CONFLICT (campaign_id, rubric_version_id) DO NOTHING
+                ON CONFLICT (campaign_id, instrument_version_id) DO NOTHING
                 """
             ),
             {
                 "campaign_id": reference.campaign_id,
-                "rubric": reference.rubric_version_id,
+                "rubric": reference.instrument_version_id,
                 "coverage": reference.coverage,
             },
         )

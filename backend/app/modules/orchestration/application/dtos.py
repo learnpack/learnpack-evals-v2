@@ -1,6 +1,6 @@
 """Orchestration's Published Language.
 
-`AssignmentDTO` is what Evaluation reads to resolve `assignmentId → (content, rubricVersion)`
+`AssignmentDTO` is what Evaluation reads to resolve `assignmentId → (content, instrumentVersion)`
 — a read-only sync query across modules, which 05-connect.md rule 2 allows.
 """
 
@@ -15,7 +15,7 @@ class AssignmentDTO:
     content_id: UUID
     assessor_id: UUID
     status: str
-    rubric_version_id: str
+    instrument_version_id: str
     metadata_view: list[str]
 
     @property
@@ -38,7 +38,7 @@ class ContentProgressDTO:
 @dataclass(frozen=True)
 class CampaignProgressDTO:
     campaign_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     status: str
     required_evaluations_per_content: int
     contents: list[ContentProgressDTO]

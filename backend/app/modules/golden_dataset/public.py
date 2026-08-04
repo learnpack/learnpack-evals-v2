@@ -30,7 +30,7 @@ __all__ = [
 @dataclass(frozen=True)
 class GoldenReferenceDTO:
     campaign_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     coverage: float
     established_at: datetime | None
 
@@ -42,14 +42,14 @@ class GoldenDatasetQueries:
         self._references = SqlAlchemyGoldenReferenceRepository(session)
 
     def get_golden_reference(
-        self, campaign_id: UUID, rubric_version_id: str
+        self, campaign_id: UUID, instrument_version_id: str
     ) -> GoldenReferenceDTO | None:
-        reference = self._references.get(campaign_id, rubric_version_id)
+        reference = self._references.get(campaign_id, instrument_version_id)
         if reference is None:
             return None
         return GoldenReferenceDTO(
             campaign_id=reference.campaign_id,
-            rubric_version_id=reference.rubric_version_id,
+            instrument_version_id=reference.instrument_version_id,
             coverage=reference.coverage,
             established_at=reference.established_at,
         )

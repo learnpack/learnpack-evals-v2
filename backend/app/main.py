@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.modules.content_registry.infrastructure.router import router as content_registry_router
+from app.modules.evaluand_registry.infrastructure.router import router as evaluand_registry_router
 from app.modules.evaluation.infrastructure.router import router as evaluation_router
 from app.modules.golden_dataset.infrastructure.policies import (
     register_policies as register_golden_policies,
@@ -86,7 +86,7 @@ def me(assessor: CurrentAssessor) -> MeResponse:
     )
 
 
-app.include_router(content_registry_router)
+app.include_router(evaluand_registry_router)
 app.include_router(identity_admin_router)
 app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)

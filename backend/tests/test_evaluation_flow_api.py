@@ -49,7 +49,7 @@ def content(admin, cleanup, unique):
     body = admin.post(
         "/admin/contents",
         json={
-            "generating_system": "LearnpackV1",
+            "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
             "metadata": {
@@ -68,7 +68,7 @@ def make_campaign(admin, cleanup, content):
         body = admin.post(
             "/admin/campaigns",
             json={
-                "rubric_version_id": RUBRIC,
+                "instrument_version_id": RUBRIC,
                 "required_evaluations_per_content": required,
                 "content_ids": [content],
                 "metadata_view": metadata_view or [],
@@ -347,7 +347,7 @@ def test_campaign_requires_a_published_rubric(admin, content, cleanup):
     response = admin.post(
         "/admin/campaigns",
         json={
-            "rubric_version_id": "does-not-exist",
+            "instrument_version_id": "does-not-exist",
             "required_evaluations_per_content": 1,
             "content_ids": [content],
         },
@@ -364,7 +364,7 @@ def test_cannot_assign_content_outside_the_campaign_scope(
     other = admin.post(
         "/admin/contents",
         json={
-            "generating_system": "LearnpackV1",
+            "package_format": "LearnpackV1",
             "external_id": f"other-{unique}",
             "consumable_url": COURSE_URL,
             "metadata": {

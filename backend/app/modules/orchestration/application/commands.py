@@ -33,7 +33,7 @@ class ContentNotInCampaign(Exception): ...
 
 @dataclass(frozen=True)
 class OpenCampaignCommand:
-    rubric_version_id: str
+    instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID]
     metadata_view: list[str] = field(default_factory=list)
@@ -56,7 +56,7 @@ class OpenCampaign:
     def __call__(self, command: OpenCampaignCommand) -> EvaluationCampaign:
         campaign = EvaluationCampaign(
             id=new_id(),
-            rubric_version_id=command.rubric_version_id,
+            instrument_version_id=command.instrument_version_id,
             required_evaluations_per_content=command.required_evaluations_per_content,
             content_ids=list(command.content_ids),
             metadata_view=list(command.metadata_view),

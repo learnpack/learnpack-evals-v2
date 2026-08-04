@@ -19,7 +19,7 @@ class SqlAlchemyEvaluationRepository:
             text(
                 """
                 INSERT INTO evaluations
-                    (id, assessor_id, content_id, rubric_version_id, attempt,
+                    (id, assessor_id, content_id, instrument_version_id, attempt,
                      occurred_at, submitted_at)
                 VALUES (:id, :assessor_id, :content_id, :rubric, :attempt,
                         :occurred_at, :submitted_at)
@@ -29,7 +29,7 @@ class SqlAlchemyEvaluationRepository:
                 "id": evaluation.id,
                 "assessor_id": evaluation.assessor_id,
                 "content_id": evaluation.content_id,
-                "rubric": evaluation.rubric_version_id,
+                "rubric": evaluation.instrument_version_id,
                 "attempt": evaluation.attempt,
                 "occurred_at": evaluation.occurred_at,
                 "submitted_at": evaluation.submitted_at,
@@ -60,7 +60,7 @@ class SqlAlchemyEvaluationRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT id, assessor_id, content_id, rubric_version_id, attempt, submitted_at
+                    SELECT id, assessor_id, content_id, instrument_version_id, attempt, submitted_at
                       FROM evaluations
                      WHERE content_id = ANY(:content_ids)
                      ORDER BY submitted_at, id
@@ -105,7 +105,7 @@ class SqlAlchemyEvaluationRepository:
                 evaluation_id=row["id"],
                 assessor_id=row["assessor_id"],
                 content_id=row["content_id"],
-                rubric_version_id=row["rubric_version_id"],
+                instrument_version_id=row["instrument_version_id"],
                 attempt=row["attempt"],
                 submitted_at=row["submitted_at"],
                 scores=by_evaluation.get(row["id"], []),

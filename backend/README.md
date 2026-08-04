@@ -206,7 +206,7 @@ necesitan; los adapters concretos se inyectan desde el router.
 ## Policy de completitud (ADR-0002)
 
 Única policy del MVP. Al oír `EvaluationSubmitted`, `orchestration` marca `submitted` todas
-las assignments abiertas de `(assessor, content)` cuya campaña use la misma `rubricVersion`
+las assignments abiertas de `(assessor, content)` cuya campaña use la misma `instrumentVersion`
 —así una evaluación puede satisfacer varias campañas— y publica
 `ContentEvaluationCompleted` cuando `COUNT(assignments submitted) ≥ required`.
 
@@ -228,11 +228,12 @@ aplica su regla (`coverage ≥ threshold`). Es idempotente igual que la de quór
 
 **Reporting** (ADR-0006) compone los demás módulos por sus `public.py` y agrega en Python —
 sin JOINs cross-módulo y sin tablas de read model. Endpoints: `GET /admin/reports/scores`
-(scores por curso, promedios por evaluador y global, dispersión inter-rater) y
-`GET /admin/progress` (quién evaluó qué, cross-campaña).
+(perfil por criterion de cada curso: promedio por criterion entre assessors + dispersión
+inter-rater; **sin score agregado entre criteria**, ADR-0011) y `GET /admin/progress` (quién
+evaluó qué, cross-campaña).
 
 Dos reglas de agregación que conviene no confundir:
-- Una **repetición** es el mismo assessor sobre el mismo `(content, rubricVersion)` — se
+- Una **repetición** es el mismo assessor sobre el mismo `(content, instrumentVersion)` — se
   colapsa a la más reciente, porque es una corrección. Evaluar **dos cursos distintos** no es
   una repetición.
 - La dispersión con un solo rater es `null`, no `0`: no hay acuerdo que medir.
@@ -246,7 +247,7 @@ uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma crud
 
 ## Módulos
 
-scaffolding + seed · identity · content_registry · rubric_authoring (read-only) · evaluation ·
+scaffolding + seed · identity · evaluand_registry · evaluation_design (read-only) · evaluation ·
 orchestration · golden_dataset · reporting. Cada uno con `domain/`, `application/` e
 `infrastructure/`, y su contrato en `public.py`.
 

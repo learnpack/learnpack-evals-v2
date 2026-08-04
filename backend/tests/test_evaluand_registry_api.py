@@ -17,7 +17,7 @@ def admin_client(as_user, cleanup, promote, unique):
 
 def payload(unique: str, **overrides) -> dict:
     body = {
-        "generating_system": "LearnpackV1",
+        "package_format": "LearnpackV1",
         "external_id": f"course-{unique}",
         "consumable_url": COURSE_URL,
         "metadata": {
@@ -45,7 +45,7 @@ def test_register_content_writes_aggregate_and_event(admin_client, cleanup, sess
         text("SELECT event_type FROM events WHERE aggregate_id = :id"),
         {"id": body["content_id"]},
     ).scalar_one()
-    assert event_type == "ContentRegistered"
+    assert event_type == "ContentVersionRegistered"
 
 
 def test_duplicate_version_is_rejected(admin_client, cleanup, unique):
@@ -91,9 +91,9 @@ def test_non_http_url_is_rejected(admin_client, unique):
     assert response.status_code == 422
 
 
-def test_unknown_generating_system_is_rejected(admin_client, unique):
+def test_unknown_package_format_is_rejected(admin_client, unique):
     response = admin_client.post(
-        "/admin/contents", json=payload(unique, generating_system="SomeOtherSystem")
+        "/admin/contents", json=payload(unique, package_format="SomeOtherSystem")
     )
     assert response.status_code == 422
 
@@ -126,7 +126,7 @@ def test_update_metadata_writes_aggregate_and_event(admin_client, cleanup, sessi
         .scalars()
         .all()
     )
-    assert event_types == ["ContentRegistered", "ContentMetadataUpdated"]
+    assert event_types == ["ContentVersionRegistered", "ContentMetadataUpdated"]
 
 
 def test_invalid_metadata_update_leaves_the_content_untouched(admin_client, cleanup, unique):

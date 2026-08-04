@@ -44,7 +44,7 @@ export default function ContentsPage() {
                 <TableRow>
                   <TableHead>Course</TableHead>
                   <TableHead>Version</TableHead>
-                  <TableHead>System</TableHead>
+                  <TableHead>Format</TableHead>
                   <TableHead>URL</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -54,7 +54,7 @@ export default function ContentsPage() {
                   <TableRow key={c.content_id}>
                     <TableCell className="font-medium">{c.external_id}</TableCell>
                     <TableCell>{c.version}</TableCell>
-                    <TableCell className="text-muted-foreground">{c.generating_system}</TableCell>
+                    <TableCell className="text-muted-foreground">{c.package_format}</TableCell>
                     <TableCell>
                       <a
                         href={c.consumable_url}

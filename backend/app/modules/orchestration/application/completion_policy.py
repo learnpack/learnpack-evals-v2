@@ -3,7 +3,7 @@
 Quorum is a **completion threshold over submissions, not provisioning**. On each submission:
 
 1. mark `submitted` every open assignment of `(assessor, content)` whose campaign uses the
-   same `rubricVersion` — so one evaluation can satisfy several campaigns that asked for it,
+   same `instrumentVersion` — so one evaluation can satisfy several campaigns that asked for it,
    and reassignments work by themselves;
 2. for each affected campaign, if `COUNT(assignments submitted) >= required` → record the
    completion and publish `ContentEvaluationCompleted`.
@@ -38,7 +38,7 @@ class EvaluationSubmittedFact:
 
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
 
 
 class HandleEvaluationSubmitted:
@@ -68,7 +68,7 @@ class HandleEvaluationSubmitted:
             if campaign is None:
                 continue
             # Only campaigns evaluating with the same rubric are satisfied by this evaluation.
-            if campaign.rubric_version_id != fact.rubric_version_id:
+            if campaign.instrument_version_id != fact.instrument_version_id:
                 continue
 
             assignment.mark_submitted()
@@ -82,12 +82,12 @@ class HandleEvaluationSubmitted:
                 continue
             # Publish only if we actually recorded it — replays must not re-emit the event.
             newly_recorded = self._completions.record_completion(
-                campaign.id, fact.content_id, campaign.rubric_version_id
+                campaign.id, fact.content_id, campaign.instrument_version_id
             )
             if newly_recorded:
                 self._publisher.publish(
                     events.content_evaluation_completed(
-                        campaign.id, fact.content_id, campaign.rubric_version_id, submitted
+                        campaign.id, fact.content_id, campaign.instrument_version_id, submitted
                     )
                 )
                 completed.append(campaign.id)

@@ -27,7 +27,7 @@ class SqlAlchemyCampaignRepository:
         )
         return EvaluationCampaign(
             id=row["id"],
-            rubric_version_id=row["rubric_version_id"],
+            instrument_version_id=row["instrument_version_id"],
             required_evaluations_per_content=row["required_evaluations_per_content"],
             content_ids=list(content_ids),
             metadata_view=row["metadata_view"] or [],
@@ -40,7 +40,7 @@ class SqlAlchemyCampaignRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT id, rubric_version_id, required_evaluations_per_content,
+                    SELECT id, instrument_version_id, required_evaluations_per_content,
                            metadata_view, golden_coverage_threshold, status
                       FROM campaigns WHERE id = :id
                     """
@@ -57,14 +57,14 @@ class SqlAlchemyCampaignRepository:
             text(
                 """
                 INSERT INTO campaigns
-                    (id, rubric_version_id, required_evaluations_per_content, metadata_view,
+                    (id, instrument_version_id, required_evaluations_per_content, metadata_view,
                      golden_coverage_threshold, status)
                 VALUES (:id, :rubric, :required, cast(:view as jsonb), :threshold, :status)
                 """
             ),
             {
                 "id": campaign.id,
-                "rubric": campaign.rubric_version_id,
+                "rubric": campaign.instrument_version_id,
                 "required": campaign.required_evaluations_per_content,
                 "view": json.dumps(campaign.metadata_view),
                 "threshold": campaign.golden_coverage_threshold,
@@ -94,7 +94,7 @@ class SqlAlchemyCampaignRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT id, rubric_version_id, required_evaluations_per_content,
+                    SELECT id, instrument_version_id, required_evaluations_per_content,
                            metadata_view, golden_coverage_threshold, status
                       FROM campaigns ORDER BY created_at
                     """
@@ -203,14 +203,14 @@ class SqlAlchemyCompletionRepository:
         self._session = session
 
     def record_completion(
-        self, campaign_id: UUID, content_id: UUID, rubric_version_id: str
+        self, campaign_id: UUID, content_id: UUID, instrument_version_id: str
     ) -> bool:
         """Idempotent: returns False when the completion was already recorded (ADR-0003)."""
         result = self._session.execute(
             text(
                 """
                 INSERT INTO content_evaluation_completions
-                    (campaign_id, content_id, rubric_version_id)
+                    (campaign_id, content_id, instrument_version_id)
                 VALUES (:campaign_id, :content_id, :rubric)
                 ON CONFLICT (campaign_id, content_id) DO NOTHING
                 """
@@ -218,7 +218,7 @@ class SqlAlchemyCompletionRepository:
             {
                 "campaign_id": campaign_id,
                 "content_id": content_id,
-                "rubric": rubric_version_id,
+                "rubric": instrument_version_id,
             },
         )
         return result.rowcount > 0

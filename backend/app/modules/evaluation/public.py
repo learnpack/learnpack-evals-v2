@@ -36,7 +36,7 @@ class EvaluationSubmittedFact:
     evaluation_id: UUID
     assessor_id: UUID
     content_id: UUID
-    rubric_version_id: str
+    instrument_version_id: str
     mode: str
 
     @classmethod
@@ -45,7 +45,8 @@ class EvaluationSubmittedFact:
             evaluation_id=UUID(payload["evaluationId"]),
             assessor_id=UUID(payload["assessorId"]),
             content_id=UUID(payload["contentId"]),
-            rubric_version_id=payload["rubricVersionId"],
+            # Old rows in `events` carry the pre-rename key; both replay fine.
+            instrument_version_id=payload.get("instrumentVersionId") or payload["rubricVersionId"],
             mode=payload.get("mode", "human"),
         )
 

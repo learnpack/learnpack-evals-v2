@@ -1,30 +1,30 @@
-"""RegisterContent → ContentRegistered (02-discover.md phase 1, 08-code.md §5)."""
+"""RegisterContent → ContentVersionRegistered (02-discover.md phase 1, 08-code.md §5)."""
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.modules.content_registry.application.ports import (
+from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     MetadataSchemaRepositoryPort,
 )
-from app.modules.content_registry.domain import events
-from app.modules.content_registry.domain.content import DEFAULT_VERSION, EducationalContent
-from app.modules.content_registry.domain.metadata import ContentMetadata, MetadataSchema
+from app.modules.evaluand_registry.domain import events
+from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, EducationalContent
+from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 from app.shared.domain.ids import new_id
 
 
 class DuplicateContent(Exception):
-    """A content version with the same (generatingSystem, externalId, version) exists."""
+    """A content version with the same (packageFormat, externalId, version) exists."""
 
 
-class UnknownGeneratingSystem(Exception):
-    """No MetadataSchema is registered for this generating system."""
+class UnknownPackageFormat(Exception):
+    """No MetadataSchema is registered for this package format."""
 
 
 @dataclass(frozen=True)
 class RegisterContentCommand:
-    generating_system: str
+    package_format: str
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
@@ -45,17 +45,17 @@ class RegisterContent:
         self._uow = uow
 
     def __call__(self, command: RegisterContentCommand) -> EducationalContent:
-        schema = self._require_schema(command.generating_system)
+        schema = self._require_schema(command.package_format)
 
-        if self._contents.exists(command.generating_system, command.external_id, command.version):
+        if self._contents.exists(command.package_format, command.external_id, command.version):
             raise DuplicateContent(
-                f"{command.generating_system}/{command.external_id} "
+                f"{command.package_format}/{command.external_id} "
                 f"version {command.version} is already registered"
             )
 
         content = EducationalContent(
             id=new_id(),
-            generating_system=command.generating_system,
+            package_format=command.package_format,
             external_id=command.external_id,
             consumable_url=command.consumable_url,
             version=command.version,
@@ -64,14 +64,12 @@ class RegisterContent:
 
         self._contents.add(content)
         # Aggregate + event in the same transaction (ADR-0003).
-        self._publisher.publish(events.content_registered(content))
+        self._publisher.publish(events.content_version_registered(content))
         self._uow.commit()
         return content
 
-    def _require_schema(self, generating_system: str) -> MetadataSchema:
-        schema = self._schemas.get(generating_system)
+    def _require_schema(self, package_format: str) -> MetadataSchema:
+        schema = self._schemas.get(package_format)
         if schema is None:
-            raise UnknownGeneratingSystem(
-                f"no metadata schema registered for '{generating_system}'"
-            )
+            raise UnknownPackageFormat(f"no metadata schema registered for '{package_format}'")
         return schema

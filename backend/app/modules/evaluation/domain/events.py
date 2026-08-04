@@ -24,7 +24,7 @@ def evaluation_submitted(evaluation: Evaluation) -> DomainEvent:
             # Provenance: which Assessor produced this judgement (GLOSSARY.md).
             "assessorId": str(evaluation.assessor_id),
             "contentId": str(evaluation.content_id),
-            "rubricVersionId": evaluation.rubric_version_id,
+            "instrumentVersionId": evaluation.instrument_version_id,
             "mode": MODE_HUMAN,
             "attempt": evaluation.attempt,
             "scores": [

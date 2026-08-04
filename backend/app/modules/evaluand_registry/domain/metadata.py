@@ -43,11 +43,11 @@ class KeySpec:
 class MetadataSchema:
     """Declares allowed/required keys and their types for a GeneratingSystem."""
 
-    generating_system: str
+    package_format: str
     keys: dict[str, KeySpec]
 
     @classmethod
-    def from_spec(cls, generating_system: str, spec: dict[str, Any]) -> "MetadataSchema":
+    def from_spec(cls, package_format: str, spec: dict[str, Any]) -> "MetadataSchema":
         """Build from the JSONB stored in `metadata_schemas.spec` (reference data)."""
         keys = {}
         for key, raw in spec.items():
@@ -55,7 +55,7 @@ class MetadataSchema:
                 value_type=ValueType(raw["valueType"]),
                 required=bool(raw.get("required", False)),
             )
-        return cls(generating_system=generating_system, keys=keys)
+        return cls(package_format=package_format, keys=keys)
 
     def validate(self, values: dict[str, Any]) -> list[str]:
         """Return every violation. Empty list means valid."""
@@ -63,7 +63,7 @@ class MetadataSchema:
 
         for key in values:
             if key not in self.keys:
-                errors.append(f"unknown metadata key '{key}' for {self.generating_system}")
+                errors.append(f"unknown metadata key '{key}' for {self.package_format}")
 
         for key, spec in self.keys.items():
             if key not in values or values[key] is None:

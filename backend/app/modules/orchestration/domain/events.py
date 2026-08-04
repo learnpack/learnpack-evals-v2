@@ -18,7 +18,7 @@ def campaign_opened(campaign: EvaluationCampaign) -> DomainEvent:
         aggregate_id=str(campaign.id),
         payload={
             "campaignId": str(campaign.id),
-            "rubricVersionId": campaign.rubric_version_id,
+            "instrumentVersionId": campaign.instrument_version_id,
             "requiredEvaluationsPerContent": campaign.required_evaluations_per_content,
             "contentIds": [str(c) for c in campaign.content_ids],
             "metadataView": campaign.metadata_view,
@@ -62,7 +62,7 @@ def assignment_cancelled(assignment: Assignment) -> DomainEvent:
 
 
 def content_evaluation_completed(
-    campaign_id: UUID, content_id: UUID, rubric_version_id: str, submitted_count: int
+    campaign_id: UUID, content_id: UUID, instrument_version_id: str, submitted_count: int
 ) -> DomainEvent:
     """Pivotal, and **relative to the campaign** — not a global fact about the content.
 
@@ -76,7 +76,7 @@ def content_evaluation_completed(
         payload={
             "campaignId": str(campaign_id),
             "contentId": str(content_id),
-            "rubricVersionId": rubric_version_id,
+            "instrumentVersionId": instrument_version_id,
             "submittedCount": submitted_count,
         },
     )

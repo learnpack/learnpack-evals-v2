@@ -28,7 +28,7 @@ def make_assignment(**overrides) -> Assignment:
 def make_campaign(**overrides) -> EvaluationCampaign:
     base = {
         "id": new_id(),
-        "rubric_version_id": "learnpack-pedagogical-v1",
+        "instrument_version_id": "learnpack-pedagogical-v1",
         "required_evaluations_per_content": 2,
         "content_ids": [new_id()],
     }
@@ -117,8 +117,8 @@ def test_required_evaluations_must_be_at_least_one():
 
 
 def test_rubric_version_is_required():
-    with pytest.raises(InvalidCampaign, match="rubric_version_id"):
-        make_campaign(rubric_version_id="")
+    with pytest.raises(InvalidCampaign, match="instrument_version_id"):
+        make_campaign(instrument_version_id="")
 
 
 @pytest.mark.parametrize("threshold", [0, -0.5, 1.5])

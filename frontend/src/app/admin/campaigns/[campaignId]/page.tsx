@@ -97,7 +97,7 @@ export default function CampaignDetailPage({
             <Badge variant={p.status === "open" ? "success" : "secondary"}>{p.status}</Badge>
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Rubric {p.rubric_version_id} · quorum {p.required_evaluations_per_content} · coverage{" "}
+            Instrument {p.instrument_version_id} · quorum {p.required_evaluations_per_content} · coverage{" "}
             {Math.round(p.coverage * 100)}%
           </p>
         </div>

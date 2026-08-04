@@ -41,7 +41,7 @@ class AssignmentRepositoryPort(Protocol):
 
 class CompletionRepositoryPort(Protocol):
     def record_completion(
-        self, campaign_id: UUID, content_id: UUID, rubric_version_id: str
+        self, campaign_id: UUID, content_id: UUID, instrument_version_id: str
     ) -> bool:
         """Insert the completion. Returns False if it was already recorded (idempotency)."""
         ...

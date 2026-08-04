@@ -6,7 +6,7 @@ Reads the rubric seeded by `app.cli seed` from `docs/seed/rubric-v1.json` (08-co
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.modules.rubric_authoring.application.dtos import CriterionDTO, RubricSnapshot
+from app.modules.evaluation_design.application.dtos import CriterionDTO, RubricSnapshot
 
 
 class SqlAlchemyRubricRepository:

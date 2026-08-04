@@ -3,14 +3,14 @@
 from typing import Protocol
 from uuid import UUID
 
-from app.modules.content_registry.domain.content import EducationalContent
-from app.modules.content_registry.domain.metadata import MetadataSchema
+from app.modules.evaluand_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.metadata import MetadataSchema
 
 
 class ContentRepositoryPort(Protocol):
     def get_by_id(self, content_id: UUID) -> EducationalContent | None: ...
 
-    def exists(self, generating_system: str, external_id: str, version: str) -> bool: ...
+    def exists(self, package_format: str, external_id: str, version: str) -> bool: ...
 
     def add(self, content: EducationalContent) -> None: ...
 
@@ -20,4 +20,4 @@ class ContentRepositoryPort(Protocol):
 
 
 class MetadataSchemaRepositoryPort(Protocol):
-    def get(self, generating_system: str) -> MetadataSchema | None: ...
+    def get(self, package_format: str) -> MetadataSchema | None: ...

@@ -37,7 +37,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|
 | 1. CI (workflow + mypy scoped a módulos nuevos) | ✔ |
-| 2. Renames + retiro de promedios (ADR-0011) | ✗ |
+| 2. Renames + retiro de promedios (ADR-0011) | ✔ |
 | 3. Evaluand Registry ensanchado | ✗ |
 | 4. Evaluation Design (instrumento + primer YAML real) | ✗ |
 | 5. Content Profiling (adapter LearnpackV1 + visor) | ✗ |
@@ -54,7 +54,9 @@ real (YAML del bloque 4).
 
 ## Verificado
 
-- **Suite backend en verde: 181 tests** contra Postgres local (~9 s). Requiere
+- **Suite backend en verde: 178 tests** contra Postgres local (~9 s) — los 3 tests de
+  promedios agregados murieron con ADR-0011; las regresiones de colapso se reescribieron
+  contra promedios por criterion. Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`,
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
@@ -71,8 +73,9 @@ real (YAML del bloque 4).
 
 - **Deploy**: backend a Render, frontend a Netlify, `ALLOWED_ORIGINS` cruzado, y repetir el
   runbook de Clerk en la instancia de producción. La DB ya es Neon.
-- **Deudas del slice 1, ahora agendadas en el plan**: los renames del glosario y el retiro de
-  `overall_average`/`global_average` (ADR-0011) son el **bloque 2** de `13-code-qa.md`.
+- **Cambio de contrato a tener presente**: el JSON canónico de `import-learnpack` ahora usa
+  `package_format` (antes `generating_system`); la API renombró `generating_system` →
+  `package_format` y `rubric_version_id` → `instrument_version_id`.
 - **Rubric v1**: revisión ligera (anchors, definiciones) pendiente antes de la primera campaña
   de referencia (ADR-0015) — fuera del primer incremento del slice 2.
 - **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo

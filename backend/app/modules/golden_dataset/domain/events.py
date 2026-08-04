@@ -1,6 +1,6 @@
 """Domain event published by Golden Dataset (02-discover.md, bridge).
 
-`GoldenReferenceEstablished` is **pivotal** and the MVP's finish line: a `set × rubricVersion`
+`GoldenReferenceEstablished` is **pivotal** and the MVP's finish line: a `set × instrumentVersion`
 of human results reached usable ground-truth status. Calibration `[futuro]` starts here.
 """
 
@@ -17,7 +17,7 @@ def golden_reference_established(reference: GoldenReference) -> DomainEvent:
         aggregate_id=str(reference.campaign_id),
         payload={
             "campaignId": str(reference.campaign_id),
-            "rubricVersionId": reference.rubric_version_id,
+            "instrumentVersionId": reference.instrument_version_id,
             "coverage": reference.coverage,
         },
     )

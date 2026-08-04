@@ -6,22 +6,22 @@ content — never by joining against `contents` themselves (08-code.md §3, FK r
 
 from uuid import UUID
 
-from app.modules.content_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
-from app.modules.content_registry.application.ports import (
+from app.modules.evaluand_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
+from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     MetadataSchemaRepositoryPort,
 )
-from app.modules.content_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.content import EducationalContent
 
 
 def _to_snapshot(
     content: EducationalContent, schemas: MetadataSchemaRepositoryPort
 ) -> ContentSnapshot:
-    schema = schemas.get(content.generating_system)
+    schema = schemas.get(content.package_format)
     entries = schema.entries(content.metadata.values) if schema else []
     return ContentSnapshot(
         content_id=content.id,
-        generating_system=content.generating_system,
+        package_format=content.package_format,
         external_id=content.external_id,
         version=content.version,
         consumable_url=content.consumable_url,

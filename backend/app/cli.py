@@ -18,20 +18,20 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.modules.content_registry.application.register_content import (
+from app.modules.evaluand_registry.application.register_content import (
     DuplicateContent,
     RegisterContent,
     RegisterContentCommand,
-    UnknownGeneratingSystem,
+    UnknownPackageFormat,
 )
-from app.modules.content_registry.domain.content import InvalidContent
-from app.modules.content_registry.domain.metadata import InvalidMetadata
-from app.modules.content_registry.infrastructure.acl_learnpack import to_register_command
-from app.modules.content_registry.infrastructure.repository import (
+from app.modules.evaluand_registry.domain.content import InvalidContent
+from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
+from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyMetadataSchemaRepository,
 )
-from app.modules.content_registry.public import ContentRegistryQueries
+from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
@@ -55,7 +55,7 @@ DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
 # Content metadata is an open collection validated against this schema (ADR-0001).
 # The domain never references these keys; only the schema and the UI know them.
 LEARNPACK_METADATA_SCHEMA = {
-    "generatingSystem": "LearnpackV1",
+    "packageFormat": "LearnpackV1",
     "keys": {
         "learningObjectives": {"valueType": "string_list", "required": True},
         "targetAudience": {"valueType": "string", "required": True},
@@ -153,13 +153,13 @@ def seed_metadata_schema(session: Session) -> None:
     session.execute(
         text(
             """
-            INSERT INTO metadata_schemas (generating_system, spec)
-            VALUES (:generating_system, :spec)
-            ON CONFLICT (generating_system) DO UPDATE SET spec = excluded.spec
+            INSERT INTO metadata_schemas (package_format, spec)
+            VALUES (:package_format, :spec)
+            ON CONFLICT (package_format) DO UPDATE SET spec = excluded.spec
             """
         ),
         {
-            "generating_system": LEARNPACK_METADATA_SCHEMA["generatingSystem"],
+            "package_format": LEARNPACK_METADATA_SCHEMA["packageFormat"],
             "spec": json.dumps(LEARNPACK_METADATA_SCHEMA["keys"]),
         },
     )
@@ -241,7 +241,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                     to_register_command(raw)
                     if use_acl
                     else RegisterContentCommand(
-                        generating_system=raw["generating_system"],
+                        package_format=raw["package_format"],
                         external_id=raw["external_id"],
                         consumable_url=raw["consumable_url"],
                         version=str(raw.get("version", "1")),
@@ -256,7 +256,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                 print(
                     f"  skipped  {raw.get('external_id') or raw.get('slug')} (already registered)"
                 )
-            except (InvalidContent, InvalidMetadata, UnknownGeneratingSystem, KeyError) as exc:
+            except (InvalidContent, InvalidMetadata, UnknownPackageFormat, KeyError) as exc:
                 failed += 1
                 print(
                     f"  INVALID  {raw.get('external_id') or raw.get('slug')}: {exc}",
@@ -274,7 +274,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
 # It goes through the real use cases instead of raw INSERTs, so the events are published and
 # the policies run exactly as they would in production.
 
-DEMO_RUBRIC_VERSION_ID = "learnpack-pedagogical-v1"
+DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v1"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 DEMO_METADATA_VIEW = ["learningObjectives", "targetAudience", "prerequisites"]
 
@@ -289,7 +289,7 @@ DEMO_ASSESSORS: list[tuple[str, str, Role]] = [
 
 DEMO_CONTENTS: list[dict[str, Any]] = [
     {
-        "generating_system": "LearnpackV1",
+        "package_format": "LearnpackV1",
         "external_id": "introduction-to-generative-ai",
         "version": "1",
         "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
@@ -304,7 +304,7 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
         },
     },
     {
-        "generating_system": "LearnpackV1",
+        "package_format": "LearnpackV1",
         "external_id": "object-representation-in-python",
         "version": "1",
         "consumable_url": "https://object-representation-in-python.learn-pack.com/",
@@ -396,8 +396,8 @@ def _seed_demo_contents() -> dict[str, UUID]:
             except DuplicateContent:
                 snapshot = next(
                     s
-                    for s in ContentRegistryQueries(session).list_content_snapshots()
-                    if s.generating_system == raw["generating_system"]
+                    for s in EvaluandRegistryQueries(session).list_content_snapshots()
+                    if s.package_format == raw["package_format"]
                     and s.external_id == raw["external_id"]
                     and s.version == raw["version"]
                 )
@@ -415,7 +415,7 @@ def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
         for campaign in campaigns.list_all():
             if (
                 campaign.status == "open"
-                and campaign.rubric_version_id == DEMO_RUBRIC_VERSION_ID
+                and campaign.instrument_version_id == DEMO_INSTRUMENT_VERSION_ID
                 and wanted.issubset(set(campaign.content_ids))
             ):
                 return campaign.id
@@ -423,7 +423,7 @@ def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
         uow = UnitOfWork(session)
         campaign = OpenCampaign(campaigns, uow.events, uow)(
             OpenCampaignCommand(
-                rubric_version_id=DEMO_RUBRIC_VERSION_ID,
+                instrument_version_id=DEMO_INSTRUMENT_VERSION_ID,
                 required_evaluations_per_content=DEMO_REQUIRED_EVALUATIONS,
                 content_ids=content_ids,
                 metadata_view=DEMO_METADATA_VIEW,

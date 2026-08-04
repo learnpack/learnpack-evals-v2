@@ -1,6 +1,6 @@
 """Public surface of Evaluation Orchestration (ARCHITECTURE.md §3).
 
-Evaluation resolves `assignmentId → (content, rubricVersion)` through here — a read-only sync
+Evaluation resolves `assignmentId → (content, instrumentVersion)` through here — a read-only sync
 query, which 05-connect.md rule 2 allows. It never issues a command into this module: the
 assignment becomes `submitted` because the completion policy hears `EvaluationSubmitted`.
 """
