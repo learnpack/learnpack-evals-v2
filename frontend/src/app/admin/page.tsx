@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, ClipboardList, BarChart3 } from "lucide-react";
+import { BookOpen, Bot, ClipboardList, BarChart3, FileText } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const CARDS = [
@@ -10,6 +10,18 @@ const CARDS = [
     icon: BookOpen,
     title: "Courses",
     description: "Register AI-generated courses and edit their metadata.",
+  },
+  {
+    href: "/admin/generators",
+    icon: Bot,
+    title: "Generators",
+    description: "Declared generator versions — the examinee claims accumulate against.",
+  },
+  {
+    href: "/admin/briefs",
+    icon: FileText,
+    title: "Briefs",
+    description: "Generation assignments — the key of paired comparison.",
   },
   {
     href: "/admin/campaigns",

@@ -19,6 +19,8 @@ export interface MetadataEntry {
   value_type: MetadataValueType;
 }
 
+export type EditProvenance = "pure" | "human_edited" | "unknown";
+
 export interface ContentResponse {
   content_id: Uuid;
   package_format: string;
@@ -26,6 +28,60 @@ export interface ContentResponse {
   version: string;
   consumable_url: string;
   metadata: MetadataEntry[];
+  brief_id: Uuid | null;
+  generator_version_id: Uuid | null;
+  edit_provenance: EditProvenance;
+}
+
+export interface PackageArtifact {
+  kind: string;
+  locator: string;
+  format: string | null;
+}
+
+export interface ContentPackageResponse {
+  content_id: Uuid;
+  package_format: string;
+  consumable_url: string;
+  artifacts: PackageArtifact[];
+}
+
+export interface GeneratorVersionResponse {
+  generator_version_id: Uuid;
+  name: string;
+  version: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface RegisterGeneratorRequest {
+  name: string;
+  version: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GeneratorArtifactResponse {
+  artifact_id: Uuid;
+  generator_version_id: Uuid;
+  kind: string;
+  locator: string;
+  format: string | null;
+}
+
+export interface RegisterGeneratorArtifactRequest {
+  kind: string;
+  locator: string;
+  format?: string | null;
+}
+
+export interface BriefResponse {
+  brief_id: Uuid;
+  brief: string;
+  fields: Record<string, unknown>;
+}
+
+export interface RegisterBriefRequest {
+  brief: string;
+  fields?: Record<string, unknown>;
 }
 
 export interface AssessorResponse {
@@ -191,6 +247,10 @@ export interface RegisterContentRequest {
   consumable_url: string;
   version?: string;
   metadata: Record<string, unknown>;
+  artifacts?: { kind: string; locator: string; format?: string | null }[];
+  brief_id?: Uuid | null;
+  generator_version_id?: Uuid | null;
+  edit_provenance?: EditProvenance;
 }
 
 export interface OpenCampaignRequest {

@@ -14,15 +14,21 @@ import type {
   AssignContentRequest,
   AssignmentDetail,
   AssignmentResponse,
+  BriefResponse,
   CampaignProgress,
   CampaignResponse,
   ContentResponse,
   EvaluationResponse,
+  GeneratorArtifactResponse,
+  GeneratorVersionResponse,
   GoldenStatus,
   Me,
   OpenCampaignRequest,
   ProgressReport,
+  RegisterBriefRequest,
   RegisterContentRequest,
+  RegisterGeneratorArtifactRequest,
+  RegisterGeneratorRequest,
   ScoresReport,
   SubmitEvaluationRequest,
   Uuid,
@@ -44,6 +50,9 @@ export const queryKeys = {
   myAssignments: ["me", "assignments"] as const,
   assignment: (id: Uuid) => ["assignments", id] as const,
   contents: ["admin", "contents"] as const,
+  generators: ["admin", "generators"] as const,
+  generatorArtifacts: (id: Uuid) => ["admin", "generators", id, "artifacts"] as const,
+  briefs: ["admin", "briefs"] as const,
   campaigns: ["admin", "campaigns"] as const,
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
@@ -123,6 +132,65 @@ export function useCreateContent() {
     mutationFn: (body: RegisterContentRequest) =>
       api<ContentResponse>("/admin/contents", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
+  });
+}
+
+export function useGenerators() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.generators,
+    queryFn: () => api<GeneratorVersionResponse[]>("/admin/generators"),
+  });
+}
+
+export function useCreateGenerator() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterGeneratorRequest) =>
+      api<GeneratorVersionResponse>("/admin/generators", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.generators }),
+  });
+}
+
+export function useGeneratorArtifacts(generatorId: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.generatorArtifacts(generatorId),
+    queryFn: () =>
+      api<GeneratorArtifactResponse[]>(`/admin/generators/${generatorId}/artifacts`),
+  });
+}
+
+export function useCreateGeneratorArtifact(generatorId: Uuid) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterGeneratorArtifactRequest) =>
+      api<GeneratorArtifactResponse>(`/admin/generators/${generatorId}/artifacts`, {
+        method: "POST",
+        body,
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: queryKeys.generatorArtifacts(generatorId) }),
+  });
+}
+
+export function useBriefs() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.briefs,
+    queryFn: () => api<BriefResponse[]>("/admin/briefs"),
+  });
+}
+
+export function useCreateBrief() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterBriefRequest) =>
+      api<BriefResponse>("/admin/briefs", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.briefs }),
   });
 }
 
