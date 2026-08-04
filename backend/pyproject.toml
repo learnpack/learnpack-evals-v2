@@ -34,6 +34,17 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
+strict = true
+follow_imports = "silent"
+# Scope estricto: fundamentos que los módulos nuevos importan. Cada módulo nuevo
+# de app/modules/ se AGREGA a esta lista al crearse (docs/design/13-code-qa.md §8).
+# El legacy (app/modules/* del slice 1, main, cli, config) queda fuera: deliberado.
+files = [
+    "app/shared",
+    "app/platform/db.py",
+    "app/platform/uow.py",
+    "app/platform/events.py",
+]
 
 [build-system]
 requires = ["hatchling"]

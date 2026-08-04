@@ -267,9 +267,7 @@ def close_campaign(campaign_id: UUID, admin: AdminAssessor, uow: Uow) -> Campaig
     return _campaign_response(campaign)
 
 
-@admin_router.get(
-    "/campaigns/{campaign_id}/assignments", response_model=list[AssignmentResponse]
-)
+@admin_router.get("/campaigns/{campaign_id}/assignments", response_model=list[AssignmentResponse])
 def list_campaign_assignments(
     campaign_id: UUID, admin: AdminAssessor, uow: Uow
 ) -> list[AssignmentResponse]:
