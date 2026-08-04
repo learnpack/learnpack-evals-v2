@@ -6,9 +6,10 @@ Guía para generar el código de este repositorio. **Leer `docs/` antes de escri
 1. `docs/ARCHITECTURE.md` — invariantes no negociables (empezar acá).
 2. `docs/GLOSSARY.md` — ubiquitous language (los nombres del código salen de acá; incluye la
    **tabla de equivalencias con la industria de evals**).
-3. `docs/design/09-align-discover-qa.md` … `12-define-qa.md` — **el diseño vigente** (QA
-   interno de generadores): estratégico (09–11) y táctico por contexto (12).
-4. `docs/adr/` — decisiones inmutables: 0001–0008 (slice 1) · **0009–0015 (slice 2)**.
+3. `docs/design/09-align-discover-qa.md` … `13-code-qa.md` — **el diseño vigente** (QA
+   interno de generadores): estratégico (09–11), táctico por contexto (12) y plan de
+   código (13).
+4. `docs/adr/` — decisiones inmutables: 0001–0008 (slice 1) · **0009–0016 (slice 2)**.
 5. `STATUS.md` — en qué punto está el desarrollo **hoy**.
 
 ⚠️ `docs/design/01-…-08` son **snapshots históricos** del diseño que produjo el slice 1 —
@@ -68,10 +69,11 @@ Reglas que no se negocian:
   `GLOSSARY.md`.
 
 ## Dos horizontes (crítico)
-- El **modelo vigente** (QA interno de generadores) está completo en `docs/design/09–12`, pero
-  **el primer incremento es una rebanada fina** — ver las marcas "primer incremento: thin/no"
-  en `12-define-qa.md` y los **deferrals explícitos a Code** (assembly, métricas de validez,
-  annotation queues): son deliberados, no huecos a rellenar.
+- El **modelo vigente** (QA interno de generadores) está completo en `docs/design/09–12` y su
+  plan de código en `13-code-qa.md`, pero **el primer incremento es una rebanada fina** — ver
+  las marcas "primer incremento: thin/no" en `12-define-qa.md` y los **deferrals explícitos a
+  Code**, ya decididos en `13-code-qa.md` §7 (sufficiency, métricas de validez, annotation
+  queues, value domains).
 - `[futuro]` explícitos: calibración de assessors, claims de grano generador con regla propia,
   deliberación, integration events salientes. No construirlos sin decisión.
 - Ante la duda: implementar el slice mínimo **sin cerrar puertas** al modelo de 09–12; si una

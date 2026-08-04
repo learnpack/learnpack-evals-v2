@@ -5,12 +5,13 @@ apila historia (para eso está git). Si encontrás estado en cualquier otro docu
 hecho", "falta X", "N tests en verde", "verificado el tal día"— está en el archivo equivocado y
 va acá.
 
-_Última actualización: 2026-08-02._
+_Última actualización: 2026-08-04._
 
 ## Dónde estamos
 
 **Slice 1 (MVP humano): completo y verificado en local; falta el deploy.
-Slice 2 (motor de QA de generadores): en diseño.**
+Slice 2 (motor de QA de generadores): diseño y plan de código cerrados; arranca la
+implementación.**
 
 El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el quickstart del
 `README.md` de la raíz.
@@ -26,22 +27,28 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 5. frontend (evaluador + consola admin) | ✔ |
 | Deploy (§10: Render + Netlify) | ✗ pendiente |
 
-### Slice 2 — diseño completo y promovido; falta el plan de código
+### Slice 2 — plan de código cerrado; implementación no iniciada
 
-El rediseño (DDD Starter Modelling Process, segunda vuelta, alcance **QA interno de
-generadores**) está **cerrado y promovido a docs**:
+- **Diseño:** serie `docs/design/09…12` + ADRs 0009–0015 (promovido antes).
+- **Plan de código:** **`docs/design/13-code-qa.md`** (promovido) + **ADR-0016** (assessors
+  automatizados uniformes). GLOSSARY actualizado (eje Source `human | automated`;
+  `Sufficiency` ex assembly); ARCHITECTURE y CLAUDE.md re-apuntados.
 
-- **`docs/design/09` … `12`** — la serie vigente (Align/Discover · Decompose/Strategize ·
-  Connect · Define autocontenido). Los `01…08` quedaron como históricos con banner.
-- **ADR-0009 … ADR-0015** — las decisiones (sin inferencia · criteria verificables · sin score
-  único · génesis/tríada · ECD-lite/claims · vocabulario en evidence models · referencia humana
-  en dos capas).
-- **`docs/GLOSSARY.md`** — lenguaje del slice 2 completo + tabla de equivalencias con la
-  industria de evals. **`docs/ARCHITECTURE.md`** y **`CLAUDE.md`** re-apuntados a la serie
-  nueva.
-- **Falta:** el plan de código del slice 2 (análogo al `08-code.md` del slice 1) y su primer
-  incremento (Design con pocos claims · un adapter LearnpackV1 · Evaluation automático mínimo ·
-  Studies thin).
+| Bloque (`13-code-qa.md` §9) | Estado |
+|---|---|
+| 1. CI (workflow + mypy scoped a módulos nuevos) | ✗ |
+| 2. Renames + retiro de promedios (ADR-0011) | ✗ |
+| 3. Evaluand Registry ensanchado | ✗ |
+| 4. Evaluation Design (instrumento + primer YAML real) | ✗ |
+| 5. Content Profiling (adapter LearnpackV1 + visor) | ✗ |
+| 6. Evaluation automático (primer assessor) | ✗ |
+| 7. Evaluation Studies thin | ✗ |
+
+**Modo de trabajo acordado:** rama + PR por bloque (`slice2/<nn>-<nombre>`); Claude commitea
+solo dentro de ramas de bloque; Marta revisa y mergea. Cada PR con la suite completa en verde.
+
+**Input pendiente del equipo (no bloquea bloques 1–3):** los claims del primer instrumento
+real (YAML del bloque 4).
 
 ## Verificado
 
@@ -62,19 +69,13 @@ generadores**) está **cerrado y promovido a docs**:
 
 - **Deploy**: backend a Render, frontend a Netlify, `ALLOWED_ORIGINS` cruzado, y repetir el
   runbook de Clerk en la instancia de producción. La DB ya es Neon.
-- **Sin CI** (no hay `.github/`) y sin tests de frontend. No estaba en el plan del MVP; es lo que
-  falta si se quiere red de seguridad automática antes de deployar.
-- **Deudas del slice 1 que se resuelven durante el desarrollo del slice 2**: Reporting aún
-  publica `overall_average`/`global_average` (contra ADR-0011); se retiran con el rediseño de
-  reporting. La migración de `Rubric v1` **se canceló** (ADR-0015): v1 no se migra a la forma
-  ADR-0010 — se **estabiliza como instrumento de referencia** de la calibración (panel humano
-  por dimensión); queda una revisión ligera (anchors, definiciones) antes de la primera campaña
-  de referencia. La condición de seguridad anterior desaparece: recolectar evaluación humana
-  sobre v1 es ahora su **uso previsto** — después de esa revisión.
-- `docs/design/07-define.md`: diseño táctico del **modelo objetivo** en curso (el slice del MVP
-  está cerrado).
+- **Deudas del slice 1, ahora agendadas en el plan**: los renames del glosario y el retiro de
+  `overall_average`/`global_average` (ADR-0011) son el **bloque 2** de `13-code-qa.md`.
+- **Rubric v1**: revisión ligera (anchors, definiciones) pendiente antes de la primera campaña
+  de referencia (ADR-0015) — fuera del primer incremento del slice 2.
+- **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo
+  (disputas/defectos), annotation queues, métricas de validez por claim, `CompareStudies`.
 
-Fuera de alcance por decisión, no por falta de tiempo: fuentes automáticas ejecutándose hoy,
-calibración, proyecciones CQRS y el ACL de LearnPack conectado — `[futuro]`, con el diseño del
-slice 2 preparando el terreno.
-</content>
+Fuera de alcance por decisión, no por falta de tiempo: calibración de assessors, proyecciones
+CQRS, integration events salientes y el ACL de LearnPack conectado — `[futuro]`, con el diseño
+del slice 2 preparando el terreno.

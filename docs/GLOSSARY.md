@@ -99,7 +99,7 @@
   Ciclo: `Draft (editable, asistible) → Published (locked) → Deprecated`; publicar es atómico y
   **humano**. `Published` ⇒ inmutable — todo cambio ⇒ versión nueva; `claimId`/`criterionId`
   estables entre versiones (linaje). **Es "el compuesto"**: con el instrument poseyendo
-  claims + criteria + assembly + bindings, el viejo "preset de rúbricas" no necesita nombre
+  claims + criteria + sufficiency + bindings, el viejo "preset de rúbricas" no necesita nombre
   propio (DP28). Relación con `Rubric`: término del slice 1 que el Instrument supersede;
   `Rubric v1` pervive como instrumento de referencia (ADR-0015).
 - **Claim** — afirmación evaluable sobre la calidad, de **una frase**, con: evidencia requerida,
@@ -111,9 +111,14 @@
 - **EvidenceModel** — para cada claim: qué evidencia lo soporta/refuta, qué observables la
   constituyen y qué **datos requiere** (ahí se mintean los ids — ADR-0014; el "diccionario" es
   una vista generada, no un artefacto).
-- **Assembly** — cuánta evidencia basta **por claim**, decidido en diseño. En el camino
-  automático reemplaza la noción de quórum (el quórum humano de ADR-0002 sigue rigiendo las
-  campañas con evaluadores humanos).
+- **Sufficiency** *(antes `Assembly` — el término ECD; renombrada por claridad en el plan de
+  código, `design/13-code-qa.md` §7)* — cuánta evidencia basta **por claim**, decidido en
+  diseño; expresada con la taxonomía psicométrica de modelos de decisión: `conjunctive`
+  (default) · `existential` · `m_of_n`. Lo **compensatorio (pesos/promedios/umbral de puntos)
+  está prohibido** — ADR-0011 un nivel arriba. El cuantificador fino ("al menos 2 de 3…")
+  pertenece a la `pass_condition` del criterion, no a esta regla. En el camino automático
+  reemplaza la noción de quórum (el quórum humano de ADR-0002 sigue rigiendo las campañas con
+  evaluadores humanos).
 - **AlternativeExplanation** — enumeradas *por adelantado* por claim: qué produciría la misma
   observación sin que el claim aplique (extracción fallida, formato atípico, criterion ambiguo).
   Formaliza el diagnóstico del bucle de mejora y el canal de impugnación.
@@ -139,30 +144,33 @@
 
 ## Source axis — cómo se produce el juicio (el "cómo")
 
-- **EvaluationSource** — **port** único (el *tipo* de fuente); produce el juicio. *("Evaluator"
-  en uso coloquial / el usuario del MVP = un `Assessor` de tipo `HumanExpert`.)* Adapters:
-  - **HumanExpert** — SME interno/externo. **Dos modos de participación (ADR-0015):** *panel de
+- **EvaluationSource** — **port** único (el *tipo* de fuente); produce el juicio. Taxonomía
+  (ADR-0016): **`human | automated`** — la única distinción con diferencia estructural real
+  (los humanos entran por assignments/UI; los automatizados por config + ejecución). *(Los
+  tipos anteriores `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` eran un espectro, no
+  identidades: todo assessor automatizado es código que, por criterion, usa el mecanismo
+  idóneo — con o sin LLM adentro. Ver tabla de equivalencias.)*
+  - **human** — SME interno/externo. **Dos modos de participación (ADR-0015):** *panel de
     referencia* — juzga qualities directamente leyendo el contenido, sin profile (capa 1 de
     calibración; elicitación holística, fuera del alcance de ADR-0010) · *assessor/verificador
     dentro del instrumento* — trabaja sobre el profile, verificando outcomes citados (capa 2;
     prerequisito de profile intacto).
-  - **LLMJudge** — juez basado en LLM sobre una rubric.
-  - **DeterministicVerifier** — fórmulas / índices / reglas (readability, cohesion,
-    Bloom-tagging, alineación por embeddings, chequeos de presencia/orden).
-  - **HybridVerifier** — fusión determinístico + LLM (la "Hybrid Norm").
+  - **automated** — artefacto de software **modular y versionado** con un mapeo interno
+    `criterion → ejecutor` (código puro, fórmulas/índices, llamadas a LLM — detalle interno,
+    nunca identidad). **Declara un instrumento target**: se debe a sus criteria — relación
+    instrumento 1 → 0..N assessors automatizados; cobertura del target validada al
+    registrarlo. Los humanos no están ligados a instrumentos.
 - **Assessor** — la *instancia concreta, identificable y versionada* de una
   `EvaluationSource` que realmente produce resultados (el "quién/qué exactamente", vs. el
   "qué clase" del tipo). Es la **clave de provenance y de calibración**.
-  - `HumanExpert` → un SME concreto (con expertise profile). *(En el MVP, el usuario que
-    evalúa ES un `Assessor` de tipo `HumanExpert`.)*
-  - `LLMJudge` → una `SourceConfiguration`.
-  - `DeterministicVerifier` → fórmula/librería + versión + thresholds.
-- **SourceConfiguration** — la config que define a un `Assessor` automático de tipo
-  `LLMJudge`: `{provider/model, modelVersion, sampling/temperature, promptTemplate version,
-  rubricRenderingStrategy, toolConfig}`. Cualquier cambio ⇒ *otro* `Assessor` (la
-  calibración no transfiere: invalidación por identidad).
-- **eligible_sources** — relación de compatibilidad `Criterion` ↔ `EvaluationSource`:
-  no todo criterion admite toda fuente (algunos son computables, otros requieren juicio).
+  - `human` → un SME concreto (con expertise profile). *(En el MVP, el usuario que evalúa ES
+    un `Assessor` humano.)*
+  - `automated` → una `SourceConfiguration` `{name, version, instrumentVersionId, config}`.
+- **SourceConfiguration** — la config que define a un `Assessor` automatizado (ADR-0016).
+  Cualquier cambio — código, mapeo, modelo, prompt, threshold interno — ⇒ *otro* `Assessor`
+  (la calibración no transfiere: invalidación por identidad).
+- **eligible_sources** — relación de compatibilidad `Criterion` ↔ `EvaluationSource`, valores
+  `{human, automated}`: no todo criterion admite toda fuente.
 
 ## Evaluation & results
 
@@ -171,7 +179,7 @@
   **id propio** (`evaluationId`) + coordenadas `{assessorId, contentId (versión),
   instrumentVersion (antes rubricVersion), adapterVersion del profile, occurredAt/attempt}`.
   **No** hay unicidad por coordenadas: se permiten **repeticiones** del mismo `Assessor` (p.ej.
-  un `LLMJudge` corrido N veces para medir dispersión). La anti-duplicación humana vive en el
+  un assessor automatizado corrido N veces para medir dispersión). La anti-duplicación humana vive en el
   `Assignment`, no acá. Ver ADR-0005 — **intacto**. Los desenlaces `not_applicable`/`no_evidence`
   se **derivan mecánicamente** (matching + profile), nunca los decide el assessor; `scored` exige
   cita.
@@ -183,7 +191,7 @@
   parte del evidence rule).
 - **ScoringPolicy** — **disuelta** (Define slice 2): su mitad "mapear `ComputedMetric` →
   desenlace" vive ahora en la **condición de pase del criterion** (los umbrales son parte del
-  evidence rule, ADR-0010); su mitad "agregar/componer" vive en el **assembly** por claim
+  evidence rule, ADR-0010); su mitad "agregar/componer" vive en la **sufficiency** por claim
   (ADR-0013), bajo la prohibición de ADR-0011. La entrada se conserva como trazabilidad; el
   código del slice 1 puede referirla hasta su migración.
 - **CriterionScore** — el desenlace de un criterion sobre un contenido (+ `Comment` opcional).
@@ -220,7 +228,7 @@
   (ADR-0002): un contenido está `Completed` cuando el nº de **assessors distintos que enviaron**
   una evaluación válida alcanza el umbral. Las assignments canceladas/incompletas no cuentan.
   En el camino automático "completo" = **cobertura**, y la suficiencia de evidencia por claim la
-  fija el **assembly** (ADR-0013).
+  fija la **sufficiency** (ADR-0013).
 - **GoldenDataset** — agregado de referencia etiquetado por humanos, con **regla propia**:
   `usable` cuando alcanza una cobertura mínima (`coverage ≥ threshold`); cada contenido
   requiere un quórum de **N=2–3** evaluaciones humanas.
@@ -261,7 +269,8 @@
 | `EvaluationDataset` | *dataset* | adoptado — término universal |
 | `GoldenDataset` | *golden dataset* | ya alineado (referencia humana) |
 | `Criterion` **+** `Assessor` ejecutándolo | *scorer* (Braintrust/MLflow) · *evaluator* (LangSmith/Azure) · *metric* (DeepEval/Ragas) · *grader* (OpenAI) · *assertion* (promptfoo) | **cinco nombres, ningún estándar** — y todos fusionan el *qué* con el *quién*; nuestra separación es la precisión que no cedemos |
-| `Assessor` de tipo `LLMJudge` | *LLM-as-judge* | alineado en el adapter; `Assessor` (instancia versionada) es más preciso — la industria no versiona jueces |
+| `Assessor` automatizado (ADR-0016) | *LLM-as-judge* · *scorer/evaluator* automatizado · nuestros ex `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` | el mecanismo (con o sin LLM) es detalle interno del assessor; `Assessor` (instancia versionada con instrumento target) es más preciso — la industria no versiona jueces |
+| `Sufficiency` | *evidence assembly / accumulation* (ECD) · agregación de assertions (promptfoo et al.) | acumulación simple y explícita (ADR-0013), taxonomía conjunctive/existential/m_of_n; lo compensatorio de la industria está prohibido (ADR-0011) |
 | `CriterionScore` | *score* (el "objeto universal" de Langfuse) | el nuestro lleva cita + tri-estado |
 | `Evaluation` (el acto) | ≈ *trace con scores* / fila de un dataset run | su "run" es a nivel dataset — **falso amigo, no adoptar** |
 | colas de verificación (capa 2, ADR-0015) | *annotation queue* | **adoptado** como término de realización |
@@ -276,5 +285,5 @@
   warrant de cada claim cita sus frameworks).
 - **Runtime composition** — *(superado por Define slice 2)*: el "compuesto de rubrics/lentes"
   ya no existe como concepto aparte — **el `Instrument` es el compuesto** (posee claims +
-  criteria + assembly + bindings, DP28), y la agregación la fija su **assembly**, nunca un
-  `ScoringPolicy` (disuelta) ni un score único (ADR-0011).
+  criteria + sufficiency + bindings, DP28), y la agregación la fija su **sufficiency**, nunca
+  un `ScoringPolicy` (disuelta) ni un score único (ADR-0011).

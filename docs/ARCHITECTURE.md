@@ -17,8 +17,8 @@ mencionan en el código de las internas.
 │  Next.js/Tailwind/shadcn · event bus                          │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ Interface Adapters                                      │  │
-│  │  controllers · repository impls · source adapters       │  │
-│  │  (Human/LLM/Deterministic/Hybrid) · extraction adapters │  │
+│  │  controllers · repository impls · assessors             │  │
+│  │  automatizados (ADR-0016) · extraction adapters         │  │
 │  │  (por PackageFormat) · ACLs · outbox · projectors       │  │
 │  │  ┌──────────────────────────────────────────────────┐  │  │
 │  │  │ Application (use cases)                           │  │  │
@@ -49,7 +49,8 @@ Consecuencias obligatorias:
 
 Los **ports se definen en las capas internas** (Application/Domain); los **adapters se
 implementan en las externas**. Ejemplos de ports:
-`EvaluationSourcePort` (uno por tipo: Human/LLM/Deterministic/Hybrid), `ContentExtractorPort`
+`AutomatedAssessorPort` (assessors automatizados — ADR-0016; el camino humano entra por
+assignments/UI), `ContentExtractorPort`
 (extracción por `PackageFormat`), `DesignAssistancePort` (borradores de claims/criteria),
 `InstrumentRepositoryPort` (antes `RubricRepositoryPort`), `ContentRepositoryPort`,
 `EvaluationResultRepositoryPort`, `EventPublisherPort`, `CalibrationStatusPort`. El dominio
