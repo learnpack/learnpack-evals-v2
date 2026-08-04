@@ -176,7 +176,12 @@ docker compose up -d     # Postgres local: db (tests) + db-dev (desarrollo)
 uv run pytest            # tests
 uv run ruff check .      # lint
 uv run ruff format .     # formato
+uv run mypy              # tipos (estricto, scope en pyproject.toml)
 ```
+
+Todo esto corre también en CI en cada PR y push a main (`.github/workflows/ci.yml`): lint +
+formato + tipos + suite backend (con Postgres como service container) + typecheck del frontend
+(`npm run typecheck`).
 
 ### Por qué los tests corren contra Postgres local
 

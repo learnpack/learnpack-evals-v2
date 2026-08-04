@@ -36,7 +36,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|
-| 1. CI (workflow + mypy scoped a módulos nuevos) | ✗ |
+| 1. CI (workflow + mypy scoped a módulos nuevos) | ✔ |
 | 2. Renames + retiro de promedios (ADR-0011) | ✗ |
 | 3. Evaluand Registry ensanchado | ✗ |
 | 4. Evaluation Design (instrumento + primer YAML real) | ✗ |
@@ -44,8 +44,10 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 6. Evaluation automático (primer assessor) | ✗ |
 | 7. Evaluation Studies thin | ✗ |
 
-**Modo de trabajo acordado:** rama + PR por bloque (`slice2/<nn>-<nombre>`); Claude commitea
-solo dentro de ramas de bloque; Marta revisa y mergea. Cada PR con la suite completa en verde.
+**Modo de trabajo acordado:** rama + PR por bloque, con nombres de ramas y commits que
+describen **el cambio** (feature/fix), nunca etapas del plan; Claude commitea solo dentro de
+las ramas de trabajo; Marta revisa y mergea. Cada PR con la suite completa en verde.
+(`13-code-qa.md` §8 menciona un esquema de nombres viejo — snapshot congelado, no se corrige.)
 
 **Input pendiente del equipo (no bloquea bloques 1–3):** los claims del primer instrumento
 real (YAML del bloque 4).
