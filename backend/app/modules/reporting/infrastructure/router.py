@@ -58,7 +58,7 @@ class CriterionSummaryResponse(BaseModel):
 class ContentScoresResponse(BaseModel):
     content_id: UUID
     external_id: str
-    generating_system: str
+    package_format: str
     version: str
     average: float | None
     evaluator_count: int
@@ -129,7 +129,7 @@ def scores_report(
             ContentScoresResponse(
                 content_id=c.content_id,
                 external_id=c.external_id,
-                generating_system=c.generating_system,
+                package_format=c.package_format,
                 version=c.version,
                 average=c.average,
                 evaluator_count=c.evaluator_count,

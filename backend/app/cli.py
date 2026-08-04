@@ -22,7 +22,7 @@ from app.modules.evaluand_registry.application.register_content import (
     DuplicateContent,
     RegisterContent,
     RegisterContentCommand,
-    UnknownGeneratingSystem,
+    UnknownPackageFormat,
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
 from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
@@ -55,7 +55,7 @@ DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
 # Content metadata is an open collection validated against this schema (ADR-0001).
 # The domain never references these keys; only the schema and the UI know them.
 LEARNPACK_METADATA_SCHEMA = {
-    "generatingSystem": "LearnpackV1",
+    "packageFormat": "LearnpackV1",
     "keys": {
         "learningObjectives": {"valueType": "string_list", "required": True},
         "targetAudience": {"valueType": "string", "required": True},
@@ -153,13 +153,13 @@ def seed_metadata_schema(session: Session) -> None:
     session.execute(
         text(
             """
-            INSERT INTO metadata_schemas (generating_system, spec)
-            VALUES (:generating_system, :spec)
-            ON CONFLICT (generating_system) DO UPDATE SET spec = excluded.spec
+            INSERT INTO metadata_schemas (package_format, spec)
+            VALUES (:package_format, :spec)
+            ON CONFLICT (package_format) DO UPDATE SET spec = excluded.spec
             """
         ),
         {
-            "generating_system": LEARNPACK_METADATA_SCHEMA["generatingSystem"],
+            "package_format": LEARNPACK_METADATA_SCHEMA["packageFormat"],
             "spec": json.dumps(LEARNPACK_METADATA_SCHEMA["keys"]),
         },
     )
@@ -241,7 +241,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                     to_register_command(raw)
                     if use_acl
                     else RegisterContentCommand(
-                        generating_system=raw["generating_system"],
+                        package_format=raw["package_format"],
                         external_id=raw["external_id"],
                         consumable_url=raw["consumable_url"],
                         version=str(raw.get("version", "1")),
@@ -256,7 +256,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                 print(
                     f"  skipped  {raw.get('external_id') or raw.get('slug')} (already registered)"
                 )
-            except (InvalidContent, InvalidMetadata, UnknownGeneratingSystem, KeyError) as exc:
+            except (InvalidContent, InvalidMetadata, UnknownPackageFormat, KeyError) as exc:
                 failed += 1
                 print(
                     f"  INVALID  {raw.get('external_id') or raw.get('slug')}: {exc}",
@@ -289,7 +289,7 @@ DEMO_ASSESSORS: list[tuple[str, str, Role]] = [
 
 DEMO_CONTENTS: list[dict[str, Any]] = [
     {
-        "generating_system": "LearnpackV1",
+        "package_format": "LearnpackV1",
         "external_id": "introduction-to-generative-ai",
         "version": "1",
         "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
@@ -304,7 +304,7 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
         },
     },
     {
-        "generating_system": "LearnpackV1",
+        "package_format": "LearnpackV1",
         "external_id": "object-representation-in-python",
         "version": "1",
         "consumable_url": "https://object-representation-in-python.learn-pack.com/",
@@ -397,7 +397,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
                 snapshot = next(
                     s
                     for s in EvaluandRegistryQueries(session).list_content_snapshots()
-                    if s.generating_system == raw["generating_system"]
+                    if s.package_format == raw["package_format"]
                     and s.external_id == raw["external_id"]
                     and s.version == raw["version"]
                 )

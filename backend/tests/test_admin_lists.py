@@ -35,7 +35,7 @@ def content(admin, cleanup, unique):
     body = admin.post(
         "/admin/contents",
         json={
-            "generating_system": "LearnpackV1",
+            "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
             "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},

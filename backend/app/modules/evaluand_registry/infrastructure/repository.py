@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 
-_COLUMNS = "id, generating_system, external_id, version, consumable_url, metadata"
+_COLUMNS = "id, package_format, external_id, version, consumable_url, metadata"
 
 
 class SqlAlchemyContentRepository:
@@ -23,7 +23,7 @@ class SqlAlchemyContentRepository:
     def _to_domain(row) -> EducationalContent:  # noqa: ANN001 — RowMapping
         return EducationalContent(
             id=row["id"],
-            generating_system=row["generating_system"],
+            package_format=row["package_format"],
             external_id=row["external_id"],
             version=row["version"],
             consumable_url=row["consumable_url"],
@@ -41,15 +41,15 @@ class SqlAlchemyContentRepository:
         )
         return None if row is None else self._to_domain(row)
 
-    def exists(self, generating_system: str, external_id: str, version: str) -> bool:
+    def exists(self, package_format: str, external_id: str, version: str) -> bool:
         found = self._session.execute(
             text(
                 """
                 SELECT 1 FROM contents
-                 WHERE generating_system = :gs AND external_id = :eid AND version = :v
+                 WHERE package_format = :gs AND external_id = :eid AND version = :v
                 """
             ),
-            {"gs": generating_system, "eid": external_id, "v": version},
+            {"gs": package_format, "eid": external_id, "v": version},
         ).first()
         return found is not None
 
@@ -58,13 +58,13 @@ class SqlAlchemyContentRepository:
             text(
                 """
                 INSERT INTO contents
-                    (id, generating_system, external_id, version, consumable_url, metadata)
+                    (id, package_format, external_id, version, consumable_url, metadata)
                 VALUES (:id, :gs, :eid, :v, :url, cast(:metadata as jsonb))
                 """
             ),
             {
                 "id": content.id,
-                "gs": content.generating_system,
+                "gs": content.package_format,
                 "eid": content.external_id,
                 "v": content.version,
                 "url": content.consumable_url,
@@ -95,20 +95,20 @@ class SqlAlchemyMetadataSchemaRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get(self, generating_system: str) -> MetadataSchema | None:
+    def get(self, package_format: str) -> MetadataSchema | None:
         row = (
             self._session.execute(
                 text(
                     """
-                    SELECT generating_system, spec FROM metadata_schemas
-                     WHERE generating_system = :gs
+                    SELECT package_format, spec FROM metadata_schemas
+                     WHERE package_format = :gs
                     """
                 ),
-                {"gs": generating_system},
+                {"gs": package_format},
             )
             .mappings()
             .first()
         )
         if row is None:
             return None
-        return MetadataSchema.from_spec(row["generating_system"], row["spec"])
+        return MetadataSchema.from_spec(row["package_format"], row["spec"])

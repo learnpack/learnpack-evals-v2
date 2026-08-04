@@ -16,7 +16,7 @@ from app.modules.evaluand_registry.application.register_content import (
     DuplicateContent,
     RegisterContent,
     RegisterContentCommand,
-    UnknownGeneratingSystem,
+    UnknownPackageFormat,
 )
 from app.modules.evaluand_registry.application.update_content_metadata import (
     ContentNotFound,
@@ -38,7 +38,7 @@ Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
 
 class RegisterContentRequest(BaseModel):
-    generating_system: str = Field(examples=["LearnpackV1"])
+    package_format: str = Field(examples=["LearnpackV1"])
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
@@ -58,7 +58,7 @@ class MetadataEntryResponse(BaseModel):
 
 class ContentResponse(BaseModel):
     content_id: UUID
-    generating_system: str
+    package_format: str
     external_id: str
     version: str
     consumable_url: str
@@ -68,7 +68,7 @@ class ContentResponse(BaseModel):
     def from_snapshot(cls, snapshot: ContentSnapshot) -> "ContentResponse":
         return cls(
             content_id=snapshot.content_id,
-            generating_system=snapshot.generating_system,
+            package_format=snapshot.package_format,
             external_id=snapshot.external_id,
             version=snapshot.version,
             consumable_url=snapshot.consumable_url,
@@ -103,7 +103,7 @@ def register_content(
     try:
         content = use_case(
             RegisterContentCommand(
-                generating_system=request.generating_system,
+                package_format=request.package_format,
                 external_id=request.external_id,
                 consumable_url=request.consumable_url,
                 version=request.version,
@@ -116,7 +116,7 @@ def register_content(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.errors
         ) from exc
-    except (InvalidContent, UnknownGeneratingSystem) as exc:
+    except (InvalidContent, UnknownPackageFormat) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
@@ -144,7 +144,7 @@ def update_content_metadata(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.errors
         ) from exc
-    except UnknownGeneratingSystem as exc:
+    except UnknownPackageFormat as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc

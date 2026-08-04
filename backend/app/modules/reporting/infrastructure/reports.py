@@ -50,7 +50,7 @@ class CriterionSummaryDTO:
 class ContentScoresDTO:
     content_id: UUID
     external_id: str
-    generating_system: str
+    package_format: str
     version: str
     average: float | None
     evaluator_count: int
@@ -107,7 +107,7 @@ def build_scores_report(
             ContentScoresDTO(
                 content_id=snapshot.content_id,
                 external_id=snapshot.external_id,
-                generating_system=snapshot.generating_system,
+                package_format=snapshot.package_format,
                 version=snapshot.version,
                 average=aggregation.overall_average(found),
                 evaluator_count=len(counted),

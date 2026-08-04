@@ -17,7 +17,7 @@ def admin_client(as_user, cleanup, promote, unique):
 
 def payload(unique: str, **overrides) -> dict:
     body = {
-        "generating_system": "LearnpackV1",
+        "package_format": "LearnpackV1",
         "external_id": f"course-{unique}",
         "consumable_url": COURSE_URL,
         "metadata": {
@@ -91,9 +91,9 @@ def test_non_http_url_is_rejected(admin_client, unique):
     assert response.status_code == 422
 
 
-def test_unknown_generating_system_is_rejected(admin_client, unique):
+def test_unknown_package_format_is_rejected(admin_client, unique):
     response = admin_client.post(
-        "/admin/contents", json=payload(unique, generating_system="SomeOtherSystem")
+        "/admin/contents", json=payload(unique, package_format="SomeOtherSystem")
     )
     assert response.status_code == 422
 

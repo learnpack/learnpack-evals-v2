@@ -15,16 +15,16 @@ from app.shared.domain.ids import new_id
 
 
 class DuplicateContent(Exception):
-    """A content version with the same (generatingSystem, externalId, version) exists."""
+    """A content version with the same (packageFormat, externalId, version) exists."""
 
 
-class UnknownGeneratingSystem(Exception):
-    """No MetadataSchema is registered for this generating system."""
+class UnknownPackageFormat(Exception):
+    """No MetadataSchema is registered for this package format."""
 
 
 @dataclass(frozen=True)
 class RegisterContentCommand:
-    generating_system: str
+    package_format: str
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
@@ -45,17 +45,17 @@ class RegisterContent:
         self._uow = uow
 
     def __call__(self, command: RegisterContentCommand) -> EducationalContent:
-        schema = self._require_schema(command.generating_system)
+        schema = self._require_schema(command.package_format)
 
-        if self._contents.exists(command.generating_system, command.external_id, command.version):
+        if self._contents.exists(command.package_format, command.external_id, command.version):
             raise DuplicateContent(
-                f"{command.generating_system}/{command.external_id} "
+                f"{command.package_format}/{command.external_id} "
                 f"version {command.version} is already registered"
             )
 
         content = EducationalContent(
             id=new_id(),
-            generating_system=command.generating_system,
+            package_format=command.package_format,
             external_id=command.external_id,
             consumable_url=command.consumable_url,
             version=command.version,
@@ -68,10 +68,10 @@ class RegisterContent:
         self._uow.commit()
         return content
 
-    def _require_schema(self, generating_system: str) -> MetadataSchema:
-        schema = self._schemas.get(generating_system)
+    def _require_schema(self, package_format: str) -> MetadataSchema:
+        schema = self._schemas.get(package_format)
         if schema is None:
-            raise UnknownGeneratingSystem(
-                f"no metadata schema registered for '{generating_system}'"
+            raise UnknownPackageFormat(
+                f"no metadata schema registered for '{package_format}'"
             )
         return schema

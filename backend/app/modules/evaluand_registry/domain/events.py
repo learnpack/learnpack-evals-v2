@@ -13,7 +13,7 @@ def content_version_registered(content: EducationalContent) -> DomainEvent:
         aggregate_id=str(content.id),
         payload={
             "contentId": str(content.id),
-            "generatingSystem": content.generating_system,
+            "packageFormat": content.package_format,
             "externalId": content.external_id,
             "version": content.version,
             "consumableUrl": content.consumable_url,

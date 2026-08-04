@@ -1,7 +1,7 @@
 """`EducationalContent` aggregate — pure Python.
 
 Every instance is a concrete **version**: `id` (contentId) identifies a version, while the
-logical content is `(generating_system, external_id)`. Evaluating v1 vs v2 of the same course
+logical content is `(package_format, external_id)`. Evaluating v1 vs v2 of the same course
 is a first-class case (ADR-0005).
 """
 
@@ -23,15 +23,15 @@ class EducationalContent:
     """Aggregate root. Owns its `ContentMetadata`."""
 
     id: UUID
-    generating_system: str
+    package_format: str
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
     metadata: ContentMetadata = field(default_factory=lambda: ContentMetadata(values={}))
 
     def __post_init__(self) -> None:
-        if not self.generating_system or not self.generating_system.strip():
-            raise InvalidContent("generating_system is required")
+        if not self.package_format or not self.package_format.strip():
+            raise InvalidContent("package_format is required")
         if not self.external_id or not self.external_id.strip():
             raise InvalidContent("external_id is required")
         if not self.version or not self.version.strip():
@@ -45,7 +45,7 @@ class EducationalContent:
     @property
     def logical_id(self) -> tuple[str, str]:
         """The logical content this version belongs to."""
-        return (self.generating_system, self.external_id)
+        return (self.package_format, self.external_id)
 
     def update_metadata(self, values: dict[str, Any], schema: MetadataSchema) -> None:
         """Replace the metadata, revalidating against the schema."""

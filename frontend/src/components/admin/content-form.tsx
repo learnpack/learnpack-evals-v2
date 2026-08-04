@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/states";
 import { useCreateContent, useUpdateContentMetadata } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import { GENERATING_SYSTEM } from "@/lib/constants";
+import { PACKAGE_FORMAT } from "@/lib/constants";
 import type { ContentResponse, MetadataEntry } from "@/lib/api/types";
 
 const linesToList = (v: string) =>
@@ -96,7 +96,7 @@ export function ContentForm({
 
     createContent.mutate(
       {
-        generating_system: GENERATING_SYSTEM,
+        package_format: PACKAGE_FORMAT,
         external_id: externalId.trim(),
         consumable_url: consumableUrl.trim(),
         ...(version.trim() ? { version: version.trim() } : {}),

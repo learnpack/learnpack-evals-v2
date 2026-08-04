@@ -19,7 +19,7 @@ RAW = {
 def test_maps_external_fields_to_our_command():
     command = to_register_command(RAW)
 
-    assert command.generating_system == "LearnpackV1"
+    assert command.package_format == "LearnpackV1"
     assert command.external_id == "introduction-to-generative-ai"
     assert command.consumable_url == RAW["url"]
     assert command.version == "1"

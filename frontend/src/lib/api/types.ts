@@ -21,7 +21,7 @@ export interface MetadataEntry {
 
 export interface ContentResponse {
   content_id: Uuid;
-  generating_system: string;
+  package_format: string;
   external_id: string;
   version: string;
   consumable_url: string;
@@ -146,7 +146,7 @@ export interface IndividualEvaluation {
 export interface ContentScores {
   content_id: Uuid;
   external_id: string;
-  generating_system: string;
+  package_format: string;
   version: string;
   average: number | null;
   evaluator_count: number;
@@ -196,7 +196,7 @@ export interface ProgressReport {
 // --- Requests --------------------------------------------------------------
 
 export interface RegisterContentRequest {
-  generating_system: string;
+  package_format: string;
   external_id: string;
   consumable_url: string;
   version?: string;

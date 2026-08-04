@@ -10,7 +10,7 @@ from typing import Any
 from app.modules.evaluand_registry.application.register_content import RegisterContentCommand
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION
 
-GENERATING_SYSTEM = "LearnpackV1"
+PACKAGE_FORMAT = "LearnpackV1"
 
 # LearnPack's field names on the left, ours (the seeded schema's keys) on the right.
 _METADATA_FIELD_MAP = {
@@ -30,7 +30,7 @@ def to_register_command(raw: dict[str, Any]) -> RegisterContentCommand:
         if key in _METADATA_FIELD_MAP
     }
     return RegisterContentCommand(
-        generating_system=GENERATING_SYSTEM,
+        package_format=PACKAGE_FORMAT,
         external_id=raw["slug"],
         consumable_url=raw["url"],
         version=str(raw.get("version") or DEFAULT_VERSION),

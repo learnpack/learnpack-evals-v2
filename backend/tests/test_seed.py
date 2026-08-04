@@ -57,7 +57,7 @@ def test_metadata_schema_seeded(requires_db):
 
     with SessionLocal() as session:
         spec = session.execute(
-            text("SELECT spec FROM metadata_schemas WHERE generating_system = 'LearnpackV1'")
+            text("SELECT spec FROM metadata_schemas WHERE package_format = 'LearnpackV1'")
         ).scalar_one()
 
     # ADR-0001: keys live in reference data, never in the domain. No lessonPlan.

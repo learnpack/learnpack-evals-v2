@@ -8,7 +8,7 @@ from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     MetadataSchemaRepositoryPort,
 )
-from app.modules.evaluand_registry.application.register_content import UnknownGeneratingSystem
+from app.modules.evaluand_registry.application.register_content import UnknownPackageFormat
 from app.modules.evaluand_registry.domain import events
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
@@ -42,10 +42,10 @@ class UpdateContentMetadata:
         if content is None:
             raise ContentNotFound(str(command.content_id))
 
-        schema = self._schemas.get(content.generating_system)
+        schema = self._schemas.get(content.package_format)
         if schema is None:
-            raise UnknownGeneratingSystem(
-                f"no metadata schema registered for '{content.generating_system}'"
+            raise UnknownPackageFormat(
+                f"no metadata schema registered for '{content.package_format}'"
             )
 
         # Raises InvalidMetadata with every violation; the aggregate stays untouched.
