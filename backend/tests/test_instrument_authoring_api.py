@@ -169,3 +169,39 @@ def test_instruments_are_listed(admin_client, cleanup, unique):
     instrument_id = import_spec(cleanup, spec(unique))
     listed = admin_client.get("/admin/instruments").json()
     assert instrument_id in {i["instrument_version_id"] for i in listed}
+
+
+# ---------------------------------------------------------------- the real draft
+
+
+def test_the_real_draft_imports_clean_and_would_publish(admin_client, cleanup, unique):
+    """docs/seed/instruments/learnpack-course-qa-v1.yaml is data under review: it must
+    import clean, and a copy must pass every publish invariant — while the real one
+    STAYS a draft (publishing it is the team's human act, design 12 inv. 5)."""
+    import yaml
+
+    from app.cli import REPO_ROOT
+
+    real_file = REPO_ROOT / "docs" / "seed" / "instruments" / "learnpack-course-qa-v1.yaml"
+    real_spec = yaml.safe_load(real_file.read_text(encoding="utf-8"))
+
+    real_id = import_spec(cleanup, real_spec)
+    body = admin_client.get(f"/admin/instruments/{real_id}").json()
+    assert body["status"] == "draft"
+    assert len(body["claims"]) == 3
+    assert len(body["criteria"]) == 6
+    assert {c["claim_id"] for c in body["claims"]} == {
+        "cl-objectives-declared",
+        "cl-audience-declared",
+        "cl-practice-structured",
+    }
+
+    # A copy under a throwaway id proves the content satisfies the publish invariants.
+    copy = dict(real_spec)
+    copy["instrument_id"] = f"qa-copy-{unique}"
+    copy_id = import_spec(cleanup, copy)
+    published = admin_client.post(f"/admin/instruments/{copy_id}/publish")
+    assert published.status_code == 200, published.text
+
+    # The real draft was not published by any of this.
+    assert admin_client.get(f"/admin/instruments/{real_id}").json()["status"] == "draft"

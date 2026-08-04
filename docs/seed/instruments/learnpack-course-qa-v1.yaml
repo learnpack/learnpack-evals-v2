@@ -1,0 +1,163 @@
+# learnpack-course-qa v1 — DRAFT for team review.
+#
+# First real instrument of the internal generator-QA engine (design 09-13). Authored as
+# ASSISTANCE (see assisted_by): per design 12 invariant 5, nothing produced by assistance
+# reaches Published without a human act — review this file like code, edit freely, and
+# publish with `python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`
+# only when the team owns every word.
+#
+# Deliberately small and 100% verifiable over DECLARED data (ADR-0009: the engine never
+# infers; absence is a first-class finding). Every pass condition carries its own
+# quantifier (k12 lesson: thresholds live in the criterion, not in the sufficiency rule).
+# All claims use conjunctive sufficiency: supported iff every evidencing criterion passes;
+# refuted iff any fails; insufficient otherwise.
+
+instrument_id: learnpack-course-qa
+version: v1
+name: "LearnPack Course QA v1"
+purpose: >
+  Internal QA of AI-generated LearnPack courses: surface actionable generator defects on
+  the surface the generator controls (declared objectives, audience, prerequisites and
+  practice structure). Not a market signal, not a certification.
+assisted_by:
+  assistant: claude-fable-5
+  role: "drafted claims, criteria and data requirements for team review"
+
+bindings:
+  - package_format: LearnpackV1
+    # No task variables yet: they appear demand-driven when a criterion conditions on them.
+
+# The demand-side namespace this instrument mints (ADR-0014). Definitions are mandatory:
+# they ARE the vocabulary. The LearnpackV1 extraction adapter (next block) declares its
+# capabilities against exactly these ids.
+data_requirements:
+  - id: learning_objectives
+    definition: >
+      The learning objectives the content declares, as a list of statements, taken from
+      declared metadata or the package manifest — never reconstructed from the body.
+    grounded_in: ["Biggs"]
+  - id: target_audience
+    definition: >
+      The audience the content declares it is for, as a free-text statement.
+  - id: prerequisites
+    definition: >
+      The prior knowledge the content declares as required, as a list of statements.
+    grounded_in: ["Learning Progressions"]
+  - id: practice_exercises
+    definition: >
+      The practice exercises present in the package, as a list where each entry carries
+      the exercise identifier and whether it includes learner-facing instructions.
+    grounded_in: ["Merrill"]
+
+claims:
+  - id: cl-objectives-declared
+    statement: "The course declares observable learning objectives."
+    qualities: [objectives-observable]
+    warrants: ["Biggs", "Revised Bloom"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Objectives exist in the lesson bodies but not in the manifest/metadata the adapter
+        reads — an extraction gap, not a generator defect (dispute path: check the raw
+        package before blaming the generator).
+      - >
+        The course was authored against an older LearnPack convention that stores
+        objectives elsewhere — atypical package, not a missing-objectives defect.
+
+  - id: cl-audience-declared
+    statement: "The course declares who it is for and what it assumes the learner knows."
+    qualities: [progression-starting-point]
+    warrants: ["Learning Progressions", "Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Audience and prerequisites were provided in the generation brief but the generator
+        was never asked to emit them into the package — a pipeline configuration gap, not
+        a generation defect (check the brief before diagnosing).
+
+  - id: cl-practice-structured
+    statement: "The course offers structured practice, not just exposition."
+    qualities: [instruction-application]
+    warrants: ["Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Exercises exist but under a non-standard directory layout the adapter does not
+        walk — extraction failure, not absent practice (verify against the raw package).
+
+criteria:
+  - id: cr-objectives-min-count
+    statement: "Objectives are declared and countable."
+    pass_condition: >
+      At least 2 learning objectives are declared. Fail = fewer than 2 entries, or entries
+      that are empty/whitespace.
+    failure_modes:
+      - "No objectives declared at all — the generator omitted them."
+      - "A single catch-all objective covering the whole course."
+    claims: [cl-objectives-declared]
+    requires: [learning_objectives]
+    on_missing_evidence: fail # the absence IS the finding (ADR-0009 §4)
+    eligible_sources: [human, automated]
+
+  - id: cr-objectives-observable-verbs
+    statement: "Each objective is phrased with an observable action verb."
+    pass_condition: >
+      Every declared objective starts its verb phrase with an observable action verb
+      (e.g. 'build', 'classify', 'solve', 'write'). Fail = any objective phrased with
+      'understand', 'know', 'learn about', 'be familiar with' or equivalent
+      non-observable verbs.
+    failure_modes:
+      - "Objectives phrased as internal states ('understand X') that cannot be verified."
+    claims: [cl-objectives-declared]
+    requires: [learning_objectives]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-audience-declared
+    statement: "The target audience is declared."
+    pass_condition: >
+      A non-empty target audience statement is declared. Fail = missing or
+      empty/boilerplate ('everyone', 'anyone interested').
+    failure_modes:
+      - "No audience declared — the level of every judgment downstream is unanchored."
+      - "Audience so generic it cannot anchor a starting point."
+    claims: [cl-audience-declared]
+    requires: [target_audience]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-prerequisites-declared
+    statement: "Prerequisites are declared."
+    pass_condition: >
+      At least 1 prerequisite is declared (an explicit 'none' also passes — declaring the
+      empty set is a declaration). Fail = prerequisites entry present but blank.
+    failure_modes:
+      - "Prerequisites omitted: the entry point of the progression is undeclared."
+    claims: [cl-audience-declared]
+    requires: [prerequisites]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-practice-min-count
+    statement: "The package contains exercises."
+    pass_condition: >
+      At least 3 practice exercises are present in the package. Fail = fewer than 3.
+    failure_modes:
+      - "No exercises: the course only exposes information (no application opportunity)."
+      - "Token practice: one or two exercises for a whole course."
+    claims: [cl-practice-structured]
+    requires: [practice_exercises]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-practice-instructed
+    statement: "Each exercise carries learner-facing instructions."
+    pass_condition: >
+      Every practice exercise includes non-empty learner-facing instructions. Fail = any
+      exercise without instructions (an empty task is not practice).
+    failure_modes:
+      - "Exercises shipped as bare code without a task statement."
+    claims: [cl-practice-structured]
+    requires: [practice_exercises]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
