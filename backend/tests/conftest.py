@@ -69,9 +69,16 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
     """Collect rows created by a test and remove them afterwards.
 
     Deletion follows the FK order: evaluations/completions → assignments → campaigns →
-    contents → assessors. Outbox rows are keyed by the aggregate id that produced them.
+    contents → generators/briefs → assessors. Outbox rows are keyed by the aggregate id
+    that produced them.
     """
-    created: dict[str, list] = {"contents": [], "assessors": [], "campaigns": []}
+    created: dict[str, list] = {
+        "contents": [],
+        "assessors": [],
+        "campaigns": [],
+        "generators": [],
+        "briefs": [],
+    }
     yield created
 
     from app.platform.db import SessionLocal
@@ -118,7 +125,21 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
 
         for content_id in created["contents"]:
             s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(content_id)})
+            # content_package_artifacts cascade with the content row.
             s.execute(text("DELETE FROM contents WHERE id = :id"), {"id": content_id})
+        # Generators and briefs go after contents, which reference them.
+        for generator_id in created["generators"]:
+            s.execute(
+                text("DELETE FROM generator_artifacts WHERE generator_version_id = :id"),
+                {"id": generator_id},
+            )
+            s.execute(
+                text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(generator_id)}
+            )
+            s.execute(text("DELETE FROM generator_versions WHERE id = :id"), {"id": generator_id})
+        for brief_id in created["briefs"]:
+            s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(brief_id)})
+            s.execute(text("DELETE FROM generation_briefs WHERE id = :id"), {"id": brief_id})
         for assessor_id in created["assessors"]:
             s.execute(text("DELETE FROM assessors WHERE id = :id"), {"id": assessor_id})
         s.commit()

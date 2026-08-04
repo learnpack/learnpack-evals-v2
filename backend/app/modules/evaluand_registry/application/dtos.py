@@ -17,6 +17,30 @@ class MetadataEntryDTO:
 
 
 @dataclass(frozen=True)
+class GeneratorVersionDTO:
+    generator_version_id: UUID
+    name: str
+    version: str
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class BriefDTO:
+    brief_id: UUID
+    brief: str
+    fields: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class GeneratorArtifactDTO:
+    artifact_id: UUID
+    generator_version_id: UUID
+    kind: str
+    locator: str
+    format: str | None
+
+
+@dataclass(frozen=True)
 class ContentSnapshot:
     content_id: UUID
     package_format: str

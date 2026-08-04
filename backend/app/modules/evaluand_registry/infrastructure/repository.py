@@ -1,4 +1,4 @@
-"""SQLAlchemy adapters for Content Registry's ports.
+"""SQLAlchemy adapters for the Evaluand Registry's ports.
 
 Hand-mapped Core statements keep the domain free of SQLAlchemy (ARCHITECTURE.md §1).
 """
@@ -6,10 +6,12 @@ Hand-mapped Core statements keep the domain free of SQLAlchemy (ARCHITECTURE.md 
 import json
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.orm import Session
 
+from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
 from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 
 _COLUMNS = "id, package_format, external_id, version, consumable_url, metadata"
@@ -87,6 +89,156 @@ class SqlAlchemyContentRepository:
             .all()
         )
         return [self._to_domain(row) for row in rows]
+
+
+class SqlAlchemyGeneratorVersionRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    @staticmethod
+    def _to_domain(row: RowMapping) -> GeneratorVersion:
+        return GeneratorVersion(
+            id=row["id"],
+            name=row["name"],
+            version=row["version"],
+            metadata=row["metadata"] or {},
+        )
+
+    def get_by_id(self, generator_version_id: UUID) -> GeneratorVersion | None:
+        row = (
+            self._session.execute(
+                text("SELECT id, name, version, metadata FROM generator_versions WHERE id = :id"),
+                {"id": generator_version_id},
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_domain(row)
+
+    def exists(self, name: str, version: str) -> bool:
+        found = self._session.execute(
+            text("SELECT 1 FROM generator_versions WHERE name = :name AND version = :version"),
+            {"name": name, "version": version},
+        ).first()
+        return found is not None
+
+    def add(self, generator: GeneratorVersion) -> None:
+        self._session.execute(
+            text(
+                """
+                INSERT INTO generator_versions (id, name, version, metadata)
+                VALUES (:id, :name, :version, cast(:metadata as jsonb))
+                """
+            ),
+            {
+                "id": generator.id,
+                "name": generator.name,
+                "version": generator.version,
+                "metadata": json.dumps(generator.metadata),
+            },
+        )
+
+    def list_all(self) -> list[GeneratorVersion]:
+        rows = (
+            self._session.execute(
+                text(
+                    "SELECT id, name, version, metadata FROM generator_versions ORDER BY created_at"
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [self._to_domain(row) for row in rows]
+
+
+class SqlAlchemyBriefRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    @staticmethod
+    def _to_domain(row: RowMapping) -> GenerationBrief:
+        return GenerationBrief(id=row["id"], brief=row["brief"], fields=row["fields"] or {})
+
+    def get_by_id(self, brief_id: UUID) -> GenerationBrief | None:
+        row = (
+            self._session.execute(
+                text("SELECT id, brief, fields FROM generation_briefs WHERE id = :id"),
+                {"id": brief_id},
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_domain(row)
+
+    def add(self, brief: GenerationBrief) -> None:
+        self._session.execute(
+            text(
+                """
+                INSERT INTO generation_briefs (id, brief, fields)
+                VALUES (:id, :brief, cast(:fields as jsonb))
+                """
+            ),
+            {"id": brief.id, "brief": brief.brief, "fields": json.dumps(brief.fields)},
+        )
+
+    def list_all(self) -> list[GenerationBrief]:
+        rows = (
+            self._session.execute(
+                text("SELECT id, brief, fields FROM generation_briefs ORDER BY created_at")
+            )
+            .mappings()
+            .all()
+        )
+        return [self._to_domain(row) for row in rows]
+
+
+class SqlAlchemyGeneratorArtifactRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, artifact: GeneratorArtifact) -> None:
+        self._session.execute(
+            text(
+                """
+                INSERT INTO generator_artifacts (id, generator_version_id, kind, locator, format)
+                VALUES (:id, :gvid, :kind, :locator, :format)
+                """
+            ),
+            {
+                "id": artifact.id,
+                "gvid": artifact.generator_version_id,
+                "kind": artifact.kind,
+                "locator": artifact.locator,
+                "format": artifact.format,
+            },
+        )
+
+    def list_for_generator(self, generator_version_id: UUID) -> list[GeneratorArtifact]:
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT id, generator_version_id, kind, locator, format
+                      FROM generator_artifacts
+                     WHERE generator_version_id = :gvid
+                     ORDER BY registered_at
+                    """
+                ),
+                {"gvid": generator_version_id},
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            GeneratorArtifact(
+                id=row["id"],
+                generator_version_id=row["generator_version_id"],
+                kind=row["kind"],
+                locator=row["locator"],
+                format=row["format"],
+            )
+            for row in rows
+        ]
 
 
 class SqlAlchemyMetadataSchemaRepository:

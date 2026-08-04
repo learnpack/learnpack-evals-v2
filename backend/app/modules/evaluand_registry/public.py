@@ -1,4 +1,4 @@
-"""Public surface of Content Registry (ARCHITECTURE.md §3).
+"""Public surface of the Evaluand Registry (ARCHITECTURE.md §3).
 
 The **only** module in this package other modules may import. It re-exports the query DTOs
 and the events, and provides `get_evaluand_registry_queries` for `Depends` — which builds the
@@ -12,9 +12,16 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.modules.evaluand_registry.application import queries as _queries
-from app.modules.evaluand_registry.application.dtos import ContentSnapshot, MetadataEntryDTO
+from app.modules.evaluand_registry.application.dtos import (
+    BriefDTO,
+    ContentSnapshot,
+    GeneratorVersionDTO,
+    MetadataEntryDTO,
+)
 from app.modules.evaluand_registry.infrastructure.repository import (
+    SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorVersionRepository,
     SqlAlchemyMetadataSchemaRepository,
 )
 from app.platform.uow import UnitOfWork, get_uow
@@ -22,23 +29,33 @@ from app.platform.uow import UnitOfWork, get_uow
 # Events this module publishes — the contract subscribers rely on.
 CONTENT_VERSION_REGISTERED = "ContentVersionRegistered"
 CONTENT_METADATA_UPDATED = "ContentMetadataUpdated"
+GENERATOR_VERSION_REGISTERED = "GeneratorVersionRegistered"
+BRIEF_REGISTERED = "BriefRegistered"
+GENERATOR_ARTIFACT_REGISTERED = "GeneratorArtifactRegistered"
 
 __all__ = [
+    "BRIEF_REGISTERED",
     "CONTENT_METADATA_UPDATED",
     "CONTENT_VERSION_REGISTERED",
-    "EvaluandRegistryQueries",
+    "GENERATOR_ARTIFACT_REGISTERED",
+    "GENERATOR_VERSION_REGISTERED",
+    "BriefDTO",
     "ContentSnapshot",
+    "EvaluandRegistryQueries",
+    "GeneratorVersionDTO",
     "MetadataEntryDTO",
     "get_evaluand_registry_queries",
 ]
 
 
 class EvaluandRegistryQueries:
-    """Read-only contract of Content Registry (`getContentSnapshot`, `getContentMetadata`)."""
+    """Read-only contract of the Evaluand Registry."""
 
     def __init__(self, session: Session) -> None:
         self._contents = SqlAlchemyContentRepository(session)
         self._schemas = SqlAlchemyMetadataSchemaRepository(session)
+        self._generators = SqlAlchemyGeneratorVersionRepository(session)
+        self._briefs = SqlAlchemyBriefRepository(session)
 
     def get_content_snapshot(self, content_id: UUID) -> ContentSnapshot | None:
         return _queries.get_content_snapshot(self._contents, self._schemas, content_id)
@@ -48,6 +65,12 @@ class EvaluandRegistryQueries:
 
     def list_content_snapshots(self) -> list[ContentSnapshot]:
         return _queries.list_content_snapshots(self._contents, self._schemas)
+
+    def get_generator_version(self, generator_version_id: UUID) -> GeneratorVersionDTO | None:
+        return _queries.get_generator_version(self._generators, generator_version_id)
+
+    def get_brief(self, brief_id: UUID) -> BriefDTO | None:
+        return _queries.get_brief(self._briefs, brief_id)
 
 
 def get_evaluand_registry_queries(

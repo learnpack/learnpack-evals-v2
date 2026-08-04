@@ -156,3 +156,102 @@ def test_list_contents_includes_the_new_one(admin_client, cleanup, unique):
 
     listed = admin_client.get("/admin/contents").json()
     assert created["content_id"] in [c["content_id"] for c in listed]
+
+
+# ------------------------------------------------------------ generators & briefs
+
+
+def test_register_generator_writes_aggregate_and_event(admin_client, cleanup, session, unique):
+    response = admin_client.post(
+        "/admin/generators",
+        json={"name": f"gen-{unique}", "version": "2.4.0", "metadata": {"model": "gpt"}},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    cleanup["generators"].append(body["generator_version_id"])
+    assert body["metadata"] == {"model": "gpt"}
+
+    event_type = session.execute(
+        text("SELECT event_type FROM events WHERE aggregate_id = :id"),
+        {"id": body["generator_version_id"]},
+    ).scalar_one()
+    assert event_type == "GeneratorVersionRegistered"
+
+
+def test_duplicate_generator_identity_is_rejected(admin_client, cleanup, unique):
+    """Immutable identity: a genuinely different generator is a NEW registration."""
+    first = admin_client.post("/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"})
+    cleanup["generators"].append(first.json()["generator_version_id"])
+
+    duplicate = admin_client.post(
+        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
+    )
+    assert duplicate.status_code == 409
+
+    new_version = admin_client.post(
+        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.1"}
+    )
+    assert new_version.status_code == 201
+    cleanup["generators"].append(new_version.json()["generator_version_id"])
+
+
+def test_register_brief_writes_aggregate_and_event(admin_client, cleanup, session, unique):
+    response = admin_client.post(
+        "/admin/briefs",
+        json={"brief": f"an intro course on loops ({unique})", "fields": {"level": "intro"}},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    cleanup["briefs"].append(body["brief_id"])
+
+    event_type = session.execute(
+        text("SELECT event_type FROM events WHERE aggregate_id = :id"),
+        {"id": body["brief_id"]},
+    ).scalar_one()
+    assert event_type == "BriefRegistered"
+
+
+def test_blank_brief_is_rejected(admin_client):
+    assert admin_client.post("/admin/briefs", json={"brief": "   "}).status_code == 422
+
+
+def test_generator_artifact_requires_a_registered_generator(admin_client):
+    response = admin_client.post(
+        "/admin/generators/00000000-0000-0000-0000-000000000000/artifacts",
+        json={"kind": "prompt-template", "locator": "https://example.com/t"},
+    )
+    assert response.status_code == 404
+
+
+def test_generator_artifacts_are_registered_and_listed(admin_client, cleanup, unique):
+    generator_id = admin_client.post(
+        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
+    ).json()["generator_version_id"]
+    cleanup["generators"].append(generator_id)
+
+    created = admin_client.post(
+        f"/admin/generators/{generator_id}/artifacts",
+        json={"kind": "knowledge-graph", "locator": "https://example.com/kg.json"},
+    )
+    assert created.status_code == 201, created.text
+
+    listed = admin_client.get(f"/admin/generators/{generator_id}/artifacts").json()
+    assert [(a["kind"], a["locator"]) for a in listed] == [
+        ("knowledge-graph", "https://example.com/kg.json")
+    ]
+
+
+def test_generators_and_briefs_are_listed(admin_client, cleanup, unique):
+    generator_id = admin_client.post(
+        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
+    ).json()["generator_version_id"]
+    cleanup["generators"].append(generator_id)
+    brief_id = admin_client.post("/admin/briefs", json={"brief": f"brief-{unique}"}).json()[
+        "brief_id"
+    ]
+    cleanup["briefs"].append(brief_id)
+
+    generators = admin_client.get("/admin/generators").json()
+    briefs = admin_client.get("/admin/briefs").json()
+    assert generator_id in {g["generator_version_id"] for g in generators}
+    assert brief_id in {b["brief_id"] for b in briefs}
