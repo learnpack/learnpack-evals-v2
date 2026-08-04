@@ -66,6 +66,13 @@ class ProfileRepositoryPort(Protocol):
         """Remove a failed profile so the manual path can retry; never touches `ok`."""
         ...
 
+    def get(self, content_id: UUID, adapter_version: str | None) -> ContentProfile | None:
+        """Without a version: the most recent ok profile, else the most recent at all —
+        so the workbench can still show what broke."""
+        ...
+
+    def list_all(self) -> list[ContentProfile]: ...
+
 
 class AcceptanceRepositoryPort(Protocol):
     def accept(self, package_format: str, adapter_version: str, accepted_by: UUID) -> bool:

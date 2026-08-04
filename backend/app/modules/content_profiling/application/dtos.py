@@ -59,3 +59,14 @@ class ContentProfileSnapshot:
     profiled_at: datetime | None
     entries: tuple[ProfileEntrySnapshot, ...] = ()
     extras: tuple[ProfileExtraSnapshot, ...] = ()
+
+
+@dataclass(frozen=True)
+class CapabilitiesSnapshot:
+    """The supply side of the matching: what an adapter offers, and whether the human
+    act qualified it (`getCapabilities(packageFormat)`, 12-define)."""
+
+    package_format: str
+    adapter_version: str
+    capabilities: tuple[str, ...]
+    accepted: bool

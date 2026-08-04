@@ -5,9 +5,14 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import Session
 
-from app.modules.content_profiling.domain.profile import ContentProfile
+from app.modules.content_profiling.domain.profile import (
+    ContentProfile,
+    ProfileEntry,
+    ProfileExtra,
+)
 
 
 def _jsonb(value: Any) -> str | None:
@@ -109,6 +114,113 @@ class SqlAlchemyProfileRepository:
             {"content_id": content_id, "adapter_version": adapter_version},
         ).scalar()
         return deleted is not None
+
+    def get(self, content_id: UUID, adapter_version: str | None) -> ContentProfile | None:
+        if adapter_version is not None:
+            condition, params = (
+                "AND adapter_version = :adapter_version",
+                {
+                    "content_id": content_id,
+                    "adapter_version": adapter_version,
+                },
+            )
+        else:
+            condition, params = "", {"content_id": content_id}
+        head = (
+            self._session.execute(
+                text(
+                    f"""
+                    SELECT id, content_id, package_format, adapter_version, status, error,
+                           profiled_at
+                      FROM content_profiles
+                     WHERE content_id = :content_id {condition}
+                     ORDER BY (status = 'ok') DESC, profiled_at DESC
+                     LIMIT 1
+                    """  # noqa: S608 — `condition` is one of two literals above
+                ),
+                params,
+            )
+            .mappings()
+            .first()
+        )
+        return self._assemble(head) if head is not None else None
+
+    def list_all(self) -> list[ContentProfile]:
+        heads = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT id, content_id, package_format, adapter_version, status, error,
+                           profiled_at
+                      FROM content_profiles
+                     ORDER BY profiled_at DESC, id
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [self._assemble(head) for head in heads]
+
+    def _assemble(self, head: RowMapping) -> ContentProfile:
+        entries = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT data_requirement_id, value, provenance, quote, locator
+                      FROM profile_entries
+                     WHERE profile_id = :id
+                     ORDER BY data_requirement_id
+                    """
+                ),
+                {"id": head["id"]},
+            )
+            .mappings()
+            .all()
+        )
+        extras = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT name, value, quote, locator
+                      FROM profile_extras
+                     WHERE profile_id = :id
+                     ORDER BY name
+                    """
+                ),
+                {"id": head["id"]},
+            )
+            .mappings()
+            .all()
+        )
+        return ContentProfile(
+            id=head["id"],
+            content_id=head["content_id"],
+            package_format=head["package_format"],
+            adapter_version=head["adapter_version"],
+            status=head["status"],
+            error=head["error"],
+            profiled_at=head["profiled_at"],
+            entries=tuple(
+                ProfileEntry(
+                    data_requirement_id=entry["data_requirement_id"],
+                    provenance=entry["provenance"],
+                    value=entry["value"],
+                    quote=entry["quote"],
+                    locator=entry["locator"],
+                )
+                for entry in entries
+            ),
+            extras=tuple(
+                ProfileExtra(
+                    name=extra["name"],
+                    value=extra["value"],
+                    quote=extra["quote"],
+                    locator=extra["locator"],
+                )
+                for extra in extras
+            ),
+        )
 
 
 class SqlAlchemyAcceptanceRepository:
