@@ -54,7 +54,7 @@ real (YAML del bloque 4).
 
 ## Verificado
 
-- **Suite backend en verde: 179 tests** contra Postgres local (~9 s). Requiere
+- **Suite backend en verde: 181 tests** contra Postgres local (~9 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`,
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
