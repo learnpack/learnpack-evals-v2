@@ -18,17 +18,19 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.modules.evaluand_registry.application.register_content import (
+from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
-    RegisterContent,
-    RegisterContentCommand,
+    RegisterContentVersion,
+    RegisterContentVersionCommand,
     UnknownPackageFormat,
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
 from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
 from app.modules.evaluand_registry.infrastructure.repository import (
+    SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorVersionRepository,
     SqlAlchemyMetadataSchemaRepository,
 )
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
@@ -215,7 +217,7 @@ def run_set_role(email: str, role: str) -> int:
 
 
 def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
-    """Bulk-register courses, reusing the `RegisterContent` use case.
+    """Bulk-register courses, reusing the `RegisterContentVersion` use case.
 
     `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
     shape); without it the file is expected in our canonical shape. Which one becomes the
@@ -230,9 +232,11 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
     for raw in raw_courses:
         with SessionLocal() as session:
             uow = UnitOfWork(session)
-            use_case = RegisterContent(
+            use_case = RegisterContentVersion(
                 contents=SqlAlchemyContentRepository(session),
                 schemas=SqlAlchemyMetadataSchemaRepository(session),
+                briefs=SqlAlchemyBriefRepository(session),
+                generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
             )
@@ -240,7 +244,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                 command = (
                     to_register_command(raw)
                     if use_acl
-                    else RegisterContentCommand(
+                    else RegisterContentVersionCommand(
                         package_format=raw["package_format"],
                         external_id=raw["external_id"],
                         consumable_url=raw["consumable_url"],
@@ -378,20 +382,22 @@ def _seed_demo_assessors(session: Session) -> dict[str, UUID]:
 
 
 def _seed_demo_contents() -> dict[str, UUID]:
-    """Register the demo courses through `RegisterContent`; reuse them if already there."""
+    """Register the demo courses through `RegisterContentVersion`; reuse them if already there."""
     ids: dict[str, UUID] = {}
 
     for raw in DEMO_CONTENTS:
         with SessionLocal() as session:
             uow = UnitOfWork(session)
-            register = RegisterContent(
+            register = RegisterContentVersion(
                 contents=SqlAlchemyContentRepository(session),
                 schemas=SqlAlchemyMetadataSchemaRepository(session),
+                briefs=SqlAlchemyBriefRepository(session),
+                generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
             )
             try:
-                content = register(RegisterContentCommand(**raw))
+                content = register(RegisterContentVersionCommand(**raw))
                 ids[raw["external_id"]] = content.id
             except DuplicateContent:
                 snapshot = next(

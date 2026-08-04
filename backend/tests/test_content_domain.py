@@ -66,3 +66,39 @@ def test_update_metadata_revalidates_against_the_schema():
 
 def test_metadata_defaults_to_empty():
     assert make_content().metadata == ContentMetadata(values={})
+
+
+def test_edit_provenance_defaults_to_unknown():
+    assert make_content().edit_provenance == "unknown"
+
+
+def test_invalid_edit_provenance_is_rejected():
+    import pytest
+
+    from app.modules.evaluand_registry.domain.content import InvalidContent
+
+    with pytest.raises(InvalidContent, match="edit_provenance"):
+        make_content(edit_provenance="ai-ish")
+
+
+def test_package_defaults_to_empty():
+    assert make_content().package.artifacts == ()
+
+
+def test_package_artifacts_require_kind_and_locator():
+    import pytest
+
+    from app.modules.evaluand_registry.domain.package import ContentPackage, InvalidPackage
+
+    with pytest.raises(InvalidPackage, match="locator"):
+        ContentPackage.validated([{"kind": "manifest", "locator": "  "}])
+
+
+def test_package_kind_is_an_open_vocabulary():
+    """No enum: a new artifact kind is data, not code (GLOSSARY, ContentPackage)."""
+    from app.modules.evaluand_registry.domain.package import ContentPackage
+
+    package = ContentPackage.validated(
+        [{"kind": "knowledge-graph", "locator": "https://x/kg.json", "format": "json"}]
+    )
+    assert package.artifacts[0].kind == "knowledge-graph"

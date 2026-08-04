@@ -1,10 +1,36 @@
-"""Ports required by Content Registry's use cases. Implemented in infrastructure."""
+"""Ports required by the Evaluand Registry's use cases. Implemented in infrastructure."""
 
 from typing import Protocol
 from uuid import UUID
 
+from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
+from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
 from app.modules.evaluand_registry.domain.metadata import MetadataSchema
+
+
+class GeneratorVersionRepositoryPort(Protocol):
+    def get_by_id(self, generator_version_id: UUID) -> GeneratorVersion | None: ...
+
+    def exists(self, name: str, version: str) -> bool: ...
+
+    def add(self, generator: GeneratorVersion) -> None: ...
+
+    def list_all(self) -> list[GeneratorVersion]: ...
+
+
+class BriefRepositoryPort(Protocol):
+    def get_by_id(self, brief_id: UUID) -> GenerationBrief | None: ...
+
+    def add(self, brief: GenerationBrief) -> None: ...
+
+    def list_all(self) -> list[GenerationBrief]: ...
+
+
+class GeneratorArtifactRepositoryPort(Protocol):
+    def add(self, artifact: GeneratorArtifact) -> None: ...
+
+    def list_for_generator(self, generator_version_id: UUID) -> list[GeneratorArtifact]: ...
 
 
 class ContentRepositoryPort(Protocol):

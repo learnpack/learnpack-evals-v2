@@ -17,6 +17,45 @@ class MetadataEntryDTO:
 
 
 @dataclass(frozen=True)
+class GeneratorVersionDTO:
+    generator_version_id: UUID
+    name: str
+    version: str
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class BriefDTO:
+    brief_id: UUID
+    brief: str
+    fields: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class GeneratorArtifactDTO:
+    artifact_id: UUID
+    generator_version_id: UUID
+    kind: str
+    locator: str
+    format: str | None
+
+
+@dataclass(frozen=True)
+class PackageArtifactDTO:
+    kind: str
+    locator: str
+    format: str | None
+
+
+@dataclass(frozen=True)
+class ContentPackageDTO:
+    content_id: UUID
+    package_format: str
+    consumable_url: str
+    artifacts: list[PackageArtifactDTO]
+
+
+@dataclass(frozen=True)
 class ContentSnapshot:
     content_id: UUID
     package_format: str
@@ -24,6 +63,9 @@ class ContentSnapshot:
     version: str
     consumable_url: str
     metadata: list[MetadataEntryDTO]
+    brief_id: UUID | None = None
+    generator_version_id: UUID | None = None
+    edit_provenance: str = "unknown"
 
     def filtered(self, keys: list[str] | None) -> "ContentSnapshot":
         """Restrict the metadata to a campaign's `metadataView` (ADR-0001).
@@ -41,4 +83,7 @@ class ContentSnapshot:
             version=self.version,
             consumable_url=self.consumable_url,
             metadata=[entry for entry in self.metadata if entry.key in allowed],
+            brief_id=self.brief_id,
+            generator_version_id=self.generator_version_id,
+            edit_provenance=self.edit_provenance,
         )

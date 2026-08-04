@@ -38,7 +38,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 |---|---|
 | 1. CI (workflow + mypy scoped a módulos nuevos) | ✔ |
 | 2. Renames + retiro de promedios (ADR-0011) | ✔ |
-| 3. Evaluand Registry ensanchado | ✗ |
+| 3. Evaluand Registry ensanchado | ✔ |
 | 4. Evaluation Design (instrumento + primer YAML real) | ✗ |
 | 5. Content Profiling (adapter LearnpackV1 + visor) | ✗ |
 | 6. Evaluation automático (primer assessor) | ✗ |
@@ -54,9 +54,7 @@ real (YAML del bloque 4).
 
 ## Verificado
 
-- **Suite backend en verde: 178 tests** contra Postgres local (~9 s) — los 3 tests de
-  promedios agregados murieron con ADR-0011; las regresiones de colapso se reescribieron
-  contra promedios por criterion. Requiere
+- **Suite backend en verde: 201 tests** contra Postgres local (~10 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`,
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin

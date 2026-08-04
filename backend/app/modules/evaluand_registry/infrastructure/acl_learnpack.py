@@ -7,7 +7,9 @@ real, nothing outside this file changes.
 
 from typing import Any
 
-from app.modules.evaluand_registry.application.register_content import RegisterContentCommand
+from app.modules.evaluand_registry.application.register_content_version import (
+    RegisterContentVersionCommand,
+)
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION
 
 PACKAGE_FORMAT = "LearnpackV1"
@@ -22,14 +24,14 @@ _METADATA_FIELD_MAP = {
 }
 
 
-def to_register_command(raw: dict[str, Any]) -> RegisterContentCommand:
-    """Map a raw LearnPack course payload to `RegisterContent`."""
+def to_register_command(raw: dict[str, Any]) -> RegisterContentVersionCommand:
+    """Map a raw LearnPack course payload to `RegisterContentVersion`."""
     metadata = {
         _METADATA_FIELD_MAP[key]: value
         for key, value in (raw.get("metadata") or {}).items()
         if key in _METADATA_FIELD_MAP
     }
-    return RegisterContentCommand(
+    return RegisterContentVersionCommand(
         package_format=PACKAGE_FORMAT,
         external_id=raw["slug"],
         consumable_url=raw["url"],
