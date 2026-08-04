@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from app.modules.evaluand_registry.application import queries
 from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
+    ContentPackageDTO,
     ContentSnapshot,
     GeneratorArtifactDTO,
     GeneratorVersionDTO,
@@ -21,10 +22,12 @@ from app.modules.evaluand_registry.application.register_brief import (
     RegisterBrief,
     RegisterBriefCommand,
 )
-from app.modules.evaluand_registry.application.register_content import (
+from app.modules.evaluand_registry.application.register_content_version import (
+    BriefNotFound,
     DuplicateContent,
-    RegisterContent,
-    RegisterContentCommand,
+    RegisterContentVersion,
+    RegisterContentVersionCommand,
+    UnknownGeneratorVersion,
     UnknownPackageFormat,
 )
 from app.modules.evaluand_registry.application.register_generator_artifact import (
@@ -49,6 +52,7 @@ from app.modules.evaluand_registry.domain.generator import (
     InvalidGeneratorVersion,
 )
 from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
+from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
@@ -64,6 +68,12 @@ router = APIRouter(prefix="/admin/contents", tags=["content-registry"])
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
 
+class PackageArtifactInput(BaseModel):
+    kind: str = Field(examples=["manifest"])
+    locator: str
+    format: str | None = None
+
+
 class RegisterContentRequest(BaseModel):
     package_format: str = Field(examples=["LearnpackV1"])
     external_id: str
@@ -71,6 +81,10 @@ class RegisterContentRequest(BaseModel):
     version: str = DEFAULT_VERSION
     # Open collection validated against the MetadataSchema, not against this model (ADR-0001).
     metadata: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[PackageArtifactInput] = Field(default_factory=list)
+    brief_id: UUID | None = None
+    generator_version_id: UUID | None = None
+    edit_provenance: str = "unknown"
 
 
 class UpdateMetadataRequest(BaseModel):
@@ -90,6 +104,9 @@ class ContentResponse(BaseModel):
     version: str
     consumable_url: str
     metadata: list[MetadataEntryResponse]
+    brief_id: UUID | None
+    generator_version_id: UUID | None
+    edit_provenance: str
 
     @classmethod
     def from_snapshot(cls, snapshot: ContentSnapshot) -> "ContentResponse":
@@ -102,6 +119,34 @@ class ContentResponse(BaseModel):
             metadata=[
                 MetadataEntryResponse(key=e.key, value=e.value, value_type=e.value_type)
                 for e in snapshot.metadata
+            ],
+            brief_id=snapshot.brief_id,
+            generator_version_id=snapshot.generator_version_id,
+            edit_provenance=snapshot.edit_provenance,
+        )
+
+
+class PackageArtifactResponse(BaseModel):
+    kind: str
+    locator: str
+    format: str | None
+
+
+class ContentPackageResponse(BaseModel):
+    content_id: UUID
+    package_format: str
+    consumable_url: str
+    artifacts: list[PackageArtifactResponse]
+
+    @classmethod
+    def from_dto(cls, dto: ContentPackageDTO) -> "ContentPackageResponse":
+        return cls(
+            content_id=dto.content_id,
+            package_format=dto.package_format,
+            consumable_url=dto.consumable_url,
+            artifacts=[
+                PackageArtifactResponse(kind=a.kind, locator=a.locator, format=a.format)
+                for a in dto.artifacts
             ],
         )
 
@@ -118,23 +163,29 @@ def _snapshot_or_404(uow: UnitOfWork, content_id: UUID) -> ContentSnapshot:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ContentResponse)
-def register_content(
+def register_content_version(
     request: RegisterContentRequest, admin: AdminAssessor, uow: Uow
 ) -> ContentResponse:
-    use_case = RegisterContent(
+    use_case = RegisterContentVersion(
         contents=SqlAlchemyContentRepository(uow.session),
         schemas=SqlAlchemyMetadataSchemaRepository(uow.session),
+        briefs=SqlAlchemyBriefRepository(uow.session),
+        generators=SqlAlchemyGeneratorVersionRepository(uow.session),
         publisher=uow.events,
         uow=uow,
     )
     try:
         content = use_case(
-            RegisterContentCommand(
+            RegisterContentVersionCommand(
                 package_format=request.package_format,
                 external_id=request.external_id,
                 consumable_url=request.consumable_url,
                 version=request.version,
                 metadata=request.metadata,
+                artifacts=[a.model_dump() for a in request.artifacts],
+                brief_id=request.brief_id,
+                generator_version_id=request.generator_version_id,
+                edit_provenance=request.edit_provenance,
             )
         )
     except DuplicateContent as exc:
@@ -143,12 +194,26 @@ def register_content(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.errors
         ) from exc
-    except (InvalidContent, UnknownPackageFormat) as exc:
+    except (
+        InvalidContent,
+        InvalidPackage,
+        UnknownPackageFormat,
+        BriefNotFound,
+        UnknownGeneratorVersion,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
     return ContentResponse.from_snapshot(_snapshot_or_404(uow, content.id))
+
+
+@router.get("/{content_id}/package", response_model=ContentPackageResponse)
+def get_content_package(content_id: UUID, admin: AdminAssessor, uow: Uow) -> ContentPackageResponse:
+    dto = queries.get_content_package(SqlAlchemyContentRepository(uow.session), content_id)
+    if dto is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="content not found")
+    return ContentPackageResponse.from_dto(dto)
 
 
 @router.patch("/{content_id}/metadata", response_model=ContentResponse)

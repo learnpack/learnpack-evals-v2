@@ -255,3 +255,81 @@ def test_generators_and_briefs_are_listed(admin_client, cleanup, unique):
     briefs = admin_client.get("/admin/briefs").json()
     assert generator_id in {g["generator_version_id"] for g in generators}
     assert brief_id in {b["brief_id"] for b in briefs}
+
+
+# ------------------------------------------------- content package & provenance
+
+
+def test_content_carries_package_brief_generator_and_provenance(
+    admin_client, cleanup, session, unique
+):
+    generator_id = admin_client.post(
+        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
+    ).json()["generator_version_id"]
+    cleanup["generators"].append(generator_id)
+    brief_id = admin_client.post("/admin/briefs", json={"brief": f"brief-{unique}"}).json()[
+        "brief_id"
+    ]
+    cleanup["briefs"].append(brief_id)
+
+    response = admin_client.post(
+        "/admin/contents",
+        json=payload(
+            unique,
+            artifacts=[
+                {"kind": "manifest", "locator": "https://x/learn.json", "format": "json"},
+                {"kind": "item-bank", "locator": "https://x/items.json"},
+            ],
+            brief_id=brief_id,
+            generator_version_id=generator_id,
+            edit_provenance="pure",
+        ),
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    cleanup["contents"].append(body["content_id"])
+    assert body["brief_id"] == brief_id
+    assert body["edit_provenance"] == "pure"
+
+    package = admin_client.get(f"/admin/contents/{body['content_id']}/package").json()
+    assert [(a["kind"], a["format"]) for a in package["artifacts"]] == [
+        ("manifest", "json"),
+        ("item-bank", None),
+    ]
+
+    event_payload = session.execute(
+        text("SELECT payload FROM events WHERE aggregate_id = :id"),
+        {"id": body["content_id"]},
+    ).scalar_one()
+    assert event_payload["briefId"] == brief_id
+    assert event_payload["generatorVersionId"] == generator_id
+    assert event_payload["editProvenance"] == "pure"
+
+
+def test_unknown_brief_or_generator_is_rejected(admin_client, unique):
+    ghost = "00000000-0000-0000-0000-000000000000"
+    assert (
+        admin_client.post("/admin/contents", json=payload(unique, brief_id=ghost)).status_code
+        == 422
+    )
+    assert (
+        admin_client.post(
+            "/admin/contents", json=payload(unique, generator_version_id=ghost)
+        ).status_code
+        == 422
+    )
+
+
+def test_registration_without_evaluand_fields_still_works(admin_client, cleanup, unique):
+    """The legacy manual path: no package, no brief, no generator — provenance unknown."""
+    response = admin_client.post("/admin/contents", json=payload(unique))
+    assert response.status_code == 201
+    body = response.json()
+    cleanup["contents"].append(body["content_id"])
+    assert body["brief_id"] is None
+    assert body["generator_version_id"] is None
+    assert body["edit_provenance"] == "unknown"
+
+    package = admin_client.get(f"/admin/contents/{body['content_id']}/package").json()
+    assert package["artifacts"] == []
+    assert package["consumable_url"] == COURSE_URL

@@ -57,6 +57,13 @@ def content_version_registered(content: EducationalContent) -> DomainEvent:
             "externalId": content.external_id,
             "version": content.version,
             "consumableUrl": content.consumable_url,
+            # Nullable on purpose: absent brief = recorded absent; null generator = unknown.
+            "briefId": str(content.brief_id) if content.brief_id else None,
+            "generatorVersionId": (
+                str(content.generator_version_id) if content.generator_version_id else None
+            ),
+            "editProvenance": content.edit_provenance,
+            # Artifacts stay out of the payload — consumers read them via getContentPackage.
         },
     )
 

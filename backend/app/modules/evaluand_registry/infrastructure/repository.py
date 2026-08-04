@@ -13,8 +13,12 @@ from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
 from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
+from app.modules.evaluand_registry.domain.package import ContentPackage, PackageArtifact
 
-_COLUMNS = "id, package_format, external_id, version, consumable_url, metadata"
+_COLUMNS = (
+    "id, package_format, external_id, version, consumable_url, metadata, "
+    "brief_id, generator_version_id, edit_provenance"
+)
 
 
 class SqlAlchemyContentRepository:
@@ -22,7 +26,7 @@ class SqlAlchemyContentRepository:
         self._session = session
 
     @staticmethod
-    def _to_domain(row) -> EducationalContent:  # noqa: ANN001 — RowMapping
+    def _to_domain(row: RowMapping, package: ContentPackage) -> EducationalContent:
         return EducationalContent(
             id=row["id"],
             package_format=row["package_format"],
@@ -31,7 +35,37 @@ class SqlAlchemyContentRepository:
             consumable_url=row["consumable_url"],
             # Already persisted: rehydrate without revalidating (the schema may have moved on).
             metadata=ContentMetadata.trusted(row["metadata"] or {}),
+            package=package,
+            brief_id=row["brief_id"],
+            generator_version_id=row["generator_version_id"],
+            edit_provenance=row["edit_provenance"],
         )
+
+    def _packages_for(self, content_ids: list[UUID]) -> dict[UUID, ContentPackage]:
+        """One batched read for the child artifact rows — no N+1 (ADR-0006 spirit)."""
+        if not content_ids:
+            return {}
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT content_id, kind, locator, format
+                      FROM content_package_artifacts
+                     WHERE content_id = ANY(:ids)
+                     ORDER BY content_id, ord
+                    """
+                ),
+                {"ids": content_ids},
+            )
+            .mappings()
+            .all()
+        )
+        grouped: dict[UUID, list[PackageArtifact]] = {}
+        for row in rows:
+            grouped.setdefault(row["content_id"], []).append(
+                PackageArtifact(kind=row["kind"], locator=row["locator"], format=row["format"])
+            )
+        return {cid: ContentPackage.trusted(artifacts) for cid, artifacts in grouped.items()}
 
     def get_by_id(self, content_id: UUID) -> EducationalContent | None:
         row = (
@@ -41,7 +75,10 @@ class SqlAlchemyContentRepository:
             .mappings()
             .first()
         )
-        return None if row is None else self._to_domain(row)
+        if row is None:
+            return None
+        packages = self._packages_for([content_id])
+        return self._to_domain(row, packages.get(content_id, ContentPackage()))
 
     def exists(self, package_format: str, external_id: str, version: str) -> bool:
         found = self._session.execute(
@@ -60,8 +97,10 @@ class SqlAlchemyContentRepository:
             text(
                 """
                 INSERT INTO contents
-                    (id, package_format, external_id, version, consumable_url, metadata)
-                VALUES (:id, :gs, :eid, :v, :url, cast(:metadata as jsonb))
+                    (id, package_format, external_id, version, consumable_url, metadata,
+                     brief_id, generator_version_id, edit_provenance)
+                VALUES (:id, :gs, :eid, :v, :url, cast(:metadata as jsonb),
+                        :brief_id, :gvid, :provenance)
                 """
             ),
             {
@@ -71,8 +110,27 @@ class SqlAlchemyContentRepository:
                 "v": content.version,
                 "url": content.consumable_url,
                 "metadata": json.dumps(content.metadata.values),
+                "brief_id": content.brief_id,
+                "gvid": content.generator_version_id,
+                "provenance": content.edit_provenance,
             },
         )
+        for ord_, artifact in enumerate(content.package.artifacts):
+            self._session.execute(
+                text(
+                    """
+                    INSERT INTO content_package_artifacts (content_id, ord, kind, locator, format)
+                    VALUES (:content_id, :ord, :kind, :locator, :format)
+                    """
+                ),
+                {
+                    "content_id": content.id,
+                    "ord": ord_,
+                    "kind": artifact.kind,
+                    "locator": artifact.locator,
+                    "format": artifact.format,
+                },
+            )
 
     def update_metadata(self, content: EducationalContent) -> None:
         self._session.execute(
@@ -88,7 +146,8 @@ class SqlAlchemyContentRepository:
             .mappings()
             .all()
         )
-        return [self._to_domain(row) for row in rows]
+        packages = self._packages_for([row["id"] for row in rows])
+        return [self._to_domain(row, packages.get(row["id"], ContentPackage())) for row in rows]
 
 
 class SqlAlchemyGeneratorVersionRepository:

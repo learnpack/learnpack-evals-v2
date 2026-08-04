@@ -8,10 +8,12 @@ from uuid import UUID
 
 from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
+    ContentPackageDTO,
     ContentSnapshot,
     GeneratorArtifactDTO,
     GeneratorVersionDTO,
     MetadataEntryDTO,
+    PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.application.ports import (
     BriefRepositoryPort,
@@ -39,6 +41,27 @@ def _to_snapshot(
         metadata=[
             MetadataEntryDTO(key=e.key, value=e.value, value_type=str(e.value_type))
             for e in entries
+        ],
+        brief_id=content.brief_id,
+        generator_version_id=content.generator_version_id,
+        edit_provenance=content.edit_provenance,
+    )
+
+
+def get_content_package(
+    contents: ContentRepositoryPort, content_id: UUID
+) -> ContentPackageDTO | None:
+    """The complete work product — what the extraction adapter reads (design 11)."""
+    content = contents.get_by_id(content_id)
+    if content is None:
+        return None
+    return ContentPackageDTO(
+        content_id=content.id,
+        package_format=content.package_format,
+        consumable_url=content.consumable_url,
+        artifacts=[
+            PackageArtifactDTO(kind=a.kind, locator=a.locator, format=a.format)
+            for a in content.package.artifacts
         ],
     )
 

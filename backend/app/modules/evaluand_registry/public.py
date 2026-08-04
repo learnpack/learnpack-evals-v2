@@ -14,9 +14,11 @@ from sqlalchemy.orm import Session
 from app.modules.evaluand_registry.application import queries as _queries
 from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
+    ContentPackageDTO,
     ContentSnapshot,
     GeneratorVersionDTO,
     MetadataEntryDTO,
+    PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
@@ -40,10 +42,12 @@ __all__ = [
     "GENERATOR_ARTIFACT_REGISTERED",
     "GENERATOR_VERSION_REGISTERED",
     "BriefDTO",
+    "ContentPackageDTO",
     "ContentSnapshot",
     "EvaluandRegistryQueries",
     "GeneratorVersionDTO",
     "MetadataEntryDTO",
+    "PackageArtifactDTO",
     "get_evaluand_registry_queries",
 ]
 
@@ -59,6 +63,9 @@ class EvaluandRegistryQueries:
 
     def get_content_snapshot(self, content_id: UUID) -> ContentSnapshot | None:
         return _queries.get_content_snapshot(self._contents, self._schemas, content_id)
+
+    def get_content_package(self, content_id: UUID) -> ContentPackageDTO | None:
+        return _queries.get_content_package(self._contents, content_id)
 
     def get_content_metadata(self, content_id: UUID) -> list[MetadataEntryDTO] | None:
         return _queries.get_content_metadata(self._contents, self._schemas, content_id)

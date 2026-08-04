@@ -10,8 +10,12 @@ from typing import Any
 from uuid import UUID
 
 from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
+from app.modules.evaluand_registry.domain.package import ContentPackage
 
 DEFAULT_VERSION = "1"
+
+# Edit provenance of a version (GLOSSARY): pure generator output, human-touched, or unknown.
+EDIT_PROVENANCES = ("pure", "human_edited", "unknown")
 
 
 class InvalidContent(Exception):
@@ -20,7 +24,12 @@ class InvalidContent(Exception):
 
 @dataclass
 class EducationalContent:
-    """Aggregate root. Owns its `ContentMetadata`."""
+    """Aggregate root. Owns its `ContentMetadata` and its `ContentPackage`.
+
+    `brief_id`/`generator_version_id` are nullable on purpose: an absent brief is
+    *recorded* absent, and a null generator means `unknown` — valid for content-level
+    judgments, excluded from generator-level accumulation (design 12 §Registry).
+    """
 
     id: UUID
     package_format: str
@@ -28,6 +37,10 @@ class EducationalContent:
     consumable_url: str
     version: str = DEFAULT_VERSION
     metadata: ContentMetadata = field(default_factory=lambda: ContentMetadata(values={}))
+    package: ContentPackage = field(default_factory=ContentPackage)
+    brief_id: UUID | None = None
+    generator_version_id: UUID | None = None
+    edit_provenance: str = "unknown"
 
     def __post_init__(self) -> None:
         if not self.package_format or not self.package_format.strip():
@@ -41,6 +54,8 @@ class EducationalContent:
             raise InvalidContent("consumable_url is required")
         if not self.consumable_url.startswith(("http://", "https://")):
             raise InvalidContent("consumable_url must be an http(s) URL")
+        if self.edit_provenance not in EDIT_PROVENANCES:
+            raise InvalidContent(f"edit_provenance must be one of {', '.join(EDIT_PROVENANCES)}")
 
     @property
     def logical_id(self) -> tuple[str, str]:
