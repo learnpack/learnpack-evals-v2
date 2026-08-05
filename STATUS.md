@@ -100,6 +100,23 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   `ContentProfile.ok()`, el chokepoint de todos los adapters) y qué vocabulario necesita
   `value_domain` — la spec mínima de 13-code §7.4 no expresa formas compuestas como las de
   `lesson_inventory` / `lesson_activities`.
+- **Intake mecánico del `GenerationBrief` desde el paquete LearnpackV1: pendiente**
+  (PR chico de registry, antes o durante el bloque 7 — hoy todo contenido queda con
+  `brief_id = null` y no puede entrar a datasets pareados). Diseño acordado, ADR al
+  implementar: el pipeline real tiene dos etapas — (prompt del usuario + material
+  adjunto) → syllabus → lecciones — y el prompt original **no se persiste** (irrecuperable
+  para lo ya generado). El brief se registra parcial y con su completitud declarada:
+  `brief` = la description procesada de `.learn/initialSyllabus.json → courseInfo.description`
+  (la instrucción operativa durante la generación de lecciones); `fields` =
+  `{origin: ai_derived_syllabus, promptRecorded: false, materialsHash: <hash de
+  courseInfo.contentIndex>, materialsSource: ...}` (el material vive en el paquete, no se
+  duplica); identidad/dedup del brief = `hash(description + materialsHash)`. Consecuencia:
+  el pareo A/B vale para "misma instrucción efectiva" (etapa de lecciones), no para
+  atribuir diferencias a la formulación del prompt — `promptRecorded: false` es el dato
+  con el que los studies ponen ese caveat solos. Nota para LearnPack (forward-looking):
+  persistir el prompt original en el paquete (p.ej. `courseInfo.originalPrompt`) vuelve
+  completos los briefs del contenido nuevo. Relacionado: el preprocesador de prompts es
+  parte de la identidad del generador — versionarlo en `GeneratorVersion.metadata`.
 - **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo
   (disputas/defectos), annotation queues, métricas de validez por claim, `CompareStudies`.
 
