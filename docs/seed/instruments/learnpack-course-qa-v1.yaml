@@ -239,10 +239,23 @@ criteria:
   - id: cr-course-opens-with-general-intro
     statement: "The course reserves its opening slot."
     pass_condition: >
-      Module 00 exists and contains exactly one lesson, and at least two more lessons
-      follow it. Fail = no module 00, more than one lesson in it, or nothing after it.
+      Module 00 exists and contains exactly one lesson. Fail = no module 00, or more
+      than one lesson in it.
     failure_modes:
       - "The course starts mid-content with no course-level introduction slot."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-course-has-development
+    statement: "The course has a development body."
+    pass_condition: >
+      At least two lessons follow the module-00 introduction (or the first lesson, when
+      no module 00 exists). Fail = fewer — an opening with (almost) nothing behind it is
+      a stub, not a course.
+    failure_modes:
+      - "A stub course: an introduction and little or nothing to develop it."
     claims: [cl-course-arc]
     requires: [lesson_inventory]
     on_missing_evidence: fail
@@ -251,10 +264,10 @@ criteria:
   - id: cr-arc-character
     statement: "The opening lesson introduces and the final lesson closes."
     pass_condition: >
-      The module-00 lesson's body introduces the course as a whole, and the final
-      lesson's body closes it (wrap-up, integration or farewell). Fail = an opening that
-      dives straight into topic content, or a course that simply stops after the last
-      topic.
+      The first lesson's body introduces the course as a whole, and the final lesson's
+      body closes it (wrap-up, integration or farewell) — first and last by declared
+      position, whatever their numbering. Fail = an opening that dives straight into
+      topic content, or a course that simply stops after the last topic.
     failure_modes:
       - "No course-level framing: the learner lands in content with no orientation."
       - "No closure: nothing integrates what was learned before the course ends."
