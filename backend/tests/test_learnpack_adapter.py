@@ -140,7 +140,8 @@ def test_lesson_activities_observed_from_the_real_course(adapter, fetcher):
     assert outro["activities"]["openQuestion"] == 1
 
     coding = lessons["01.0-writing-python-classes"]
-    assert coding["codeExercises"] == [{"file": "app.py", "hasSolution": True}]
+    # The internal app.solution.hide.py companion is authoring detail, not an exercise.
+    assert coding["codeExercises"] == ["app.py"]
 
     exposition = lessons["01.1-attributes-and-values"]
     assert exposition["activities"] == NO_ACTIVITIES
@@ -211,10 +212,10 @@ def test_every_component_type_is_counted_and_decoys_are_not(adapter, fetcher):
     }
 
     assert lessons["00-frontmatter-only"]["activities"] == NO_ACTIVITIES
-    # A lesson with no README still reports its files: an exercise missing its solution.
+    # A lesson with no README still reports its exercise files.
     no_readme = lessons["01-no-readme"]
     assert no_readme["lessonId"] == "01.0"
-    assert no_readme["codeExercises"] == [{"file": "app.py", "hasSolution": False}]
+    assert no_readme["codeExercises"] == ["app.py"]
 
 
 def test_lessons_with_spanish_only_declarations_fall_back_verbatim(adapter, fetcher):

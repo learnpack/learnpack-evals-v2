@@ -5,8 +5,9 @@ What a LearnPack package actually offers (frozen in `tests/fixtures/learnpack_v1
 audience or prerequisites as structured fields — and `.learn/package-manifest.json`
 carries the authoritative `lessons[]` index (id, slug, position, type, title,
 description). Lesson bodies live in `exercises/<slug>/README.md`; code exercises are
-sibling files whose reference solution follows the `<stem>.solution.hide.<ext>`
-convention (e.g. `app.py` / `app.solution.hide.py`). Therefore:
+sibling files, optionally accompanied by an internal reference solution named
+`<stem>.solution.hide.<ext>` (e.g. `app.solution.hide.py`) — internal, not
+learner-facing, so solution files never count as exercises. Therefore:
 
 - `learning_objectives` / `target_audience` / `prerequisites` come from the content's
   DECLARED metadata (`declared_structured`) or are `absent` — they exist nowhere in the
@@ -117,14 +118,6 @@ def _lesson_slug(locator: str) -> str:
 
 def _file_name(locator: str) -> str:
     return locator.replace("\\", "/").rstrip("/").split("/")[-1]
-
-
-def _solution_name(exercise_file: str) -> str:
-    """`app.py` → `app.solution.hide.py`: the marker goes before the extension."""
-    if "." not in exercise_file:
-        return exercise_file + _SOLUTION_MARKER.rstrip(".")
-    stem, extension = exercise_file.rsplit(".", 1)
-    return f"{stem}{_SOLUTION_MARKER}{extension}"
 
 
 def _english(text_by_language: Any) -> str | None:
@@ -340,15 +333,14 @@ class LearnpackV1Adapter:
         return {lesson["slug"]: lesson["lessonId"] for lesson in inventory.value or []}
 
     @staticmethod
-    def _code_exercises(file_names: list[str]) -> list[dict[str, Any]]:
-        solutions = {name for name in file_names if _SOLUTION_MARKER in name}
-        exercises = [
+    def _code_exercises(file_names: list[str]) -> list[str]:
+        """Learner-facing exercise files only: internal `.solution.hide.` companions are
+        authoring detail (the AI evaluator can work from the lesson body alone), so they
+        neither count as exercises nor get reported — no criterion consumes them."""
+        return [
             name
             for name in sorted(file_names)
             if _SOLUTION_MARKER not in name and not name.startswith("README")
-        ]
-        return [
-            {"file": name, "hasSolution": _solution_name(name) in solutions} for name in exercises
         ]
 
     # --- extras: non-canonical but useful on the designer's workbench (ADR-0012) --------

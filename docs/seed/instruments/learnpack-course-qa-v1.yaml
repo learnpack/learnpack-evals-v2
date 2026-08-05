@@ -71,8 +71,7 @@ data_requirements:
       The learner-facing activities each lesson contains, as a list where each entry
       carries the lesson slug and identifier, per-type counts of embedded assessment
       activities (multiple choice, open question, select the blank, ordering, fill in
-      the blank) and the code exercises present, each with whether it ships a reference
-      solution.
+      the blank) and the code-exercise files present.
     grounded_in: ["Merrill"]
 
 claims:
@@ -207,19 +206,6 @@ criteria:
     claims: [cl-lessons-offer-application]
     requires: [lesson_activities, lesson_inventory]
     on_missing_evidence: fail
-    eligible_sources: [human, automated]
-
-  - id: cr-code-exercises-have-solutions
-    statement: "Every code exercise ships its reference solution."
-    pass_condition: >
-      Every code exercise file has its companion reference-solution file, which anchors
-      the automated feedback loop. A course with no code exercises passes vacuously.
-      Fail = any code exercise without its solution.
-    failure_modes:
-      - "Code exercises shipped without reference solutions — the in-IDE AI feedback has no anchor."
-    claims: [cl-lessons-offer-application]
-    requires: [lesson_activities]
-    on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
 
   - id: cr-module-structure-well-formed
