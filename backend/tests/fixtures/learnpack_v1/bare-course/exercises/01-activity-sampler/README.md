@@ -39,7 +39,7 @@ Count the activities
 
 ### Legacy blank
 
-```fill_in_the_blank
+```fill_in_the_blank 1="a fenced block,a code block"
 The legacy blank component is written as _1_.
 ```
 

@@ -17,10 +17,10 @@ convention (e.g. `app.py` / `app.solution.hide.py`). Therefore:
   with a `[x]` correct answer (one per question, so counting `[x]` lines counts
   questions); open question / select the blank / ordering / fill in the blank = fenced
   code blocks whose language is `question` / `select_the_blank` / `ordering` /
-  `fill_in_the_blank` (the last one is a legacy component; its fence language is assumed
-  from the component name — no frozen package exhibits it yet). `code_challenge_proposal`
-  blocks are author-facing and deliberately NOT counted. Fences and checkboxes inside
-  other fenced blocks are ignored.
+  `fill_in_the_blank` (the last one is a legacy component, per its retired spec: same
+  fence syntax with per-blank answers as metadata; no frozen package exhibits it yet).
+  `code_challenge_proposal` blocks are author-facing and deliberately NOT counted.
+  Fences and checkboxes inside other fenced blocks are ignored.
 
 For observed entries the citation is the extracted index serialized canonically; the
 locator names the artifacts it was read from — every element is verifiable against them.
