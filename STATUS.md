@@ -117,6 +117,24 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   persistir el prompt original en el paquete (p.ej. `courseInfo.originalPrompt`) vuelve
   completos los briefs del contenido nuevo. Relacionado: el preprocesador de prompts es
   parte de la identidad del generador — versionarlo en `GeneratorVersion.metadata`.
+  **Regla de disciplina (misma raíz, va al mismo ADR):** la metadata de un contenido
+  registra solo lo que el paquete/plataforma **emite** (intake mecánico) — nunca
+  reconstrucciones humanas ni derivaciones con IA: una declaración tipeada a mano desde
+  el material del brief hace pasar criteria que miden si *el curso* declara, y enmascara
+  el hallazgo real ("estaba en el brief, el generador no lo emitió"). El conocimiento
+  humano sobre la intención va al brief. El schema LearnpackV1 ya no exige ningún key de
+  metadata (exigirlos forzaba a tipearlos), y el seed demo registra los cursos sin
+  metadata: sus profiles leen `absent`, que es el hallazgo verdadero sobre este generador.
+  **Pregunta abierta para ese mismo ADR — ¿cierre por construcción?** Hoy la mitigación es
+  por disciplina (campos opcionales + hint en el form + esta regla). La alternativa
+  estructural es cerrar la **puerta de escritura**: quitar los campos de metadata del form
+  manual (y evaluar restringir `UpdateContentMetadata`) hasta que exista el intake
+  mecánico, de modo que solo el ACL pueda escribirlos y la contaminación sea imposible en
+  vez de desaconsejada. Ojo: el cierre NO es que el adapter deje de leer metadata — sin
+  esas capabilities los criteria derivarían `not_applicable` (fuera del denominador) en
+  vez de `fail`, y se perdería el hallazgo "el generador no declara". Costo del cierre: el
+  camino humano del slice 1 pierde la carga manual de contexto para evaluadores
+  (`metadata_view`), su único uso vivo hoy.
 - **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo
   (disputas/defectos), annotation queues, métricas de validez por claim, `CompareStudies`.
 

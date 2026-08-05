@@ -104,11 +104,15 @@ DEFAULT_REFERENCE_FILE = REPO_ROOT / "docs" / "seed" / "pedagogical-reference.ya
 
 # Content metadata is an open collection validated against this schema (ADR-0001).
 # The domain never references these keys; only the schema and the UI know them.
+# Nothing is required: metadata records what the PLATFORM/GENERATOR declares (mechanical
+# intake). Requiring keys forces a human to type them at registration, which contaminates
+# the declared surface the instrument evaluates — a hand-written objective is not the
+# course declaring objectives (ADR-0009 by the back door).
 LEARNPACK_METADATA_SCHEMA = {
     "packageFormat": "LearnpackV1",
     "keys": {
-        "learningObjectives": {"valueType": "string_list", "required": True},
-        "targetAudience": {"valueType": "string", "required": True},
+        "learningObjectives": {"valueType": "string_list", "required": False},
+        "targetAudience": {"valueType": "string", "required": False},
         "prerequisites": {"valueType": "string_list", "required": False},
     },
 }
@@ -594,40 +598,23 @@ DEMO_ASSESSORS: list[tuple[str, str, Role]] = [
     ("grace.hopper@local.dev", "Grace Hopper", Role.EVALUATOR),
 ]
 
+# No metadata on purpose: these generated packages declare no objectives, audience or
+# prerequisites, and hand-writing them here (from the brief material, or worse, derived
+# with AI) would contaminate the declared surface the instrument evaluates — the profiles
+# must read `absent`, which is the true finding about this generator. That input-side
+# information belongs to the GenerationBrief (pending intake — see STATUS).
 DEMO_CONTENTS: list[dict[str, Any]] = [
     {
         "package_format": "LearnpackV1",
         "external_id": "introduction-to-generative-ai",
         "version": "1",
         "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
-        "metadata": {
-            "learningObjectives": [
-                "Explain how a large language model produces text",
-                "Write prompts that constrain a model's output",
-                "Recognise when a model is hallucinating",
-            ],
-            "targetAudience": "Junior developers new to AI",
-            "prerequisites": ["Basic Python", "Familiarity with the command line"],
-        },
     },
     {
         "package_format": "LearnpackV1",
         "external_id": "object-representation-in-python",
         "version": "1",
         "consumable_url": "https://object-representation-in-python.learn-pack.com/",
-        "metadata": {
-            "learningObjectives": [
-                "Define Python classes with __init__, attributes, and methods that operate "
-                "on instance state",
-                "Create and use object instances with dot notation",
-                "Manipulate collections of objects and objects nested within objects",
-            ],
-            "targetAudience": (
-                "Beginner developers who understand OOP concepts and are ready to write "
-                "Python class syntax"
-            ),
-            "prerequisites": ["Basic Python", "Object-oriented programming concepts"],
-        },
     },
 ]
 
