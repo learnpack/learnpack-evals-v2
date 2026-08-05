@@ -54,8 +54,10 @@ asistencia) y **publicarlo** cuando el equipo lo haga suyo
 (`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>` o
 `POST /admin/instruments/{id}/publish`). Hasta entonces queda en `draft` — la publicación es
 acto humano (12-define, invariante 5). Los `data_requirement` ids minteados
-(`learning_objectives`, `target_audience`, `prerequisites`, `practice_exercises`) son el
-contrato contra el que el adapter `LearnpackV1` (bloque 5) declara sus capacidades.
+(`learning_objectives`, `target_audience`, `prerequisites`, `lesson_inventory`,
+`lesson_activities`) son el contrato contra el que el adapter `LearnpackV1` v2 declara sus
+capacidades. (`practice_exercises`, del borrador anterior, quedó huérfano en la tabla
+`data_requirements`: el import no borra; es inofensivo.)
 
 **Segundo input pendiente del equipo (bloque 5):** revisar las muestras de profile
 (`/admin/profiles` o `app.cli profile-content`) y **aceptar la extracción** cuando el equipo
@@ -69,7 +71,7 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`
   (ahora también importa el draft del instrumento, acepta la extracción `LearnpackV1` y
-  perfila los cursos demo — con `practice_exercises: absent`, el showcase de ADR-0009),
+  perfila los cursos demo — con los datos de lecciones en `absent`, el showcase de ADR-0009),
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
   ninguna clave de Clerk**.
 - **Typecheck del frontend** limpio (`npx tsc --noEmit`).
@@ -95,8 +97,8 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   cubra un mismo id con otra forma (estructural en ADR-0016: el assessor targetea
   instrumento, no formato). Decidir en el bloque 6 vía ADR: dónde se valida (candidato:
   `ContentProfile.ok()`, el chokepoint de todos los adapters) y qué vocabulario necesita
-  `value_domain` — la spec mínima de 13-code §7.4 no expresa formas compuestas como la de
-  `practice_exercises`.
+  `value_domain` — la spec mínima de 13-code §7.4 no expresa formas compuestas como las de
+  `lesson_inventory` / `lesson_activities`.
 - **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo
   (disputas/defectos), annotation queues, métricas de validez por claim, `CompareStudies`.
 

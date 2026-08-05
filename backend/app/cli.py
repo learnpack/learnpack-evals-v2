@@ -827,8 +827,8 @@ def _seed_demo_profiles(content_ids: dict[str, UUID]) -> int:
     """Profile any course the policy did not reach (reused contents emit no event).
 
     The demo courses carry declared metadata but no package artifacts, so the profiles
-    show `practice_exercises: absent` — the deliberate showcase of ADR-0009: absence is
-    a first-class finding, not a gap.
+    show `lesson_inventory`/`lesson_activities: absent` — the deliberate showcase of
+    ADR-0009: absence is a first-class finding, not a gap.
     """
     profiled = 0
     for content_id in content_ids.values():

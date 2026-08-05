@@ -31,7 +31,8 @@ REQUIREMENT_IDS = (
     "learning_objectives",
     "target_audience",
     "prerequisites",
-    "practice_exercises",
+    "lesson_inventory",
+    "lesson_activities",
 )
 
 
@@ -109,8 +110,8 @@ def test_profile_viewer_serves_cited_entries(admin, profiled_content, unique):
     assert "Explain the viewer" in objectives["quote"]
     assert objectives["locator"] == {"source": "metadata", "key": "learningObjectives"}
     # Explicit absence travels to the workbench too (ADR-0009 §4).
-    assert entries["practice_exercises"]["provenance"] == "absent"
-    assert entries["practice_exercises"]["quote"] is None
+    assert entries["lesson_inventory"]["provenance"] == "absent"
+    assert entries["lesson_inventory"]["quote"] is None
 
 
 def test_missing_profile_is_404(admin):

@@ -19,7 +19,8 @@ REQUIREMENT_IDS = (
     "learning_objectives",
     "target_audience",
     "prerequisites",
-    "practice_exercises",
+    "lesson_inventory",
+    "lesson_activities",
 )
 
 
