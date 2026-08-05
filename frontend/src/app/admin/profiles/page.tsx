@@ -131,8 +131,28 @@ function ProfileCard({ profile }: { profile: ProfileResponse }) {
   );
 }
 
+/** A readable "where this came from" line for the locator shapes the adapters emit. */
+function describeLocator(locator: Record<string, unknown> | null): string {
+  if (!locator) return "unknown source";
+  const { source, key, kind, kinds, locator: path, path: jsonPath } = locator as {
+    source?: string;
+    key?: string;
+    kind?: string;
+    kinds?: string[];
+    locator?: string;
+    path?: string;
+  };
+  if (source === "metadata" && key) return `declared metadata · ${key}`;
+  if (source === "artifact" && kind) {
+    return `artifact ${kind} · ${path ?? ""}${jsonPath ? ` · ${jsonPath}` : ""}`;
+  }
+  if (source === "artifacts" && kinds) return `artifacts · ${kinds.join(", ")}`;
+  return JSON.stringify(locator);
+}
+
 function ProfileEntry({ entry }: { entry: ProfileEntryResponse }) {
   const absent = entry.provenance === "absent";
+  const [showQuote, setShowQuote] = useState(false);
   return (
     <div className={`rounded-md border p-3 ${absent ? "border-dashed bg-muted/30" : ""}`}>
       <div className="flex items-center justify-between gap-2">
@@ -150,17 +170,24 @@ function ProfileEntry({ entry }: { entry: ProfileEntryResponse }) {
           <pre className="mt-2 overflow-x-auto rounded bg-muted/40 p-2 text-xs">
             {JSON.stringify(entry.value, null, 2)}
           </pre>
-          <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-            <Quote className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>
-              <span className="italic">{entry.quote}</span>
-              {entry.locator ? (
-                <span className="ml-1 whitespace-nowrap">
-                  — {JSON.stringify(entry.locator)}
-                </span>
-              ) : null}
-            </span>
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Quote className="h-3 w-3 shrink-0" />
+            <span>extracted from: {describeLocator(entry.locator)}</span>
+            {entry.quote ? (
+              <button
+                type="button"
+                onClick={() => setShowQuote(!showQuote)}
+                className="text-primary hover:underline"
+              >
+                {showQuote ? "hide verbatim quote" : "show verbatim quote"}
+              </button>
+            ) : null}
           </p>
+          {showQuote && entry.quote ? (
+            <p className="mt-1 rounded bg-muted/30 p-2 text-xs italic text-muted-foreground">
+              {entry.quote}
+            </p>
+          ) : null}
         </>
       )}
     </div>
