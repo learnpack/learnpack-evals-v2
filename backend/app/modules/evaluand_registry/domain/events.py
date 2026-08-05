@@ -66,17 +66,3 @@ def content_version_registered(content: EducationalContent) -> DomainEvent:
             # Artifacts stay out of the payload — consumers read them via getContentPackage.
         },
     )
-
-
-def content_metadata_updated(content: EducationalContent) -> DomainEvent:
-    return DomainEvent(
-        event_type="ContentMetadataUpdated",
-        aggregate_type=AGGREGATE_TYPE,
-        aggregate_id=str(content.id),
-        payload={
-            "contentId": str(content.id),
-            # Keys only: the event records *that* metadata changed, and the registry stays
-            # the source of truth for the values.
-            "keys": sorted(content.metadata.values),
-        },
-    )

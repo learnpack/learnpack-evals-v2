@@ -9,9 +9,11 @@ sibling files, optionally accompanied by an internal reference solution named
 `<stem>.solution.hide.<ext>` (e.g. `app.solution.hide.py`) — internal, not
 learner-facing, so solution files never count as exercises. Therefore:
 
-- `learning_objectives` / `target_audience` / `prerequisites` come from the content's
-  DECLARED metadata (`declared_structured`) or are `absent` — they exist nowhere in the
-  package itself, and reconstructing them from description prose would be inference.
+- There is NO capability for objectives, audience or prerequisites: the package declares
+  them nowhere (and the registry metadata channel is gone, ADR-0017), so criteria that
+  require them derive `not_applicable` — unmet demand for this format, surfaced by
+  matching/readiness. When the generator starts declaring them in the package, a new
+  ADAPTER_VERSION will claim the capability.
 - `lesson_inventory` is the manifest's `lessons[]`, verbatim fields only — WITHOUT the
   descriptions: those are machine-generated summaries projected from the syllabus, not
   the generator's declaration, so they are not evidence (ADR-0009).
@@ -57,23 +59,7 @@ from app.modules.content_profiling.domain.profile import (
 PACKAGE_FORMAT = "LearnpackV1"
 ADAPTER_VERSION = "2"  # v1 extracted practice_exercises from .learn/config.json
 
-CAPABILITIES = frozenset(
-    {
-        "learning_objectives",
-        "target_audience",
-        "prerequisites",
-        "lesson_inventory",
-        "lesson_bodies",
-        "lesson_activities",
-    }
-)
-
-# Registry metadata key (camelCase, the seeded MetadataSchema) → data requirement id.
-_METADATA_CAPABILITIES = {
-    "learningObjectives": "learning_objectives",
-    "targetAudience": "target_audience",
-    "prerequisites": "prerequisites",
-}
+CAPABILITIES = frozenset({"lesson_inventory", "lesson_bodies", "lesson_activities"})
 
 KIND_MANIFEST = "manifest"
 KIND_PACKAGE_MANIFEST = "package_manifest"
@@ -186,34 +172,11 @@ class LearnpackV1Adapter:
         inventory = self._lesson_inventory(package, fetcher)
         texts_by_slug = self._lesson_texts(package, fetcher)  # fetched once, used twice
         entries = [
-            *self._from_declared_metadata(package),
             inventory,
             self._lesson_bodies(texts_by_slug, inventory),
             self._lesson_activities(package, texts_by_slug, inventory),
         ]
         return tuple(entries), self._extras(package, fetcher)
-
-    # --- declared metadata (the registry's, ADR-0001) -----------------------------------
-
-    def _from_declared_metadata(self, package: PackageDTO) -> list[ProfileEntry]:
-        entries = []
-        for key, requirement_id in _METADATA_CAPABILITIES.items():
-            if key in package.declared_metadata:
-                value = package.declared_metadata[key]
-                entries.append(
-                    ProfileEntry(
-                        data_requirement_id=requirement_id,
-                        provenance="declared_structured",
-                        value=value,
-                        quote=_quote(value),
-                        locator={"source": "metadata", "key": key},
-                    )
-                )
-            else:
-                entries.append(
-                    ProfileEntry(data_requirement_id=requirement_id, provenance="absent")
-                )
-        return entries
 
     # --- lesson inventory (the manifest's declared index) -------------------------------
 

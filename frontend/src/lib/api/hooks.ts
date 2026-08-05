@@ -224,19 +224,6 @@ export function useCreateBrief() {
   });
 }
 
-export function useUpdateContentMetadata() {
-  const api = useApi();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, metadata }: { id: Uuid; metadata: Record<string, unknown> }) =>
-      api<ContentResponse>(`/admin/contents/${id}/metadata`, {
-        method: "PATCH",
-        body: { metadata },
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
-  });
-}
-
 export function useCampaigns() {
   const api = useApi();
   return useQuery({

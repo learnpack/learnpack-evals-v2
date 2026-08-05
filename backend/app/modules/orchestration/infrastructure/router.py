@@ -52,7 +52,6 @@ class OpenCampaignRequest(BaseModel):
     instrument_version_id: str = Field(examples=["learnpack-pedagogical-v1"])
     required_evaluations_per_content: int = Field(ge=1, examples=[2])
     content_ids: list[UUID]
-    metadata_view: list[str] = Field(default_factory=list)
     golden_coverage_threshold: float = 1.0
 
 
@@ -66,7 +65,6 @@ class CampaignResponse(BaseModel):
     instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID]
-    metadata_view: list[str]
     status: str
 
 
@@ -95,12 +93,6 @@ class CampaignProgressResponse(BaseModel):
     contents: list[ContentProgressResponse]
 
 
-class MetadataEntryResponse(BaseModel):
-    key: str
-    value: object
-    value_type: str
-
-
 class CriterionResponse(BaseModel):
     criterion_id: str
     order: int
@@ -118,7 +110,6 @@ class AssignmentDetailResponse(BaseModel):
     status: str
     content_id: UUID
     consumable_url: str
-    metadata: list[MetadataEntryResponse]
     instrument_version_id: str
     scale_min: int
     scale_max: int
@@ -134,7 +125,6 @@ def _campaign_response(campaign) -> CampaignResponse:  # noqa: ANN001 — domain
         instrument_version_id=campaign.instrument_version_id,
         required_evaluations_per_content=campaign.required_evaluations_per_content,
         content_ids=campaign.content_ids,
-        metadata_view=campaign.metadata_view,
         status=str(campaign.status),
     )
 
@@ -182,7 +172,6 @@ def open_campaign(
                 instrument_version_id=request.instrument_version_id,
                 required_evaluations_per_content=request.required_evaluations_per_content,
                 content_ids=request.content_ids,
-                metadata_view=request.metadata_view,
                 golden_coverage_threshold=request.golden_coverage_threshold,
             )
         )
@@ -354,8 +343,6 @@ def assignment_detail(
     snapshot = contents.get_content_snapshot(assignment.content_id)
     if snapshot is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="content not found")
-    # Which keys the evaluator sees is the campaign's call (ADR-0001).
-    snapshot = snapshot.filtered(assignment.metadata_view or None)
 
     rubric = rubrics.get_rubric(assignment.instrument_version_id)
     if rubric is None:
@@ -366,10 +353,6 @@ def assignment_detail(
         status=assignment.status,
         content_id=snapshot.content_id,
         consumable_url=snapshot.consumable_url,
-        metadata=[
-            MetadataEntryResponse(key=e.key, value=e.value, value_type=e.value_type)
-            for e in snapshot.metadata
-        ],
         # RubricSnapshot keeps its Rubric v1 name (ADR-0015); the public JSON speaks instrument.
         instrument_version_id=rubric.rubric_version_id,
         scale_min=rubric.scale_min,

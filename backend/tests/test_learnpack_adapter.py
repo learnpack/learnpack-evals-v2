@@ -18,15 +18,6 @@ from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 
-DECLARED_METADATA = {
-    "learningObjectives": [
-        "Define Python classes with __init__, attributes, and methods",
-        "Create and use object instances with dot notation",
-    ],
-    "targetAudience": "Beginner developers who understand OOP concepts",
-    "prerequisites": ["Basic Python", "Object-oriented programming concepts"],
-}
-
 NO_ACTIVITIES = {
     "multipleChoice": 0,
     "openQuestion": 0,
@@ -36,7 +27,7 @@ NO_ACTIVITIES = {
 }
 
 
-def fixture_package(course: str, metadata: dict | None = None) -> PackageDTO:
+def fixture_package(course: str) -> PackageDTO:
     """Artifacts as the registry would hold them, locators relative to the fixtures dir."""
     artifacts = []
     if (FIXTURES / course / "learn.json").exists():
@@ -54,7 +45,6 @@ def fixture_package(course: str, metadata: dict | None = None) -> PackageDTO:
         package_format="LearnpackV1",
         consumable_url=f"https://{course}.learn-pack.com/",
         artifacts=tuple(artifacts),
-        declared_metadata=metadata if metadata is not None else {},
     )
 
 
@@ -81,18 +71,15 @@ def test_adapter_is_registered_for_its_format():
     assert ADAPTERS_BY_FORMAT["LearnpackV1"].capabilities == CAPABILITIES
 
 
-def test_full_package_with_declared_metadata_yields_cited_entries(adapter, fetcher):
-    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+def test_full_package_yields_cited_entries(adapter, fetcher):
+    package = fixture_package("object-representation-in-python")
     entries, extras = adapter.extract(package, fetcher)
 
+    # One entry per declared capability — and nothing else: objectives/audience/
+    # prerequisites have no source in this format (ADR-0017), so no entry exists and
+    # criteria requiring them derive not_applicable, not absent.
     assert {e.data_requirement_id for e in entries} == set(CAPABILITIES)
     entry = by_id(entries)
-
-    objectives = entry["learning_objectives"]
-    assert objectives.provenance == "declared_structured"
-    assert objectives.value == DECLARED_METADATA["learningObjectives"]
-    assert "dot notation" in objectives.quote  # verbatim citation (ADR-0009)
-    assert objectives.locator == {"source": "metadata", "key": "learningObjectives"}
 
     inventory = entry["lesson_inventory"]
     assert inventory.provenance == "declared_structured"
@@ -112,7 +99,7 @@ def test_full_package_with_declared_metadata_yields_cited_entries(adapter, fetch
 
 
 def test_lesson_bodies_carry_the_content_verbatim(adapter, fetcher):
-    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    package = fixture_package("object-representation-in-python")
     entries, _ = adapter.extract(package, fetcher)
     bodies = by_id(entries)["lesson_bodies"]
 
@@ -127,7 +114,7 @@ def test_lesson_bodies_carry_the_content_verbatim(adapter, fetcher):
 
 
 def test_lesson_activities_observed_from_the_real_course(adapter, fetcher):
-    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    package = fixture_package("object-representation-in-python")
     entries, _ = adapter.extract(package, fetcher)
     lessons = by_slug(by_id(entries)["lesson_activities"])
 
@@ -151,7 +138,7 @@ def test_lesson_activities_observed_from_the_real_course(adapter, fetcher):
 def test_the_other_real_course_keeps_its_numbering_drift_verbatim(adapter, fetcher):
     """Lessons '05' and '06' lack the NN.M form — real generator drift. Extraction
     records it verbatim; judging it is the well-formedness criterion's job, not ours."""
-    package = fixture_package("introduction-to-generative-ai", DECLARED_METADATA)
+    package = fixture_package("introduction-to-generative-ai")
     entries, _ = adapter.extract(package, fetcher)
     inventory = by_id(entries)["lesson_inventory"]
     assert len(inventory.value) == 17
@@ -165,18 +152,6 @@ def test_the_other_real_course_keeps_its_numbering_drift_verbatim(adapter, fetch
     lessons = by_slug(by_id(entries)["lesson_activities"])
     assert lessons["01.0-what-is-generative-ai-really"]["activities"]["multipleChoice"] == 3
     assert lessons["03.1-from-prompt-to-tokens"]["activities"]["openQuestion"] == 1
-
-
-def test_capability_without_data_yields_explicit_absent_not_missing_entry(adapter, fetcher):
-    package = fixture_package("object-representation-in-python", metadata=None)
-    entries, _ = adapter.extract(package, fetcher)
-    entry = by_id(entries)
-    for requirement_id in ("learning_objectives", "target_audience", "prerequisites"):
-        assert entry[requirement_id].provenance == "absent"
-        assert entry[requirement_id].value is None
-        assert entry[requirement_id].quote is None
-    # The package itself still yields its lessons.
-    assert entry["lesson_inventory"].provenance == "declared_structured"
 
 
 def test_package_without_artifacts_yields_absent_lesson_data(adapter, fetcher):
@@ -233,13 +208,13 @@ def test_malformed_manifest_fails_extraction_instead_of_half_profiling(adapter, 
 
 
 def test_extraction_is_deterministic(adapter, fetcher):
-    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    package = fixture_package("object-representation-in-python")
     assert adapter.extract(package, fetcher) == adapter.extract(package, fetcher)
 
 
 def test_extraction_satisfies_the_profile_aggregate(adapter, fetcher):
     """The adapter's output builds a valid ok profile — the two halves fit."""
-    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    package = fixture_package("object-representation-in-python")
     entries, extras = adapter.extract(package, fetcher)
     profile = ContentProfile.ok(
         id=new_id(),

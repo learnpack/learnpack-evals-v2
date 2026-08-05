@@ -6,7 +6,6 @@ from uuid import UUID
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
-from app.modules.evaluand_registry.domain.metadata import MetadataSchema
 
 
 class GeneratorVersionRepositoryPort(Protocol):
@@ -40,10 +39,4 @@ class ContentRepositoryPort(Protocol):
 
     def add(self, content: EducationalContent) -> None: ...
 
-    def update_metadata(self, content: EducationalContent) -> None: ...
-
     def list_all(self) -> list[EducationalContent]: ...
-
-
-class MetadataSchemaRepositoryPort(Protocol):
-    def get(self, package_format: str) -> MetadataSchema | None: ...

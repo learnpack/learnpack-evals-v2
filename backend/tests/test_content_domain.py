@@ -7,16 +7,7 @@ from app.modules.evaluand_registry.domain.content import (
     EducationalContent,
     InvalidContent,
 )
-from app.modules.evaluand_registry.domain.metadata import (
-    ContentMetadata,
-    InvalidMetadata,
-    MetadataSchema,
-)
 from app.shared.domain.ids import new_id
-
-SCHEMA = MetadataSchema.from_spec(
-    "LearnpackV1", {"targetAudience": {"valueType": "string", "required": True}}
-)
 
 
 def make_content(**overrides) -> EducationalContent:
@@ -51,21 +42,6 @@ def test_required_fields_reject_blanks(field):
 def test_consumable_url_must_be_http():
     with pytest.raises(InvalidContent, match="http"):
         make_content(consumable_url="ftp://example.com/course")
-
-
-def test_update_metadata_revalidates_against_the_schema():
-    content = make_content()
-    content.update_metadata({"targetAudience": "Junior developers"}, SCHEMA)
-    assert content.metadata.values["targetAudience"] == "Junior developers"
-
-    with pytest.raises(InvalidMetadata):
-        content.update_metadata({"targetAudience": 42}, SCHEMA)
-    # The aggregate is unchanged after a rejected update.
-    assert content.metadata.values["targetAudience"] == "Junior developers"
-
-
-def test_metadata_defaults_to_empty():
-    assert make_content().metadata == ContentMetadata(values={})
 
 
 def test_edit_provenance_defaults_to_unknown():

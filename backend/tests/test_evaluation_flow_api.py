@@ -52,10 +52,6 @@ def content(admin, cleanup, unique):
             "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
-            "metadata": {
-                "learningObjectives": ["Explain prompting"],
-                "targetAudience": "Junior developers",
-            },
         },
     ).json()
     cleanup["contents"].append(body["content_id"])
@@ -64,14 +60,13 @@ def content(admin, cleanup, unique):
 
 @pytest.fixture
 def make_campaign(admin, cleanup, content):
-    def _make(required: int = 2, metadata_view: list[str] | None = None):
+    def _make(required: int = 2):
         body = admin.post(
             "/admin/campaigns",
             json={
                 "instrument_version_id": RUBRIC,
                 "required_evaluations_per_content": required,
                 "content_ids": [content],
-                "metadata_view": metadata_view or [],
             },
         ).json()
         cleanup["campaigns"].append(body["campaign_id"])
@@ -106,7 +101,6 @@ def test_full_evaluator_flow(admin, evaluator, content, make_campaign, session):
     assert detail["consumable_url"] == COURSE_URL
     assert [c["criterion_id"] for c in detail["criteria"]] == CRITERIA
     assert detail["scale_min"] == 1 and detail["scale_max"] == 5
-    assert {e["key"] for e in detail["metadata"]} == {"learningObjectives", "targetAudience"}
 
     # 3. open, then submit
     assert client.post(f"/assignments/{assignment_id}/open").json()["status"] == "opened"
@@ -127,16 +121,6 @@ def test_full_evaluator_flow(admin, evaluator, content, make_campaign, session):
         "completed": True,
     }
     assert progress["coverage"] == 1.0
-
-
-def test_metadata_view_filters_what_the_evaluator_sees(admin, evaluator, content, make_campaign):
-    """Which keys are shown is the campaign's call (ADR-0001)."""
-    campaign_id = make_campaign(required=1, metadata_view=["targetAudience"])
-    client, assessor_id = evaluator("ada")
-    assignment_id = assign(admin, campaign_id, content, assessor_id)
-
-    detail = client.get(f"/assignments/{assignment_id}").json()
-    assert [e["key"] for e in detail["metadata"]] == ["targetAudience"]
 
 
 # --------------------------------------------------------------------------- quorum
@@ -367,10 +351,6 @@ def test_cannot_assign_content_outside_the_campaign_scope(
             "package_format": "LearnpackV1",
             "external_id": f"other-{unique}",
             "consumable_url": COURSE_URL,
-            "metadata": {
-                "learningObjectives": ["x"],
-                "targetAudience": "y",
-            },
         },
     ).json()
     cleanup["contents"].append(other["content_id"])

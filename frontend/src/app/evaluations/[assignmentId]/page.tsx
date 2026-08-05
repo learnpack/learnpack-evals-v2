@@ -10,7 +10,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { MetadataList } from "@/components/metadata-list";
 import { ConsumeContent } from "@/components/evaluator/consume-content";
 import { ScoreForm } from "@/components/evaluator/score-form";
 import { useAssignment, useOpenAssignment, useSubmitEvaluation } from "@/lib/api/hooks";
@@ -19,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * One working screen instead of a wizard: the course stays pinned on the left while the
- * evaluator reads the metadata and scores on the right. Both right-hand panels start open and
+ * evaluator scores on the right. Both right-hand panels start open and
  * can be collapsed; "Focus" hands the whole width to the course.
  */
 export default function AssignmentPage({
@@ -137,10 +136,6 @@ export default function AssignmentPage({
 
               {!focus ? (
                 <div className="space-y-4">
-                  <CollapsibleSection title="Course details">
-                    <MetadataList metadata={assignment.metadata} />
-                  </CollapsibleSection>
-
                   <CollapsibleSection
                     title="Score"
                     badge={`${assignment.criteria.length} criteria`}

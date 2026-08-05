@@ -27,7 +27,6 @@ def _to_dto(assignment: Assignment, campaign: EvaluationCampaign) -> AssignmentD
         assessor_id=assignment.assessor_id,
         status=str(assignment.status),
         instrument_version_id=campaign.instrument_version_id,
-        metadata_view=campaign.metadata_view,
     )
 
 

@@ -4,19 +4,12 @@
  */
 
 export type Uuid = string;
-export type MetadataValueType = "string" | "string_list";
 
 export interface Me {
   assessor_id: Uuid;
   role: string; // "admin" | "evaluator"
   email: string | null;
   display_name: string | null;
-}
-
-export interface MetadataEntry {
-  key: string;
-  value: string | string[];
-  value_type: MetadataValueType;
 }
 
 export type EditProvenance = "pure" | "human_edited" | "unknown";
@@ -27,7 +20,6 @@ export interface ContentResponse {
   external_id: string;
   version: string;
   consumable_url: string;
-  metadata: MetadataEntry[];
   brief_id: Uuid | null;
   generator_version_id: Uuid | null;
   edit_provenance: EditProvenance;
@@ -189,7 +181,6 @@ export interface AssignmentDetail {
   status: string;
   content_id: Uuid;
   consumable_url: string;
-  metadata: MetadataEntry[];
   instrument_version_id: string;
   scale_min: number;
   scale_max: number;
@@ -220,7 +211,6 @@ export interface CampaignResponse {
   instrument_version_id: string;
   required_evaluations_per_content: number;
   content_ids: Uuid[];
-  metadata_view: string[];
   status: string; // draft | open | closed
 }
 
@@ -320,7 +310,6 @@ export interface RegisterContentRequest {
   external_id: string;
   consumable_url: string;
   version?: string;
-  metadata: Record<string, unknown>;
   artifacts?: { kind: string; locator: string; format?: string | null }[];
   brief_id?: Uuid | null;
   generator_version_id?: Uuid | null;
@@ -331,7 +320,6 @@ export interface OpenCampaignRequest {
   instrument_version_id: string;
   required_evaluations_per_content: number;
   content_ids: Uuid[];
-  metadata_view: string[];
   golden_coverage_threshold?: number;
 }
 

@@ -6,10 +6,8 @@ is a first-class case (ADR-0005).
 """
 
 from dataclasses import dataclass, field
-from typing import Any
 from uuid import UUID
 
-from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 from app.modules.evaluand_registry.domain.package import ContentPackage
 
 DEFAULT_VERSION = "1"
@@ -24,7 +22,9 @@ class InvalidContent(Exception):
 
 @dataclass
 class EducationalContent:
-    """Aggregate root. Owns its `ContentMetadata` and its `ContentPackage`.
+    """Aggregate root. Owns its `ContentPackage` — the declared surface of the evaluand
+    (ADR-0017): whatever the platform or generator declares travels as package artifacts,
+    never as a side metadata channel.
 
     `brief_id`/`generator_version_id` are nullable on purpose: an absent brief is
     *recorded* absent, and a null generator means `unknown` — valid for content-level
@@ -36,7 +36,6 @@ class EducationalContent:
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
-    metadata: ContentMetadata = field(default_factory=lambda: ContentMetadata(values={}))
     package: ContentPackage = field(default_factory=ContentPackage)
     brief_id: UUID | None = None
     generator_version_id: UUID | None = None
@@ -61,7 +60,3 @@ class EducationalContent:
     def logical_id(self) -> tuple[str, str]:
         """The logical content this version belongs to."""
         return (self.package_format, self.external_id)
-
-    def update_metadata(self, values: dict[str, Any], schema: MetadataSchema) -> None:
-        """Replace the metadata, revalidating against the schema."""
-        self.metadata = ContentMetadata.validated(values, schema)

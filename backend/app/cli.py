@@ -50,16 +50,13 @@ from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
     RegisterContentVersionCommand,
-    UnknownPackageFormat,
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
-from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
     SqlAlchemyGeneratorVersionRepository,
-    SqlAlchemyMetadataSchemaRepository,
 )
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 from app.modules.evaluation_design.application.import_instrument_draft import (
@@ -101,21 +98,6 @@ from app.shared.domain.ids import new_id
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
 DEFAULT_REFERENCE_FILE = REPO_ROOT / "docs" / "seed" / "pedagogical-reference.yaml"
-
-# Content metadata is an open collection validated against this schema (ADR-0001).
-# The domain never references these keys; only the schema and the UI know them.
-# Nothing is required: metadata records what the PLATFORM/GENERATOR declares (mechanical
-# intake). Requiring keys forces a human to type them at registration, which contaminates
-# the declared surface the instrument evaluates — a hand-written objective is not the
-# course declaring objectives (ADR-0009 by the back door).
-LEARNPACK_METADATA_SCHEMA = {
-    "packageFormat": "LearnpackV1",
-    "keys": {
-        "learningObjectives": {"valueType": "string_list", "required": False},
-        "targetAudience": {"valueType": "string", "required": False},
-        "prerequisites": {"valueType": "string_list", "required": False},
-    },
-}
 
 
 def _rubric_version_id(rubric: dict[str, Any]) -> str:
@@ -203,22 +185,6 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
         )
 
 
-def seed_metadata_schema(session: Session) -> None:
-    session.execute(
-        text(
-            """
-            INSERT INTO metadata_schemas (package_format, spec)
-            VALUES (:package_format, :spec)
-            ON CONFLICT (package_format) DO UPDATE SET spec = excluded.spec
-            """
-        ),
-        {
-            "package_format": LEARNPACK_METADATA_SCHEMA["packageFormat"],
-            "spec": json.dumps(LEARNPACK_METADATA_SCHEMA["keys"]),
-        },
-    )
-
-
 def seed_reference_data(session: Session, reference: dict[str, Any]) -> None:
     """Upsert the norm-side reference data (design 12): dimensions, qualities, frameworks.
 
@@ -279,7 +245,6 @@ def run_seed(seed_file: Path, reference_file: Path = DEFAULT_REFERENCE_FILE) -> 
     reference = yaml.safe_load(reference_file.read_text(encoding="utf-8"))
     with SessionLocal() as session:
         seed_rubric(session, rubric)
-        seed_metadata_schema(session)
         seed_reference_data(session, reference)
         session.commit()
 
@@ -297,7 +262,7 @@ def run_seed(seed_file: Path, reference_file: Path = DEFAULT_REFERENCE_FILE) -> 
 
     print(
         f"seeded {rubric['name']} ({_rubric_version_id(rubric)}): "
-        f"{criteria_count} criteria, {frameworks_count} frameworks, 1 metadata schema, "
+        f"{criteria_count} criteria, {frameworks_count} frameworks, "
         f"{dimensions_count} dimensions, {qualities_count} qualities"
     )
 
@@ -541,7 +506,6 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
             uow = UnitOfWork(session)
             use_case = RegisterContentVersion(
                 contents=SqlAlchemyContentRepository(session),
-                schemas=SqlAlchemyMetadataSchemaRepository(session),
                 briefs=SqlAlchemyBriefRepository(session),
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
@@ -567,7 +531,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                 print(
                     f"  skipped  {raw.get('external_id') or raw.get('slug')} (already registered)"
                 )
-            except (InvalidContent, InvalidMetadata, UnknownPackageFormat, KeyError) as exc:
+            except (InvalidContent, KeyError) as exc:
                 failed += 1
                 print(
                     f"  INVALID  {raw.get('external_id') or raw.get('slug')}: {exc}",
@@ -587,7 +551,6 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
 
 DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v1"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
-DEMO_METADATA_VIEW = ["learningObjectives", "targetAudience", "prerequisites"]
 
 # (email, display name, role). `clerk_user_id` mirrors what auth_local builds from the header,
 # and the display names are exactly what `display_name_for` derives from these emails — so
@@ -710,7 +673,6 @@ def _seed_demo_contents() -> dict[str, UUID]:
             uow = UnitOfWork(session)
             register = RegisterContentVersion(
                 contents=SqlAlchemyContentRepository(session),
-                schemas=SqlAlchemyMetadataSchemaRepository(session),
                 briefs=SqlAlchemyBriefRepository(session),
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
@@ -756,7 +718,6 @@ def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
                 instrument_version_id=DEMO_INSTRUMENT_VERSION_ID,
                 required_evaluations_per_content=DEMO_REQUIRED_EVALUATIONS,
                 content_ids=content_ids,
-                metadata_view=DEMO_METADATA_VIEW,
             )
         )
         return campaign.id
@@ -904,7 +865,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    seed_parser = subparsers.add_parser("seed", help="seed rubric v1 + metadata schema")
+    seed_parser = subparsers.add_parser("seed", help="seed rubric v1 + reference data")
     seed_parser.add_argument("--file", type=Path, default=DEFAULT_SEED_FILE)
 
     role_parser = subparsers.add_parser("set-role", help="assign a role to an assessor")

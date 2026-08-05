@@ -1,7 +1,7 @@
 """Read-only query port of the Evaluand Registry (11-connect §published language).
 
-`getContentSnapshot` / `getContentMetadata` are how Evaluation and Orchestration read
-content — never by joining against `contents` themselves (08-code.md §3, FK rule).
+`getContentSnapshot` is how Evaluation and Orchestration read content — never by joining
+against `contents` themselves (08-code.md §3, FK rule).
 """
 
 from uuid import UUID
@@ -12,7 +12,6 @@ from app.modules.evaluand_registry.application.dtos import (
     ContentSnapshot,
     GeneratorArtifactDTO,
     GeneratorVersionDTO,
-    MetadataEntryDTO,
     PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.application.ports import (
@@ -20,28 +19,19 @@ from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     GeneratorArtifactRepositoryPort,
     GeneratorVersionRepositoryPort,
-    MetadataSchemaRepositoryPort,
 )
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.modules.evaluand_registry.domain.generator import GeneratorVersion
 
 
-def _to_snapshot(
-    content: EducationalContent, schemas: MetadataSchemaRepositoryPort
-) -> ContentSnapshot:
-    schema = schemas.get(content.package_format)
-    entries = schema.entries(content.metadata.values) if schema else []
+def _to_snapshot(content: EducationalContent) -> ContentSnapshot:
     return ContentSnapshot(
         content_id=content.id,
         package_format=content.package_format,
         external_id=content.external_id,
         version=content.version,
         consumable_url=content.consumable_url,
-        metadata=[
-            MetadataEntryDTO(key=e.key, value=e.value, value_type=str(e.value_type))
-            for e in entries
-        ],
         brief_id=content.brief_id,
         generator_version_id=content.generator_version_id,
         edit_provenance=content.edit_provenance,
@@ -67,29 +57,16 @@ def get_content_package(
 
 
 def get_content_snapshot(
-    contents: ContentRepositoryPort,
-    schemas: MetadataSchemaRepositoryPort,
-    content_id: UUID,
+    contents: ContentRepositoryPort, content_id: UUID
 ) -> ContentSnapshot | None:
     content = contents.get_by_id(content_id)
     if content is None:
         return None
-    return _to_snapshot(content, schemas)
+    return _to_snapshot(content)
 
 
-def get_content_metadata(
-    contents: ContentRepositoryPort,
-    schemas: MetadataSchemaRepositoryPort,
-    content_id: UUID,
-) -> list[MetadataEntryDTO] | None:
-    snapshot = get_content_snapshot(contents, schemas, content_id)
-    return None if snapshot is None else snapshot.metadata
-
-
-def list_content_snapshots(
-    contents: ContentRepositoryPort, schemas: MetadataSchemaRepositoryPort
-) -> list[ContentSnapshot]:
-    return [_to_snapshot(content, schemas) for content in contents.list_all()]
+def list_content_snapshots(contents: ContentRepositoryPort) -> list[ContentSnapshot]:
+    return [_to_snapshot(content) for content in contents.list_all()]
 
 
 def _to_generator_dto(generator: GeneratorVersion) -> GeneratorVersionDTO:

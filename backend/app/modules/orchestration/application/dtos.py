@@ -16,7 +16,6 @@ class AssignmentDTO:
     assessor_id: UUID
     status: str
     instrument_version_id: str
-    metadata_view: list[str]
 
     @property
     def is_submitted(self) -> bool:

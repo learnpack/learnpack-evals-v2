@@ -33,13 +33,14 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
     SqlAlchemyGeneratorVersionRepository,
-    SqlAlchemyMetadataSchemaRepository,
 )
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
+# The namespace the instrument mints (demand); the adapter supplies only the lesson ids —
+# the metadata-sourced ones have no supplier since ADR-0017 (unmet demand, not_applicable).
 REQUIREMENT_IDS = (
     "learning_objectives",
     "target_audience",
@@ -48,6 +49,7 @@ REQUIREMENT_IDS = (
     "lesson_bodies",
     "lesson_activities",
 )
+CAPABILITY_IDS = {"lesson_inventory", "lesson_bodies", "lesson_activities"}
 
 
 @pytest.fixture
@@ -68,12 +70,11 @@ def namespace(cleanup):
 
 @pytest.fixture
 def register_content(cleanup, unique):
-    def _register(artifacts: list[dict] | None = None, metadata: dict | None = None):
+    def _register(artifacts: list[dict] | None = None):
         with SessionLocal() as session:
             uow = UnitOfWork(session)
             use_case = RegisterContentVersion(
                 contents=SqlAlchemyContentRepository(session),
-                schemas=SqlAlchemyMetadataSchemaRepository(session),
                 briefs=SqlAlchemyBriefRepository(session),
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
@@ -84,12 +85,6 @@ def register_content(cleanup, unique):
                     package_format="LearnpackV1",
                     external_id=f"profiled-course-{unique}",
                     consumable_url=f"https://profiled-{unique}.learn-pack.com/",
-                    metadata=metadata
-                    if metadata is not None
-                    else {
-                        "learningObjectives": ["Explain how profiling works"],
-                        "targetAudience": "Developers of this very engine",
-                    },
                     artifacts=artifacts or [],
                 )
             )
@@ -154,14 +149,13 @@ def test_profile_content_persists_cited_entries_and_event(
         .all()
     )
     by_id = {row["data_requirement_id"]: row for row in rows}
-    assert set(by_id) == set(REQUIREMENT_IDS)
-    assert by_id["learning_objectives"]["provenance"] == "declared_structured"
-    assert "profiling works" in by_id["learning_objectives"]["quote"]
-    # No metadata entry and no artifacts: explicitly absent, quoteless (ADR-0009).
-    assert by_id["prerequisites"]["provenance"] == "absent"
-    assert by_id["lesson_inventory"]["provenance"] == "absent"
-    assert by_id["lesson_activities"]["provenance"] == "absent"
-    assert by_id["lesson_activities"]["quote"] is None
+    # Exactly one entry per declared capability — and ONLY capabilities: the
+    # metadata-sourced requirements have no supplier, so no entry at all (ADR-0017).
+    assert set(by_id) == CAPABILITY_IDS
+    # A package with no artifacts: explicitly absent, quoteless (ADR-0009).
+    for requirement_id in CAPABILITY_IDS:
+        assert by_id[requirement_id]["provenance"] == "absent"
+        assert by_id[requirement_id]["quote"] is None
     assert events_for(session, profile.id) == ["ContentProfiled"]
 
 
