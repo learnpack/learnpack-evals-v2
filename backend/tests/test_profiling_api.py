@@ -1,6 +1,7 @@
 """Read-only profiling endpoints — the designer's workbench feed (ADR-0012)."""
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from sqlalchemy import text
@@ -27,6 +28,7 @@ from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
+# The namespace the instrument mints; the adapter supplies only the lesson ids (ADR-0017).
 REQUIREMENT_IDS = (
     "learning_objectives",
     "target_audience",
@@ -35,6 +37,7 @@ REQUIREMENT_IDS = (
     "lesson_bodies",
     "lesson_activities",
 )
+CAPABILITY_IDS = {"lesson_inventory", "lesson_bodies", "lesson_activities"}
 
 
 @pytest.fixture
@@ -69,10 +72,12 @@ def profiled_content(admin, cleanup, unique, namespace):
             "package_format": "LearnpackV1",
             "external_id": f"viewer-course-{unique}",
             "consumable_url": "https://viewer.learn-pack.com/",
-            "metadata": {
-                "learningObjectives": ["Explain the viewer"],
-                "targetAudience": "The team",
-            },
+            "artifacts": [
+                {
+                    "kind": "package_manifest",
+                    "locator": "bare-course/.learn/package-manifest.json",
+                }
+            ],
         },
     ).json()["content_id"]
     cleanup["contents"].append(content_id)
@@ -86,7 +91,7 @@ def profiled_content(admin, cleanup, unique, namespace):
             fetcher=FilesystemPackageFetcher(FIXTURES),
             publisher=uow.events,
             uow=uow,
-        )(ProfileContentCommand(content_id=content_id))
+        )(ProfileContentCommand(content_id=UUID(content_id)))
     return content_id
 
 
@@ -105,14 +110,14 @@ def test_profile_viewer_serves_cited_entries(admin, profiled_content, unique):
 
     detail = admin.get(f"/admin/contents/{profiled_content}/profile").json()
     entries = {e["data_requirement_id"]: e for e in detail["entries"]}
-    assert set(entries) == set(REQUIREMENT_IDS)
-    objectives = entries["learning_objectives"]
-    assert objectives["provenance"] == "declared_structured"
-    assert "Explain the viewer" in objectives["quote"]
-    assert objectives["locator"] == {"source": "metadata", "key": "learningObjectives"}
+    assert set(entries) == CAPABILITY_IDS
+    inventory = entries["lesson_inventory"]
+    assert inventory["provenance"] == "declared_structured"
+    assert "00-frontmatter-only" in inventory["quote"]  # verbatim citation (ADR-0009)
+    assert inventory["locator"]["path"] == "$.lessons"
     # Explicit absence travels to the workbench too (ADR-0009 §4).
-    assert entries["lesson_inventory"]["provenance"] == "absent"
-    assert entries["lesson_inventory"]["quote"] is None
+    assert entries["lesson_bodies"]["provenance"] == "absent"
+    assert entries["lesson_bodies"]["quote"] is None
 
 
 def test_missing_profile_is_404(admin):
@@ -123,7 +128,7 @@ def test_capabilities_expose_the_acceptance_state(admin, cleanup, session):
     before = admin.get("/admin/profiling/capabilities").json()
     learnpack = next(c for c in before if c["package_format"] == "LearnpackV1")
     assert learnpack["adapter_version"] == learnpack_v1.ADAPTER_VERSION
-    assert set(learnpack["capabilities"]) == set(REQUIREMENT_IDS)
+    assert set(learnpack["capabilities"]) == CAPABILITY_IDS
     assert learnpack["accepted"] is False
 
     cleanup["acceptances"].append(("LearnpackV1", learnpack_v1.ADAPTER_VERSION))

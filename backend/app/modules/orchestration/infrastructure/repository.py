@@ -1,6 +1,5 @@
 """SQLAlchemy adapters for Orchestration's ports."""
 
-import json
 from uuid import UUID
 
 from sqlalchemy import text
@@ -30,7 +29,6 @@ class SqlAlchemyCampaignRepository:
             instrument_version_id=row["instrument_version_id"],
             required_evaluations_per_content=row["required_evaluations_per_content"],
             content_ids=list(content_ids),
-            metadata_view=row["metadata_view"] or [],
             golden_coverage_threshold=float(row["golden_coverage_threshold"]),
             status=row["status"],
         )
@@ -41,7 +39,7 @@ class SqlAlchemyCampaignRepository:
                 text(
                     """
                     SELECT id, instrument_version_id, required_evaluations_per_content,
-                           metadata_view, golden_coverage_threshold, status
+                           golden_coverage_threshold, status
                       FROM campaigns WHERE id = :id
                     """
                 ),
@@ -57,16 +55,15 @@ class SqlAlchemyCampaignRepository:
             text(
                 """
                 INSERT INTO campaigns
-                    (id, instrument_version_id, required_evaluations_per_content, metadata_view,
+                    (id, instrument_version_id, required_evaluations_per_content,
                      golden_coverage_threshold, status)
-                VALUES (:id, :rubric, :required, cast(:view as jsonb), :threshold, :status)
+                VALUES (:id, :rubric, :required, :threshold, :status)
                 """
             ),
             {
                 "id": campaign.id,
                 "rubric": campaign.instrument_version_id,
                 "required": campaign.required_evaluations_per_content,
-                "view": json.dumps(campaign.metadata_view),
                 "threshold": campaign.golden_coverage_threshold,
                 "status": str(campaign.status),
             },
@@ -95,7 +92,7 @@ class SqlAlchemyCampaignRepository:
                 text(
                     """
                     SELECT id, instrument_version_id, required_evaluations_per_content,
-                           metadata_view, golden_coverage_threshold, status
+                           golden_coverage_threshold, status
                       FROM campaigns ORDER BY created_at
                     """
                 )

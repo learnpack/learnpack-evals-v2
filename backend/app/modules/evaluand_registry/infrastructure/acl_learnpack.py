@@ -14,27 +14,16 @@ from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION
 
 PACKAGE_FORMAT = "LearnpackV1"
 
-# LearnPack's field names on the left, ours (the seeded schema's keys) on the right.
-_METADATA_FIELD_MAP = {
-    "objectives": "learningObjectives",
-    "learningObjectives": "learningObjectives",
-    "audience": "targetAudience",
-    "targetAudience": "targetAudience",
-    "prerequisites": "prerequisites",
-}
-
 
 def to_register_command(raw: dict[str, Any]) -> RegisterContentVersionCommand:
-    """Map a raw LearnPack course payload to `RegisterContentVersion`."""
-    metadata = {
-        _METADATA_FIELD_MAP[key]: value
-        for key, value in (raw.get("metadata") or {}).items()
-        if key in _METADATA_FIELD_MAP
-    }
+    """Map a raw LearnPack course payload to `RegisterContentVersion`.
+
+    Only identity and the consumable surface: whatever the platform declares about a
+    course travels as package artifacts, never as a side metadata channel (ADR-0017).
+    """
     return RegisterContentVersionCommand(
         package_format=PACKAGE_FORMAT,
         external_id=raw["slug"],
         consumable_url=raw["url"],
         version=str(raw.get("version") or DEFAULT_VERSION),
-        metadata=metadata,
     )

@@ -1,4 +1,9 @@
-"""Use case: register a content version — the generator's work product (13-code-qa §3.2)."""
+"""Use case: register a content version — the generator's work product (13-code-qa §3.2).
+
+The declared surface of the evaluand is the package (ADR-0017): registration captures the
+artifacts, never a side metadata channel. `package_format` is an open vocabulary — a new
+format is data, and its extraction support is an adapter, not a registry precondition.
+"""
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -8,11 +13,9 @@ from app.modules.evaluand_registry.application.ports import (
     BriefRepositoryPort,
     ContentRepositoryPort,
     GeneratorVersionRepositoryPort,
-    MetadataSchemaRepositoryPort,
 )
 from app.modules.evaluand_registry.domain import events
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, EducationalContent
-from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 from app.modules.evaluand_registry.domain.package import ContentPackage
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 from app.shared.domain.ids import new_id
@@ -20,10 +23,6 @@ from app.shared.domain.ids import new_id
 
 class DuplicateContent(Exception):
     """A content version with the same (packageFormat, externalId, version) exists."""
-
-
-class UnknownPackageFormat(Exception):
-    """No MetadataSchema is registered for this package format."""
 
 
 class BriefNotFound(Exception):
@@ -40,7 +39,6 @@ class RegisterContentVersionCommand:
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
-    metadata: dict[str, Any] = field(default_factory=dict)
     # {kind, locator, format?} rows — the ContentPackage (open kinds; ADR-0009 evidence).
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     brief_id: UUID | None = None
@@ -52,21 +50,18 @@ class RegisterContentVersion:
     def __init__(
         self,
         contents: ContentRepositoryPort,
-        schemas: MetadataSchemaRepositoryPort,
         briefs: BriefRepositoryPort,
         generators: GeneratorVersionRepositoryPort,
         publisher: EventPublisherPort,
         uow: UnitOfWorkPort,
     ) -> None:
         self._contents = contents
-        self._schemas = schemas
         self._briefs = briefs
         self._generators = generators
         self._publisher = publisher
         self._uow = uow
 
     def __call__(self, command: RegisterContentVersionCommand) -> EducationalContent:
-        schema = self._require_schema(command.package_format)
         self._require_references(command)
 
         if self._contents.exists(command.package_format, command.external_id, command.version):
@@ -81,7 +76,6 @@ class RegisterContentVersion:
             external_id=command.external_id,
             consumable_url=command.consumable_url,
             version=command.version,
-            metadata=ContentMetadata.validated(command.metadata, schema),
             package=ContentPackage.validated(command.artifacts),
             brief_id=command.brief_id,
             generator_version_id=command.generator_version_id,
@@ -93,12 +87,6 @@ class RegisterContentVersion:
         self._publisher.publish(events.content_version_registered(content))
         self._uow.commit()
         return content
-
-    def _require_schema(self, package_format: str) -> MetadataSchema:
-        schema = self._schemas.get(package_format)
-        if schema is None:
-            raise UnknownPackageFormat(f"no metadata schema registered for '{package_format}'")
-        return schema
 
     def _require_references(self, command: RegisterContentVersionCommand) -> None:
         # App-level referential validation (cross-aggregate; 13-code-qa §2 pattern).

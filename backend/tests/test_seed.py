@@ -83,18 +83,6 @@ def test_reference_data_seeded(requires_db):
     assert orphan_qualities == 0
 
 
-def test_metadata_schema_seeded(requires_db):
-    run_seed(DEFAULT_SEED_FILE)
-
-    with SessionLocal() as session:
-        spec = session.execute(
-            text("SELECT spec FROM metadata_schemas WHERE package_format = 'LearnpackV1'")
-        ).scalar_one()
-
-    # ADR-0001: keys live in reference data, never in the domain. No lessonPlan.
-    assert set(spec) == {"learningObjectives", "targetAudience", "prerequisites"}
-
-
 def test_reset_demo_clears_local_identities_and_spares_the_rest(requires_db, cleanup, unique):
     """`seed-demo --reset` wipes local data, but never a real Clerk identity.
 

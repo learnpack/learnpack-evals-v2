@@ -21,7 +21,6 @@ def campaign_opened(campaign: EvaluationCampaign) -> DomainEvent:
             "instrumentVersionId": campaign.instrument_version_id,
             "requiredEvaluationsPerContent": campaign.required_evaluations_per_content,
             "contentIds": [str(c) for c in campaign.content_ids],
-            "metadataView": campaign.metadata_view,
         },
     )
 

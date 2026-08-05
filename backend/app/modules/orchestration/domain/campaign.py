@@ -29,9 +29,6 @@ class EvaluationCampaign:
     instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID] = field(default_factory=list)
-    # Which metadata keys the evaluator is shown — the "per campaign" variability of
-    # ADR-0001. Empty means "show everything".
-    metadata_view: list[str] = field(default_factory=list)
     golden_coverage_threshold: float = 1.0
     status: CampaignStatus = CampaignStatus.DRAFT
 
@@ -68,7 +65,3 @@ class EvaluationCampaign:
     def is_complete_with(self, submitted_count: int) -> bool:
         """The quorum rule: distinct assessors who submitted reach the threshold."""
         return submitted_count >= self.required_evaluations_per_content
-
-    def metadata_view_or_none(self) -> list[str] | None:
-        """`None` means no filtering — see `ContentSnapshot.filtered`."""
-        return self.metadata_view or None

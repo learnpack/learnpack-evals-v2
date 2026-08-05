@@ -34,7 +34,7 @@ escribir un `.md`, elegir clase:
 | Clase | Dónde | Contrato |
 |---|---|---|
 | **reference** | raíz de `docs/`, `backend/README.md`, `frontend/README.md` | **Siempre cierto de `main`.** Se actualiza en el **mismo commit** que el código que lo vuelve falso. |
-| **decision** | `docs/adr/` | **Inmutable.** Nunca se edita un ADR: se escribe uno nuevo que lo supersede. |
+| **decision** | `docs/adr/` | **Inmutable.** Nunca se edita el contenido de un ADR: se escribe uno nuevo que lo supersede. Única excepción: la línea **Estado** del superseded se actualiza a "superseded por ADR-XXXX" — metadata de ciclo de vida, para que nadie actúe sobre una decisión muerta. |
 | **snapshot** | `docs/design/` | **Congelado.** No se mantiene ni se corrige, aunque el sistema lo contradiga. |
 | **working** | `notes/` (gitignored) | Efímero. Al cerrar la tarea **se promueve o se borra**. |
 

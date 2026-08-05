@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState, Spinner } from "@/components/ui/states";
 import { useContents, useCreateCampaign } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import { METADATA_KEYS, INSTRUMENT_VERSION_ID } from "@/lib/constants";
+import { INSTRUMENT_VERSION_ID } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function CampaignForm({ onDone }: { onDone: () => void }) {
@@ -17,9 +17,6 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
 
   const [required, setRequired] = useState(2);
   const [contentIds, setContentIds] = useState<string[]>([]);
-  const [metadataView, setMetadataView] = useState<string[]>(
-    METADATA_KEYS.map((k) => k.key), // show everything by default
-  );
 
   function toggle(list: string[], setList: (v: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -36,7 +33,6 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
         instrument_version_id: INSTRUMENT_VERSION_ID,
         required_evaluations_per_content: required,
         content_ids: contentIds,
-        metadata_view: metadataView,
       },
       {
         onSuccess: () => {
@@ -83,23 +79,6 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
             ))}
           </div>
         )}
-      </div>
-
-      <div className="space-y-2">
-        <Label>Metadata evaluators can see</Label>
-        <div className="space-y-1 rounded-md border p-2">
-          {METADATA_KEYS.map((k) => (
-            <CheckRow
-              key={k.key}
-              checked={metadataView.includes(k.key)}
-              onChange={() => toggle(metadataView, setMetadataView, k.key)}
-              label={k.label}
-            />
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Unchecked keys stay hidden from the evaluator&apos;s view.
-        </p>
       </div>
 
       <div className="flex justify-end gap-2 pt-1">

@@ -12,11 +12,10 @@ from sqlalchemy.orm import Session
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
-from app.modules.evaluand_registry.domain.metadata import ContentMetadata, MetadataSchema
 from app.modules.evaluand_registry.domain.package import ContentPackage, PackageArtifact
 
 _COLUMNS = (
-    "id, package_format, external_id, version, consumable_url, metadata, "
+    "id, package_format, external_id, version, consumable_url, "
     "brief_id, generator_version_id, edit_provenance"
 )
 
@@ -33,8 +32,6 @@ class SqlAlchemyContentRepository:
             external_id=row["external_id"],
             version=row["version"],
             consumable_url=row["consumable_url"],
-            # Already persisted: rehydrate without revalidating (the schema may have moved on).
-            metadata=ContentMetadata.trusted(row["metadata"] or {}),
             package=package,
             brief_id=row["brief_id"],
             generator_version_id=row["generator_version_id"],
@@ -97,9 +94,9 @@ class SqlAlchemyContentRepository:
             text(
                 """
                 INSERT INTO contents
-                    (id, package_format, external_id, version, consumable_url, metadata,
+                    (id, package_format, external_id, version, consumable_url,
                      brief_id, generator_version_id, edit_provenance)
-                VALUES (:id, :gs, :eid, :v, :url, cast(:metadata as jsonb),
+                VALUES (:id, :gs, :eid, :v, :url,
                         :brief_id, :gvid, :provenance)
                 """
             ),
@@ -109,7 +106,6 @@ class SqlAlchemyContentRepository:
                 "eid": content.external_id,
                 "v": content.version,
                 "url": content.consumable_url,
-                "metadata": json.dumps(content.metadata.values),
                 "brief_id": content.brief_id,
                 "gvid": content.generator_version_id,
                 "provenance": content.edit_provenance,
@@ -131,12 +127,6 @@ class SqlAlchemyContentRepository:
                     "format": artifact.format,
                 },
             )
-
-    def update_metadata(self, content: EducationalContent) -> None:
-        self._session.execute(
-            text("UPDATE contents SET metadata = cast(:metadata as jsonb) WHERE id = :id"),
-            {"id": content.id, "metadata": json.dumps(content.metadata.values)},
-        )
 
     def list_all(self) -> list[EducationalContent]:
         rows = (
@@ -298,28 +288,3 @@ class SqlAlchemyGeneratorArtifactRepository:
             )
             for row in rows
         ]
-
-
-class SqlAlchemyMetadataSchemaRepository:
-    """Reads the reference data seeded into `metadata_schemas` (ADR-0001)."""
-
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def get(self, package_format: str) -> MetadataSchema | None:
-        row = (
-            self._session.execute(
-                text(
-                    """
-                    SELECT package_format, spec FROM metadata_schemas
-                     WHERE package_format = :gs
-                    """
-                ),
-                {"gs": package_format},
-            )
-            .mappings()
-            .first()
-        )
-        if row is None:
-            return None
-        return MetadataSchema.from_spec(row["package_format"], row["spec"])

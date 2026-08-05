@@ -23,7 +23,6 @@ class RegistryContentGateway:
         package = self._queries.get_content_package(content_id)
         if package is None:
             return None
-        metadata = self._queries.get_content_metadata(content_id) or []
         return PackageDTO(
             content_id=package.content_id,
             package_format=package.package_format,
@@ -32,7 +31,6 @@ class RegistryContentGateway:
                 ArtifactDTO(kind=a.kind, locator=a.locator, format=a.format)
                 for a in package.artifacts
             ),
-            declared_metadata={entry.key: entry.value for entry in metadata},
         )
 
     def list_content_ids(self, package_format: str) -> list[UUID]:

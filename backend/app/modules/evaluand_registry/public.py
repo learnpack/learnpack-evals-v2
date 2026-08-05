@@ -18,27 +18,23 @@ from app.modules.evaluand_registry.application.dtos import (
     ContentPackageDTO,
     ContentSnapshot,
     GeneratorVersionDTO,
-    MetadataEntryDTO,
     PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
     SqlAlchemyGeneratorVersionRepository,
-    SqlAlchemyMetadataSchemaRepository,
 )
 from app.platform.uow import UnitOfWork, get_uow
 
 # Events this module publishes — the contract subscribers rely on.
 CONTENT_VERSION_REGISTERED = "ContentVersionRegistered"
-CONTENT_METADATA_UPDATED = "ContentMetadataUpdated"
 GENERATOR_VERSION_REGISTERED = "GeneratorVersionRegistered"
 BRIEF_REGISTERED = "BriefRegistered"
 GENERATOR_ARTIFACT_REGISTERED = "GeneratorArtifactRegistered"
 
 __all__ = [
     "BRIEF_REGISTERED",
-    "CONTENT_METADATA_UPDATED",
     "CONTENT_VERSION_REGISTERED",
     "GENERATOR_ARTIFACT_REGISTERED",
     "GENERATOR_VERSION_REGISTERED",
@@ -48,7 +44,6 @@ __all__ = [
     "ContentVersionRegisteredFact",
     "EvaluandRegistryQueries",
     "GeneratorVersionDTO",
-    "MetadataEntryDTO",
     "PackageArtifactDTO",
     "get_evaluand_registry_queries",
 ]
@@ -78,21 +73,17 @@ class EvaluandRegistryQueries:
 
     def __init__(self, session: Session) -> None:
         self._contents = SqlAlchemyContentRepository(session)
-        self._schemas = SqlAlchemyMetadataSchemaRepository(session)
         self._generators = SqlAlchemyGeneratorVersionRepository(session)
         self._briefs = SqlAlchemyBriefRepository(session)
 
     def get_content_snapshot(self, content_id: UUID) -> ContentSnapshot | None:
-        return _queries.get_content_snapshot(self._contents, self._schemas, content_id)
+        return _queries.get_content_snapshot(self._contents, content_id)
 
     def get_content_package(self, content_id: UUID) -> ContentPackageDTO | None:
         return _queries.get_content_package(self._contents, content_id)
 
-    def get_content_metadata(self, content_id: UUID) -> list[MetadataEntryDTO] | None:
-        return _queries.get_content_metadata(self._contents, self._schemas, content_id)
-
     def list_content_snapshots(self) -> list[ContentSnapshot]:
-        return _queries.list_content_snapshots(self._contents, self._schemas)
+        return _queries.list_content_snapshots(self._contents)
 
     def get_generator_version(self, generator_version_id: UUID) -> GeneratorVersionDTO | None:
         return _queries.get_generator_version(self._generators, generator_version_id)

@@ -4,7 +4,7 @@ Each writes its aggregate and publishes its event through the same `UnitOfWork`,
 outbox row commits atomically with the state change (ADR-0003).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID
 
 from app.modules.orchestration.application.ports import (
@@ -36,7 +36,6 @@ class OpenCampaignCommand:
     instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID]
-    metadata_view: list[str] = field(default_factory=list)
     golden_coverage_threshold: float = 1.0
 
 
@@ -59,7 +58,6 @@ class OpenCampaign:
             instrument_version_id=command.instrument_version_id,
             required_evaluations_per_content=command.required_evaluations_per_content,
             content_ids=list(command.content_ids),
-            metadata_view=list(command.metadata_view),
             golden_coverage_threshold=command.golden_coverage_threshold,
         )
         campaign.open()

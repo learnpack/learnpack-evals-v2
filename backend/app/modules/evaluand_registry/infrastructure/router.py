@@ -28,7 +28,6 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
-    UnknownPackageFormat,
 )
 from app.modules.evaluand_registry.application.register_generator_artifact import (
     GeneratorVersionNotFound,
@@ -40,25 +39,18 @@ from app.modules.evaluand_registry.application.register_generator_version import
     RegisterGeneratorVersion,
     RegisterGeneratorVersionCommand,
 )
-from app.modules.evaluand_registry.application.update_content_metadata import (
-    ContentNotFound,
-    UpdateContentMetadata,
-    UpdateContentMetadataCommand,
-)
 from app.modules.evaluand_registry.domain.brief import InvalidBrief
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, InvalidContent
 from app.modules.evaluand_registry.domain.generator import (
     InvalidGeneratorArtifact,
     InvalidGeneratorVersion,
 )
-from app.modules.evaluand_registry.domain.metadata import InvalidMetadata
 from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
     SqlAlchemyGeneratorArtifactRepository,
     SqlAlchemyGeneratorVersionRepository,
-    SqlAlchemyMetadataSchemaRepository,
 )
 from app.platform.security import AdminAssessor
 from app.platform.uow import UnitOfWork, get_uow
@@ -79,22 +71,10 @@ class RegisterContentRequest(BaseModel):
     external_id: str
     consumable_url: str
     version: str = DEFAULT_VERSION
-    # Open collection validated against the MetadataSchema, not against this model (ADR-0001).
-    metadata: dict[str, Any] = Field(default_factory=dict)
     artifacts: list[PackageArtifactInput] = Field(default_factory=list)
     brief_id: UUID | None = None
     generator_version_id: UUID | None = None
     edit_provenance: str = "unknown"
-
-
-class UpdateMetadataRequest(BaseModel):
-    metadata: dict[str, Any]
-
-
-class MetadataEntryResponse(BaseModel):
-    key: str
-    value: Any
-    value_type: str
 
 
 class ContentResponse(BaseModel):
@@ -103,7 +83,6 @@ class ContentResponse(BaseModel):
     external_id: str
     version: str
     consumable_url: str
-    metadata: list[MetadataEntryResponse]
     brief_id: UUID | None
     generator_version_id: UUID | None
     edit_provenance: str
@@ -116,10 +95,6 @@ class ContentResponse(BaseModel):
             external_id=snapshot.external_id,
             version=snapshot.version,
             consumable_url=snapshot.consumable_url,
-            metadata=[
-                MetadataEntryResponse(key=e.key, value=e.value, value_type=e.value_type)
-                for e in snapshot.metadata
-            ],
             brief_id=snapshot.brief_id,
             generator_version_id=snapshot.generator_version_id,
             edit_provenance=snapshot.edit_provenance,
@@ -152,11 +127,7 @@ class ContentPackageResponse(BaseModel):
 
 
 def _snapshot_or_404(uow: UnitOfWork, content_id: UUID) -> ContentSnapshot:
-    snapshot = queries.get_content_snapshot(
-        SqlAlchemyContentRepository(uow.session),
-        SqlAlchemyMetadataSchemaRepository(uow.session),
-        content_id,
-    )
+    snapshot = queries.get_content_snapshot(SqlAlchemyContentRepository(uow.session), content_id)
     if snapshot is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="content not found")
     return snapshot
@@ -168,7 +139,6 @@ def register_content_version(
 ) -> ContentResponse:
     use_case = RegisterContentVersion(
         contents=SqlAlchemyContentRepository(uow.session),
-        schemas=SqlAlchemyMetadataSchemaRepository(uow.session),
         briefs=SqlAlchemyBriefRepository(uow.session),
         generators=SqlAlchemyGeneratorVersionRepository(uow.session),
         publisher=uow.events,
@@ -181,7 +151,6 @@ def register_content_version(
                 external_id=request.external_id,
                 consumable_url=request.consumable_url,
                 version=request.version,
-                metadata=request.metadata,
                 artifacts=[a.model_dump() for a in request.artifacts],
                 brief_id=request.brief_id,
                 generator_version_id=request.generator_version_id,
@@ -190,14 +159,9 @@ def register_content_version(
         )
     except DuplicateContent as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except InvalidMetadata as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.errors
-        ) from exc
     except (
         InvalidContent,
         InvalidPackage,
-        UnknownPackageFormat,
         BriefNotFound,
         UnknownGeneratorVersion,
     ) as exc:
@@ -216,40 +180,9 @@ def get_content_package(content_id: UUID, admin: AdminAssessor, uow: Uow) -> Con
     return ContentPackageResponse.from_dto(dto)
 
 
-@router.patch("/{content_id}/metadata", response_model=ContentResponse)
-def update_content_metadata(
-    content_id: UUID, request: UpdateMetadataRequest, admin: AdminAssessor, uow: Uow
-) -> ContentResponse:
-    use_case = UpdateContentMetadata(
-        contents=SqlAlchemyContentRepository(uow.session),
-        schemas=SqlAlchemyMetadataSchemaRepository(uow.session),
-        publisher=uow.events,
-        uow=uow,
-    )
-    try:
-        use_case(UpdateContentMetadataCommand(content_id=content_id, metadata=request.metadata))
-    except ContentNotFound as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="content not found"
-        ) from exc
-    except InvalidMetadata as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.errors
-        ) from exc
-    except UnknownPackageFormat as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
-
-    return ContentResponse.from_snapshot(_snapshot_or_404(uow, content_id))
-
-
 @router.get("", response_model=list[ContentResponse])
 def list_contents(admin: AdminAssessor, uow: Uow) -> list[ContentResponse]:
-    snapshots = queries.list_content_snapshots(
-        SqlAlchemyContentRepository(uow.session),
-        SqlAlchemyMetadataSchemaRepository(uow.session),
-    )
+    snapshots = queries.list_content_snapshots(SqlAlchemyContentRepository(uow.session))
     return [ContentResponse.from_snapshot(s) for s in snapshots]
 
 

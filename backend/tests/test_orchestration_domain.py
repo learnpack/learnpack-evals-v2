@@ -155,10 +155,3 @@ def test_quorum_rule():
     assert campaign.is_complete_with(2)
     # Over-quorum is allowed (ADR-0002 open question, resolved: extras are kept).
     assert campaign.is_complete_with(3)
-
-
-def test_empty_metadata_view_means_no_filtering():
-    assert make_campaign(metadata_view=[]).metadata_view_or_none() is None
-    assert make_campaign(metadata_view=["targetAudience"]).metadata_view_or_none() == [
-        "targetAudience"
-    ]

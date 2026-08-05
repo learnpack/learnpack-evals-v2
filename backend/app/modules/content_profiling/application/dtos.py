@@ -5,7 +5,7 @@ imports another module's types, so the gateway (infrastructure) translates the r
 `ContentPackageDTO` into these at the boundary (Conformist, with local types).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -20,13 +20,13 @@ class ArtifactDTO:
 
 @dataclass(frozen=True)
 class PackageDTO:
-    """What the extraction adapter reads: the work product plus its declared metadata."""
+    """What the extraction adapter reads: the work product — nothing else exists
+    (ADR-0017: the declared surface of the evaluand is the package)."""
 
     content_id: UUID
     package_format: str
     consumable_url: str
     artifacts: tuple[ArtifactDTO, ...] = ()
-    declared_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

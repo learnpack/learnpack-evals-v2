@@ -38,7 +38,6 @@ def content(admin, cleanup, unique):
             "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
-            "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
         },
     ).json()
     cleanup["contents"].append(body["content_id"])
@@ -55,7 +54,6 @@ def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, uniqu
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 2,
             "content_ids": [content],
-            "metadata_view": ["targetAudience"],
         },
     ).json()
     cleanup["campaigns"].append(created["campaign_id"])
@@ -67,7 +65,6 @@ def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, uniqu
     assert row["instrument_version_id"] == RUBRIC
     assert row["required_evaluations_per_content"] == 2
     assert row["content_ids"] == [content]
-    assert row["metadata_view"] == ["targetAudience"]
     assert row["status"] == "open"
 
 

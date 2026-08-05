@@ -70,7 +70,6 @@ def register(admin, cleanup, unique, suffix: str):
             "package_format": "LearnpackV1",
             "external_id": f"course-{suffix}-{unique}",
             "consumable_url": "https://policy-test.learn-pack.com/",
-            "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
         },
     ).json()["content_id"]
     cleanup["contents"].append(content_id)
