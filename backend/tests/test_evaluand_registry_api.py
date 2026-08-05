@@ -76,12 +76,9 @@ def test_unknown_metadata_key_is_rejected(admin_client, unique):
     assert any("lessonPlan" in error for error in response.json()["detail"])
 
 
-def test_missing_required_metadata_is_rejected(admin_client, unique):
-    response = admin_client.post(
-        "/admin/contents", json=payload(unique, metadata={"targetAudience": "Juniors"})
-    )
-    assert response.status_code == 422
-    assert any("learningObjectives" in error for error in response.json()["detail"])
+# Requiredness stays a schema capability (unit-tested in test_metadata_schema.py), but the
+# seeded LearnpackV1 schema requires nothing: forcing metadata at registration forces a
+# human to type the declared surface the instrument evaluates.
 
 
 def test_non_http_url_is_rejected(admin_client, unique):

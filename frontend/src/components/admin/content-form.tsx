@@ -43,10 +43,14 @@ function buildMetadata(values: {
   targetAudience: string;
   prerequisites: string;
 }): Record<string, unknown> {
-  const metadata: Record<string, unknown> = {
-    learningObjectives: linesToList(values.learningObjectives),
-    targetAudience: values.targetAudience.trim(),
-  };
+  // Empty fields are OMITTED, not sent as empty values: metadata records what the
+  // platform/generator declares, and "declared an empty list" is a declaration while
+  // "not declared" must reach the profile as an explicit absence.
+  const metadata: Record<string, unknown> = {};
+  const objectives = linesToList(values.learningObjectives);
+  if (objectives.length) metadata.learningObjectives = objectives;
+  const audience = values.targetAudience.trim();
+  if (audience) metadata.targetAudience = audience;
   const prereq = linesToList(values.prerequisites);
   if (prereq.length) metadata.prerequisites = prereq;
   return metadata;
@@ -245,21 +249,25 @@ export function ContentForm({
         </>
       ) : null}
 
-      <Field label="Learning objectives" hint="One per line." required>
+      <Field
+        label="Learning objectives"
+        hint="One per line — only what the platform/generator declares; leave empty otherwise."
+      >
         <Textarea
           value={learningObjectives}
           onChange={(e) => setLearningObjectives(e.target.value)}
           rows={4}
           placeholder={"Explain how a transformer works\nBuild a simple chatbot"}
-          required
         />
       </Field>
-      <Field label="Target audience" required>
+      <Field
+        label="Target audience"
+        hint="Only what the platform/generator declares; leave empty otherwise."
+      >
         <Input
           value={targetAudience}
           onChange={(e) => setTargetAudience(e.target.value)}
           placeholder="Junior developers new to AI"
-          required
         />
       </Field>
       <Field label="Prerequisites" hint="One per line — optional.">
