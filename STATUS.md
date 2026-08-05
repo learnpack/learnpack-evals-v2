@@ -71,7 +71,8 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`
   (ahora también importa el draft del instrumento, acepta la extracción `LearnpackV1` y
-  perfila los cursos demo — con los datos de lecciones en `absent`, el showcase de ADR-0009),
+  perfila los cursos demo desde sus paquetes reales congelados — registrados con artifacts,
+  así `/admin/profiles` muestra la extracción completa: inventario, cuerpos y actividades),
   `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
   ninguna clave de Clerk**.
 - **Typecheck del frontend** limpio (`npx tsc --noEmit`).
