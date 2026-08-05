@@ -89,6 +89,14 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   `package_format` y `rubric_version_id` → `instrument_version_id`.
 - **Rubric v1**: revisión ligera (anchors, definiciones) pendiente antes de la primera campaña
   de referencia (ADR-0015) — fuera del primer incremento del slice 2.
+- **Enforcement de `value_domain` sobre las entries del profile: sin dueño.** Hoy la forma
+  del valor de cada `data_requirement` vive solo en la prosa de su `definition`; nada valida
+  una `ProfileEntry` contra un value domain. El riesgo dispara con el segundo adapter que
+  cubra un mismo id con otra forma (estructural en ADR-0016: el assessor targetea
+  instrumento, no formato). Decidir en el bloque 6 vía ADR: dónde se valida (candidato:
+  `ContentProfile.ok()`, el chokepoint de todos los adapters) y qué vocabulario necesita
+  `value_domain` — la spec mínima de 13-code §7.4 no expresa formas compuestas como la de
+  `practice_exercises`.
 - **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo
   (disputas/defectos), annotation queues, métricas de validez por claim, `CompareStudies`.
 
