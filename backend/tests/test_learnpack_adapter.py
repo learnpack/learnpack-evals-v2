@@ -97,20 +97,33 @@ def test_full_package_with_declared_metadata_yields_cited_entries(adapter, fetch
     inventory = entry["lesson_inventory"]
     assert inventory.provenance == "declared_structured"
     assert len(inventory.value) == 11
+    # No description on purpose: the manifest's descriptions are LLM-generated summaries
+    # projected from the syllabus — not the generator's declaration (ADR-0009).
     assert inventory.value[0] == {
         "lessonId": "00.0",
         "slug": "00.0-from-concept-to-code",
         "position": 0,
         "type": "READ",
         "title": "From Concept to Code",
-        "description": (
-            "Discover how Python expresses OOP concepts with its syntax and get an "
-            "overview of the course structure."
-        ),
     }
     assert inventory.locator["path"] == "$.lessons"
 
     assert {x.name for x in extras} == {"difficulty", "technologies"}
+
+
+def test_lesson_bodies_carry_the_content_verbatim(adapter, fetcher):
+    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    entries, _ = adapter.extract(package, fetcher)
+    bodies = by_id(entries)["lesson_bodies"]
+
+    assert bodies.provenance == "declared_in_content"  # the content citing itself
+    assert len(bodies.value) == 11
+    by_lesson = {item["lessonSlug"]: item for item in bodies.value}
+    writing = by_lesson["01.0-writing-python-classes"]
+    assert writing["lessonId"] == "01.0"
+    assert writing["body"].lstrip().startswith("# 01.0 Writing Python Classes")
+    assert "readingTime" not in writing["body"]  # frontmatter stripped
+    assert "class Warrior:" in writing["body"]  # the actual lesson text, verbatim
 
 
 def test_lesson_activities_observed_from_the_real_course(adapter, fetcher):
@@ -176,6 +189,7 @@ def test_package_without_artifacts_yields_absent_lesson_data(adapter, fetcher):
     )
     entries, extras = adapter.extract(package, fetcher)
     assert by_id(entries)["lesson_inventory"].provenance == "absent"
+    assert by_id(entries)["lesson_bodies"].provenance == "absent"
     assert by_id(entries)["lesson_activities"].provenance == "absent"
     assert extras == ()
 

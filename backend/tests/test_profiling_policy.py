@@ -20,6 +20,7 @@ REQUIREMENT_IDS = (
     "target_audience",
     "prerequisites",
     "lesson_inventory",
+    "lesson_bodies",
     "lesson_activities",
 )
 

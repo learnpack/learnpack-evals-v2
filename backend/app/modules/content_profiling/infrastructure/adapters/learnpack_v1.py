@@ -11,7 +11,12 @@ convention (e.g. `app.py` / `app.solution.hide.py`). Therefore:
 - `learning_objectives` / `target_audience` / `prerequisites` come from the content's
   DECLARED metadata (`declared_structured`) or are `absent` — they exist nowhere in the
   package itself, and reconstructing them from description prose would be inference.
-- `lesson_inventory` is the manifest's `lessons[]`, verbatim fields only.
+- `lesson_inventory` is the manifest's `lessons[]`, verbatim fields only — WITHOUT the
+  descriptions: those are machine-generated summaries projected from the syllabus, not
+  the generator's declaration, so they are not evidence (ADR-0009).
+- `lesson_bodies` is each lesson's learner-facing markdown body verbatim (frontmatter
+  stripped, `declared_in_content` — the content citing itself): the evidence base for
+  every judgment about what the lessons actually develop.
 - `lesson_activities` is OBSERVED per lesson from the learner-facing component syntax
   (the generator's assessment-component catalog): multiple choice = task-list options
   with a `[x]` correct answer (one per question, so counting `[x]` lines counts
@@ -57,6 +62,7 @@ CAPABILITIES = frozenset(
         "target_audience",
         "prerequisites",
         "lesson_inventory",
+        "lesson_bodies",
         "lesson_activities",
     }
 )
@@ -135,6 +141,17 @@ def _english(text_by_language: Any) -> str | None:
     return None
 
 
+def _strip_frontmatter(text: str) -> str:
+    """Drop a leading YAML frontmatter block; what remains is the learner-facing body."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return text
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "\n".join(lines[index + 1 :])
+    return text
+
+
 def _activity_counts(body: str) -> dict[str, int]:
     """Count learner-facing activities in a lesson body — pure line scanning, no parsing
     beyond the component syntax rules, and blind to anything inside foreign fences."""
@@ -174,10 +191,12 @@ class LearnpackV1Adapter:
         self, package: PackageDTO, fetcher: PackageFetcherPort
     ) -> tuple[tuple[ProfileEntry, ...], tuple[ProfileExtra, ...]]:
         inventory = self._lesson_inventory(package, fetcher)
+        texts_by_slug = self._lesson_texts(package, fetcher)  # fetched once, used twice
         entries = [
             *self._from_declared_metadata(package),
             inventory,
-            self._lesson_activities(package, fetcher, inventory),
+            self._lesson_bodies(texts_by_slug, inventory),
+            self._lesson_activities(package, texts_by_slug, inventory),
         ]
         return tuple(entries), self._extras(package, fetcher)
 
@@ -216,13 +235,14 @@ class LearnpackV1Adapter:
             raise ExtractionError(f"artifact '{artifact.locator}' has no 'lessons' index")
 
         value = [
+            # No description on purpose: the manifest's descriptions are LLM-generated
+            # summaries projected from the syllabus — not evidence (ADR-0009).
             {
                 "lessonId": str(lesson.get("id", "")),
                 "slug": str(lesson.get("slug", "")),
                 "position": lesson.get("position"),
                 "type": lesson.get("type"),
                 "title": _english(lesson.get("title")),
-                "description": _english(lesson.get("description")),
             }
             for lesson in lessons
             if isinstance(lesson, dict)
@@ -240,24 +260,51 @@ class LearnpackV1Adapter:
             },
         )
 
-    # --- lesson activities (observed in the lesson bodies and files) --------------------
+    # --- lesson bodies and activities (observed in the lesson content) ------------------
+
+    def _lesson_texts(self, package: PackageDTO, fetcher: PackageFetcherPort) -> dict[str, str]:
+        """Raw lesson-content text by slug — fetched once, feeds bodies and activities."""
+        texts: dict[str, str] = {}
+        for artifact in package.artifacts:
+            if artifact.kind != KIND_LESSON_CONTENT:
+                continue
+            texts[_lesson_slug(artifact.locator)] = _decode_text(
+                fetcher.fetch(artifact.locator), artifact.locator
+            )
+        return texts
+
+    def _lesson_bodies(
+        self, texts_by_slug: dict[str, str], inventory: ProfileEntry
+    ) -> ProfileEntry:
+        if not texts_by_slug:
+            return ProfileEntry(data_requirement_id="lesson_bodies", provenance="absent")
+        id_by_slug = self._id_by_slug(inventory)
+        value = [
+            {
+                "lessonSlug": slug,
+                "lessonId": id_by_slug.get(slug),
+                "body": _strip_frontmatter(texts_by_slug[slug]),
+            }
+            for slug in sorted(texts_by_slug)
+        ]
+        return ProfileEntry(
+            data_requirement_id="lesson_bodies",
+            # The content citing itself: the body IS the evidence, verbatim.
+            provenance="declared_in_content",
+            value=value,
+            quote=_quote(value),
+            locator={"source": "artifacts", "kinds": [KIND_LESSON_CONTENT]},
+        )
 
     def _lesson_activities(
-        self, package: PackageDTO, fetcher: PackageFetcherPort, inventory: ProfileEntry
+        self, package: PackageDTO, texts_by_slug: dict[str, str], inventory: ProfileEntry
     ) -> ProfileEntry:
-        contents = [a for a in package.artifacts if a.kind == KIND_LESSON_CONTENT]
         files = [a for a in package.artifacts if a.kind == KIND_LESSON_FILE]
-        if not contents and not files:
+        if not texts_by_slug and not files:
             return ProfileEntry(data_requirement_id="lesson_activities", provenance="absent")
 
-        id_by_slug: dict[str, str] = {}
-        if inventory.provenance != "absent":
-            id_by_slug = {lesson["slug"]: lesson["lessonId"] for lesson in inventory.value or []}
-
-        counts_by_slug: dict[str, dict[str, int]] = {}
-        for artifact in contents:
-            body = _decode_text(fetcher.fetch(artifact.locator), artifact.locator)
-            counts_by_slug[_lesson_slug(artifact.locator)] = _activity_counts(body)
+        id_by_slug = self._id_by_slug(inventory)
+        counts_by_slug = {slug: _activity_counts(text) for slug, text in texts_by_slug.items()}
 
         files_by_slug: dict[str, list[str]] = {}
         for artifact in files:
@@ -285,6 +332,12 @@ class LearnpackV1Adapter:
                 "kinds": [KIND_LESSON_CONTENT, KIND_LESSON_FILE],
             },
         )
+
+    @staticmethod
+    def _id_by_slug(inventory: ProfileEntry) -> dict[str, str]:
+        if inventory.provenance == "absent":
+            return {}
+        return {lesson["slug"]: lesson["lessonId"] for lesson in inventory.value or []}
 
     @staticmethod
     def _code_exercises(file_names: list[str]) -> list[dict[str, Any]]:

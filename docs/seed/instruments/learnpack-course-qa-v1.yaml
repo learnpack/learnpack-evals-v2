@@ -53,11 +53,19 @@ data_requirements:
   - id: lesson_inventory
     definition: >
       The course's declared lesson index, as a list where each entry carries the lesson
-      identifier, slug, position, type, title and description, taken from the package
-      manifest. Module membership derives mechanically from the identifier prefix
-      ("01.2" belongs to module "01"); module 00 is the course-level introduction slot
-      and the last lesson is the closing slot.
+      identifier, slug, position, type and title, taken from the package manifest.
+      Module membership derives mechanically from the identifier prefix ("01.2" belongs
+      to module "01"); module 00 is the course-level introduction slot and the last
+      lesson is the closing slot. Descriptions are deliberately excluded: the manifest's
+      descriptions are machine-generated summaries of the content, not the generator's
+      declaration — judging from them would judge the summarizer.
     grounded_in: ["Schmidt", "Learning Progressions"]
+  - id: lesson_bodies
+    definition: >
+      The learner-facing body of each lesson, verbatim (frontmatter excluded), as a list
+      where each entry carries the lesson slug, identifier and markdown body. This is
+      the content itself — the evidence base for every judgment about what the lessons
+      actually develop.
   - id: lesson_activities
     definition: >
       The learner-facing activities each lesson contains, as a list where each entry
@@ -231,14 +239,14 @@ criteria:
   - id: cr-module-single-topic
     statement: "Each module develops a single topic."
     pass_condition: >
-      Within each module, the lesson titles and descriptions develop one topic or
-      sub-topic. Fail = a module mixing unrelated topics, or content dispersed across
-      many single-lesson modules.
+      Within each module, the lesson titles and bodies develop one topic or sub-topic.
+      Fail = a module mixing unrelated topics, or content dispersed across many
+      single-lesson modules.
     failure_modes:
       - "A module is a grab-bag of leftovers rather than a developed topic."
       - "Dispersion: many one-lesson modules instead of few focused ones."
     claims: [cl-course-modular]
-    requires: [lesson_inventory]
+    requires: [lesson_inventory, lesson_bodies]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
 
@@ -257,14 +265,15 @@ criteria:
   - id: cr-arc-character
     statement: "The opening lesson introduces and the final lesson closes."
     pass_condition: >
-      The module-00 lesson introduces the course as a whole, and the final lesson closes
-      it (wrap-up, integration or farewell). Fail = an opening that dives straight into
-      topic content, or a course that simply stops after the last topic.
+      The module-00 lesson's body introduces the course as a whole, and the final
+      lesson's body closes it (wrap-up, integration or farewell). Fail = an opening that
+      dives straight into topic content, or a course that simply stops after the last
+      topic.
     failure_modes:
       - "No course-level framing: the learner lands in content with no orientation."
       - "No closure: nothing integrates what was learned before the course ends."
     claims: [cl-course-arc]
-    requires: [lesson_inventory]
+    requires: [lesson_inventory, lesson_bodies]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
 
@@ -279,6 +288,6 @@ criteria:
       - "Modules with no internal ramp: exposition piled on exposition."
       - "Modules that start at full depth with no entry point."
     claims: [cl-course-arc]
-    requires: [lesson_inventory, lesson_activities]
+    requires: [lesson_inventory, lesson_bodies, lesson_activities]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]

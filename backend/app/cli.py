@@ -795,6 +795,9 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM campaigns",
         "DELETE FROM content_profiles",  # entries/extras cascade; before contents (FK)
         "DELETE FROM extraction_acceptances",
+        # App-minted (instrument import), not seeded reference data — wiped so a demo
+        # re-import can evolve a draft's definitions without tripping the ADR-0014 lint.
+        "DELETE FROM data_requirements",
         "DELETE FROM contents",
         "DELETE FROM events",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",

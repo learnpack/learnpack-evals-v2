@@ -55,9 +55,9 @@ asistencia) y **publicarlo** cuando el equipo lo haga suyo
 `POST /admin/instruments/{id}/publish`). Hasta entonces queda en `draft` — la publicación es
 acto humano (12-define, invariante 5). Los `data_requirement` ids minteados
 (`learning_objectives`, `target_audience`, `prerequisites`, `lesson_inventory`,
-`lesson_activities`) son el contrato contra el que el adapter `LearnpackV1` v2 declara sus
-capacidades. (`practice_exercises`, del borrador anterior, quedó huérfano en la tabla
-`data_requirements`: el import no borra; es inofensivo.)
+`lesson_bodies`, `lesson_activities`) son el contrato contra el que el adapter
+`LearnpackV1` v2 declara sus capacidades. (`practice_exercises`, del borrador anterior,
+quedó huérfano en la tabla `data_requirements`: el import no borra; es inofensivo.)
 
 **Segundo input pendiente del equipo (bloque 5):** revisar las muestras de profile
 (`/admin/profiles` o `app.cli profile-content`) y **aceptar la extracción** cuando el equipo
