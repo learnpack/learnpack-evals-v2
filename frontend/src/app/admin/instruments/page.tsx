@@ -85,18 +85,24 @@ function InstrumentCard({ instrument }: { instrument: InstrumentResponse }) {
       </CardHeader>
       {open ? (
         <CardContent className="space-y-4">
+          {/* Ids stay out of the way (hover the statement to see them): the language of
+              the workbench is the statements; ids are for lineage and dispute paths. */}
           {instrument.claims.map((claim) => (
             <div key={claim.claim_id} className="rounded-md border p-4">
-              <p className="font-medium">{claim.statement}</p>
+              <p className="font-medium" title={claim.claim_id}>
+                {claim.statement}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {claim.claim_id} · qualities: {claim.quality_ids.join(", ")} · warrants:{" "}
+                qualities: {claim.quality_ids.join(", ")} · warrants:{" "}
                 {claim.warrants.join(", ")} · sufficiency: {claim.sufficiency_rule}
               </p>
               <ul className="mt-3 space-y-2">
                 {criteriaByClaim(claim.claim_id).map((criterion) => (
                   <li key={criterion.criterion_id} className="rounded bg-muted/40 p-3 text-sm">
-                    <span className="font-medium">{criterion.criterion_id}</span> —{" "}
-                    {criterion.pass_condition}
+                    <span className="font-medium" title={criterion.criterion_id}>
+                      {criterion.statement ?? criterion.criterion_id}
+                    </span>{" "}
+                    — {criterion.pass_condition}
                     <span className="mt-1 block text-xs text-muted-foreground">
                       requires: {criterion.required_data.join(", ")} · on missing:{" "}
                       {criterion.on_missing_evidence}
