@@ -684,6 +684,36 @@ def _seed_demo_assessors(session: Session) -> dict[str, UUID]:
     return ids
 
 
+# The demo courses ARE the frozen real packages of the adapter's fixture suite — same two
+# courses, same files — so the local workbench shows a full extraction, not a stub.
+# Local-only by construction: seed-demo requires AUTH_MODE=local (ADR-0008).
+DEMO_PACKAGES_DIR = REPO_ROOT / "backend" / "tests" / "fixtures" / "learnpack_v1"
+
+
+def _demo_artifacts(course_slug: str) -> list[dict[str, Any]]:
+    """The frozen package's files as registry artifacts — locators relative to
+    DEMO_PACKAGES_DIR, resolved at profiling time by the filesystem fetcher."""
+    course_dir = DEMO_PACKAGES_DIR / course_slug
+    artifacts: list[dict[str, Any]] = []
+    if (course_dir / "learn.json").exists():
+        artifacts.append({"kind": "manifest", "locator": f"{course_slug}/learn.json"})
+    if (course_dir / ".learn" / "package-manifest.json").exists():
+        artifacts.append(
+            {
+                "kind": "package_manifest",
+                "locator": f"{course_slug}/.learn/package-manifest.json",
+            }
+        )
+    for path in sorted(course_dir.glob("exercises/*/*")):
+        artifacts.append(
+            {
+                "kind": "lesson_content" if path.name == "README.md" else "lesson_file",
+                "locator": path.relative_to(DEMO_PACKAGES_DIR).as_posix(),
+            }
+        )
+    return artifacts
+
+
 def _seed_demo_contents() -> dict[str, UUID]:
     """Register the demo courses through `RegisterContentVersion`; reuse them if already there."""
     ids: dict[str, UUID] = {}
@@ -700,7 +730,11 @@ def _seed_demo_contents() -> dict[str, UUID]:
                 uow=uow,
             )
             try:
-                content = register(RegisterContentVersionCommand(**raw))
+                content = register(
+                    RegisterContentVersionCommand(
+                        **raw, artifacts=_demo_artifacts(raw["external_id"])
+                    )
+                )
                 ids[raw["external_id"]] = content.id
             except DuplicateContent:
                 snapshot = next(
@@ -795,6 +829,9 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM campaigns",
         "DELETE FROM content_profiles",  # entries/extras cascade; before contents (FK)
         "DELETE FROM extraction_acceptances",
+        # App-minted (instrument import), not seeded reference data — wiped so a demo
+        # re-import can evolve a draft's definitions without tripping the ADR-0014 lint.
+        "DELETE FROM data_requirements",
         "DELETE FROM contents",
         "DELETE FROM events",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
@@ -826,14 +863,13 @@ def _seed_demo_acceptance(admin_id: UUID) -> None:
 def _seed_demo_profiles(content_ids: dict[str, UUID]) -> int:
     """Profile any course the policy did not reach (reused contents emit no event).
 
-    The demo courses carry declared metadata but no package artifacts, so the profiles
-    show `practice_exercises: absent` — the deliberate showcase of ADR-0009: absence is
-    a first-class finding, not a gap.
+    Artifacts are the frozen real packages, so the workbench shows the full extraction:
+    lesson inventory, verbatim bodies and activity counts, plus the declared metadata.
     """
     profiled = 0
     for content_id in content_ids.values():
         with SessionLocal() as session:
-            use_case = _build_profile_content(session, base_dir=None)
+            use_case = _build_profile_content(session, base_dir=DEMO_PACKAGES_DIR)
             try:
                 use_case(ProfileContentCommand(content_id=content_id))
                 profiled += 1

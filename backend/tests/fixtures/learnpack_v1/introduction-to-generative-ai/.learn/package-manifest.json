@@ -1,0 +1,329 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T15:59:27.287Z",
+  "publishedAt": null,
+  "slug": "introduction-to-generative-ai",
+  "title": {
+    "en": "Introduction to Generative AI for Beginners",
+    "es": "Introducción a la IA Generativa para Principiantes"
+  },
+  "description": {
+    "en": "This course, 'Introduction to Generative AI for Beginners,' is designed for individuals with no prior AI or technical background, aiming to demystify generative AI through a conceptual journey. Spanning 26 core lessons across 33 structured steps, it covers the basics of what generative AI is, how large language models work, why different AI models exist, and how to choose the right tool for specific tasks. Emphasizing autonomy and responsibility, learners will develop critical thinking skills to evaluate AI outputs, understand its limits, and use it as a supportive partner rather than an authority. With a beginner-friendly tone, the course progresses from simple recall to complex analysis and synthesis, ensuring a solid foundation for responsible AI interaction. Through engaging readings and quizzes, participants will gain confidence in navigating AI tools thoughtfully in everyday scenarios.",
+    "es": "Este curso, 'Introducción a la IA Generativa para Principiantes', está diseñado para individuos sin antecedentes en IA o técnicos, con el objetivo de desmitificar la IA generativa a través de un viaje conceptual. Consta de 26 lecciones fundamentales a lo largo de 33 pasos estructurados, cubre los conceptos básicos de qué es la IA generativa, cómo funcionan los modelos de lenguaje grandes, por qué existen diferentes modelos de IA y cómo elegir la herramienta adecuada para tareas específicas. Enfatizando la autonomía y la responsabilidad, los estudiantes desarrollarán habilidades de pensamiento crítico para evaluar los resultados de la IA, comprender sus límites y usarla como un socio de apoyo en lugar de una autoridad. Con un tono amigable para principiantes, el curso avanza desde el recuerdo simple hasta el análisis y la síntesis complejos, asegurando una base sólida para una interacción responsable con la IA. A través de lecturas y cuestionarios atractivos, los participantes ganarán confianza en la navegación de herramientas de IA de manera reflexiva en escenarios cotidianos."
+  },
+  "preview": "https://introduction-to-generative-ai-for-beginners.learn-pack.com/preview.png",
+  "technologies": [
+    "Generative AI",
+    "Large Language Models",
+    "AI Ethics"
+  ],
+  "difficulty": "beginner",
+  "lessons": [
+    {
+      "id": "00.0",
+      "slug": "00.0-welcome-to-generative-ai",
+      "position": 0,
+      "type": "READ",
+      "title": {
+        "es": "Bienvenido a la IA Generativa",
+        "en": "Welcome to Generative AI"
+      },
+      "description": {
+        "es": "Descubre qué es la IA generativa y cómo funciona, sin necesidad de conocimientos técnicos. Obtén una visión general del curso y sus objetivos.",
+        "en": "Get an overview of what generative AI is and how it works, without needing technical skills. Preview what this course will cover."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.0",
+      "slug": "01.0-what-is-generative-ai-really",
+      "position": 1,
+      "type": "READ",
+      "title": {
+        "es": "Qué es realmente la IA Generativa",
+        "en": "What Is Generative AI Really"
+      },
+      "description": {
+        "es": "Comprende cómo la IA generativa funciona con patrones y probabilidades, no con reglas fijas, y aprende a evaluar críticamente sus respuestas.",
+        "en": "Understand how generative AI works through patterns and probabilities, not fixed rules, and learn to critically evaluate its responses."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.1",
+      "slug": "01.1-generative-vs-traditional-software",
+      "position": 2,
+      "type": "READ",
+      "title": {
+        "es": "Software Generativo vs Tradicional",
+        "en": "Generative vs Traditional Software"
+      },
+      "description": {
+        "es": "Aprende las diferencias fundamentales entre el software tradicional basado en reglas y la IA generativa, y cómo cada uno procesa entradas para generar salidas.",
+        "en": "Understand the key differences between traditional rule-based software and generative AI, including how each processes inputs to produce outputs."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.0",
+      "slug": "02.0-what-is-a-large-language-model-llm",
+      "position": 3,
+      "type": "READ",
+      "title": {
+        "es": "¿Qué es un Modelo de Lenguaje Grande (LLM)?",
+        "en": "What Is a Large Language Model (LLM)"
+      },
+      "description": {
+        "es": "Explora qué es un modelo de lenguaje grande (LLM), cómo predice texto token por token y por qué su tamaño importa.",
+        "en": "Learn what a Large Language Model is, how it predicts text token by token, and why its size matters for generating fluent language."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.1",
+      "slug": "02.1-training-at-a-high-level",
+      "position": 4,
+      "type": "READ",
+      "title": {
+        "es": "Entrenamiento a un Nivel Alto",
+        "en": "Training at a High Level"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.2",
+      "slug": "02.2-why-llms-sound-intelligent",
+      "position": 5,
+      "type": "READ",
+      "title": {
+        "es": "Por qué los LLMs parecen inteligentes",
+        "en": "Why LLMs Sound Intelligent"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.0",
+      "slug": "03.0-how-generative-ai-produces-an-answer",
+      "position": 6,
+      "type": "READ",
+      "title": {
+        "es": "Cómo la IA Generativa Produce una Respuesta",
+        "en": "How Generative AI Produces an Answer"
+      },
+      "description": {
+        "es": "Aprende cómo la IA generativa convierte tu prompt en tokens, busca patrones y genera respuestas de a un token a la vez.",
+        "en": "Learn how generative AI transforms your prompt into tokens, matches learned patterns, and builds each answer token by token."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.1",
+      "slug": "03.1-from-prompt-to-tokens",
+      "position": 7,
+      "type": "READ",
+      "title": {
+        "es": "De Prompt a Tokens",
+        "en": "From Prompt to Tokens"
+      },
+      "description": {
+        "es": "Aprende cómo la IA divide tu prompt en tokens y descubre el límite de la ventana de contexto para mejorar tus indicaciones.",
+        "en": "Learn how AI breaks your prompt into tokens and understand the context window limit to craft more effective prompts."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.2",
+      "slug": "03.2-why-ai-can-be-wrong-so-convincingly",
+      "position": 8,
+      "type": "READ",
+      "title": {
+        "es": "Por qué la IA puede equivocarse de manera tan convincente",
+        "en": "Why AI Can Be Wrong So Convincingly"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.0",
+      "slug": "04.0-not-all-ai-models-are-the-same",
+      "position": 9,
+      "type": "READ",
+      "title": {
+        "es": "No Todos los Modelos de IA Son Iguales",
+        "en": "Not All AI Models Are the Same"
+      },
+      "description": {
+        "es": "Aprende por qué los modelos de IA tienen diferentes fortalezas y compensaciones, y cómo elegir el adecuado según la tarea.",
+        "en": "Understand why AI models differ in speed, creativity, and accuracy, and how to choose the right model for your task."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.1",
+      "slug": "04.1-major-model-families-high-level",
+      "position": 10,
+      "type": "READ",
+      "title": {
+        "es": "Principales Familias de Modelos a Alto Nivel",
+        "en": "Major Model Families High Level"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.2",
+      "slug": "04.2-advantages-and-tradeoffs",
+      "position": 11,
+      "type": "READ",
+      "title": {
+        "es": "Ventajas y Compensaciones",
+        "en": "Advantages and Tradeoffs"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05",
+      "slug": "05-the-limits-of-generative-ai",
+      "position": 12,
+      "type": "READ",
+      "title": {
+        "es": "Los Límites de la IA Generativa",
+        "en": "The Limits of Generative AI"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.1",
+      "slug": "05.1-where-ai-stops-no-understanding-no-intent",
+      "position": 13,
+      "type": "READ",
+      "title": {
+        "es": "Dónde se Detiene la IA: Sin Comprensión, Sin Intención",
+        "en": "Where AI Stops: No Understanding, No Intent"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.2",
+      "slug": "05.2-responsibility-cannot-be-delegated",
+      "position": 14,
+      "type": "READ",
+      "title": {
+        "es": "La Responsabilidad No Puede Ser Delegada",
+        "en": "Responsibility Cannot Be Delegated"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.3",
+      "slug": "05.3-ai-cannot-define-meaning-or-values",
+      "position": 15,
+      "type": "READ",
+      "title": {
+        "es": "La IA No Puede Definir Significado o Valores",
+        "en": "AI Cannot Define Meaning or Values"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "06",
+      "slug": "06-conclusion-from-black-box-to-tool",
+      "position": 16,
+      "type": "READ",
+      "title": {
+        "es": "Conclusión: De Caja Negra a Herramienta",
+        "en": "Conclusion: From Black Box to Tool"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    }
+  ]
+}

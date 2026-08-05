@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-04T16:00:15.516Z",
+  "publishedAt": null,
+  "slug": "object-representation-in-python",
+  "title": {
+    "en": "Object Representation in Python",
+    "es": "Representación de Objetos en Python"
+  },
+  "description": {
+    "en": "This course takes you from the concepts of Object-Oriented Programming (OOP) to real-world practice with Python. You will learn to define classes, set attributes in constructors, add methods that act on object state, and manipulate collections of instances. From basic syntax with 'class' and '__init__' to creating and using objects with dot notation, this course is designed for beginners who already understand OOP fundamentals. By the end, you will be able to represent any real-world entity as a Python class and use it confidently in your programs. The course philosophy emphasizes syntax as a natural extension of concepts, the inseparability of state and behavior, and learning through immediate feedback with code that produces results from the first exercise. Join us to bridge the gap between theory and practical coding skills in Python OOP, ensuring you can apply these concepts directly to your projects.",
+    "es": "Este curso te lleva desde los conceptos de Programación Orientada a Objetos (OOP) hasta la práctica en el mundo real con Python. Aprenderás a definir clases, establecer atributos en constructores, agregar métodos que actúan sobre el estado del objeto y manipular colecciones de instancias. Desde la sintaxis básica con 'class' y '__init__' hasta crear y usar objetos con notación de punto, este curso está diseñado para principiantes que ya entienden los fundamentos de OOP. Al final, podrás representar cualquier entidad del mundo real como una clase de Python y usarla con confianza en tus programas. La filosofía del curso enfatiza la sintaxis como una extensión natural de los conceptos, la inseparabilidad del estado y el comportamiento, y el aprendizaje a través de retroalimentación inmediata con código que produce resultados desde el primer ejercicio. Únete a nosotros para cerrar la brecha entre la teoría y las habilidades prácticas de codificación en Python OOP, asegurando que puedas aplicar estos conceptos directamente a tus proyectos."
+  },
+  "preview": "https://representacion-de-objetos-en-python.learn-pack.com/preview.png",
+  "technologies": [
+    "Python",
+    "Object-Oriented Programming",
+    "Programming Basics"
+  ],
+  "difficulty": "beginner",
+  "lessons": [
+    {
+      "id": "00.0",
+      "slug": "00.0-from-concept-to-code",
+      "position": 0,
+      "type": "READ",
+      "title": {
+        "es": "De Concepto a Código",
+        "en": "From Concept to Code"
+      },
+      "description": {
+        "es": "Descubre cómo Python expresa los conceptos de POO con su sintaxis y obtén una visión general de la estructura del curso.",
+        "en": "Discover how Python expresses OOP concepts with its syntax and get an overview of the course structure."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.0",
+      "slug": "01.0-writing-python-classes",
+      "position": 1,
+      "type": "READ",
+      "title": {
+        "es": "Escribir Clases en Python",
+        "en": "Writing Python Classes"
+      },
+      "description": {
+        "es": "Aprende a definir clases en Python, usar el método __init__ como constructor y entender el papel de self para crear objetos con atributos propios.",
+        "en": "Learn how to define Python classes, use the __init__ constructor, and understand the role of self in creating objects with their own attributes."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.1",
+      "slug": "01.1-attributes-and-values",
+      "position": 2,
+      "type": "READ",
+      "title": {
+        "es": "Atributos y Valores",
+        "en": "Attributes and Values"
+      },
+      "description": {
+        "es": "Aprende a definir atributos y asignar valores dentro del método __init__ para que cada objeto mantenga sus propios datos independientes.",
+        "en": "Learn how to define attributes and assign values inside the __init__ method so each object maintains its own independent data."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.2",
+      "slug": "01.2-adding-behavior-with-methods",
+      "position": 3,
+      "type": "READ",
+      "title": {
+        "es": "Añadiendo Comportamiento con Métodos",
+        "en": "Adding Behavior with Methods"
+      },
+      "description": {
+        "es": "Aprende a definir métodos en clases de Python usando el parámetro self para modificar atributos de instancias.",
+        "en": "Learn to define methods in Python classes using the self parameter to modify instance attributes and encapsulate behavior."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.3",
+      "slug": "01.3-define-a-python-class",
+      "position": 4,
+      "type": "CODE",
+      "title": {
+        "es": "Definir una Clase en Python",
+        "en": "Define a Python Class"
+      },
+      "description": {
+        "es": "Aprende a definir una clase Python creando la clase Guerrero con atributos de nombre y salud, y un método para recibir daño.",
+        "en": "Learn how to define a Python class by creating a Warrior class with name and health attributes and a method to take damage."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.0",
+      "slug": "02.0-using-objects",
+      "position": 5,
+      "type": "READ",
+      "title": {
+        "es": "Uso de Objetos",
+        "en": "Using Objects"
+      },
+      "description": {
+        "es": "Aprende a crear objetos a partir de clases, entender la independencia de las instancias y usar la notación de punto para acceder a atributos y métodos.",
+        "en": "Learn to create objects from classes, understand instance independence, and use dot notation to access attributes and call methods."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.1",
+      "slug": "02.1-dot-notation",
+      "position": 6,
+      "type": "READ",
+      "title": {
+        "es": "Notación de Punto",
+        "en": "Dot Notation"
+      },
+      "description": {
+        "es": "Aprende a usar la notación de punto para acceder y modificar atributos de objetos, y llamar métodos. Comprende por qué encapsular cambios en métodos es más seguro.",
+        "en": "Learn to use dot notation to access and modify object attributes, and call methods. Understand why encapsulating attribute changes in methods leads to safer code."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.2",
+      "slug": "02.2-object-structures",
+      "position": 7,
+      "type": "READ",
+      "title": {
+        "es": "Estructuras de Objetos",
+        "en": "Object Structures"
+      },
+      "description": {
+        "es": "Aprende a crear objetos que contienen otros objetos y a gestionar colecciones de instancias con listas en Python.",
+        "en": "Learn how to build objects that contain other objects and manage collections of instances using lists in Python."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.3",
+      "slug": "02.3-manipulate-objects",
+      "position": 8,
+      "type": "CODE",
+      "title": {
+        "es": "Manipular Objetos",
+        "en": "Manipulate Objects"
+      },
+      "description": {
+        "es": "Crea una lista de objetos Product y usa las funciones max y min con lambdas para encontrar el producto más caro y el más barato.",
+        "en": "Create a list of Product objects and use max and min with lambdas to find the most and least expensive items."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.0",
+      "slug": "03.0-what-you-know-now",
+      "position": 9,
+      "type": "QUIZ",
+      "title": {
+        "es": "Lo que sabes ahora",
+        "en": "What You Know Now"
+      },
+      "description": {
+        "es": "Pon a prueba tu comprensión de las clases de Python y la programación orientada a objetos con este cuestionario de repaso.",
+        "en": "Test your understanding of Python classes and object-oriented programming with this quiz that reviews key concepts."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.0",
+      "slug": "04.0-course-outro",
+      "position": 10,
+      "type": "READ",
+      "title": {
+        "es": "Conclusión del Curso",
+        "en": "Course Outro"
+      },
+      "description": {
+        "es": "Repasa los conceptos clave para escribir clases, definir atributos, agregar métodos y manipular objetos. Consolida tus habilidades y mira qué viene después.",
+        "en": "Review the key concepts of writing classes, defining attributes, adding methods, and manipulating objects. Consolidate your skills and see what comes next."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    }
+  ]
+}

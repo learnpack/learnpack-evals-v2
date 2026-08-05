@@ -6,19 +6,26 @@
 # publish with `python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`
 # only when the team owns every word.
 #
-# Deliberately small and 100% verifiable over DECLARED data (ADR-0009: the engine never
-# infers; absence is a first-class finding). Every pass condition carries its own
-# quantifier (k12 lesson: thresholds live in the criterion, not in the sufficiency rule).
-# All claims use conjunctive sufficiency: supported iff every evidencing criterion passes;
-# refuted iff any fails; insufficient otherwise.
+# Verifiable over DECLARED or OBSERVED package data (ADR-0009: the engine never infers;
+# absence is a first-class finding). Every pass condition carries its own quantifier
+# (k12 lesson: thresholds live in the criterion, not in the sufficiency rule). All claims
+# use conjunctive sufficiency: supported iff every evidencing criterion passes; refuted
+# iff any fails; insufficient otherwise.
+#
+# eligible_sources declares EPISTEMIC eligibility, not today's tooling: judgment criteria
+# (single topic per module, arc character) are automated-eligible because an automated
+# assessor may carry an LLM executor (ADR-0016) — judging cited evidence is evaluation,
+# not extraction. Until such an assessor (or a human) covers them, their claims read
+# "insufficient", which is the honest answer.
 
 instrument_id: learnpack-course-qa
 version: v1
 name: "LearnPack Course QA v1"
 purpose: >
   Internal QA of AI-generated LearnPack courses: surface actionable generator defects on
-  the surface the generator controls (declared objectives, audience, prerequisites and
-  practice structure). Not a market signal, not a certification.
+  the surface the generator controls — declared objectives, audience and prerequisites,
+  and the lesson/module structure and in-lesson activities of the package. Not a market
+  signal, not a certification.
 assisted_by:
   assistant: claude-fable-5
   role: "drafted claims, criteria and data requirements for team review"
@@ -28,8 +35,8 @@ bindings:
     # No task variables yet: they appear demand-driven when a criterion conditions on them.
 
 # The demand-side namespace this instrument mints (ADR-0014). Definitions are mandatory:
-# they ARE the vocabulary. The LearnpackV1 extraction adapter (next block) declares its
-# capabilities against exactly these ids.
+# they ARE the vocabulary. The LearnpackV1 extraction adapter declares its capabilities
+# against exactly these ids.
 data_requirements:
   - id: learning_objectives
     definition: >
@@ -43,10 +50,28 @@ data_requirements:
     definition: >
       The prior knowledge the content declares as required, as a list of statements.
     grounded_in: ["Learning Progressions"]
-  - id: practice_exercises
+  - id: lesson_inventory
     definition: >
-      The practice exercises present in the package, as a list where each entry carries
-      the exercise identifier and whether it includes learner-facing instructions.
+      The course's declared lesson index, as a list where each entry carries the lesson
+      identifier, slug, position, type and title, taken from the package manifest.
+      Module membership derives mechanically from the identifier prefix ("01.2" belongs
+      to module "01"); module 00 is the course-level introduction slot and the last
+      lesson is the closing slot. Descriptions are deliberately excluded: the manifest's
+      descriptions are machine-generated summaries of the content, not the generator's
+      declaration — judging from them would judge the summarizer.
+    grounded_in: ["Schmidt", "Learning Progressions"]
+  - id: lesson_bodies
+    definition: >
+      The learner-facing body of each lesson, verbatim (frontmatter excluded), as a list
+      where each entry carries the lesson slug, identifier and markdown body. This is
+      the content itself — the evidence base for every judgment about what the lessons
+      actually develop.
+  - id: lesson_activities
+    definition: >
+      The learner-facing activities each lesson contains, as a list where each entry
+      carries the lesson slug and identifier, per-type counts of embedded assessment
+      activities (multiple choice, open question, select the blank, ordering, fill in
+      the blank) and the code-exercise files present.
     grounded_in: ["Merrill"]
 
 claims:
@@ -75,15 +100,46 @@ claims:
         was never asked to emit them into the package — a pipeline configuration gap, not
         a generation defect (check the brief before diagnosing).
 
-  - id: cl-practice-structured
-    statement: "The course offers structured practice, not just exposition."
+  - id: cl-lessons-offer-application
+    statement: "Core lessons offer activities to apply or check understanding, not just exposition."
     qualities: [instruction-application]
     warrants: ["Merrill"]
     sufficiency: { rule: conjunctive }
     alternative_explanations:
       - >
-        Exercises exist but under a non-standard directory layout the adapter does not
-        walk — extraction failure, not absent practice (verify against the raw package).
+        Activities exist but under component syntax the adapter version does not parse
+        (generator/component drift) — an extraction gap, not absent practice (verify
+        against the raw lesson markdown).
+      - >
+        The brief requested purely expository material (e.g. reference documentation) —
+        a scope decision, not a generation defect (check the brief).
+
+  - id: cl-course-modular
+    statement: "The course develops its content in focused, well-formed modules."
+    qualities: [coherence-focus-depth]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Lesson identifiers follow an older numbering convention the module mechanism does
+        not recognize — a structural mismatch, not incoherent content (check the raw
+        manifest).
+      - >
+        The brief asked for a very short single-topic course, which legitimately yields
+        one module — degenerate modularity by scope, not dispersion.
+
+  - id: cl-course-arc
+    statement: "The course follows the intended arc: a general introduction, thematic development and a closing."
+    qualities: [progression-starting-point, progression-cognitive-demand]
+    warrants: ["Learning Progressions", "Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The package is a partial export (lessons missing at either end) — an intake
+        artifact gap, not a generation defect (verify the package is complete first).
+      - >
+        The brief requested a fragment of a larger course (a single module), where the
+        course-level arc conventions do not apply — check the brief.
 
 criteria:
   - id: cr-objectives-min-count
@@ -138,26 +194,99 @@ criteria:
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
 
-  - id: cr-practice-min-count
-    statement: "The package contains exercises."
+  - id: cr-lessons-with-activities
+    statement: "Core lessons include learner-facing activities."
     pass_condition: >
-      At least 3 practice exercises are present in the package. Fail = fewer than 3.
+      At least half of the core lessons include at least one learner-facing activity
+      (embedded assessment activity or code exercise). Core lessons = every lesson except
+      the module-00 introduction and the final closing lesson. Fail = fewer than half.
     failure_modes:
-      - "No exercises: the course only exposes information (no application opportunity)."
-      - "Token practice: one or two exercises for a whole course."
-    claims: [cl-practice-structured]
-    requires: [practice_exercises]
+      - "Expository-only lessons: the course reads as an article series with no application opportunity."
+      - "Activities concentrated in one or two lessons while the rest are pure reading."
+    claims: [cl-lessons-offer-application]
+    requires: [lesson_activities, lesson_inventory]
     on_missing_evidence: fail
     eligible_sources: [human, automated]
 
-  - id: cr-practice-instructed
-    statement: "Each exercise carries learner-facing instructions."
+  - id: cr-module-structure-well-formed
+    statement: "Lesson identifiers form a well-formed module structure."
     pass_condition: >
-      Every practice exercise includes non-empty learner-facing instructions. Fail = any
-      exercise without instructions (an empty task is not practice).
+      Every lesson identifier parses as module.lesson ('NN.M'); module numbers are
+      contiguous starting at 00; lesson numbering within each module starts at .0.
+      Fail = malformed identifiers, or gaps in module or lesson numbering.
     failure_modes:
-      - "Exercises shipped as bare code without a task statement."
-    claims: [cl-practice-structured]
-    requires: [practice_exercises]
+      - "Numbering drift (ids like '05' instead of '05.0') that breaks the module mechanism downstream."
+      - "Skipped or duplicated module numbers."
+    claims: [cl-course-modular]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-module-single-topic
+    statement: "Each module develops a single topic."
+    pass_condition: >
+      Within each module, the lesson titles and bodies develop one topic or sub-topic.
+      Fail = a module mixing unrelated topics, or content dispersed across many
+      single-lesson modules.
+    failure_modes:
+      - "A module is a grab-bag of leftovers rather than a developed topic."
+      - "Dispersion: many one-lesson modules instead of few focused ones."
+    claims: [cl-course-modular]
+    requires: [lesson_inventory, lesson_bodies]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-course-opens-with-general-intro
+    statement: "The course reserves its opening slot."
+    pass_condition: >
+      Module 00 exists and contains exactly one lesson. Fail = no module 00, or more
+      than one lesson in it.
+    failure_modes:
+      - "The course starts mid-content with no course-level introduction slot."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-course-has-development
+    statement: "The course has a development body."
+    pass_condition: >
+      At least two lessons follow the module-00 introduction (or the first lesson, when
+      no module 00 exists). Fail = fewer — an opening with (almost) nothing behind it is
+      a stub, not a course.
+    failure_modes:
+      - "A stub course: an introduction and little or nothing to develop it."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-arc-character
+    statement: "The opening lesson introduces and the final lesson closes."
+    pass_condition: >
+      The first lesson's body introduces the course as a whole, and the final lesson's
+      body closes it (wrap-up, integration or farewell) — first and last by declared
+      position, whatever their numbering. Fail = an opening that dives straight into
+      topic content, or a course that simply stops after the last topic.
+    failure_modes:
+      - "No course-level framing: the learner lands in content with no orientation."
+      - "No closure: nothing integrates what was learned before the course ends."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory, lesson_bodies]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-modules-intro-then-apply
+    statement: "Multi-lesson modules ramp from introduction to application."
+    pass_condition: >
+      In every module with more than one lesson, the first lesson introduces the module's
+      topic and later lessons emphasize application, practice or assessment. Fail = a
+      module whose later lessons remain purely expository, or whose first lesson is
+      already deep application.
+    failure_modes:
+      - "Modules with no internal ramp: exposition piled on exposition."
+      - "Modules that start at full depth with no entry point."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory, lesson_bodies, lesson_activities]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]

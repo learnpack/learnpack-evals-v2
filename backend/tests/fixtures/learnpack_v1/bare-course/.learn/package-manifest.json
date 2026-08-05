@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "slug": "bare-course",
+  "title": { "en": "Bare Course" },
+  "difficulty": "beginner",
+  "lessons": [
+    {
+      "id": "00.0",
+      "slug": "00-frontmatter-only",
+      "position": 0,
+      "type": "READ",
+      "title": { "en": "Frontmatter Only" },
+      "description": { "en": "A lesson whose body is empty after the frontmatter." }
+    },
+    {
+      "id": "01.0",
+      "slug": "01-no-readme",
+      "position": 1,
+      "type": "CODE",
+      "title": { "es": "Sin README" },
+      "description": { "es": "Una lección sin README, solo archivos de ejercicio." }
+    },
+    {
+      "id": "01.1",
+      "slug": "01-activity-sampler",
+      "position": 2,
+      "type": "READ",
+      "title": { "en": "Activity Sampler" },
+      "description": { "en": "One of each embedded assessment component." }
+    }
+  ]
+}

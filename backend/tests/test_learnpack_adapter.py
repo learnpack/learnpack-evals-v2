@@ -27,19 +27,28 @@ DECLARED_METADATA = {
     "prerequisites": ["Basic Python", "Object-oriented programming concepts"],
 }
 
+NO_ACTIVITIES = {
+    "multipleChoice": 0,
+    "openQuestion": 0,
+    "selectTheBlank": 0,
+    "ordering": 0,
+    "fillInTheBlank": 0,
+}
+
 
 def fixture_package(course: str, metadata: dict | None = None) -> PackageDTO:
     """Artifacts as the registry would hold them, locators relative to the fixtures dir."""
     artifacts = []
     if (FIXTURES / course / "learn.json").exists():
         artifacts.append(ArtifactDTO(kind="manifest", locator=f"{course}/learn.json"))
-    if (FIXTURES / course / ".learn" / "config.json").exists():
+    if (FIXTURES / course / ".learn" / "package-manifest.json").exists():
         artifacts.append(
-            ArtifactDTO(kind="exercise_config", locator=f"{course}/.learn/config.json")
+            ArtifactDTO(kind="package_manifest", locator=f"{course}/.learn/package-manifest.json")
         )
-    for readme in sorted((FIXTURES / course).glob("exercises/*/README.md")):
-        locator = readme.relative_to(FIXTURES).as_posix()
-        artifacts.append(ArtifactDTO(kind="exercise_instructions", locator=locator))
+    for path in sorted((FIXTURES / course).glob("exercises/*/*")):
+        locator = path.relative_to(FIXTURES).as_posix()
+        kind = "lesson_content" if path.name == "README.md" else "lesson_file"
+        artifacts.append(ArtifactDTO(kind=kind, locator=locator))
     return PackageDTO(
         content_id=new_id(),
         package_format="LearnpackV1",
@@ -63,8 +72,13 @@ def by_id(entries):
     return {e.data_requirement_id: e for e in entries}
 
 
+def by_slug(activities_entry):
+    return {item["lessonSlug"]: item for item in activities_entry.value}
+
+
 def test_adapter_is_registered_for_its_format():
     assert ADAPTERS_BY_FORMAT["LearnpackV1"].adapter_version == ADAPTER_VERSION
+    assert ADAPTERS_BY_FORMAT["LearnpackV1"].capabilities == CAPABILITIES
 
 
 def test_full_package_with_declared_metadata_yields_cited_entries(adapter, fetcher):
@@ -80,34 +94,77 @@ def test_full_package_with_declared_metadata_yields_cited_entries(adapter, fetch
     assert "dot notation" in objectives.quote  # verbatim citation (ADR-0009)
     assert objectives.locator == {"source": "metadata", "key": "learningObjectives"}
 
-    audience = entry["target_audience"]
-    assert audience.provenance == "declared_structured"
-    assert audience.value == "Beginner developers who understand OOP concepts"
-
-    exercises = entry["practice_exercises"]
-    assert exercises.provenance == "declared_structured"
-    assert len(exercises.value) == 11
-    assert all(item["hasInstructions"] for item in exercises.value)
-    assert {"exerciseId": "01.0-writing-python-classes", "hasInstructions": True} in (
-        exercises.value
-    )
-    assert "01.0-writing-python-classes" in exercises.quote
-    assert exercises.locator["kind"] == "exercise_config"
+    inventory = entry["lesson_inventory"]
+    assert inventory.provenance == "declared_structured"
+    assert len(inventory.value) == 11
+    # No description on purpose: the manifest's descriptions are LLM-generated summaries
+    # projected from the syllabus — not the generator's declaration (ADR-0009).
+    assert inventory.value[0] == {
+        "lessonId": "00.0",
+        "slug": "00.0-from-concept-to-code",
+        "position": 0,
+        "type": "READ",
+        "title": "From Concept to Code",
+    }
+    assert inventory.locator["path"] == "$.lessons"
 
     assert {x.name for x in extras} == {"difficulty", "technologies"}
-    assert by_id_extra(extras)["difficulty"].value == "beginner"
 
 
-def by_id_extra(extras):
-    return {x.name: x for x in extras}
+def test_lesson_bodies_carry_the_content_verbatim(adapter, fetcher):
+    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    entries, _ = adapter.extract(package, fetcher)
+    bodies = by_id(entries)["lesson_bodies"]
+
+    assert bodies.provenance == "declared_in_content"  # the content citing itself
+    assert len(bodies.value) == 11
+    by_lesson = {item["lessonSlug"]: item for item in bodies.value}
+    writing = by_lesson["01.0-writing-python-classes"]
+    assert writing["lessonId"] == "01.0"
+    assert writing["body"].lstrip().startswith("# 01.0 Writing Python Classes")
+    assert "readingTime" not in writing["body"]  # frontmatter stripped
+    assert "class Warrior:" in writing["body"]  # the actual lesson text, verbatim
 
 
-def test_the_other_real_course_extracts_its_full_exercise_index(adapter, fetcher):
+def test_lesson_activities_observed_from_the_real_course(adapter, fetcher):
+    package = fixture_package("object-representation-in-python", DECLARED_METADATA)
+    entries, _ = adapter.extract(package, fetcher)
+    lessons = by_slug(by_id(entries)["lesson_activities"])
+
+    assert len(lessons) == 11
+    quiz = lessons["03.0-what-you-know-now"]
+    assert quiz["lessonId"] == "03.0"
+    assert quiz["activities"]["multipleChoice"] == 8
+
+    outro = lessons["04.0-course-outro"]
+    assert outro["activities"]["openQuestion"] == 1
+
+    coding = lessons["01.0-writing-python-classes"]
+    # The internal app.solution.hide.py companion is authoring detail, not an exercise.
+    assert coding["codeExercises"] == ["app.py"]
+
+    exposition = lessons["01.1-attributes-and-values"]
+    assert exposition["activities"] == NO_ACTIVITIES
+    assert exposition["codeExercises"] == []
+
+
+def test_the_other_real_course_keeps_its_numbering_drift_verbatim(adapter, fetcher):
+    """Lessons '05' and '06' lack the NN.M form — real generator drift. Extraction
+    records it verbatim; judging it is the well-formedness criterion's job, not ours."""
     package = fixture_package("introduction-to-generative-ai", DECLARED_METADATA)
     entries, _ = adapter.extract(package, fetcher)
-    exercises = by_id(entries)["practice_exercises"]
-    assert len(exercises.value) == 17
-    assert all(item["hasInstructions"] for item in exercises.value)
+    inventory = by_id(entries)["lesson_inventory"]
+    assert len(inventory.value) == 17
+    assert [lesson["lessonId"] for lesson in inventory.value][-5:] == [
+        "05",
+        "05.1",
+        "05.2",
+        "05.3",
+        "06",
+    ]
+    lessons = by_slug(by_id(entries)["lesson_activities"])
+    assert lessons["01.0-what-is-generative-ai-really"]["activities"]["multipleChoice"] == 3
+    assert lessons["03.1-from-prompt-to-tokens"]["activities"]["openQuestion"] == 1
 
 
 def test_capability_without_data_yields_explicit_absent_not_missing_entry(adapter, fetcher):
@@ -118,35 +175,58 @@ def test_capability_without_data_yields_explicit_absent_not_missing_entry(adapte
         assert entry[requirement_id].provenance == "absent"
         assert entry[requirement_id].value is None
         assert entry[requirement_id].quote is None
-    # The package itself still yields its exercises.
-    assert entry["practice_exercises"].provenance == "declared_structured"
+    # The package itself still yields its lessons.
+    assert entry["lesson_inventory"].provenance == "declared_structured"
 
 
-def test_package_without_artifacts_yields_absent_exercises(adapter, fetcher):
-    # Decision fixed here (13-code §3.4): a package with no artifacts reads as "looked,
-    # nothing there" → absent. If LearnpackV1 ever guarantees artifacts at registration,
-    # revisit: the honest reading would then be a failed profile.
+def test_package_without_artifacts_yields_absent_lesson_data(adapter, fetcher):
+    # A package with no artifacts reads as "looked, nothing there" → absent. If
+    # LearnpackV1 ever guarantees artifacts at registration, revisit: the honest
+    # reading would then be a failed profile.
     package = PackageDTO(
         content_id=new_id(),
         package_format="LearnpackV1",
         consumable_url="https://no-artifacts.learn-pack.com/",
     )
     entries, extras = adapter.extract(package, fetcher)
-    assert by_id(entries)["practice_exercises"].provenance == "absent"
+    assert by_id(entries)["lesson_inventory"].provenance == "absent"
+    assert by_id(entries)["lesson_bodies"].provenance == "absent"
+    assert by_id(entries)["lesson_activities"].provenance == "absent"
     assert extras == ()
 
 
-def test_exercises_without_learner_facing_instructions_are_observed(adapter, fetcher):
+def test_every_component_type_is_counted_and_decoys_are_not(adapter, fetcher):
     package = fixture_package("bare-course")
     entries, _ = adapter.extract(package, fetcher)
-    exercises = by_id(entries)["practice_exercises"]
-    assert exercises.value == [
-        {"exerciseId": "00-frontmatter-only", "hasInstructions": False},
-        {"exerciseId": "01-no-readme", "hasInstructions": False},
-    ]
+    lessons = by_slug(by_id(entries)["lesson_activities"])
+
+    sampler = lessons["01-activity-sampler"]
+    # One of each; the checkbox inside a foreign fence and the author-facing
+    # code_challenge_proposal block must NOT count.
+    assert sampler["activities"] == {
+        "multipleChoice": 1,
+        "openQuestion": 1,
+        "selectTheBlank": 1,
+        "ordering": 1,
+        "fillInTheBlank": 1,
+    }
+
+    assert lessons["00-frontmatter-only"]["activities"] == NO_ACTIVITIES
+    # A lesson with no README still reports its exercise files.
+    no_readme = lessons["01-no-readme"]
+    assert no_readme["lessonId"] == "01.0"
+    assert no_readme["codeExercises"] == ["app.py"]
 
 
-def test_malformed_config_fails_extraction_instead_of_half_profiling(adapter, fetcher):
+def test_lessons_with_spanish_only_declarations_fall_back_verbatim(adapter, fetcher):
+    package = fixture_package("bare-course")
+    entries, _ = adapter.extract(package, fetcher)
+    inventory = by_id(entries)["lesson_inventory"]
+    no_readme = next(lesson for lesson in inventory.value if lesson["lessonId"] == "01.0")
+    assert no_readme["title"] == "Sin README"  # declared es-only; never composed
+
+
+def test_malformed_manifest_fails_extraction_instead_of_half_profiling(adapter, fetcher):
     package = fixture_package("broken-course")
     with pytest.raises(ExtractionError, match="JSON"):
         adapter.extract(package, fetcher)

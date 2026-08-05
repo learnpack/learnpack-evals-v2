@@ -44,7 +44,9 @@ REQUIREMENT_IDS = (
     "learning_objectives",
     "target_audience",
     "prerequisites",
-    "practice_exercises",
+    "lesson_inventory",
+    "lesson_bodies",
+    "lesson_activities",
 )
 
 
@@ -157,8 +159,9 @@ def test_profile_content_persists_cited_entries_and_event(
     assert "profiling works" in by_id["learning_objectives"]["quote"]
     # No metadata entry and no artifacts: explicitly absent, quoteless (ADR-0009).
     assert by_id["prerequisites"]["provenance"] == "absent"
-    assert by_id["practice_exercises"]["provenance"] == "absent"
-    assert by_id["practice_exercises"]["quote"] is None
+    assert by_id["lesson_inventory"]["provenance"] == "absent"
+    assert by_id["lesson_activities"]["provenance"] == "absent"
+    assert by_id["lesson_activities"]["quote"] is None
     assert events_for(session, profile.id) == ["ContentProfiled"]
 
 
@@ -178,7 +181,12 @@ def test_a_failed_profile_records_the_error_and_can_be_retried(
     requires_db, namespace, register_content, session
 ):
     content_id = register_content(
-        artifacts=[{"kind": "exercise_config", "locator": "broken-course/.learn/config.json"}]
+        artifacts=[
+            {
+                "kind": "package_manifest",
+                "locator": "broken-course/.learn/package-manifest.json",
+            }
+        ]
     )
 
     with SessionLocal() as s:

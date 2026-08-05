@@ -188,12 +188,14 @@ def test_the_real_draft_imports_clean_and_would_publish(admin_client, cleanup, u
     real_id = import_spec(cleanup, real_spec)
     body = admin_client.get(f"/admin/instruments/{real_id}").json()
     assert body["status"] == "draft"
-    assert len(body["claims"]) == 3
-    assert len(body["criteria"]) == 6
+    assert len(body["claims"]) == 5
+    assert len(body["criteria"]) == 11
     assert {c["claim_id"] for c in body["claims"]} == {
         "cl-objectives-declared",
         "cl-audience-declared",
-        "cl-practice-structured",
+        "cl-lessons-offer-application",
+        "cl-course-modular",
+        "cl-course-arc",
     }
 
     # A copy under a throwaway id proves the content satisfies the publish invariants.
