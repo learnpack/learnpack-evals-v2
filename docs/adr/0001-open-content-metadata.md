@@ -1,6 +1,7 @@
 # ADR-0001 — Content metadata abierta y validada por schema
 
-**Estado:** aceptada · **Fecha:** 2026-07 · **Contexto DDD:** Content Registry / Orchestration
+**Estado:** superseded por [ADR-0017](0017-superficie-declarada-es-el-paquete.md) ·
+**Fecha:** 2026-07 · **Contexto DDD:** Content Registry / Orchestration
 
 ## Contexto
 La metadata de un contenido varía **por tipo de contenido** (un curso LearnPack, un futuro
