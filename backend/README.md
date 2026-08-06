@@ -1,255 +1,278 @@
 # backend
 
-FastAPI + Postgres (Neon). Diseño en `../docs/` — **es la fuente de verdad**.
-Reglas duras: `../docs/ARCHITECTURE.md`. Nombres: `../docs/GLOSSARY.md`.
-En qué punto está el desarrollo hoy: `../STATUS.md` (este README describe **cómo funciona**, no
-en qué estado está).
+FastAPI + Postgres (Neon). Design lives in `../docs/` — **it is the source of truth**.
+Hard rules: `../docs/ARCHITECTURE.md`. Names: `../docs/GLOSSARY.md`.
+Where development stands today: `../STATUS.md` (this README describes **how it works**, not
+what state it is in).
 
 ## Setup
 
 ```bash
-cp .env.example .env      # completar DATABASE_URL (Neon) y las claves de Clerk
+cp .env.example .env      # fill in DATABASE_URL (Neon) and the Clerk keys
 uv sync
 uv run alembic upgrade head
-uv run python -m app.cli seed          # rubric v1 + metadata schema (idempotente)
+uv run python -m app.cli seed          # rubric v1 + pedagogical reference data (idempotent)
 uv run uvicorn app.main:app --reload
 ```
 
-`GET /health` verifica que la API arranca y que la DB responde.
+`GET /health` verifies that the API boots and the DB responds.
 
-## Modo local: sin Clerk y sin Neon (ADR-0008)
+## Local mode: no Clerk and no Neon (ADR-0008)
 
-`AUTH_MODE` decide de dónde sale la identidad de un request:
+`AUTH_MODE` decides where a request's identity comes from:
 
-| Modo | Identidad | Cuándo |
+| Mode | Identity | When |
 |---|---|---|
-| `clerk` (default) | JWT de sesión verificado contra el JWKS | producción y cualquier entorno real |
-| `local` | el header `X-Dev-User: <email>`, sin verificar | desarrollo, sin cuentas ni nube |
+| `clerk` (default) | session JWT verified against the JWKS | production and any real environment |
+| `local` | the `X-Dev-User: <email>` header, unverified | development, no accounts and no cloud |
 
-Debajo del claim **es el mismo código en los dos modos**: `ResolveAssessor`, `assessors.role`,
-`require_admin`. El modo local no bifurca reglas de negocio, solo reemplaza de dónde sale la
-identidad — el mismo corte que usa la suite de tests.
+Below the claim **it is the same code in both modes**: `ResolveAssessor`, `assessors.role`,
+`require_admin`. Local mode does not fork business rules, it only replaces where identity
+comes from — the same cut the test suite uses.
 
 ```bash
-docker compose up -d                       # levanta db (5433, tests) y db-dev (5434, desarrollo)
-cp .env.example .env                       # el ejemplo ya viene en modo local
+docker compose up -d                       # starts db (5433, tests) and db-dev (5434, development)
+cp .env.example .env                       # the example ships in local mode
 uv run alembic upgrade head
 uv run python -m app.cli seed
-uv run python -m app.cli seed-demo         # --reset para empezar de cero
+uv run python -m app.cli seed-demo         # --reset to start from scratch
 ```
 
-`--reset` **vacía el dataset local** (cursos, campañas, evaluaciones y usuarios `local|`) y
-vuelve a sembrar; no toca la rúbrica ni los metadata schemas. Es a propósito más amplio que
-"borrar lo que la lista dice hoy": editar `DEMO_ASSESSORS`/`DEMO_CONTENTS` es la forma normal de
-armar un demo, y un borrado acotado deja huérfano todo lo que creó la versión anterior —un
-usuario renombrado sigue apareciendo en el selector, un curso reemplazado queda sin campaña— sin
-forma de limpiarlo. Solo puede correr contra una base local, así que no hay nada que perder.
+`seed-demo` leaves 3 users (`admin@local.dev`, `ada.lovelace@local.dev`,
+`grace.hopper@local.dev`), the instrument draft imported from `../docs/seed/instruments/`,
+the `LearnpackV1` extraction accepted (in the real store that acceptance is the team's
+deliberate act, ADR-0012 — the demo auto-accepts because it only runs locally), 2 demo
+courses registered with their real frozen packages (auto-profiled by the registration
+policy), and an open campaign with **quorum 2** and its 4 assignments, all **pending
+evaluation**. Two evaluators is the minimum for inter-rater dispersion and for
+`ContentEvaluationCompleted → GoldenReferenceEstablished` to fire.
 
-`seed-demo` deja 3 usuarios (`admin@local.dev`, `ada.lovelace@local.dev`,
-`grace.hopper@local.dev`), 2 cursos y una campaña abierta con **quórum 2** y sus 4 assignments,
-todo **pendiente de evaluar**. Dos evaluadores es el mínimo para que haya dispersión inter-rater
-y para que se dispare `ContentEvaluationCompleted → GoldenReferenceEstablished`.
+It goes through the real use cases, so it publishes the same events the UI would. It is
+idempotent: running it twice duplicates nothing.
 
-Va por los use cases reales, así que publica los mismos eventos que produciría la UI. Es
-idempotente: correrlo dos veces no duplica nada.
+`--reset` **wipes the local dataset** — everything the app writes (courses, profiles,
+campaigns, evaluations, acceptances, minted data requirements and `local|` users) — and
+reseeds; it does not touch the rubric or the reference data. Deliberately wholesale rather
+than "delete what today's demo lists name": editing `DEMO_ASSESSORS`/`DEMO_CONTENTS` is the
+normal way to shape a demo, and a scoped delete strands everything the previous version
+created. It can only run against a local database, so there is nothing to lose.
 
-Lo que impide que esto se filtre a un entorno real:
+What keeps this from leaking into a real environment:
 
-- El default del código es `clerk` (el `.env.example` trae `local` porque es la plantilla de
-  desarrollo; en producción las variables las pone Render). Un valor que no sea `clerk` ni
-  `local` **no arranca**: es un error de configuración, no algo que se degrade en silencio.
-- `AUTH_MODE=local` con `ENVIRONMENT=production` → **la app no arranca**.
-- `AUTH_MODE=local` con un `DATABASE_URL` que no apunte a localhost → **tampoco arranca**.
-  Son dos chequeos porque cada uno cubre el punto ciego del otro: `ENVIRONMENT` es una etiqueta
-  que nadie garantiza (puede estar sin setear en el server), mientras que el host de la base es
-  un hecho sobre dónde viven los datos.
-- En modo `clerk` el header `X-Dev-User` **no se lee**: no es un fallback cuando falta el token,
-  es otro adapter.
-- `seed-demo` aborta si el modo no es `local` (no puede escribir datos demo en Neon por error).
-- `GET /dev/identities` —la lista que alimenta el selector de usuario del front— da 404 fuera del
-  modo local.
+- The code's default is `clerk` (`.env.example` ships `local` because it is the development
+  template; in production Render sets the variables). A value that is neither `clerk` nor
+  `local` **does not boot**: it is a configuration error, not a silent degrade.
+- `AUTH_MODE=local` with `ENVIRONMENT=production` → **the app does not boot**.
+- `AUTH_MODE=local` with a `DATABASE_URL` not pointing at localhost → **does not boot
+  either**. Two checks because each covers the other's blind spot: `ENVIRONMENT` is a label
+  nobody guarantees, while the database host is a fact about where the data lives.
+- In `clerk` mode the `X-Dev-User` header **is not read**: it is another adapter, not a
+  fallback for a missing token.
+- `seed-demo` aborts unless the mode is `local` (it cannot write demo data into Neon by
+  mistake).
+- `GET /dev/identities` — the list feeding the frontend's user picker — 404s outside local
+  mode.
 
 ## Clerk (ADR-0004)
 
-El token de sesión por defecto de Clerk **no trae email ni nombre**. Hay que crear un **JWT
-template** en el dashboard de Clerk con estos claims:
+Clerk's default session token **carries neither email nor name**. Create a **JWT template**
+in the Clerk dashboard with these claims:
 
 ```json
 { "email": "{{user.primary_email_address}}", "name": "{{user.full_name}}" }
 ```
 
-El backend tolera que falten (el perfil queda en `NULL`), pero sin ellos no vas a poder
-identificar a los SMEs ni usar `set-role`.
+The backend tolerates their absence (the profile stays `NULL`), but without them you cannot
+identify the SMEs or use `set-role`.
 
-**Creá el template antes de que entre nadie.** El claim `email` es además lo que decide el rol
-inicial del primer admin, y esa decisión se toma **una sola vez** — ver el orden en
-[Preparar un entorno](#preparar-un-entorno--el-orden-importa).
+**Create the template before anyone signs in.** The `email` claim also decides the first
+admin's initial role, and that decision is taken **exactly once** — see the order in
+[Preparing an environment](#preparing-an-environment--order-matters).
 
-### Roles y el primer admin (ADR-0007)
+### Roles and the first admin (ADR-0007)
 
-`assessors.role` es la **fuente de verdad** de la autorización, y **el login nunca cambia el
-rol de nadie** — autenticarse no puede escalar privilegios.
+`assessors.role` is the **source of truth** for authorization, and **login never changes
+anyone's role** — authenticating cannot escalate privileges.
 
-Para el arranque (hace falta un admin antes de que exista un admin que pueda crearlo), está
-`ADMIN_EMAILS`: una allowlist de **aprovisionamiento**, no de autorización. Solo decide el rol
-**con el que se crea** un assessor nuevo:
-
-```bash
-ADMIN_EMAILS=vos@tuempresa.com,otro@tuempresa.com
-```
-
-- Email en la lista y la persona **nunca entró** → se crea `admin`.
-- Email en la lista pero la persona **ya existe** como `evaluator` → **sigue** `evaluator`.
-- Un `admin` existente al que **sacás** de la lista → **sigue** `admin`.
-- Sin claim `email` (falta el JWT template) → `evaluator`.
-
-Es seguro **porque el acceso es invite-only**: nadie puede registrarse con el email de un admin
-sin la invitación. Si alguna vez desactivás invite-only, revisá ADR-0007.
-
-Para cambiar el rol de alguien que ya existe, el único camino es:
+For bootstrap (an admin is needed before an admin exists to create one) there is
+`ADMIN_EMAILS`: a **provisioning** allowlist, not an authorization one. It only decides the
+role a **new** assessor is created with:
 
 ```bash
-uv run python -m app.cli set-role --email tu@email.com --role admin
+ADMIN_EMAILS=you@yourcompany.com,other@yourcompany.com
 ```
 
-### Preparar un entorno — **el orden importa**
+- Email on the list and the person has **never signed in** → created as `admin`.
+- Email on the list but the person **already exists** as `evaluator` → **stays** `evaluator`.
+- An existing `admin` you **remove** from the list → **stays** `admin`.
+- No `email` claim (missing JWT template) → `evaluator`.
 
-Esta secuencia se corre **una vez por entorno** (una instancia de Clerk = un entorno), antes de
-que entre nadie.
+This is safe **because access is invite-only**: nobody can register with an admin's email
+without the invitation. If you ever disable invite-only, revisit ADR-0007.
 
-> ⚠️ **El JWT template con el claim `email` tiene que existir ANTES del primer login del
-> admin.** Sin ese claim el assessor se crea como `evaluator` (degrade seguro), y como la
-> allowlist se aplica **una sola vez, al crear la fila**, agregar el template después ya no lo
-> rescata. Dos comportamientos correctos por separado que, en el orden equivocado, dejan al
-> admin nacido evaluador.
-
-1. **Render:** `ADMIN_EMAILS=<email del admin>` (y esperá a que termine el redeploy).
-2. **Clerk:** creá el **JWT template** con el claim `email` (ver arriba) e invitá las dos
-   cuentas. Todavía **nadie entra**.
-3. **Recién ahora:** que entre el admin. Verificá con `GET /me` que dice `"role": "admin"`.
-4. Que entre el evaluador → queda `evaluator`.
-5. Cargá los cursos (`import-learnpack`) y abrí la campaña desde la UI de admin.
-
-**Si te equivocaste de orden** (el admin ya entró y quedó `evaluator`): no hay que borrar nada
-ni tocar la allowlist, se arregla con
+To change the role of someone who already exists, the only path is:
 
 ```bash
-uv run python -m app.cli set-role --email <email del admin> --role admin
+uv run python -m app.cli set-role --email you@yourcompany.com --role admin
 ```
 
-que es el único mecanismo para cambiar el rol de alguien que ya existe.
+### Preparing an environment — **order matters**
 
-## Capas (Dependency Rule)
+This sequence runs **once per environment** (one Clerk instance = one environment), before
+anyone signs in.
 
-| Carpeta | Capa | Puede importar |
+> ⚠️ **The JWT template with the `email` claim must exist BEFORE the admin's first login.**
+> Without that claim the assessor is created as `evaluator` (a safe degrade), and since the
+> allowlist applies **once, at row creation**, adding the template later does not rescue it.
+> Two individually correct behaviors that, in the wrong order, leave the admin born an
+> evaluator.
+
+1. **Render:** `ADMIN_EMAILS=<the admin's email>` (and wait for the redeploy to finish).
+2. **Clerk:** create the **JWT template** with the `email` claim (above) and invite both
+   accounts. **Nobody signs in yet.**
+3. **Only now:** the admin signs in. Verify with `GET /me` that it says `"role": "admin"`.
+4. The evaluator signs in → stays `evaluator`.
+5. Load the courses (`import-learnpack`) and open the campaign from the admin UI.
+
+**If you got the order wrong** (the admin already signed in and landed as `evaluator`):
+nothing to delete, no allowlist to touch — fix it with
+
+```bash
+uv run python -m app.cli set-role --email <admin email> --role admin
+```
+
+which is the only mechanism to change the role of someone who already exists.
+
+## Layers (Dependency Rule)
+
+| Folder | Layer | May import |
 |---|---|---|
-| `app/modules/*/domain` | Domain | nada de framework — **Python puro** |
-| `app/modules/*/application` | Application | su propio domain + `shared`; **define los ports** |
-| `app/modules/*/infrastructure` | Adapters | application + domain (repos, routers, ACLs) |
-| `app/platform`, `app/main.py` | Frameworks | todo; inyecta las dependencias |
+| `app/modules/*/domain` | Domain | no framework — **pure Python** |
+| `app/modules/*/application` | Application | its own domain + `shared`; **defines the ports** |
+| `app/modules/*/infrastructure` | Adapters | application + domain (repos, routers, ACLs, extraction adapters) |
+| `app/platform`, `app/main.py` | Frameworks | everything; injects the dependencies |
 
-## Superficie pública de un módulo (ARCHITECTURE.md §3)
+## A module's public surface (ARCHITECTURE.md §3)
 
-Cada módulo expone su contrato en `modules/<m>/public.py`: DTOs de query, nombres de sus
-eventos, y un proveedor `get_<m>_queries` para inyectar por `Depends` que **arma su propio
-repo adentro**. Los módulos ajenos importan **solo** de ahí — nunca de
-`modules/<otro>/infrastructure` (eso los acoplaría al adapter concreto en vez de al port) ni
-de `modules/<otro>/domain`.
+Each module exposes its contract in `modules/<m>/public.py`: query DTOs, its event names,
+and a `get_<m>_queries` provider for `Depends` injection that **builds its own repo
+inside**. Other modules import **only** from there — never from
+`modules/<other>/infrastructure` (that would couple them to the concrete adapter instead of
+the port) nor from `modules/<other>/domain`.
 
-Única excepción: el composition root (`main.py`, `cli.py`, `platform/`), cuyo trabajo *es*
-inyectar adapters concretos.
+Sole exception: the composition root (`main.py`, `cli.py`, `platform/`), whose job *is* to
+inject concrete adapters.
 
-`tests/test_architecture.py` hace la regla ejecutable: falla el build si alguien la rompe.
-Corre en cada `pytest`, sin DB.
+`tests/test_architecture.py` makes the rule executable: the build fails if someone breaks
+it. It runs on every `pytest`, without a DB.
 
 ## Events-first (ADR-0003)
 
-Publicar un evento = `INSERT` en `events` con la sesión del use case, dentro de la misma
-transacción que el agregado (`OutboxEventPublisher`). Tras el commit, el `EventDispatcher`
-in-process entrega el evento a las policies suscritas. Los handlers deben ser idempotentes
-por `event_type + aggregate_id`, para poder reprocesar desde la tabla `events`.
+Publishing an event = an `INSERT` into `events` with the use case's session, in the same
+transaction as the aggregate (`OutboxEventPublisher`). After commit, the in-process
+`EventDispatcher` delivers the event to subscribed policies. Handlers must be idempotent by
+`event_type + aggregate_id`, so reprocessing from the `events` table is safe.
 
-## Comandos
+Policies wired today (`main.py`): the completion chain of the human path (below) and, from
+slice 2, `ContentVersionRegistered → ProfileContent` — registering content auto-profiles it
+**iff** the format's extraction is accepted.
+
+## Commands
 
 ```bash
-docker compose up -d     # Postgres local: db (tests) + db-dev (desarrollo)
+docker compose up -d     # local Postgres: db (tests) + db-dev (development)
 uv run pytest            # tests
 uv run ruff check .      # lint
-uv run ruff format .     # formato
-uv run mypy              # tipos (estricto, scope en pyproject.toml)
+uv run ruff format .     # format
+uv run mypy              # types (strict, scope in pyproject.toml)
 ```
 
-Todo esto corre también en CI en cada PR y push a main (`.github/workflows/ci.yml`): lint +
-formato + tipos + suite backend (con Postgres como service container) + typecheck del frontend
+All of it also runs in CI on every PR and push to main (`.github/workflows/ci.yml`): lint +
+format + types + backend suite (with Postgres as a service container) + frontend typecheck
 (`npm run typecheck`).
 
-### Por qué los tests corren contra Postgres local
+### Why tests run against local Postgres
 
-La suite está **limitada por latencia**, no por CPU: cada consulta a Neon (`us-east-1`) cuesta
-~150 ms desde Latam, y un test de integración hace más de cien. Eso son ~20 s por test
-y +10 min de suite. Contra Postgres local la misma consulta cuesta ~0,3 ms.
+The suite is **latency-bound**, not CPU-bound: each query to Neon (`us-east-1`) costs
+~150 ms from Latam, and an integration test makes over a hundred. That is ~20 s per test
+and a +10 min suite. Against local Postgres the same query costs ~0.3 ms.
 
-Con `TEST_DATABASE_URL` seteada (ver `.env.example`), `tests/conftest.py` redirige la suite a
-esa DB y la **migra y siembra sola**. Sin ella, los tests corren contra `DATABASE_URL` — es
-válido, solo lento; en ese caso conftest **no** migra ni siembra nada (no se toca el store real
-automáticamente).
+With `TEST_DATABASE_URL` set (see `.env.example`), `tests/conftest.py` redirects the suite
+to that DB and **migrates and seeds it by itself**. Without it, tests run against
+`DATABASE_URL` — valid, just slow; in that case conftest does **not** migrate or seed
+anything (the real store is never touched automatically).
 
-Neon sigue siendo el store de verdad: migraciones, deploy y la verificación de humo final.
+Neon remains the store of truth: migrations, deploy and the final smoke check.
 
 ## Unit of work
 
-`app/platform/uow.py` es el límite transaccional de cada use case: contiene la `Session`, el
-`OutboxEventPublisher` sobre esa misma sesión y el dispatcher. `uow.commit()` commitea y
-**después** despacha los eventos ya durables. Los use cases reciben `uow` + los ports que
-necesitan; los adapters concretos se inyectan desde el router.
+`app/platform/uow.py` is each use case's transactional boundary: it holds the `Session`,
+the `OutboxEventPublisher` over that same session, and the dispatcher. `uow.commit()`
+commits and **then** dispatches the now-durable events. Use cases receive `uow` + the ports
+they need; concrete adapters are injected from the router.
 
-## Policy de completitud (ADR-0002)
+## Completion policy (ADR-0002)
 
-Única policy del MVP. Al oír `EvaluationSubmitted`, `orchestration` marca `submitted` todas
-las assignments abiertas de `(assessor, content)` cuya campaña use la misma `instrumentVersion`
-—así una evaluación puede satisfacer varias campañas— y publica
-`ContentEvaluationCompleted` cuando `COUNT(assignments submitted) ≥ required`.
+On `EvaluationSubmitted`, `orchestration` marks `submitted` every open assignment of
+`(assessor, content)` whose campaign uses the same `instrumentVersion` — so one evaluation
+can satisfy several campaigns — and publishes `ContentEvaluationCompleted` when
+`COUNT(assignments submitted) ≥ required`.
 
-Corre **después** del commit de la evaluación, en su propia transacción: la completitud es
-**eventual**, no un invariante transaccional. Es idempotente (`ON CONFLICT DO NOTHING` +
-publicar solo si insertó), así que reprocesar desde `events` es seguro.
+It runs **after** the evaluation's commit, in its own transaction: completion is
+**eventual**, not a transactional invariant. It is idempotent (`ON CONFLICT DO NOTHING` +
+publish only on insert), so reprocessing from `events` is safe.
 
-## Golden Dataset y reportes (bloque 4)
+## Golden dataset and reports
 
-La cadena completa del MVP, toda por eventos (`../docs/design/08-code.md` §5):
+The complete human chain, all through events (`../docs/design/08-code.md` §5):
 
 ```
 EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
                     → (golden)        GoldenReferenceEstablished
 ```
 
-Golden no lleva su propio conteo: le pide la cobertura a orchestration por su query port y
-aplica su regla (`coverage ≥ threshold`). Es idempotente igual que la de quórum.
+Golden keeps no count of its own: it asks orchestration for coverage through its query port
+and applies its rule (`coverage ≥ threshold`). Idempotent like the quorum policy.
 
-**Reporting** (ADR-0006) compone los demás módulos por sus `public.py` y agrega en Python —
-sin JOINs cross-módulo y sin tablas de read model. Endpoints: `GET /admin/reports/scores`
-(perfil por criterion de cada curso: promedio por criterion entre assessors + dispersión
-inter-rater; **sin score agregado entre criteria**, ADR-0011) y `GET /admin/progress` (quién
-evaluó qué, cross-campaña).
+**Reporting** (ADR-0006) composes the other modules through their `public.py` and
+aggregates in Python — no cross-module JOINs and no read-model tables. Endpoints:
+`GET /admin/reports/scores` (each course's per-criterion profile: per-criterion average
+across assessors + inter-rater dispersion; **no aggregate score across criteria**,
+ADR-0011) and `GET /admin/progress` (who evaluated what, cross-campaign).
 
-Dos reglas de agregación que conviene no confundir:
-- Una **repetición** es el mismo assessor sobre el mismo `(content, instrumentVersion)` — se
-  colapsa a la más reciente, porque es una corrección. Evaluar **dos cursos distintos** no es
-  una repetición.
-- La dispersión con un solo rater es `null`, no `0`: no hay acuerdo que medir.
+Two aggregation rules not to confuse:
+- A **repetition** is the same assessor on the same `(content, instrumentVersion)` — it
+  collapses to the most recent, because it is a correction. Evaluating **two different
+  courses** is not a repetition.
+- Dispersion with a single rater is `null`, not `0`: there is no agreement to measure.
 
-## Carga masiva de cursos
+## Instruments and content profiling (slice 2)
+
+- **Instrument authoring is file-based** (`../docs/seed/instruments/*.yaml`):
+  `uv run python -m app.cli import-instrument --file <yaml>` creates or replaces the
+  **draft** (and mints the `data_requirement` ids the extraction conforms to, ADR-0014).
+  Publishing is a human act — the Publish button in `/admin/instruments` or
+  `uv run python -m app.cli publish-instrument --id <version-id> --email <admin>`;
+  published versions are immutable.
+- **Extraction** (`content_profiling`): the `LearnpackV1` adapter derives a cited profile
+  from the package's artifacts — no inference, absence is a result (ADR-0009). Automatic
+  profiling on registration is armed by the human acceptance of the adapter version:
+  `uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email <admin>`
+  (ADR-0012), after reviewing samples in `/admin/profiles` or via
+  `uv run python -m app.cli profile-content --content-id <id>`.
+
+## Bulk course import
 
 ```bash
-uv run python -m app.cli import-learnpack --file cursos.json        # forma canónica
-uv run python -m app.cli import-learnpack --file cursos.json --acl  # forma cruda de LearnPack
+uv run python -m app.cli import-learnpack --file courses.json        # canonical shape
+uv run python -m app.cli import-learnpack --file courses.json --acl  # LearnPack's raw shape
 ```
 
-## Módulos
+## Modules
 
-scaffolding + seed · identity · evaluand_registry · evaluation_design (read-only) · evaluation ·
-orchestration · golden_dataset · reporting. Cada uno con `domain/`, `application/` e
-`infrastructure/`, y su contrato en `public.py`.
+identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·
+orchestration · golden_dataset · reporting. Each with `domain/`, `application/` and
+`infrastructure/`, and its contract in `public.py`.
 
-El plan que los originó está congelado en `../docs/design/08-code.md`; el estado de avance, en
-`../STATUS.md`.
+The plans that originated them are frozen in `../docs/design/08-code.md` (slice 1) and
+`../docs/design/13-code-qa.md` (slice 2); progress lives in `../STATUS.md`.

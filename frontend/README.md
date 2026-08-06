@@ -1,115 +1,119 @@
 # frontend
 
-Next.js (App Router) + TypeScript + Tailwind + Clerk. Consume el FastAPI del `../backend`.
-Diseño en `../docs/` — **es la fuente de verdad** (bloque 5 de `../docs/design/08-code.md`).
-En qué punto está el desarrollo hoy: `../STATUS.md` (este README describe **cómo funciona**, no
-en qué estado está).
+Next.js (App Router) + TypeScript + Tailwind + Clerk. Consumes the FastAPI in `../backend`.
+Design lives in `../docs/` — **it is the source of truth**. Where development stands today:
+`../STATUS.md` (this README describes **how it works**, not what state it is in).
 
 ## Stack
 
 - **Next.js 15** (App Router, `src/`) + **React 19** + **TypeScript**.
-- **Tailwind** con un kit de UI propio estilo shadcn en `src/components/ui/` (sin Radix).
-- **Clerk** (`@clerk/nextjs`) para identidad, invite-only — o **modo local sin identidad**
-  (ADR-0008), detrás del mismo seam.
-- **TanStack Query** para data-fetching/estado del servidor.
-- **react-hook-form + zod** en el formulario de scoring.
+- **Tailwind** with an in-house shadcn-style UI kit in `src/components/ui/` (no Radix).
+- **Clerk** (`@clerk/nextjs`) for identity, invite-only — or **local mode without identity**
+  (ADR-0008), behind the same seam.
+- **TanStack Query** for data-fetching/server state.
+- **react-hook-form + zod** in the scoring form.
 
 ## Setup
 
 ```bash
-cp .env.local.example .env.local     # viene en modo local: nada que completar
+cp .env.local.example .env.local     # ships in local mode: nothing to fill in
 npm install
 npm run dev                          # http://localhost:3000
 ```
 
-Para usar Clerk en su lugar, sacá `NEXT_PUBLIC_AUTH_MODE=local` y completá las claves (abajo).
+To use Clerk instead, remove `NEXT_PUBLIC_AUTH_MODE=local` and fill in the keys (below).
 
-El backend tiene que estar corriendo (`../backend`, por defecto en `:8000`) y su
-`ALLOWED_ORIGINS` tiene que incluir `http://localhost:3000`.
+The backend must be running (`../backend`, `:8000` by default) with `ALLOWED_ORIGINS`
+including `http://localhost:3000`.
 
-## Modo local: sin Clerk (ADR-0008)
+## Local mode: no Clerk (ADR-0008)
 
-Con `NEXT_PUBLIC_AUTH_MODE=local` (lo que trae `.env.local.example`) la app no usa Clerk:
-`/sign-in` muestra la lista de usuarios locales y elegís con cuál entrar. Se cambia de usuario
-desde el menú del header — recarga la página a propósito, para que no sobreviva en pantalla la
-caché de queries del usuario anterior.
+With `NEXT_PUBLIC_AUTH_MODE=local` (what `.env.local.example` ships) the app does not use
+Clerk: `/sign-in` shows the list of local users and you pick one. Switch users from the
+header menu — it reloads the page on purpose, so the previous user's query cache does not
+survive on screen.
 
-El backend tiene que estar corriendo con el `AUTH_MODE=local` correspondiente: la lista sale de
-`GET /dev/identities`, que solo existe en ese modo, y las llamadas se identifican con el header
-`X-Dev-User` en lugar del `Authorization: Bearer`.
+The backend must be running with the matching `AUTH_MODE=local`: the list comes from
+`GET /dev/identities`, which only exists in that mode, and calls identify themselves with
+the `X-Dev-User` header instead of `Authorization: Bearer`.
 
-Cualquier otro valor —o ninguno— usa Clerk. El seam está en `src/lib/auth/`: `mode.ts` decide y
-los adapters `clerk.tsx` / `local.tsx` exponen la misma interfaz (`AuthProvider`,
-`useAuthHeaders`, `UserMenu`, `SignInScreen`). **Ningún componente importa `@clerk/nextjs`
-directamente**; todos pasan por `@/lib/auth`, así que cambiar de modo no toca código de feature.
+Any other value — or none — uses Clerk. The seam is in `src/lib/auth/`: `mode.ts` decides
+and the `clerk.tsx` / `local.tsx` adapters expose the same interface (`AuthProvider`,
+`useAuthHeaders`, `UserMenu`, `SignInScreen`). **No component imports `@clerk/nextjs`
+directly**; everything goes through `@/lib/auth`, so switching modes touches no feature
+code.
 
-## Clerk (ADR-0004) — leer antes del primer login
+## Clerk (ADR-0004) — read before the first login
 
-Esta configuración se hace **una vez por entorno** (una instancia de Clerk = un entorno), antes
-del primer login.
+This configuration happens **once per environment** (one Clerk instance = one environment),
+before the first login.
 
-El token de sesión **por defecto de Clerk no trae `email` ni `name`**, y el backend los
-necesita para poblar el `Assessor` y decidir el rol del primer admin (`ADMIN_EMAILS`,
-ADR-0007). Por eso:
+Clerk's **default session token carries neither `email` nor `name`**, and the backend needs
+them to populate the `Assessor` and decide the first admin's role (`ADMIN_EMAILS`,
+ADR-0007). Therefore:
 
-1. En el dashboard de Clerk creá un **JWT template** (p.ej. `learnpack-evals`) con:
+1. In the Clerk dashboard create a **JWT template** (e.g. `learnpack-evals`) with:
    ```json
    { "email": "{{user.primary_email_address}}", "name": "{{user.full_name}}" }
    ```
-2. Poné ese nombre en `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`. El front pide el token con
-   `getToken({ template })` (ver `src/lib/api/hooks.ts`).
-3. **El template tiene que existir ANTES del primer login del admin** — si no, nace
-   `evaluator` y la allowlist no lo rescata (ver `../backend/README.md`).
+2. Put that name in `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`. The frontend requests the token with
+   `getToken({ template })` (see `src/lib/api/hooks.ts`).
+3. **The template must exist BEFORE the admin's first login** — otherwise they are born
+   `evaluator` and the allowlist does not rescue them (see `../backend/README.md`).
 
-Acceso **invite-only**: se configura en Clerk (Restrictions → Allowlist / invitations). Los
-evaluadores aparecen en el selector de asignación **después de su primer sign-in**.
+Access is **invite-only**: configured in Clerk (Restrictions → Allowlist / invitations).
+Evaluators appear in the assignment picker **after their first sign-in**.
 
-## Estructura
+## Structure
 
 ```
 src/
   app/
-    page.tsx                       # redirige según rol (admin → /admin, si no → /evaluations)
-    sign-in/[[...sign-in]]/        # <SignInScreen/> del adapter activo
-    evaluations/                   # flujo del evaluador (lista + wizard 3 pasos)
-    admin/                         # consola admin (courses, campaigns, reports)
+    page.tsx                       # redirects by role (admin → /admin, else → /evaluations)
+    sign-in/[[...sign-in]]/        # <SignInScreen/> of the active adapter
+    evaluations/                   # evaluator flow (list + 3-step wizard)
+    admin/                         # admin console: contents, generators, briefs,
+                                   # instruments (with Publish), profiles (extraction
+                                   # viewer), campaigns, reports
   components/
-    ui/                            # kit de UI (button, card, table, dialog, select…)
+    ui/                            # UI kit (button, card, table, dialog, select…)
     evaluator/                     # consume-content (iframe+fallback), score-form
     admin/                         # content-form, campaign-form, assign-form
   lib/
-    auth/                          # seam de identidad: mode.ts + clerk.tsx / local.tsx
+    auth/                          # identity seam: mode.ts + clerk.tsx / local.tsx
     api/                           # client.ts (fetch+headers), types.ts, hooks.ts (TanStack)
-    constants.ts                   # rubric id, LearnpackV1 metadata keys
-  middleware.ts                    # protege todo salvo /sign-in (Clerk o cookie local)
+    constants.ts                   # rubric id, package format
+  middleware.ts                    # protects everything but /sign-in (Clerk or local cookie)
 ```
 
-`src/lib/api/types.ts` es el espejo TypeScript del contrato de FastAPI (snake_case, 1:1 con
-los `response_model` de los routers).
+`src/lib/api/types.ts` is the TypeScript mirror of the FastAPI contract (snake_case, 1:1
+with the routers' `response_model`s).
 
-## iframe del contenido (§8)
+## Content iframe
 
-Los cursos de LearnPack **se dejan embeber**, así que el evaluador consume el contenido sin salir
-de la app. Pero el embed depende del sitio que sirve cada curso —`X-Frame-Options`/CSP
-`frame-ancestors` lo bloquean sin avisar y el iframe simplemente queda en blanco—, por eso el
-paso 2 (`components/evaluator/consume-content.tsx`) siempre tiene red: intenta el iframe y, si no
-reporta carga en ~3.5 s, muestra un aviso de "no se puede embeber"; el botón **"Abrir en pestaña
-nueva"** está visible siempre. Si aparece un curso servido desde otro dominio, chequear que siga
-funcionando.
+LearnPack courses **allow embedding**, so the evaluator consumes the content without
+leaving the app. But embedding depends on the site serving each course —
+`X-Frame-Options`/CSP `frame-ancestors` block it silently and the iframe just stays
+blank — so step 2 (`components/evaluator/consume-content.tsx`) always has a net: it tries
+the iframe and, if no load is reported within ~3.5 s, shows a "cannot embed" notice; the
+**"Open in a new tab"** button is always visible. If a course served from another domain
+shows up, check that it still works.
 
-## Deploy (Netlify, §10)
+## Deploy (Netlify)
 
-- Base dir `frontend` (ver `netlify.toml`, plugin `@netlify/plugin-nextjs`).
+- Base dir `frontend` (see `netlify.toml`, plugin `@netlify/plugin-nextjs`).
 - Env: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_API_URL`,
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
-- Sumá el origin de Netlify a `ALLOWED_ORIGINS` en el backend.
+- Add the Netlify origin to `ALLOWED_ORIGINS` in the backend.
 
-## Happy-path del demo
+## Demo happy path
 
-1. Login como **admin** → `/admin/contents`: alta de un curso (con una `consumable_url` real).
-2. `/admin/campaigns`: nueva campaña (quórum, cursos, `metadata_view`).
-3. Invitá/logueá un **evaluador** en Clerk → aparece en el selector → asignale el curso en
-   `/admin/campaigns/[id]`.
-4. Login como evaluador → `/evaluations` → wizard de 3 pasos → submit.
-5. Volvé a admin → progreso `1/1` + golden `usable` en el detalle de campaña; scores e
-   inter-rater en `/admin/reports`.
+1. Log in as **admin** → `/admin/contents`: register a course (with a real
+   `consumable_url`; optionally a generator, brief and package artifacts — with the
+   extraction accepted, registering auto-profiles it, visible in `/admin/profiles`).
+2. `/admin/campaigns`: new campaign (quorum, courses).
+3. Invite/log in an **evaluator** in Clerk → appears in the picker → assign them the course
+   in `/admin/campaigns/[id]`.
+4. Log in as the evaluator → `/evaluations` → 3-step wizard → submit.
+5. Back to admin → progress `1/1` + golden `usable` in the campaign detail; scores and
+   inter-rater in `/admin/reports`.
