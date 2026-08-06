@@ -9,7 +9,7 @@ Guía para generar el código de este repositorio. **Leer `docs/` antes de escri
 3. `docs/design/09-align-discover-qa.md` … `13-code-qa.md` — **el diseño vigente** (QA
    interno de generadores): estratégico (09–11), táctico por contexto (12) y plan de
    código (13).
-4. `docs/adr/` — decisiones inmutables: 0001–0008 (slice 1) · **0009–0019 (slice 2)**.
+4. `docs/adr/` — decisiones inmutables: 0001–0008 (slice 1) · **0009–0020 (slice 2)**.
 5. `STATUS.md` — en qué punto está el desarrollo **hoy**.
 
 ⚠️ `docs/design/01-…-08` son **snapshots históricos** del diseño que produjo el slice 1 —
