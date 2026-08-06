@@ -23,7 +23,10 @@ from app.modules.evaluation_design.domain.instrument import (
     Sufficiency,
     TaskModelBinding,
 )
-from app.modules.evaluation_design.domain.reference import DataRequirement
+from app.modules.evaluation_design.domain.reference import (
+    DataRequirement,
+    InvalidDataRequirement,
+)
 from app.shared.application.ports import UnitOfWorkPort
 
 
@@ -92,18 +95,24 @@ class ImportInstrumentDraft:
         self, spec: dict[str, Any], instrument: InstrumentVersion, revise_definitions: bool
     ) -> tuple[list[str], list[DefinitionRevision]]:
         known = self._data_requirements.get_all()
-        declared = {
-            str(raw["id"]): DataRequirement(
-                id=str(raw["id"]),
-                definition=str(raw.get("definition", "")),
-                aliases=tuple(raw.get("aliases", [])),
-                value_domain=raw.get("value_domain"),
-                grounded_in=tuple(raw.get("grounded_in", [])),
-            )
-            for raw in spec.get("data_requirements", [])
-        }
-
         problems: list[str] = []
+        declared: dict[str, DataRequirement] = {}
+        declared_ids: set[str] = set()  # includes the invalid ones: no cascading noise below
+        for raw in spec.get("data_requirements", []):
+            requirement_id = str(raw.get("id", ""))
+            declared_ids.add(requirement_id)
+            try:
+                declared[requirement_id] = DataRequirement(
+                    id=requirement_id,
+                    definition=str(raw.get("definition", "")),
+                    aliases=tuple(raw.get("aliases", [])),
+                    value_domain=raw.get("value_domain"),
+                    grounded_in=tuple(raw.get("grounded_in", [])),
+                )
+            except InvalidDataRequirement as exc:
+                # Collected, not raised: the author sees every problem in one run.
+                problems.append(str(exc))
+
         revised: list[DefinitionRevision] = []
         # Lint (ADR-0014): same id, different definition — search before minting.
         for requirement in declared.values():
@@ -125,7 +134,7 @@ class ImportInstrumentDraft:
                         f"existing: '{current.definition}' / imported: '{requirement.definition}'"
                     )
         # Every id a criterion requires must be defined somewhere (file or namespace).
-        available = set(known) | set(declared)
+        available = set(known) | declared_ids
         for criterion in instrument.criteria:
             unknown = set(criterion.required_data) - available
             if unknown:

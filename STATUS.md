@@ -35,9 +35,11 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 - **Decisiones tomadas durante la implementación:** **ADR-0017** (la superficie declarada del
   evaluando es el paquete — supersede ADR-0001; realizado en el bloque 5), **ADR-0018**
   (cobertura declarada del assessor + estado `not_assessed` — refina ADR-0016 §3; el bloque 6
-  lo realiza) y **ADR-0019** (cobertura por linaje de criteria + ratificación por versión del
-  instrumento — refina ADR-0016 §3 y ADR-0018; el bloque 6 lo realiza). GLOSSARY
-  re-actualizado (cinco estados; assessor automatizado por linaje).
+  lo realiza), **ADR-0019** (cobertura por linaje de criteria + ratificación por versión del
+  instrumento — refina ADR-0016 §3 y ADR-0018; el bloque 6 lo realiza) y **ADR-0020**
+  (`value_domain` obligatorio y verificado en `ContentProfile.ok()` — completa ADR-0014;
+  realizado antes del bloque 6, que es su primer consumidor). GLOSSARY re-actualizado
+  (cinco estados; assessor automatizado por linaje; `DataRequirement` con sus dos mitades).
 
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|
@@ -69,8 +71,14 @@ confirma antes de ejecutar). Hasta entonces queda en `draft` — la publicación
 acto humano (12-define, invariante 5). Los `data_requirement` ids minteados
 (`learning_objectives`, `target_audience`, `prerequisites`, `lesson_inventory`,
 `lesson_bodies`, `lesson_activities`) son el contrato contra el que el adapter
-`LearnpackV1` v2 declara sus capacidades. (`practice_exercises`, del borrador anterior,
-quedó huérfano en la tabla `data_requirements`: el import no borra; es inofensivo.)
+`LearnpackV1` v2 declara sus capacidades — ahora con su `value_domain` declarado y
+verificado (ADR-0020). (El huérfano `practice_exercises` lo retiró la migración `0008`.)
+
+**Runbook de la migración `0008`:** borra las filas de `data_requirements` sin
+`value_domain`, así que después de `alembic upgrade head` hay que volver a importar el
+instrumento (`import-instrument`) para re-crear el namespace; en local `seed-demo` ya lo
+hace. Los profiles ya persistidos no se re-verifican contra los value domains (un profile
+almacenado es un hecho pasado): para regenerarlos, `seed-demo --reset`.
 
 **Segundo input pendiente del equipo (bloque 5):** revisar las muestras de profile
 (`/admin/profiles` o `app.cli profile-content`) y **aceptar la extracción** cuando el equipo
@@ -80,7 +88,7 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
 
 ## Verificado
 
-- **Suite backend en verde: 247 tests** contra Postgres local (~10 s). Requiere
+- **Suite backend en verde: 314 tests** contra Postgres local (~10 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`
   (ahora también importa el draft del instrumento, acepta la extracción `LearnpackV1` y
@@ -105,14 +113,6 @@ la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en mod
   `package_format` y `rubric_version_id` → `instrument_version_id`.
 - **Rubric v1**: revisión ligera (anchors, definiciones) pendiente antes de la primera campaña
   de referencia (ADR-0015) — fuera del primer incremento del slice 2.
-- **Enforcement de `value_domain` sobre las entries del profile: sin dueño.** Hoy la forma
-  del valor de cada `data_requirement` vive solo en la prosa de su `definition`; nada valida
-  una `ProfileEntry` contra un value domain. El riesgo dispara con el segundo adapter que
-  cubra un mismo id con otra forma (estructural en ADR-0016: el assessor targetea
-  instrumento, no formato). Decidir en el bloque 6 vía ADR: dónde se valida (candidato:
-  `ContentProfile.ok()`, el chokepoint de todos los adapters) y qué vocabulario necesita
-  `value_domain` — la spec mínima de 13-code §7.4 no expresa formas compuestas como las de
-  `lesson_inventory` / `lesson_activities`.
 - **Intake mecánico del `GenerationBrief` desde el paquete LearnpackV1: pendiente**
   (PR chico de registry, antes o durante el bloque 7 — hoy todo contenido queda con
   `brief_id = null` y no puede entrar a datasets pareados). Diseño acordado, ADR al

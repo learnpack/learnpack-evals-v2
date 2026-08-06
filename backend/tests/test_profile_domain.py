@@ -11,7 +11,12 @@ from app.modules.content_profiling.domain.profile import (
 )
 from app.shared.domain.ids import new_id
 
-NAMESPACE = frozenset({"learning_objectives", "target_audience", "prerequisites"})
+# The namespace IS the declared shapes since ADR-0020: every canonical id carries one.
+VALUE_DOMAINS: dict[str, dict] = {
+    "learning_objectives": {"type": "string_list"},
+    "target_audience": {"type": "string"},
+    "prerequisites": {"type": "string_list"},
+}
 CAPABILITIES = frozenset({"learning_objectives", "target_audience"})
 
 
@@ -38,7 +43,7 @@ def ok_profile(**overrides) -> ContentProfile:
         "package_format": "LearnpackV1",
         "adapter_version": "learnpack-v1-adapter/1",
         "capabilities": CAPABILITIES,
-        "canonical_ids": NAMESPACE,
+        "value_domains": VALUE_DOMAINS,
         "entries": (entry(), absent("target_audience")),
     }
     fields.update(overrides)
@@ -98,6 +103,29 @@ def test_capabilities_outside_canonical_namespace_are_rejected():
             capabilities=frozenset({*CAPABILITIES, "made_up_datum"}),
             entries=(entry(), absent("target_audience"), absent("made_up_datum")),
         )
+
+
+# --- invariant 5: the declared shape (ADR-0020) ----------------------------------------
+
+
+def test_a_value_that_does_not_match_its_declared_domain_is_rejected():
+    """The defence against a second adapter covering an id with a different shape."""
+    with pytest.raises(InvalidProfile, match="value domain"):
+        ok_profile(entries=(entry(value=[{"objective": "Explain X"}]), absent("target_audience")))
+
+
+def test_the_violation_names_the_requirement_and_what_it_expected():
+    with pytest.raises(InvalidProfile) as raised:
+        ok_profile(entries=(entry(value="Explain X"), absent("target_audience")))
+    message = str(raised.value)
+    assert "learning_objectives" in message
+    assert "expected string_list" in message
+
+
+def test_an_absent_entry_is_not_shape_checked():
+    """Absence is the finding, not a shape — and it carries no value to check."""
+    profile = ok_profile(entries=(absent("learning_objectives"), absent("target_audience")))
+    assert profile.status == "ok"
 
 
 def test_duplicate_entries_are_rejected():

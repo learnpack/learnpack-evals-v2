@@ -50,7 +50,8 @@
   (reference data).
 - **ContentProfile** — representación **canónica** de lo que un `ContentPackage` contiene
   pedagógicamente, producida por un extraction adapter por `PackageFormat`. Datos keyados por
-  los ids de datos de ADR-0014, cada uno con su `EvidenceProvenance`. **Se persiste** (reusable
+  los ids de datos de ADR-0014, cada uno con su `EvidenceProvenance` y **con la forma que
+  declara su `DataRequirement`** (verificada al construirlo — ADR-0020). **Se persiste** (reusable
   entre instrumentos) y lleva la **versión del adapter** en su provenance. Los criteria operan
   sobre el profile, nunca sobre el contenido crudo.
 - **EvidenceProvenance** — origen de cada dato extraído:
@@ -111,6 +112,13 @@
 - **EvidenceModel** — para cada claim: qué evidencia lo soporta/refuta, qué observables la
   constituyen y qué **datos requiere** (ahí se mintean los ids — ADR-0014; el "diccionario" es
   una vista generada, no un artefacto).
+- **DataRequirement** — un id del namespace de la demanda, minteado al escribir un evidence
+  rule que necesita un dato sin id. Lleva dos cosas obligatorias, escritas en ese mismo acto:
+  **definición** (qué *significa* el dato — ADR-0014) y **`value_domain`** (qué *forma* toma —
+  ADR-0020: `string · number · boolean · string_list · record · record_list`, con `nullable`
+  por campo, que significa "presente y puede ser null", nunca "puede faltar"). Las dos mitades
+  son el contrato: los adapters declaran sus capacidades contra el id y el `ContentProfile`
+  verifica la forma contra el value domain.
 - **Sufficiency** *(antes `Assembly` — el término ECD; renombrada por claridad en el plan de
   código, `design/13-code-qa.md` §7)* — cuánta evidencia basta **por claim**, decidido en
   diseño; expresada con la taxonomía psicométrica de modelos de decisión: `conjunctive`

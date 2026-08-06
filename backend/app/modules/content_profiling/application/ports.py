@@ -6,7 +6,8 @@ testable with frozen fixtures — the investment of this context goes to fixture
 model.
 """
 
-from typing import Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 from uuid import UUID
 
 from app.modules.content_profiling.application.dtos import PackageDTO
@@ -50,9 +51,13 @@ class ContentGatewayPort(Protocol):
 
 
 class DataRequirementNamespacePort(Protocol):
-    """The canonical demand-side namespace minted by Evaluation Design (ADR-0014)."""
+    """The canonical demand-side namespace minted by Evaluation Design (ADR-0014).
 
-    def canonical_ids(self) -> frozenset[str]: ...
+    Each id comes with its declared value domain (ADR-0020) — mandatory there, so the
+    key set IS the namespace and the shapes travel with it in one read.
+    """
+
+    def value_domains(self) -> Mapping[str, dict[str, Any]]: ...
 
 
 class ProfileRepositoryPort(Protocol):

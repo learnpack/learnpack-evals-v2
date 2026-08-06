@@ -4,6 +4,8 @@ They translate foreign DTOs into this module's own shapes at the boundary, so th
 application layer stays free of foreign types (ARCHITECTURE.md §3).
 """
 
+from collections.abc import Mapping
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -47,5 +49,5 @@ class DesignNamespaceGateway:
     def __init__(self, session: Session) -> None:
         self._queries = InstrumentQueries(session)
 
-    def canonical_ids(self) -> frozenset[str]:
-        return frozenset(r.id for r in self._queries.get_data_requirements())
+    def value_domains(self) -> Mapping[str, dict[str, Any]]:
+        return {r.id: r.value_domain for r in self._queries.get_data_requirements()}

@@ -4,7 +4,6 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from sqlalchemy import text
 
 from app.modules.content_profiling.application.profile_content import (
     ProfileContent,
@@ -28,15 +27,8 @@ from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
-# The namespace the instrument mints; the adapter supplies only the lesson ids (ADR-0017).
-REQUIREMENT_IDS = (
-    "learning_objectives",
-    "target_audience",
-    "prerequisites",
-    "lesson_inventory",
-    "lesson_bodies",
-    "lesson_activities",
-)
+# The namespace the instrument mints comes from the `namespace` fixture (conftest); the
+# adapter supplies only the lesson ids (ADR-0017).
 CAPABILITY_IDS = {"lesson_inventory", "lesson_bodies", "lesson_activities"}
 
 
@@ -47,21 +39,6 @@ def admin(as_user, cleanup, promote, unique):
     cleanup["assessors"].append(client.get("/me").json()["assessor_id"])
     promote(email)
     return client
-
-
-@pytest.fixture
-def namespace(cleanup):
-    with SessionLocal() as session:
-        for requirement_id in REQUIREMENT_IDS:
-            session.execute(
-                text(
-                    "INSERT INTO data_requirements (id, definition) "
-                    "VALUES (:id, :definition) ON CONFLICT (id) DO NOTHING"
-                ),
-                {"id": requirement_id, "definition": f"test definition of {requirement_id}"},
-            )
-            cleanup["data_requirements"].append(requirement_id)
-        session.commit()
 
 
 @pytest.fixture

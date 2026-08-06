@@ -84,7 +84,7 @@ class DataRequirementDTO:
     id: str
     definition: str
     aliases: list[str]
-    value_domain: dict[str, Any] | None
+    value_domain: dict[str, Any]  # mandatory since ADR-0020
     grounded_in: list[str]
 
 

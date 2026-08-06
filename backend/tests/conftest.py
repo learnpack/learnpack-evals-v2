@@ -1,12 +1,59 @@
+import json
 import os
+import pathlib
 import uuid
 from collections.abc import Iterator
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.config import get_settings
+
+# The instrument the team authors — the single source of the declared value domains
+# (ADR-0020). Tests mint the namespace from this file rather than from a copy, so a
+# profiling fixture can never pass against a shape the real instrument does not declare.
+INSTRUMENT_SPEC_FILE = (
+    pathlib.Path(__file__).resolve().parents[2]
+    / "docs"
+    / "seed"
+    / "instruments"
+    / "learnpack-course-qa-v1.yaml"
+)
+
+
+def declared_value_domains() -> dict[str, dict]:
+    spec = yaml.safe_load(INSTRUMENT_SPEC_FILE.read_text(encoding="utf-8"))
+    return {r["id"]: r["value_domain"] for r in spec["data_requirements"]}
+
+
+@pytest.fixture
+def namespace(cleanup):
+    """Mint the canonical demand-side namespace extraction adapters conform to.
+
+    Normally the instrument import's job (ADR-0014). Ids and value domains both come from
+    the shipped instrument, so what an adapter produces in a test is checked against the
+    shape the team actually declared — not against a copy that can drift.
+    """
+    from app.platform.db import SessionLocal
+
+    with SessionLocal() as session:
+        for requirement_id, domain in declared_value_domains().items():
+            session.execute(
+                text(
+                    "INSERT INTO data_requirements (id, definition, value_domain) "
+                    "VALUES (:id, :definition, cast(:value_domain as jsonb)) "
+                    "ON CONFLICT (id) DO NOTHING"
+                ),
+                {
+                    "id": requirement_id,
+                    "definition": f"test definition of {requirement_id}",
+                    "value_domain": json.dumps(domain),
+                },
+            )
+            cleanup["data_requirements"].append(requirement_id)
+        session.commit()
 
 # --- where the suite runs -------------------------------------------------------------
 # Redirected at import time, before anything can build an engine. With TEST_DATABASE_URL

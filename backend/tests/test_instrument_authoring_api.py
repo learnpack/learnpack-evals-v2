@@ -44,6 +44,7 @@ def spec(unique: str, **overrides) -> dict:
             {
                 "id": f"objectives_{unique}",
                 "definition": "Learning objectives declared by the content.",
+                "value_domain": {"type": "string_list"},
             }
         ],
         "claims": [
@@ -122,7 +123,11 @@ def test_import_creates_a_draft_and_reimport_replaces_it(admin_client, cleanup, 
 def test_import_lints_conflicting_data_requirement_definitions(cleanup, unique, session):
     requirement_id = f"objectives_{unique}"
     SqlAlchemyDataRequirementRepository(session).upsert(
-        DataRequirement(id=requirement_id, definition="Something else entirely.")
+        DataRequirement(
+            id=requirement_id,
+            definition="Something else entirely.",
+            value_domain={"type": "string_list"},
+        )
     )
     session.commit()
     cleanup["data_requirements"].append(requirement_id)
@@ -134,7 +139,11 @@ def test_import_lints_conflicting_data_requirement_definitions(cleanup, unique, 
 def test_import_revise_definitions_updates_and_reports(cleanup, unique, session):
     requirement_id = f"objectives_{unique}"
     SqlAlchemyDataRequirementRepository(session).upsert(
-        DataRequirement(id=requirement_id, definition="Something else entirely.")
+        DataRequirement(
+            id=requirement_id,
+            definition="Something else entirely.",
+            value_domain={"type": "string_list"},
+        )
     )
     session.commit()
     cleanup["data_requirements"].append(requirement_id)

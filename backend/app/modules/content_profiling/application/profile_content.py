@@ -91,7 +91,7 @@ class ProfileContent:
                 package_format=package.package_format,
                 adapter_version=adapter.adapter_version,
                 capabilities=adapter.capabilities,
-                canonical_ids=self._namespace.canonical_ids(),
+                value_domains=self._namespace.value_domains(),
                 entries=entries,
                 extras=extras,
             )
