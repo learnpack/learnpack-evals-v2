@@ -15,6 +15,8 @@ from app.modules.content_profiling.infrastructure.adapters.learnpack_v1 import (
 )
 from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
 from app.shared.domain.ids import new_id
+from app.shared.domain.value_domain import check_value, validate_spec
+from tests.conftest import declared_value_domains
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 
@@ -222,8 +224,38 @@ def test_extraction_satisfies_the_profile_aggregate(adapter, fetcher):
         package_format="LearnpackV1",
         adapter_version=ADAPTER_VERSION,
         capabilities=CAPABILITIES,
-        canonical_ids=CAPABILITIES,
+        value_domains=declared_value_domains(),
         entries=entries,
         extras=extras,
     )
     assert profile.status == "ok"
+
+
+@pytest.mark.parametrize(
+    "course",
+    ["object-representation-in-python", "introduction-to-generative-ai", "bare-course"],
+)
+def test_every_extracted_value_matches_the_declared_value_domain(adapter, fetcher, course):
+    """Supply meets demand on SHAPE, over real packages (ADR-0020).
+
+    The shapes come from the instrument the team authors, so this is the test that keeps
+    the value domains honest: change what the adapter emits without changing the
+    declaration (or the reverse) and it fails here, not in an assessor months later.
+    """
+    domains = declared_value_domains()
+    entries, _ = adapter.extract(fixture_package(course), fetcher)
+
+    problems = [
+        problem
+        for e in entries
+        if e.provenance != "absent"
+        for problem in check_value(e.value, domains[e.data_requirement_id], e.data_requirement_id)
+    ]
+    assert problems == []
+
+
+def test_the_declared_value_domains_are_well_formed():
+    """Every capability the adapter claims has a usable declaration behind it."""
+    domains = declared_value_domains()
+    assert CAPABILITIES <= set(domains)
+    assert [p for d in domains.values() for p in validate_spec(d)] == []

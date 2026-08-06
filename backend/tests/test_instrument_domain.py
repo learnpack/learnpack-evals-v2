@@ -115,7 +115,34 @@ def test_incomplete_criteria_are_rejected(overrides):
 
 def test_data_requirement_definition_is_mandatory():
     with pytest.raises(InvalidDataRequirement, match="definition"):
-        DataRequirement(id="learning_objectives", definition="  ")
+        DataRequirement(
+            id="learning_objectives", definition="  ", value_domain={"type": "string_list"}
+        )
+
+
+def test_data_requirement_value_domain_is_mandatory():
+    """ADR-0020: the shape is declared where the id is minted, or nothing can check it."""
+    with pytest.raises(InvalidDataRequirement, match="value_domain"):
+        DataRequirement(
+            id="learning_objectives", definition="The declared objectives.", value_domain={}
+        )
+
+
+@pytest.mark.parametrize(
+    "domain",
+    [
+        {"type": "list_of_strings"},  # not a type this vocabulary knows
+        {"type": "record"},  # a record without fields declares nothing
+        {"type": "record_list", "feilds": {"slug": {"type": "string"}}},  # typo
+        {"type": "string", "fields": {"slug": {"type": "string"}}},  # fields do not apply
+        {"type": "record_list", "fields": {"slug": {"type": "strng"}}},  # bad nested type
+    ],
+)
+def test_a_malformed_value_domain_is_rejected_at_minting(domain):
+    with pytest.raises(InvalidDataRequirement):
+        DataRequirement(
+            id="lesson_inventory", definition="The declared lesson index.", value_domain=domain
+        )
 
 
 # ------------------------------------------------------------------ publish invariants

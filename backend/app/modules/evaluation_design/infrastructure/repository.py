@@ -389,9 +389,7 @@ class SqlAlchemyDataRequirementRepository:
                 "id": requirement.id,
                 "definition": requirement.definition,
                 "aliases": json.dumps(list(requirement.aliases)),
-                "value_domain": (
-                    json.dumps(requirement.value_domain) if requirement.value_domain else None
-                ),
+                "value_domain": json.dumps(requirement.value_domain),
                 "grounded_in": json.dumps(list(requirement.grounded_in)),
             },
         )

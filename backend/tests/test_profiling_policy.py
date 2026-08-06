@@ -11,18 +11,8 @@ from sqlalchemy import text
 
 from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
 from app.modules.content_profiling.infrastructure.policies import on_content_version_registered
-from app.platform.db import SessionLocal
 from app.shared.domain.events import DomainEvent
 from app.shared.domain.ids import new_id
-
-REQUIREMENT_IDS = (
-    "learning_objectives",
-    "target_audience",
-    "prerequisites",
-    "lesson_inventory",
-    "lesson_bodies",
-    "lesson_activities",
-)
 
 
 @pytest.fixture
@@ -32,21 +22,6 @@ def admin(as_user, cleanup, promote, unique):
     cleanup["assessors"].append(client.get("/me").json()["assessor_id"])
     promote(email)
     return client
-
-
-@pytest.fixture
-def namespace(cleanup):
-    with SessionLocal() as session:
-        for requirement_id in REQUIREMENT_IDS:
-            session.execute(
-                text(
-                    "INSERT INTO data_requirements (id, definition) "
-                    "VALUES (:id, :definition) ON CONFLICT (id) DO NOTHING"
-                ),
-                {"id": requirement_id, "definition": f"test definition of {requirement_id}"},
-            )
-            cleanup["data_requirements"].append(requirement_id)
-        session.commit()
 
 
 @pytest.fixture

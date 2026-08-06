@@ -37,18 +37,31 @@ bindings:
 # The demand-side namespace this instrument mints (ADR-0014). Definitions are mandatory:
 # they ARE the vocabulary. The LearnpackV1 extraction adapter declares its capabilities
 # against exactly these ids.
+#
+# `value_domain` is mandatory too (ADR-0020): the definition says what the datum MEANS,
+# the value domain says what shape it TAKES, so `ContentProfile.ok()` can reject an
+# extraction that disagrees instead of letting a mis-shaped value reach an assessor and
+# produce a cited `fail` for a defect that does not exist. A record declares the fields
+# that must be there; extra fields are allowed, so an adapter can add one without forcing
+# an instrument version bump. `nullable: true` marks the fields the adapter can honestly
+# emit as null (an absent manifest key, a lesson with no English title) — it is NOT
+# optionality: the field must still be present, because an adapter says "I looked and
+# there was nothing" by emitting null, never by omitting the key.
 data_requirements:
   - id: learning_objectives
     definition: >
       The learning objectives the content declares, as a list of statements, taken from
       declared metadata or the package manifest — never reconstructed from the body.
+    value_domain: { type: string_list }
     grounded_in: ["Biggs"]
   - id: target_audience
     definition: >
       The audience the content declares it is for, as a free-text statement.
+    value_domain: { type: string }
   - id: prerequisites
     definition: >
       The prior knowledge the content declares as required, as a list of statements.
+    value_domain: { type: string_list }
     grounded_in: ["Learning Progressions"]
   - id: lesson_inventory
     definition: >
@@ -59,6 +72,14 @@ data_requirements:
       lesson is the closing slot. Descriptions are deliberately excluded: the manifest's
       descriptions are machine-generated summaries of the content, not the generator's
       declaration — judging from them would judge the summarizer.
+    value_domain:
+      type: record_list
+      fields:
+        lessonId: { type: string }
+        slug: { type: string }
+        position: { type: number, nullable: true }
+        type: { type: string, nullable: true }
+        title: { type: string, nullable: true }
     grounded_in: ["Schmidt", "Learning Progressions"]
   - id: lesson_bodies
     definition: >
@@ -66,12 +87,32 @@ data_requirements:
       where each entry carries the lesson slug, identifier and markdown body. This is
       the content itself — the evidence base for every judgment about what the lessons
       actually develop.
+    value_domain:
+      type: record_list
+      fields:
+        lessonSlug: { type: string }
+        lessonId: { type: string, nullable: true }  # a body with no entry in the index
+        body: { type: string }
   - id: lesson_activities
     definition: >
       The learner-facing activities each lesson contains, as a list where each entry
       carries the lesson slug and identifier, per-type counts of embedded assessment
       activities (multiple choice, open question, select the blank, ordering, fill in
       the blank) and the code-exercise files present.
+    value_domain:
+      type: record_list
+      fields:
+        lessonSlug: { type: string }
+        lessonId: { type: string, nullable: true }
+        activities:
+          type: record
+          fields:
+            multipleChoice: { type: number }
+            openQuestion: { type: number }
+            selectTheBlank: { type: number }
+            ordering: { type: number }
+            fillInTheBlank: { type: number }
+        codeExercises: { type: string_list }
     grounded_in: ["Merrill"]
 
 claims:

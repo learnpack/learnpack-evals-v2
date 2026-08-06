@@ -39,33 +39,10 @@ from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
-# The namespace the instrument mints (demand); the adapter supplies only the lesson ids —
-# the metadata-sourced ones have no supplier since ADR-0017 (unmet demand, not_applicable).
-REQUIREMENT_IDS = (
-    "learning_objectives",
-    "target_audience",
-    "prerequisites",
-    "lesson_inventory",
-    "lesson_bodies",
-    "lesson_activities",
-)
+# The namespace the instrument mints (demand) comes from the `namespace` fixture
+# (conftest); the adapter supplies only the lesson ids — the metadata-sourced ones have no
+# supplier since ADR-0017 (unmet demand, not_applicable).
 CAPABILITY_IDS = {"lesson_inventory", "lesson_bodies", "lesson_activities"}
-
-
-@pytest.fixture
-def namespace(cleanup):
-    """Mint the canonical ids the adapter conforms to (normally the instrument import's job)."""
-    with SessionLocal() as session:
-        for requirement_id in REQUIREMENT_IDS:
-            session.execute(
-                text(
-                    "INSERT INTO data_requirements (id, definition) "
-                    "VALUES (:id, :definition) ON CONFLICT (id) DO NOTHING"
-                ),
-                {"id": requirement_id, "definition": f"test definition of {requirement_id}"},
-            )
-            cleanup["data_requirements"].append(requirement_id)
-        session.commit()
 
 
 @pytest.fixture
