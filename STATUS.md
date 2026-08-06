@@ -33,9 +33,11 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
   automatizados uniformes). GLOSSARY actualizado (eje Source `human | automated`;
   `Sufficiency` ex assembly); ARCHITECTURE y CLAUDE.md re-apuntados.
 - **Decisiones tomadas durante la implementación:** **ADR-0017** (la superficie declarada del
-  evaluando es el paquete — supersede ADR-0001; realizado en el bloque 5) y **ADR-0018**
+  evaluando es el paquete — supersede ADR-0001; realizado en el bloque 5), **ADR-0018**
   (cobertura declarada del assessor + estado `not_assessed` — refina ADR-0016 §3; el bloque 6
-  lo realiza). GLOSSARY re-actualizado con el desenlace de cinco estados.
+  lo realiza) y **ADR-0019** (cobertura por linaje de criteria + ratificación por versión del
+  instrumento — refina ADR-0016 §3 y ADR-0018; el bloque 6 lo realiza). GLOSSARY
+  re-actualizado (cinco estados; assessor automatizado por linaje).
 
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|

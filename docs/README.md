@@ -43,7 +43,8 @@ local mode (no Clerk, no Neon) · `0009` extraction without inference · `0010` 
 verifiable conditions · `0011` no single aggregate score · `0012` genesis of instruments ·
 `0013` design with ECD-lite · `0014` vocabulary in evidence models · `0015` human reference in
 two layers · `0016` uniform automated assessors · `0017` the declared surface is the package ·
-`0018` declared assessor coverage + `not_assessed`.
+`0018` declared assessor coverage + `not_assessed` · `0019` assessor coverage by criterion
+lineage + per-version ratification.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
