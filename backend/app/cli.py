@@ -1,5 +1,6 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
-import-instrument | publish-instrument | profile-content | accept-extraction | reprofile`.
+import-instrument | publish-instrument | bump-instrument | profile-content |
+accept-extraction | reprofile`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -10,6 +11,7 @@ into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -295,11 +297,13 @@ def run_set_role(email: str, role: str) -> int:
     return 0
 
 
-def run_import_instrument(spec_file: Path) -> int:
+def run_import_instrument(spec_file: Path, revise_definitions: bool = False) -> int:
     """Create or replace an instrument DRAFT from an authored YAML (13-code-qa §3.3).
 
     Publishing stays a separate, human act (`publish-instrument` or the admin endpoint):
     nothing produced by assistance reaches Published without one (design 12, inv. 5).
+    `--revise-definitions` is the deliberate act that lets a data requirement's
+    definition be reworded in place; without it the ADR-0014 lint blocks the import.
     """
     spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
     with SessionLocal() as session:
@@ -310,7 +314,9 @@ def run_import_instrument(spec_file: Path) -> int:
             uow=uow,
         )
         try:
-            result = use_case(ImportInstrumentDraftCommand(spec=spec))
+            result = use_case(
+                ImportInstrumentDraftCommand(spec=spec, revise_definitions=revise_definitions)
+            )
         except InstrumentImportError as exc:
             for problem in exc.problems:
                 print(f"  LINT  {problem}", file=sys.stderr)
@@ -319,15 +325,25 @@ def run_import_instrument(spec_file: Path) -> int:
             print(str(exc), file=sys.stderr)
             return 1
 
+    for revision in result.revised_data_requirements:
+        print(f"  REVISED {revision.id}:")
+        print(f"    old: {revision.old_definition}")
+        print(f"    new: {revision.new_definition}")
     instrument = result.instrument
     minted = (
         f", minted data requirements: {', '.join(result.minted_data_requirements)}"
         if result.minted_data_requirements
         else ""
     )
+    revised = (
+        f", revised definitions: {', '.join(r.id for r in result.revised_data_requirements)}"
+        if result.revised_data_requirements
+        else ""
+    )
     print(
         f"draft {instrument.id}: {len(instrument.claims)} claims, "
-        f"{len(instrument.criteria)} criteria, {len(instrument.bindings)} binding(s){minted}"
+        f"{len(instrument.criteria)} criteria, "
+        f"{len(instrument.bindings)} binding(s){minted}{revised}"
     )
     return 0
 
@@ -358,6 +374,140 @@ def run_publish_instrument(instrument_version_id: str, email: str) -> int:
             return 1
 
     print(f"published {instrument.id} (by {email})")
+    return 0
+
+
+_VERSION_COMPONENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _next_version(version: str) -> str | None:
+    """v1 -> v2; None when the scheme is not v<n> (the caller then requires --to)."""
+    match = re.fullmatch(r"v(\d+)", version)
+    return f"v{int(match.group(1)) + 1}" if match else None
+
+
+def _replace_top_level_entry(source: str, key: str, entry_line: str) -> str | None:
+    """Textually replace a top-level YAML entry (key line + indented continuation,
+    covering block scalars) with `entry_line`; if the key is absent, insert the line
+    right after the top-level `version:` entry. None when neither anchor exists."""
+    lines = source.splitlines()
+    trailing_newline = "\n" if source.endswith("\n") else ""
+    key_pattern = re.compile(rf"^{re.escape(key)}:(\s|$)")
+
+    for index, line in enumerate(lines):
+        if not key_pattern.match(line):
+            continue
+        end = index + 1
+        while end < len(lines):
+            if lines[end].startswith((" ", "\t")):
+                end += 1
+            elif (
+                lines[end].strip() == ""
+                and end + 1 < len(lines)
+                and lines[end + 1].startswith((" ", "\t"))
+            ):
+                end += 1  # blank line inside the block, not a separator
+            else:
+                break
+        return "\n".join(lines[:index] + [entry_line] + lines[end:]) + trailing_newline
+
+    for index, line in enumerate(lines):
+        if re.match(r"^version:(\s|$)", line):
+            return "\n".join(lines[: index + 1] + [entry_line] + lines[index + 1 :]) + (
+                trailing_newline
+            )
+    return None
+
+
+def run_bump_instrument(spec_file: Path, to_version: str | None, reason: str | None) -> int:
+    """Clone an instrument YAML into the next version's file — textually, so the
+    header comments and block-scalar style survive (they are part of the authored
+    artifact; a parse/dump round-trip would destroy them). Writes the new file only;
+    importing and publishing stay separate acts."""
+    source_text = spec_file.read_text(encoding="utf-8")
+    try:
+        spec = yaml.safe_load(source_text)
+    except yaml.YAMLError as exc:
+        print(f"cannot parse {spec_file}: {exc}", file=sys.stderr)
+        return 1
+    if not isinstance(spec, dict) or "instrument_id" not in spec or "version" not in spec:
+        print(f"{spec_file} has no top-level instrument_id/version", file=sys.stderr)
+        return 1
+    instrument_id = str(spec["instrument_id"])
+    old_version = str(spec["version"])
+
+    new_version = to_version or _next_version(old_version)
+    if new_version is None:
+        print(
+            f"cannot infer the next version from {old_version!r} (expected v<n>): pass --to",
+            file=sys.stderr,
+        )
+        return 1
+    if new_version == old_version:
+        print(f"target version equals the current one ({old_version})", file=sys.stderr)
+        return 1
+    if not _VERSION_COMPONENT.fullmatch(new_version):
+        print(
+            f"invalid target version {new_version!r} (allowed: letters, digits, '.', '_', '-')",
+            file=sys.stderr,
+        )
+        return 1
+
+    target_file = spec_file.with_name(f"{instrument_id}-{new_version}.yaml")
+    if target_file.exists():
+        print(f"target file already exists: {target_file}", file=sys.stderr)
+        return 1
+
+    new_id = f"{instrument_id}-{new_version}"
+    with SessionLocal() as session:  # read-only: collision check + source status
+        repository = SqlAlchemyInstrumentRepository(session)
+        existing = repository.get(new_id)
+        if existing is not None:
+            print(
+                f"instrument version {new_id} already exists in the db ({existing.status})",
+                file=sys.stderr,
+            )
+            return 1
+        source_in_db = repository.get(f"{instrument_id}-{old_version}")
+
+    transformed = _replace_top_level_entry(source_text, "version", f"version: {new_version}")
+    if transformed is None:
+        print(f"no top-level 'version:' line found in {spec_file}", file=sys.stderr)
+        return 1
+    if reason is not None:
+        transformed = _replace_top_level_entry(
+            transformed, "revision_reason", f"revision_reason: {json.dumps(reason)}"
+        )
+        if transformed is None:  # unreachable once version replaced; belt and braces
+            print(f"cannot place revision_reason in {spec_file}", file=sys.stderr)
+            return 1
+
+    # Self-check before writing: the textual edit must round-trip to exactly the
+    # intended spec — never write an unverified file.
+    try:
+        check = yaml.safe_load(transformed)
+    except yaml.YAMLError:
+        check = None
+    if (
+        not isinstance(check, dict)
+        or check.get("instrument_id") != instrument_id
+        or check.get("version") != new_version
+        or (reason is not None and check.get("revision_reason") != reason)
+    ):
+        print(
+            "textual bump produced an unexpected result; nothing written — bump by hand",
+            file=sys.stderr,
+        )
+        return 1
+
+    target_file.write_text(transformed, encoding="utf-8")
+    print(f"wrote {target_file} ({instrument_id} {old_version} -> {new_version})")
+    status = source_in_db.status if source_in_db is not None else "not imported"
+    print(f"source {instrument_id}-{old_version} in db: {status}")
+    print("next steps:")
+    print("  1. review the new file (update header comments that mention the old version)")
+    print(f"  2. python -m app.cli import-instrument --file {target_file}")
+    print(f"  3. python -m app.cli publish-instrument --id {new_id} --email <admin>")
     return 0
 
 
@@ -895,6 +1045,13 @@ def main(argv: list[str] | None = None) -> int:
         "import-instrument", help="create or replace an instrument DRAFT from a YAML spec"
     )
     import_instrument_parser.add_argument("--file", type=Path, required=True)
+    import_instrument_parser.add_argument(
+        "--revise-definitions",
+        action="store_true",
+        dest="revise_definitions",
+        help="allow rewording an existing data requirement's definition (deliberate act; "
+        "without it the ADR-0014 lint blocks the import)",
+    )
 
     publish_instrument_parser = subparsers.add_parser(
         "publish-instrument", help="publish a draft instrument (the human act)"
@@ -903,6 +1060,17 @@ def main(argv: list[str] | None = None) -> int:
     publish_instrument_parser.add_argument(
         "--email", required=True, help="the admin performing the act (published_by)"
     )
+
+    bump_instrument_parser = subparsers.add_parser(
+        "bump-instrument",
+        help="clone an instrument YAML into the next draft version "
+        "(textual: comments and style survive)",
+    )
+    bump_instrument_parser.add_argument("--file", type=Path, required=True)
+    bump_instrument_parser.add_argument(
+        "--to", dest="to_version", help="target version (default: v<n> -> v<n+1>)"
+    )
+    bump_instrument_parser.add_argument("--reason", help="sets revision_reason in the new file")
 
     profile_parser = subparsers.add_parser(
         "profile-content", help="extract a cited profile for one content (manual)"
@@ -949,9 +1117,14 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
-        return run_import_instrument(args.file)
+        return run_import_instrument(args.file, args.revise_definitions)
     elif args.command == "publish-instrument":
         return run_publish_instrument(args.instrument_version_id, args.email)
+    elif args.command == "bump-instrument":
+        if not args.file.exists():
+            print(f"file not found: {args.file}", file=sys.stderr)
+            return 1
+        return run_bump_instrument(args.file, args.to_version, args.reason)
     elif args.command == "profile-content":
         return run_profile_content(args.content_id, args.base_dir)
     elif args.command == "accept-extraction":

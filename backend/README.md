@@ -254,6 +254,13 @@ Two aggregation rules not to confuse:
   Publishing is a human act — the Publish button in `/admin/instruments` or
   `uv run python -m app.cli publish-instrument --id <version-id> --email <admin>`;
   published versions are immutable.
+- **Iterating a version** starts with
+  `uv run python -m app.cli bump-instrument --file <yaml> [--to vN] [--reason "..."]`:
+  it clones the YAML into the next version's file **textually** (header comments and
+  block-scalar style survive), then the flow is edit → `import-instrument` →
+  `publish-instrument`. To reword the definition of an **existing** `data_requirement`
+  (same meaning, better wording), pass `--revise-definitions` to `import-instrument` —
+  the deliberate act that lifts the ADR-0014 lint and reports each old→new revision.
 - **Extraction** (`content_profiling`): the `LearnpackV1` adapter derives a cited profile
   from the package's artifacts — no inference, absence is a result (ADR-0009). Automatic
   profiling on registration is armed by the human acceptance of the adapter version:

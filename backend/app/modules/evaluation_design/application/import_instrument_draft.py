@@ -3,8 +3,10 @@
 The spec arrives as plain data (the YAML is parsed at the edge — CLI). Data
 requirements referenced by criteria are minted here, definition included, with the
 ADR-0014 lint: an existing id whose definition differs is an error, never a silent
-overwrite. Draft edits publish no event (first-increment mark) — the publication
-event is the contract.
+overwrite. `revise_definitions` is the deliberate act that lifts the lint — the
+differing definition is applied and reported as a revision (same meaning, better
+wording; judging sameness stays human). Draft edits publish no event
+(first-increment mark) — the publication event is the contract.
 """
 
 from dataclasses import dataclass, field
@@ -36,12 +38,23 @@ class InstrumentImportError(Exception):
 @dataclass(frozen=True)
 class ImportInstrumentDraftCommand:
     spec: dict[str, Any]
+    revise_definitions: bool = False
+
+
+@dataclass(frozen=True)
+class DefinitionRevision:
+    """A definition overwrite the author explicitly asked for (`revise_definitions`)."""
+
+    id: str
+    old_definition: str
+    new_definition: str
 
 
 @dataclass(frozen=True)
 class ImportResult:
     instrument: InstrumentVersion
     minted_data_requirements: list[str] = field(default_factory=list)
+    revised_data_requirements: list[DefinitionRevision] = field(default_factory=list)
 
 
 class ImportInstrumentDraft:
@@ -63,15 +76,21 @@ class ImportInstrumentDraft:
         if existing is not None:
             existing.require_editable()  # published → InstrumentImmutable ("bump the version")
 
-        minted = self._mint_data_requirements(spec, instrument)
+        minted, revised = self._mint_data_requirements(
+            spec, instrument, revise_definitions=command.revise_definitions
+        )
 
         self._instruments.save_draft(instrument)
         self._uow.commit()
-        return ImportResult(instrument=instrument, minted_data_requirements=minted)
+        return ImportResult(
+            instrument=instrument,
+            minted_data_requirements=minted,
+            revised_data_requirements=revised,
+        )
 
     def _mint_data_requirements(
-        self, spec: dict[str, Any], instrument: InstrumentVersion
-    ) -> list[str]:
+        self, spec: dict[str, Any], instrument: InstrumentVersion, revise_definitions: bool
+    ) -> tuple[list[str], list[DefinitionRevision]]:
         known = self._data_requirements.get_all()
         declared = {
             str(raw["id"]): DataRequirement(
@@ -85,16 +104,26 @@ class ImportInstrumentDraft:
         }
 
         problems: list[str] = []
+        revised: list[DefinitionRevision] = []
         # Lint (ADR-0014): same id, different definition — search before minting.
         for requirement in declared.values():
             current = known.get(requirement.id)
             if current is not None and current.definition != requirement.definition:
-                problems.append(
-                    f"data requirement '{requirement.id}' already exists with a different "
-                    f"definition — same meaning → keep the definition (or add an alias); "
-                    f"similar-but-different → mint a new id. "
-                    f"existing: '{current.definition}' / imported: '{requirement.definition}'"
-                )
+                if revise_definitions:
+                    revised.append(
+                        DefinitionRevision(
+                            id=requirement.id,
+                            old_definition=current.definition,
+                            new_definition=requirement.definition,
+                        )
+                    )
+                else:
+                    problems.append(
+                        f"data requirement '{requirement.id}' already exists with a different "
+                        f"definition — same meaning → keep the definition (or add an alias); "
+                        f"similar-but-different → mint a new id. "
+                        f"existing: '{current.definition}' / imported: '{requirement.definition}'"
+                    )
         # Every id a criterion requires must be defined somewhere (file or namespace).
         available = set(known) | set(declared)
         for criterion in instrument.criteria:
@@ -111,7 +140,7 @@ class ImportInstrumentDraft:
         minted = [r.id for r in declared.values() if r.id not in known]
         for requirement in declared.values():
             self._data_requirements.upsert(requirement)
-        return minted
+        return minted, revised
 
 
 def _build_instrument(spec: dict[str, Any]) -> InstrumentVersion:
