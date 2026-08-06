@@ -38,8 +38,11 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
   lo realiza), **ADR-0019** (cobertura por linaje de criteria + ratificación por versión del
   instrumento — refina ADR-0016 §3 y ADR-0018; el bloque 6 lo realiza) y **ADR-0020**
   (`value_domain` obligatorio y verificado en `ContentProfile.ok()` — completa ADR-0014;
-  realizado antes del bloque 6, que es su primer consumidor). GLOSSARY re-actualizado
-  (cinco estados; assessor automatizado por linaje; `DataRequirement` con sus dos mitades).
+  realizado antes del bloque 6, que es su primer consumidor) y **ADR-0021** (el `fail`
+  derivado de ausencia: sin cita, con origen `derived` registrado — refina ADR-0018 §5;
+  el bloque 6 lo realiza). GLOSSARY re-actualizado
+  (cinco estados; assessor automatizado por linaje; `DataRequirement` con sus dos mitades;
+  cita exigida solo a scored ejecutado).
 
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|

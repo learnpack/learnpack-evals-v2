@@ -44,7 +44,8 @@ verifiable conditions · `0011` no single aggregate score · `0012` genesis of i
 `0013` design with ECD-lite · `0014` vocabulary in evidence models · `0015` human reference in
 two layers · `0016` uniform automated assessors · `0017` the declared surface is the package ·
 `0018` declared assessor coverage + `not_assessed` · `0019` assessor coverage by criterion
-lineage + per-version ratification · `0020` mandatory, checked value domains.
+lineage + per-version ratification · `0020` mandatory, checked value domains · `0021` the
+absence-derived `fail`: no quote, origin recorded.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
