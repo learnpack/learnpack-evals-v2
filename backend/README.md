@@ -248,19 +248,24 @@ Two aggregation rules not to confuse:
 
 ## Instruments and content profiling (slice 2)
 
-- **Instrument authoring is file-based** (`../docs/seed/instruments/*.yaml`):
-  `uv run python -m app.cli import-instrument --file <yaml>` creates or replaces the
-  **draft** (and mints the `data_requirement` ids the extraction conforms to, ADR-0014).
-  Publishing is a human act — the Publish button in `/admin/instruments` or
-  `uv run python -m app.cli publish-instrument --id <version-id> --email <admin>`;
-  published versions are immutable.
-- **Iterating a version** starts with
-  `uv run python -m app.cli bump-instrument --file <yaml> [--to vN] [--reason "..."]`:
-  it clones the YAML into the next version's file **textually** (header comments and
-  block-scalar style survive), then the flow is edit → `import-instrument` →
-  `publish-instrument`. To reword the definition of an **existing** `data_requirement`
-  (same meaning, better wording), pass `--revise-definitions` to `import-instrument` —
-  the deliberate act that lifts the ADR-0014 lint and reports each old→new revision.
+- **Instrument authoring is file-based** (`../docs/seed/instruments/*.yaml`, one file per
+  version, named `{instrument_id}-{version}.yaml`); there is no authoring UI. Publishing
+  is always a human act, and a published version never changes — any change is a new
+  version. When to use which command:
+
+  | You want to… | Then… |
+  |---|---|
+  | Create an instrument, or keep editing one that is still a **draft** | Edit the YAML and `uv run python -m app.cli import-instrument --file <yaml>` — the draft is replaced in place, as often as needed (no bump involved). Import also mints the `data_requirement` ids the extraction conforms to (ADR-0014). |
+  | Lock a draft so evaluations and studies can rely on it | `uv run python -m app.cli publish-instrument --id <version-id> --email <admin>`, or the Publish button in `/admin/instruments`. Publish validates the full evidential argument; from here the version is immutable. |
+  | Change anything in a **published** version — a threshold, a wording, a new criterion | `uv run python -m app.cli bump-instrument --file <yaml> [--to vN] [--reason "..."]` clones the YAML into the next version's file **textually** (header comments and block-scalar style survive; only `version:` and, with `--reason`, `revision_reason:` change), then: edit the new file → `import-instrument` → `publish-instrument`. Claim/criterion ids stay stable across versions — the lineage. |
+  | Reword the definition of an **existing** `data_requirement` — same meaning, better wording | Edit it in the YAML and add `--revise-definitions` to `import-instrument`: the deliberate act that lifts the ADR-0014 lint; each revision is applied and reported old → new. Without the flag the lint blocks, which is the guardrail against accidental overwrites. |
+  | Express a **different** concept than an existing `data_requirement` | Do NOT revise it — mint a new id with its own definition (ADR-0014: same meaning → alias or revision; similar-but-different → new id). |
+
+  Versions are cheap by design: iterate by bumping and deprecate freely — what
+  reproducibility hangs on is the version a study **pins**, never how many versions came
+  before it. `bump-instrument` refuses collisions (target file on disk, target version in
+  the db) and self-checks the textual edit before writing, so it never produces a corrupt
+  or overwritten file.
 - **Extraction** (`content_profiling`): the `LearnpackV1` adapter derives a cited profile
   from the package's artifacts — no inference, absence is a result (ADR-0009). Automatic
   profiling on registration is armed by the human acceptance of the adapter version:
