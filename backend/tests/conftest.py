@@ -55,6 +55,7 @@ def namespace(cleanup):
             cleanup["data_requirements"].append(requirement_id)
         session.commit()
 
+
 # --- where the suite runs -------------------------------------------------------------
 # Redirected at import time, before anything can build an engine. With TEST_DATABASE_URL
 # pointing at the local Postgres (docker-compose.yml), the suite runs ~500x faster: it is
