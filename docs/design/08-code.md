@@ -1,6 +1,6 @@
 > ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — plan del slice 1, ya implementado. El diseño vigente
-> es la serie `09`–`12`; el plan de código del slice 2 se escribirá como doc propio. **No usar
-> este doc como fuente para código nuevo.**
+> es la serie `09`–`13`; el plan de código actual está en `docs/design/13-code-qa.md`. **No usar
+> este doc como fuente para código nuevo ni como referencia del estado actual del desarrollo.**
 
 # 08 — Code (plan de implementación del MVP)
 

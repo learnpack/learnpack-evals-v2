@@ -190,6 +190,19 @@ export function useInstruments() {
   });
 }
 
+export function usePublishInstrument() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // Not a Uuid: instrument version ids look like "learnpack-course-qa-v1".
+    mutationFn: (instrumentVersionId: string) =>
+      api<InstrumentResponse>(`/admin/instruments/${instrumentVersionId}/publish`, {
+        method: "POST",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.instruments }),
+  });
+}
+
 export function useProfiles() {
   const api = useApi();
   return useQuery({
