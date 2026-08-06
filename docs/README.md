@@ -1,60 +1,68 @@
-# docs — índice
+# docs — index
 
-Diseño de un sistema para **evaluar la calidad pedagógica de contenido educativo generado por
-IA**, siguiendo el DDD Starter Modelling Process (ddd-crew).
+Design of a system to **evaluate the pedagogical quality of AI-generated educational
+content**, following the DDD Starter Modelling Process (ddd-crew).
 
-## Cómo está organizada la documentación
+## How the documentation is organized
 
-Cada documento tiene un **contrato de mantenimiento** distinto, y la ubicación lo declara:
+Every document carries a **maintenance contract**, declared by its location:
 
-| Dónde | Clase | Contrato |
+| Where | Class | Contract |
 |---|---|---|
-| **raíz de `docs/`** | reference | **Siempre cierto de `main`.** Cambia en el mismo commit que el código. Sin fechas ni estado. |
-| `docs/adr/` | decision | **Inmutable.** Un ADR no se edita: se supersede con uno nuevo. |
-| `docs/design/` | snapshot | **Congelado.** Qué pensamos y por qué, en su momento. No se mantiene. |
-| `../backend/README.md`, `../frontend/README.md` | reference | Runbook operativo, al lado del código que opera. |
-| `../STATUS.md` | estado | **El único lugar con estado fechado.** Se reescribe entero. |
-| `notes/` (gitignored) | working | Efímero. Al cerrar la tarea: se promueve o se borra. |
+| **`docs/` root** | reference | **Always true of `main`.** Changes in the same commit as the code. No dates, no status. |
+| `docs/adr/` | decision | **Immutable.** An ADR is never edited: a new one supersedes it. Sole exception: the superseded ADR's **Estado** line is updated to point at its successor. |
+| `docs/design/` | snapshot | **Frozen.** What we thought and why, at the time. Not maintained. |
+| `../backend/README.md`, `../frontend/README.md` | reference | Operational runbook, next to the code it operates. |
+| `../STATUS.md` | status | **The only place with dated status.** Rewritten whole. |
+| `notes/` (gitignored) | working | Ephemeral. When the task closes: promoted or deleted. |
 
-Regla para decidir si algo va a la raíz de `docs/`: *¿va a seguir siendo cierto dentro de seis
-meses sin que nadie lo toque?* Si no, no va ahí. Las reglas completas —incluido qué hacer con una
-nota cuando la tarea termina— están en `../CLAUDE.md`, sección **Documentación**.
+Rule for admitting something into the `docs/` root: *will it still be true six months from now
+without anyone touching it?* If not, it does not belong there. The full rules — including what
+to do with a note when its task ends — are in `../CLAUDE.md`, section **Documentación**.
 
-## Cómo leer (para Claude Code)
-1. `../CLAUDE.md` — no negociables (raíz del repo).
-2. `ARCHITECTURE.md` — Dependency Rule, hexagonal, aislamiento de módulos, events-first.
-3. `GLOSSARY.md` — ubiquitous language (inglés). **Los nombres del código salen de acá.**
-4. `design/` — el porqué de cada límite (pasos 01–07) y el plan del MVP (08).
+## Reading order (for Claude Code)
 
-## Contenido
+1. `../CLAUDE.md` — non-negotiables (repo root).
+2. `ARCHITECTURE.md` — Dependency Rule, hexagonal, module isolation, events-first.
+3. `GLOSSARY.md` — ubiquitous language. **Code names come from here.**
+4. `design/09`–`13` — **the current design** (generator QA): strategic (09–11), tactical (12)
+   and the code plan (13). `design/01`–`08` are historical snapshots of slice 1.
+5. `adr/` — the immutable decisions. Then `../STATUS.md` for where development stands.
 
-**Vigente (reference)**
-- `ARCHITECTURE.md` — invariantes no negociables.
-- `GLOSSARY.md` — lenguaje ubicuo.
+## Contents
 
-**Decisiones (`adr/`, inmutables)**
-`0001` metadata abierta *(superseded por 0017)* · `0002` campañas/assignments/quórum ·
-`0003` Postgres + events · `0004` Clerk · `0005` identidad de Evaluation + versionado de
-contenido · `0006` Reporting por query ports · `0007` bootstrap de admin (allowlist de
-aprovisionamiento) · `0008` modo local (correr sin Clerk ni Neon) · `0009` extracción sin
-inferencia · `0010` criteria como condiciones verificables · `0011` sin score agregado único ·
-`0012` génesis de instrumentos · `0013` diseño con ECD-lite · `0014` vocabulario en evidence
-models · `0015` referencia humana en dos capas · `0016` assessors automatizados uniformes ·
-`0017` la superficie declarada es el paquete · `0018` cobertura declarada del assessor +
-`not_assessed`.
+**Current (reference)**
+- `ARCHITECTURE.md` — non-negotiable invariants.
+- `GLOSSARY.md` — ubiquitous language.
 
-**Snapshots (`design/`, congelados)**
-Pasos 01–08 del proceso de modelado + `research/`. Ver `design/README.md`.
+**Decisions (`adr/`, immutable)**
+`0001` open content metadata *(superseded by 0017)* · `0002` campaigns/assignments/quorum ·
+`0003` Postgres + events · `0004` Clerk · `0005` Evaluation identity + content versioning ·
+`0006` reporting via query ports · `0007` admin bootstrap (provisioning allowlist) · `0008`
+local mode (no Clerk, no Neon) · `0009` extraction without inference · `0010` criteria as
+verifiable conditions · `0011` no single aggregate score · `0012` genesis of instruments ·
+`0013` design with ECD-lite · `0014` vocabulary in evidence models · `0015` human reference in
+two layers · `0016` uniform automated assessors · `0017` the declared surface is the package ·
+`0018` declared assessor coverage + `not_assessed`.
 
-**Assets** (no son documentación)
-- `seed/rubric-v1.json` — seed de la rubric del MVP; lo consume `app.cli seed`.
+**Snapshots (`design/`, frozen)**
+Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
+the current design and its code plan) · `research/`. See `design/README.md`.
 
-## Stack del MVP (confirmado)
-Next.js/Tailwind/shadcn en **Netlify** · **FastAPI** en **Render Starter** · Postgres/pgvector
-en **Neon** · **Clerk** (invite-only) como identidad. Detalle en `design/08-code.md`.
+**Assets** (not documentation)
+- `seed/rubric-v1.json` + `seed/pedagogical-reference.yaml` — human rubric and reference data;
+  consumed by `app.cli seed`.
+- `seed/instruments/*.yaml` — authored instrument drafts; consumed by
+  `app.cli import-instrument` (and by `seed-demo` in local mode).
 
-## El norte, en dos frases
-- **Core = evaluación pedagógica** (producir juicios de calidad multi-fuente, multi-criterio,
-  con provenance y calibrables). **La calibración NO es el core.**
-- **Dos horizontes:** el modelo objetivo está documentado completo; **el MVP es una rebanada
-  fina** (evaluación humana; store Postgres/Neon, deploy económico).
+## MVP stack (confirmed)
+
+Next.js/Tailwind/shadcn on **Netlify** · **FastAPI** on **Render Starter** · Postgres/pgvector
+on **Neon** · **Clerk** (invite-only) as identity. Details in `design/08-code.md`.
+
+## The north star, in two sentences
+
+- **Core = pedagogical evaluation** (producing multi-source, multi-criterion quality judgments
+  with provenance, calibratable). **Calibration is NOT the core.**
+- **Two horizons:** the target model is fully documented; **each increment is a thin slice**
+  that must not close doors on it.

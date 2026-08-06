@@ -1,56 +1,71 @@
 # LearnPack Evals
 
-Sistema para **evaluar la calidad pedagógica de contenido educativo generado por IA**: un panel de
-expertos puntúa cursos contra una rúbrica versionada, y el sistema agrega los juicios (promedios,
-dispersión inter-rater) y establece un **golden dataset** de referencia.
+A system to **evaluate the pedagogical quality of AI-generated educational content**, built in
+two slices:
 
-- **`docs/`** — el diseño y por qué de cada límite. `docs/ARCHITECTURE.md` son las reglas duras.
+- **Human evaluation (MVP):** a panel of experts scores courses against a versioned rubric; the
+  system aggregates the judgments (per-criterion averages, inter-rater dispersion — never a
+  single aggregate score) and establishes a **golden dataset** of human reference results.
+- **Generator QA engine:** instruments as versioned **evidential arguments** (claims backed by
+  verifiable criteria), **content profiling** that extracts cited evidence from the package a
+  generator delivers, **automated assessors** that judge criteria mechanically, and studies
+  that accumulate judgments per generator.
+
+Where development stands today: **`STATUS.md`**.
+
+- **`docs/`** — the design and the why of every boundary. `docs/ARCHITECTURE.md` is the hard
+  rules; `docs/GLOSSARY.md` names everything in the code.
 - **`backend/`** — FastAPI + Postgres, hexagonal, events-first.
-- **`frontend/`** — Next.js + Tailwind: flujo del evaluador y consola de admin.
-- **`STATUS.md`** — en qué punto está el desarrollo hoy.
+- **`frontend/`** — Next.js + Tailwind: the evaluator flow and the admin console.
 
-## Correrlo local, sin cuentas ni nube
+## Run it locally, no accounts and no cloud
 
-Modo local: base de datos en Docker, **sin autenticación**, con usuarios y una campaña
-ya cargados. Requiere Docker, [uv](https://docs.astral.sh/uv/) y Node 20+.
+Local mode: database in Docker, **no authentication**, demo users and data pre-loaded.
+Requires Docker, [uv](https://docs.astral.sh/uv/) and Node 20+.
 
 ```bash
-# 1. Base de datos
+# 1. Database
 cd backend && docker compose up -d
 
 # 2. Backend  (http://localhost:8000)
-cp .env.example .env        # ya viene en modo local: nada que completar
+cp .env.example .env        # ships in local mode: nothing to fill in
 uv sync
 uv run alembic upgrade head
-uv run python -m app.cli seed        # rúbrica v1 + metadata schema
-uv run python -m app.cli seed-demo   # usuarios, cursos, campaña abierta y assignments
+uv run python -m app.cli seed        # rubric v1 + pedagogical reference data
+uv run python -m app.cli seed-demo   # users, demo courses (profiled from real frozen
+                                     # packages), instrument draft, open campaign, assignments
 uv run uvicorn app.main:app --reload
 
 # 3. Frontend  (http://localhost:3000)
 cd frontend
-cp .env.local.example .env.local     # ya viene en NEXT_PUBLIC_AUTH_MODE=local
+cp .env.local.example .env.local     # ships with NEXT_PUBLIC_AUTH_MODE=local
 npm install
 npm run dev
 ```
 
-En `/sign-in` elegís con quién entrar:
+At `/sign-in` pick who to enter as:
 
-| Usuario | Rol | Para qué |
+| User | Role | For |
 |---|---|---|
-| `admin@local.dev` | admin | cargar cursos, abrir campañas, asignar, ver reportes |
-| `ada.lovelace@local.dev` | evaluator | evaluar |
-| `grace.hopper@local.dev` | evaluator | evaluar (el segundo rater: sin él no hay inter-rater) |
+| `admin@local.dev` | admin | register courses/generators, instruments, profiles, campaigns, reports |
+| `ada.lovelace@local.dev` | evaluator | evaluate |
+| `grace.hopper@local.dev` | evaluator | evaluate (the second rater: without it there is no inter-rater) |
 
-Se cambia de usuario desde el menú del header. Para volver a empezar de cero —vacía el dataset
-local y lo vuelve a sembrar—: `uv run python -m app.cli seed-demo --reset`.
+Switch users from the header menu. To start over — wipes the local dataset and reseeds it:
+`uv run python -m app.cli seed-demo --reset`.
 
-### Iterar sobre la rúbrica
+### Iterating on the seeds
 
-`docs/seed/rubric-v1.json` es la fuente de verdad. Editás, corrés `uv run python -m app.cli seed`
-(actualiza en el lugar, es idempotente) y refrescás la app.
+- `docs/seed/rubric-v1.json` + `docs/seed/pedagogical-reference.yaml` are the source of truth
+  for the human rubric and the reference data; edit and re-run `uv run python -m app.cli seed`
+  (in-place, idempotent).
+- `docs/seed/instruments/*.yaml` are authored instrument drafts;
+  `uv run python -m app.cli import-instrument --file <yaml>` creates or replaces the draft.
+  Publishing is a deliberate human act (the Publish button in `/admin/instruments`, or
+  `publish-instrument`) — published versions are immutable.
 
-## Producción
+## Production
 
-Clerk (invite-only) + Neon + Render + Netlify. El modo local **no** aplica: `AUTH_MODE=local` con
-`ENVIRONMENT=production` hace que el backend no arranque. Ver `backend/README.md`,
-`frontend/README.md` y `docs/design/08-code.md` §10.
+Clerk (invite-only) + Neon + Render + Netlify. Local mode does **not** apply there:
+`AUTH_MODE=local` with `ENVIRONMENT=production` refuses to boot. See `backend/README.md`,
+`frontend/README.md` and `docs/design/08-code.md` §10.
