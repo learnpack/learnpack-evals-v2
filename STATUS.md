@@ -5,7 +5,7 @@ apila historia (para eso está git). Si encontrás estado en cualquier otro docu
 hecho", "falta X", "N tests en verde", "verificado el tal día"— está en el archivo equivocado y
 va acá.
 
-_Última actualización: 2026-08-04._
+_Última actualización: 2026-08-06._
 
 ## Dónde estamos
 
@@ -49,10 +49,11 @@ las ramas de trabajo; Marta revisa y mergea. Cada PR con la suite completa en ve
 (`13-code-qa.md` §8 menciona un esquema de nombres viejo — snapshot congelado, no se corrige.)
 
 **Input pendiente del equipo:** revisar y editar el borrador del primer instrumento
-(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 3 claims / 6 criteria, redactado como
+(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, redactado como
 asistencia) y **publicarlo** cuando el equipo lo haga suyo
-(`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>` o
-`POST /admin/instruments/{id}/publish`). Hasta entonces queda en `draft` — la publicación es
+(`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`,
+`POST /admin/instruments/{id}/publish`, o el botón **Publish** en `/admin/instruments`, que
+confirma antes de ejecutar). Hasta entonces queda en `draft` — la publicación es
 acto humano (12-define, invariante 5). Los `data_requirement` ids minteados
 (`learning_objectives`, `target_audience`, `prerequisites`, `lesson_inventory`,
 `lesson_bodies`, `lesson_activities`) son el contrato contra el que el adapter
