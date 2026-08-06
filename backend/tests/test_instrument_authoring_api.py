@@ -8,10 +8,10 @@ import pytest
 from sqlalchemy import text
 
 from app.modules.evaluation_design.application.import_instrument_draft import (
-    DefinitionRevision,
     ImportInstrumentDraft,
     ImportInstrumentDraftCommand,
     InstrumentImportError,
+    RequirementRevision,
 )
 from app.modules.evaluation_design.domain.instrument import InstrumentImmutable
 from app.modules.evaluation_design.domain.reference import DataRequirement
@@ -152,10 +152,12 @@ def test_import_revise_definitions_updates_and_reports(cleanup, unique, session)
     cleanup["instruments"].append(result.instrument.id)
 
     assert result.revised_data_requirements == [
-        DefinitionRevision(
+        RequirementRevision(
             id=requirement_id,
             old_definition="Something else entirely.",
             new_definition="Learning objectives declared by the content.",
+            old_value_domain={"type": "string_list"},
+            new_value_domain={"type": "string_list"},
         )
     ]
     assert requirement_id not in result.minted_data_requirements
@@ -163,7 +165,57 @@ def test_import_revise_definitions_updates_and_reports(cleanup, unique, session)
     assert stored.definition == "Learning objectives declared by the content."
 
 
-def test_import_revise_definitions_reports_nothing_when_definition_unchanged(cleanup, unique):
+def test_import_lints_conflicting_value_domains(cleanup, unique, session):
+    """The shape is contract too (ADR-0020): same id + same definition + different
+    value_domain must block exactly like a definition conflict, never overwrite."""
+    requirement_id = f"objectives_{unique}"
+    SqlAlchemyDataRequirementRepository(session).upsert(
+        DataRequirement(
+            id=requirement_id,
+            definition="Learning objectives declared by the content.",
+            value_domain={"type": "string"},
+        )
+    )
+    session.commit()
+    cleanup["data_requirements"].append(requirement_id)
+
+    with pytest.raises(InstrumentImportError, match="different\\s+value_domain"):
+        import_spec(cleanup, spec(unique))
+
+    # Nothing was overwritten by the failed import.
+    stored = SqlAlchemyDataRequirementRepository(session).get_all()[requirement_id]
+    assert stored.value_domain == {"type": "string"}
+
+
+def test_import_revise_definitions_covers_value_domain_changes(cleanup, unique, session):
+    requirement_id = f"objectives_{unique}"
+    SqlAlchemyDataRequirementRepository(session).upsert(
+        DataRequirement(
+            id=requirement_id,
+            definition="Learning objectives declared by the content.",
+            value_domain={"type": "string"},
+        )
+    )
+    session.commit()
+    cleanup["data_requirements"].append(requirement_id)
+
+    result = _import_result(spec(unique), revise_definitions=True)
+    cleanup["instruments"].append(result.instrument.id)
+
+    assert result.revised_data_requirements == [
+        RequirementRevision(
+            id=requirement_id,
+            old_definition="Learning objectives declared by the content.",
+            new_definition="Learning objectives declared by the content.",
+            old_value_domain={"type": "string"},
+            new_value_domain={"type": "string_list"},
+        )
+    ]
+    stored = SqlAlchemyDataRequirementRepository(session).get_all()[requirement_id]
+    assert stored.value_domain == {"type": "string_list"}
+
+
+def test_import_revise_definitions_reports_nothing_when_declaration_unchanged(cleanup, unique):
     import_spec(cleanup, spec(unique))
 
     result = _import_result(spec(unique), revise_definitions=True)

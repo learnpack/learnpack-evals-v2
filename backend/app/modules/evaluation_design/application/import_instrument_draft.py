@@ -1,14 +1,17 @@
 """Use case: import (create or replace) an instrument draft from an authored spec.
 
 The spec arrives as plain data (the YAML is parsed at the edge — CLI). Data
-requirements referenced by criteria are minted here, definition included, with the
-ADR-0014 lint: an existing id whose definition differs is an error, never a silent
-overwrite. `revise_definitions` is the deliberate act that lifts the lint — the
-differing definition is applied and reported as a revision (same meaning, better
-wording; judging sameness stays human). Draft edits publish no event
-(first-increment mark) — the publication event is the contract.
+requirements referenced by criteria are minted here, definition and value domain
+included, with the ADR-0014 lint extended by ADR-0020: an existing id whose
+definition OR value_domain differs is an error, never a silent overwrite — both
+halves are the contract adapters conform to. `revise_definitions` is the deliberate
+act that lifts the lint — the differing declaration is applied and reported as a
+revision (same meaning, better wording/shape; judging sameness stays human). Draft
+edits publish no event (first-increment mark) — the publication event is the
+contract.
 """
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,19 +48,26 @@ class ImportInstrumentDraftCommand:
 
 
 @dataclass(frozen=True)
-class DefinitionRevision:
-    """A definition overwrite the author explicitly asked for (`revise_definitions`)."""
+class RequirementRevision:
+    """A declaration overwrite the author explicitly asked for (`revise_definitions`).
+
+    Carries both halves of the contract — definition (meaning, ADR-0014) and
+    value_domain (shape, ADR-0020) — old and new, even when only one changed: after
+    the upsert the old declaration is gone from the db, and the CLI reports the delta.
+    """
 
     id: str
     old_definition: str
     new_definition: str
+    old_value_domain: dict[str, Any]
+    new_value_domain: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class ImportResult:
     instrument: InstrumentVersion
     minted_data_requirements: list[str] = field(default_factory=list)
-    revised_data_requirements: list[DefinitionRevision] = field(default_factory=list)
+    revised_data_requirements: list[RequirementRevision] = field(default_factory=list)
 
 
 class ImportInstrumentDraft:
@@ -93,7 +103,7 @@ class ImportInstrumentDraft:
 
     def _mint_data_requirements(
         self, spec: dict[str, Any], instrument: InstrumentVersion, revise_definitions: bool
-    ) -> tuple[list[str], list[DefinitionRevision]]:
+    ) -> tuple[list[str], list[RequirementRevision]]:
         known = self._data_requirements.get_all()
         problems: list[str] = []
         declared: dict[str, DataRequirement] = {}
@@ -113,26 +123,44 @@ class ImportInstrumentDraft:
                 # Collected, not raised: the author sees every problem in one run.
                 problems.append(str(exc))
 
-        revised: list[DefinitionRevision] = []
-        # Lint (ADR-0014): same id, different definition — search before minting.
+        revised: list[RequirementRevision] = []
+        # Lint (ADR-0014, extended by ADR-0020): same id, different declaration — search
+        # before minting. Both halves are guarded: definition (meaning) and value_domain
+        # (shape, the contract adapters conform to).
         for requirement in declared.values():
             current = known.get(requirement.id)
-            if current is not None and current.definition != requirement.definition:
-                if revise_definitions:
-                    revised.append(
-                        DefinitionRevision(
-                            id=requirement.id,
-                            old_definition=current.definition,
-                            new_definition=requirement.definition,
-                        )
+            if current is None:
+                continue
+            definition_differs = current.definition != requirement.definition
+            domain_differs = current.value_domain != requirement.value_domain
+            if not (definition_differs or domain_differs):
+                continue
+            if revise_definitions:
+                revised.append(
+                    RequirementRevision(
+                        id=requirement.id,
+                        old_definition=current.definition,
+                        new_definition=requirement.definition,
+                        old_value_domain=current.value_domain,
+                        new_value_domain=requirement.value_domain,
                     )
-                else:
-                    problems.append(
-                        f"data requirement '{requirement.id}' already exists with a different "
-                        f"definition — same meaning → keep the definition (or add an alias); "
-                        f"similar-but-different → mint a new id. "
-                        f"existing: '{current.definition}' / imported: '{requirement.definition}'"
-                    )
+                )
+                continue
+            if definition_differs:
+                problems.append(
+                    f"data requirement '{requirement.id}' already exists with a different "
+                    f"definition — same meaning → keep the definition (or add an alias); "
+                    f"similar-but-different → mint a new id. "
+                    f"existing: '{current.definition}' / imported: '{requirement.definition}'"
+                )
+            if domain_differs:
+                problems.append(
+                    f"data requirement '{requirement.id}' already exists with a different "
+                    f"value_domain — the shape is the contract adapters conform to "
+                    f"(ADR-0020); changing it is a deliberate act: --revise-definitions. "
+                    f"existing: {json.dumps(current.value_domain, sort_keys=True)} / "
+                    f"imported: {json.dumps(requirement.value_domain, sort_keys=True)}"
+                )
         # Every id a criterion requires must be defined somewhere (file or namespace).
         available = set(known) | declared_ids
         for criterion in instrument.criteria:
