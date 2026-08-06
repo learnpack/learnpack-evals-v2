@@ -14,8 +14,7 @@ from app.modules.evaluation.domain.model import (
     ProfileData,
     ProfileEntryData,
 )
-from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
-from app.modules.evaluation.infrastructure.assessors import structural
+from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, structural
 from tests.conftest import INSTRUMENT_SPEC_FILE
 
 PACKAGE = AUTOMATED_ASSESSORS[("structural", "1")]
@@ -188,9 +187,7 @@ def test_module_structure_well_formed():
     )
     assert gap.failure_mode == spec.failure_modes[1]
 
-    late_start = run(
-        spec, profile(lesson_inventory=[lesson("00.0", 0), lesson("01.1", 1)])
-    )
+    late_start = run(spec, profile(lesson_inventory=[lesson("00.0", 0), lesson("01.1", 1)]))
     assert late_start.failure_mode == spec.failure_modes[0]  # lesson numbering not at .0
 
 

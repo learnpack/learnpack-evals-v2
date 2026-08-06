@@ -39,7 +39,9 @@ def outcome(criterion_id: str, kind: str, **overrides) -> CriterionOutcome:
     presets = {
         "pass": dict(outcome="pass", quote="q", locator={"a": "b"}),
         "fail": dict(outcome="fail", quote="q", failure_mode="mode"),
-        "derived_fail": dict(outcome="fail", derived=True, failure_mode="required data absent: datum"),
+        "derived_fail": dict(
+            outcome="fail", derived=True, failure_mode="required data absent: datum"
+        ),
         "no_evidence": dict(outcome="no_evidence", derived=True),
         "not_applicable": dict(outcome="not_applicable", derived=True),
         "not_assessed": dict(outcome="not_assessed", derived=True),
@@ -72,7 +74,11 @@ def test_anything_short_of_full_pass_is_insufficient(state):
     )
     assert draft.claims[0].status == "insufficient"
     # The cause is visible in the basis (ADR-0018: every insufficient is qualified).
-    key = {"no_evidence": "noEvidence", "not_assessed": "notAssessed", "not_applicable": "notApplicable"}
+    key = {
+        "no_evidence": "noEvidence",
+        "not_assessed": "notAssessed",
+        "not_applicable": "notApplicable",
+    }
     assert draft.claims[0].evidence_basis[key[state]] == 1
 
 
@@ -92,9 +98,7 @@ def test_all_not_applicable_claim_is_excluded_and_recorded_in_coverage():
 
 
 def test_derived_fail_refutes_and_produces_a_quoteless_finding():
-    draft = derive_judgment(
-        instrument({"cr-1": ("cl-a",)}), (outcome("cr-1", "derived_fail"),)
-    )
+    draft = derive_judgment(instrument({"cr-1": ("cl-a",)}), (outcome("cr-1", "derived_fail"),))
     assert draft.claims[0].status == "refuted"
     finding = draft.findings[0]
     assert finding.quote is None  # ADR-0021: the absence is the finding
@@ -115,4 +119,6 @@ def test_executed_fail_produces_a_cited_finding_per_evidenced_claim():
 
 def test_derivation_requires_the_exact_coverage():
     with pytest.raises(InvalidAutomatedEvaluation, match="exact coverage"):
-        derive_judgment(instrument({"cr-1": ("cl-a",), "cr-2": ("cl-a",)}), (outcome("cr-1", "pass"),))
+        derive_judgment(
+            instrument({"cr-1": ("cl-a",), "cr-2": ("cl-a",)}), (outcome("cr-1", "pass"),)
+        )
