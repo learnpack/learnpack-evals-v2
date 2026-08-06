@@ -157,17 +157,18 @@
     prerequisito de profile intacto).
   - **automated** — artefacto de software **modular y versionado** con un mapeo interno
     `criterion → ejecutor` (código puro, fórmulas/índices, llamadas a LLM — detalle interno,
-    nunca identidad). **Declara un instrumento target**: se debe a sus criteria — relación
-    instrumento 1 → 0..N assessors automatizados; **cobertura declarada** validada al
-    registrarlo: mapeo ∪ **abstenciones** == criteria del target, sin solapamiento
-    (ADR-0018; lo abstenido deriva a `not_assessed`). Los humanos no están ligados a
-    instrumentos.
+    nunca identidad). **Se debe a un instrumento (linaje)**: declara su **cobertura** por
+    `criterionId` — mapeo ∪ **abstenciones**, sin solapamiento (ADR-0018; lo abstenido
+    deriva a `not_assessed`) — y evalúa solo versiones **ratificadas** para él (ADR-0019:
+    el diff se computa sobre el linaje, solo el delta exige decisión del autor; ratificar
+    no cambia identidad). Los humanos no están ligados a instrumentos.
 - **Assessor** — la *instancia concreta, identificable y versionada* de una
   `EvaluationSource` que realmente produce resultados (el "quién/qué exactamente", vs. el
   "qué clase" del tipo). Es la **clave de provenance y de calibración**.
   - `human` → un SME concreto (con expertise profile). *(En el MVP, el usuario que evalúa ES
     un `Assessor` humano.)*
-  - `automated` → una `SourceConfiguration` `{name, version, instrumentVersionId, config}`.
+  - `automated` → una `SourceConfiguration` `{name, version, instrumentId, coverage, config}`
+    (+ las ratificaciones por versión, que viven aparte — ADR-0019).
 - **SourceConfiguration** — la config que define a un `Assessor` automatizado (ADR-0016).
   Cualquier cambio — código, mapeo, modelo, prompt, threshold interno — ⇒ *otro* `Assessor`
   (la calibración no transfiere: invalidación por identidad).
