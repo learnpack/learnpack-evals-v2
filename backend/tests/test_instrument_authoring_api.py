@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import text
 
 from app.modules.evaluation_design.application.import_instrument_draft import (
+    DefinitionRevision,
     ImportInstrumentDraft,
     ImportInstrumentDraftCommand,
     InstrumentImportError,
@@ -70,7 +71,7 @@ def spec(unique: str, **overrides) -> dict:
     return base | overrides
 
 
-def import_spec(cleanup, payload: dict) -> str:
+def _import_result(payload: dict, revise_definitions: bool = False):
     with SessionLocal() as session:
         uow = UnitOfWork(session)
         use_case = ImportInstrumentDraft(
@@ -78,7 +79,13 @@ def import_spec(cleanup, payload: dict) -> str:
             data_requirements=SqlAlchemyDataRequirementRepository(session),
             uow=uow,
         )
-        result = use_case(ImportInstrumentDraftCommand(spec=payload))
+        return use_case(
+            ImportInstrumentDraftCommand(spec=payload, revise_definitions=revise_definitions)
+        )
+
+
+def import_spec(cleanup, payload: dict, revise_definitions: bool = False) -> str:
+    result = _import_result(payload, revise_definitions)
     instrument_id = result.instrument.id
     if instrument_id not in cleanup["instruments"]:
         cleanup["instruments"].append(instrument_id)
@@ -122,6 +129,37 @@ def test_import_lints_conflicting_data_requirement_definitions(cleanup, unique, 
 
     with pytest.raises(InstrumentImportError, match="different\\s+definition"):
         import_spec(cleanup, spec(unique))
+
+
+def test_import_revise_definitions_updates_and_reports(cleanup, unique, session):
+    requirement_id = f"objectives_{unique}"
+    SqlAlchemyDataRequirementRepository(session).upsert(
+        DataRequirement(id=requirement_id, definition="Something else entirely.")
+    )
+    session.commit()
+    cleanup["data_requirements"].append(requirement_id)
+
+    result = _import_result(spec(unique), revise_definitions=True)
+    cleanup["instruments"].append(result.instrument.id)
+
+    assert result.revised_data_requirements == [
+        DefinitionRevision(
+            id=requirement_id,
+            old_definition="Something else entirely.",
+            new_definition="Learning objectives declared by the content.",
+        )
+    ]
+    assert requirement_id not in result.minted_data_requirements
+    stored = SqlAlchemyDataRequirementRepository(session).get_all()[requirement_id]
+    assert stored.definition == "Learning objectives declared by the content."
+
+
+def test_import_revise_definitions_reports_nothing_when_definition_unchanged(cleanup, unique):
+    import_spec(cleanup, spec(unique))
+
+    result = _import_result(spec(unique), revise_definitions=True)
+    assert result.revised_data_requirements == []
+    assert result.minted_data_requirements == []
 
 
 def test_import_rejects_undefined_required_data(cleanup, unique):

@@ -54,6 +54,12 @@ describen **el cambio** (feature/fix), nunca etapas del plan; Claude commitea so
 las ramas de trabajo; Marta revisa y mergea. Cada PR con la suite completa en verde.
 (`13-code-qa.md` §8 menciona un esquema de nombres viejo — snapshot congelado, no se corrige.)
 
+**Convención de fase experimental:** mientras no exista el primer study publicado, las
+versiones de instrumento son **descartables** — se itera con versiones baratas
+(`bump-instrument` → editar → import → publish), se depreca sin culpa y no hay compromiso de
+compatibilidad entre versiones. El compromiso de reproducibilidad plena arranca con el primer
+study publicado, que pinnea su versión.
+
 **Input pendiente del equipo:** revisar y editar el borrador del primer instrumento
 (`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, redactado como
 asistencia) y **publicarlo** cuando el equipo lo haga suyo
