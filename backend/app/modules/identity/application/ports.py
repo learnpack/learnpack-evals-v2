@@ -13,6 +13,10 @@ class AssessorRepositoryPort(Protocol):
 
     def get_by_email(self, email: str) -> Assessor | None: ...
 
+    def get_automated(self, name: str, version: str) -> Assessor | None:
+        """The automated identity is (name, version) inside source_config (ADR-0016)."""
+        ...
+
     def list_by_ids(self, assessor_ids: list[UUID]) -> list[Assessor]:
         """Batch lookup — reports resolve many assessorIds at once (ADR-0006)."""
         ...

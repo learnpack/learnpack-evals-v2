@@ -4,6 +4,7 @@ Aggregates are mapped by hand (Core statements) instead of declarative ORM model
 domain keeps zero SQLAlchemy imports — ARCHITECTURE.md §1.
 """
 
+import json
 from uuid import UUID
 
 from sqlalchemy import text
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.identity.domain.assessor import Assessor
 
-_COLUMNS = "id, clerk_user_id, email, display_name, role, expertise"
+_COLUMNS = "id, clerk_user_id, email, display_name, role, expertise, kind, source_config"
 
 
 class SqlAlchemyAssessorRepository:
@@ -36,6 +37,14 @@ class SqlAlchemyAssessorRepository:
 
     def get_by_email(self, email: str) -> Assessor | None:
         return self._one("lower(email) = lower(:v)", {"v": email})
+
+    def get_automated(self, name: str, version: str) -> Assessor | None:
+        """The automated identity is (name, version) inside source_config (ADR-0016)."""
+        return self._one(
+            "kind = 'automated' AND source_config->>'name' = :name "
+            "AND source_config->>'version' = :version",
+            {"name": name, "version": version},
+        )
 
     def list_by_ids(self, assessor_ids: list[UUID]) -> list[Assessor]:
         if not assessor_ids:
@@ -67,14 +76,19 @@ class SqlAlchemyAssessorRepository:
             display_name=row["display_name"],
             role=row["role"],
             expertise=row["expertise"],
+            kind=row["kind"],
+            source_config=row["source_config"],
         )
 
     def add(self, assessor: Assessor) -> None:
         self._session.execute(
             text(
                 """
-                INSERT INTO assessors (id, clerk_user_id, email, display_name, role, expertise)
-                VALUES (:id, :clerk_user_id, :email, :display_name, :role, :expertise)
+                INSERT INTO assessors
+                    (id, clerk_user_id, email, display_name, role, expertise, kind, source_config)
+                VALUES
+                    (:id, :clerk_user_id, :email, :display_name, :role, :expertise, :kind,
+                     cast(:source_config as jsonb))
                 """
             ),
             self._as_params(assessor),
@@ -104,4 +118,10 @@ class SqlAlchemyAssessorRepository:
             "display_name": assessor.display_name,
             "role": str(assessor.role),
             "expertise": assessor.expertise,
+            "kind": str(assessor.kind),
+            "source_config": (
+                json.dumps(assessor.source_config)
+                if assessor.source_config is not None
+                else None
+            ),
         }
