@@ -302,8 +302,9 @@ def run_import_instrument(spec_file: Path, revise_definitions: bool = False) -> 
 
     Publishing stays a separate, human act (`publish-instrument` or the admin endpoint):
     nothing produced by assistance reaches Published without one (design 12, inv. 5).
-    `--revise-definitions` is the deliberate act that lets a data requirement's
-    definition be reworded in place; without it the ADR-0014 lint blocks the import.
+    `--revise-definitions` is the deliberate act that lets an existing data
+    requirement's declaration — definition (ADR-0014) or value_domain (ADR-0020) —
+    be changed in place; without it the lint blocks the import.
     """
     spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
     with SessionLocal() as session:
@@ -327,8 +328,12 @@ def run_import_instrument(spec_file: Path, revise_definitions: bool = False) -> 
 
     for revision in result.revised_data_requirements:
         print(f"  REVISED {revision.id}:")
-        print(f"    old: {revision.old_definition}")
-        print(f"    new: {revision.new_definition}")
+        if revision.old_definition != revision.new_definition:
+            print(f"    old definition: {revision.old_definition}")
+            print(f"    new definition: {revision.new_definition}")
+        if revision.old_value_domain != revision.new_value_domain:
+            print(f"    old value_domain: {json.dumps(revision.old_value_domain, sort_keys=True)}")
+            print(f"    new value_domain: {json.dumps(revision.new_value_domain, sort_keys=True)}")
     instrument = result.instrument
     minted = (
         f", minted data requirements: {', '.join(result.minted_data_requirements)}"
@@ -1049,8 +1054,8 @@ def main(argv: list[str] | None = None) -> int:
         "--revise-definitions",
         action="store_true",
         dest="revise_definitions",
-        help="allow rewording an existing data requirement's definition (deliberate act; "
-        "without it the ADR-0014 lint blocks the import)",
+        help="allow changing an existing data requirement's declaration — definition or "
+        "value_domain (deliberate act; without it the ADR-0014/0020 lint blocks the import)",
     )
 
     publish_instrument_parser = subparsers.add_parser(
