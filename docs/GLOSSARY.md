@@ -78,8 +78,8 @@
   del dato; el **hecho** lo determinan matching/profile (mecánico, nunca el assessor), y
   `not_applicable` solo nace de capacidad/condicionales.
   ADR-0010 define su forma: **condición de pase verificable + modos de falla enumerados**,
-  desenlace tri-estado (`scored (pass/fail) | not_applicable | no_evidence`) — no una escala de
-  apreciación. (La escala 1–5 sobrevive en `Rubric v1`, que **no se migra**: es el instrumento
+  desenlace `scored (pass/fail) | not_applicable | no_evidence | not_assessed` (ADR-0018) — no
+  una escala de apreciación. (La escala 1–5 sobrevive en `Rubric v1`, que **no se migra**: es el instrumento
   de referencia de la calibración — ADR-0015.)
 - **Rubric** (aka `EvaluationInstrument`) — conjunto ordenado y **versionado** de criteria.
   Unidad intercambiable. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
@@ -158,8 +158,10 @@
   - **automated** — artefacto de software **modular y versionado** con un mapeo interno
     `criterion → ejecutor` (código puro, fórmulas/índices, llamadas a LLM — detalle interno,
     nunca identidad). **Declara un instrumento target**: se debe a sus criteria — relación
-    instrumento 1 → 0..N assessors automatizados; cobertura del target validada al
-    registrarlo. Los humanos no están ligados a instrumentos.
+    instrumento 1 → 0..N assessors automatizados; **cobertura declarada** validada al
+    registrarlo: mapeo ∪ **abstenciones** == criteria del target, sin solapamiento
+    (ADR-0018; lo abstenido deriva a `not_assessed`). Los humanos no están ligados a
+    instrumentos.
 - **Assessor** — la *instancia concreta, identificable y versionada* de una
   `EvaluationSource` que realmente produce resultados (el "quién/qué exactamente", vs. el
   "qué clase" del tipo). Es la **clave de provenance y de calibración**.
@@ -180,9 +182,10 @@
   instrumentVersion (antes rubricVersion), adapterVersion del profile, occurredAt/attempt}`.
   **No** hay unicidad por coordenadas: se permiten **repeticiones** del mismo `Assessor` (p.ej.
   un assessor automatizado corrido N veces para medir dispersión). La anti-duplicación humana vive en el
-  `Assignment`, no acá. Ver ADR-0005 — **intacto**. Los desenlaces `not_applicable`/`no_evidence`
-  se **derivan mecánicamente** (matching + profile), nunca los decide el assessor; `scored` exige
-  cita.
+  `Assignment`, no acá. Ver ADR-0005 — **intacto**. Los desenlaces
+  `not_applicable`/`no_evidence`/`not_assessed` se **derivan mecánicamente** (matching +
+  profile + abstenciones registradas del assessor, ADR-0018), nunca los decide el assessor en
+  runtime; `scored` exige cita.
 - **ComputedMetric** (aka `Signal`) — **medición cruda** producida por fuentes
   determinísticas/híbridas (p.ej. FK grade level, índice de cohesión, coseno de alineación,
   distribución de niveles de Bloom). **Admite valores estructurados** (distribuciones, listas),
@@ -195,13 +198,16 @@
   (ADR-0013), bajo la prohibición de ADR-0011. La entrada se conserva como trazabilidad; el
   código del slice 1 puede referirla hasta su migración.
 - **CriterionScore** — el desenlace de un criterion sobre un contenido (+ `Comment` opcional).
-  Forma ADR-0010: tri-estado `scored (pass/fail) | not_applicable | no_evidence`, **con la cita
-  que lo sostiene**. (El score 1–5 sobrevive en el flujo del **panel de referencia** — `Rubric
-  v1`, ADR-0015.)
+  Forma ADR-0010 + ADR-0018: `scored (pass/fail) | not_applicable | no_evidence | not_assessed`,
+  **con la cita que lo sostiene** (solo `scored` la exige). Los tres estados no-scored son tres
+  causas con tres remedios: sin capacidad/condicional (`not_applicable`) · dato ausente del
+  contenido (`no_evidence`) · assessor sin ejecutor para el criterion (`not_assessed`). (El
+  score 1–5 sobrevive en el flujo del **panel de referencia** — `Rubric v1`, ADR-0015.)
 - **EvaluationResult** — el conjunto de `CriterionScore` (+ comentarios) de una `Evaluation`.
 - **QualityJudgment** — el juicio de calidad publicado sobre un contenido: **perfil por
   criterion** (nunca un score agregado único, ADR-0011) + **cobertura** (evaluados / no aplican /
-  sin evidencia) + **provenance** (`assessor` + `assessorCalibrationStatus`). Con ECD-lite
+  sin evidencia / sin assessor capaz — ADR-0018) + **provenance** (`assessor` +
+  `assessorCalibrationStatus`). Con ECD-lite
   (ADR-0013) se comunica como **claims con estatus evidencial** y findings bajo cada claim.
   Evento: `QualityJudgmentPublished`.
 - **Finding** — hallazgo derivado de un criterion no cumplido: qué falló, la **cita**, y la
@@ -271,7 +277,7 @@
 | `Criterion` **+** `Assessor` ejecutándolo | *scorer* (Braintrust/MLflow) · *evaluator* (LangSmith/Azure) · *metric* (DeepEval/Ragas) · *grader* (OpenAI) · *assertion* (promptfoo) | **cinco nombres, ningún estándar** — y todos fusionan el *qué* con el *quién*; nuestra separación es la precisión que no cedemos |
 | `Assessor` automatizado (ADR-0016) | *LLM-as-judge* · *scorer/evaluator* automatizado · nuestros ex `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` | el mecanismo (con o sin LLM) es detalle interno del assessor; `Assessor` (instancia versionada con instrumento target) es más preciso — la industria no versiona jueces |
 | `Sufficiency` | *evidence assembly / accumulation* (ECD) · agregación de assertions (promptfoo et al.) | acumulación simple y explícita (ADR-0013), taxonomía conjunctive/existential/m_of_n; lo compensatorio de la industria está prohibido (ADR-0011) |
-| `CriterionScore` | *score* (el "objeto universal" de Langfuse) | el nuestro lleva cita + tri-estado |
+| `CriterionScore` | *score* (el "objeto universal" de Langfuse) | el nuestro lleva cita + desenlace de estados discretos (`scored`/`not_applicable`/`no_evidence`/`not_assessed`) |
 | `Evaluation` (el acto) | ≈ *trace con scores* / fila de un dataset run | su "run" es a nivel dataset — **falso amigo, no adoptar** |
 | colas de verificación (capa 2, ADR-0015) | *annotation queue* | **adoptado** como término de realización |
 | `StudiesComparison` | *experiment comparison* / *regression testing* | dentro de una línea |

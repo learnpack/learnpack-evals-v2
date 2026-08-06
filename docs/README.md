@@ -33,10 +33,15 @@ nota cuando la tarea termina— están en `../CLAUDE.md`, sección **Documentaci
 - `GLOSSARY.md` — lenguaje ubicuo.
 
 **Decisiones (`adr/`, inmutables)**
-`0001` metadata abierta · `0002` campañas/assignments/quórum · `0003` Postgres + events ·
-`0004` Clerk · `0005` identidad de Evaluation + versionado de contenido · `0006` Reporting por
-query ports · `0007` bootstrap de admin (allowlist de aprovisionamiento) · `0008` modo local
-(correr sin Clerk ni Neon).
+`0001` metadata abierta *(superseded por 0017)* · `0002` campañas/assignments/quórum ·
+`0003` Postgres + events · `0004` Clerk · `0005` identidad de Evaluation + versionado de
+contenido · `0006` Reporting por query ports · `0007` bootstrap de admin (allowlist de
+aprovisionamiento) · `0008` modo local (correr sin Clerk ni Neon) · `0009` extracción sin
+inferencia · `0010` criteria como condiciones verificables · `0011` sin score agregado único ·
+`0012` génesis de instrumentos · `0013` diseño con ECD-lite · `0014` vocabulario en evidence
+models · `0015` referencia humana en dos capas · `0016` assessors automatizados uniformes ·
+`0017` la superficie declarada es el paquete · `0018` cobertura declarada del assessor +
+`not_assessed`.
 
 **Snapshots (`design/`, congelados)**
 Pasos 01–08 del proceso de modelado + `research/`. Ver `design/README.md`.

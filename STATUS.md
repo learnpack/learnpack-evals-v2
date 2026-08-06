@@ -32,6 +32,10 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 - **Plan de código:** **`docs/design/13-code-qa.md`** (promovido) + **ADR-0016** (assessors
   automatizados uniformes). GLOSSARY actualizado (eje Source `human | automated`;
   `Sufficiency` ex assembly); ARCHITECTURE y CLAUDE.md re-apuntados.
+- **Decisiones tomadas durante la implementación:** **ADR-0017** (la superficie declarada del
+  evaluando es el paquete — supersede ADR-0001; realizado en el bloque 5) y **ADR-0018**
+  (cobertura declarada del assessor + estado `not_assessed` — refina ADR-0016 §3; el bloque 6
+  lo realiza). GLOSSARY re-actualizado con el desenlace de cinco estados.
 
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|
