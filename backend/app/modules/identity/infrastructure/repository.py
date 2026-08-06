@@ -120,8 +120,6 @@ class SqlAlchemyAssessorRepository:
             "expertise": assessor.expertise,
             "kind": str(assessor.kind),
             "source_config": (
-                json.dumps(assessor.source_config)
-                if assessor.source_config is not None
-                else None
+                json.dumps(assessor.source_config) if assessor.source_config is not None else None
             ),
         }

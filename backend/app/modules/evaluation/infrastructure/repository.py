@@ -189,9 +189,7 @@ class SqlAlchemyAutomatedEvaluationRepository:
                 },
             )
 
-    def next_attempt(
-        self, assessor_id: UUID, content_id: UUID, instrument_version_id: str
-    ) -> int:
+    def next_attempt(self, assessor_id: UUID, content_id: UUID, instrument_version_id: str) -> int:
         current = self._session.execute(
             text(
                 """
@@ -411,9 +409,7 @@ class SqlAlchemyRatificationRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def insert(
-        self, assessor_id: UUID, instrument_version_id: str, ratified_by: UUID
-    ) -> bool:
+    def insert(self, assessor_id: UUID, instrument_version_id: str, ratified_by: UUID) -> bool:
         newly = self._session.execute(
             text(
                 """
@@ -447,9 +443,7 @@ class SqlAlchemyRatificationRepository:
             is not None
         )
 
-    def latest_ratified(
-        self, assessor_id: UUID, instrument_version_ids: list[str]
-    ) -> str | None:
+    def latest_ratified(self, assessor_id: UUID, instrument_version_ids: list[str]) -> str | None:
         """Most recently ratified among the candidates (the caller resolves the lineage
         into concrete version ids via Design's public — no cross-module SQL here)."""
         if not instrument_version_ids:

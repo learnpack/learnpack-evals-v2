@@ -42,9 +42,7 @@ class ProfileGatewayPort(Protocol):
 class AutomatedEvaluationRepositoryPort(Protocol):
     def add(self, evaluation: AutomatedEvaluation) -> None: ...
 
-    def next_attempt(
-        self, assessor_id: UUID, content_id: UUID, instrument_version_id: str
-    ) -> int:
+    def next_attempt(self, assessor_id: UUID, content_id: UUID, instrument_version_id: str) -> int:
         """max(attempt)+1 for the repetition triple (ADR-0005; informational)."""
         ...
 
@@ -81,15 +79,11 @@ class JudgmentRepositoryPort(Protocol):
 class RatificationRepositoryPort(Protocol):
     """The ADR-0019 act: what makes an instrument version evaluable by an assessor."""
 
-    def insert(
-        self, assessor_id: UUID, instrument_version_id: str, ratified_by: UUID
-    ) -> bool: ...
+    def insert(self, assessor_id: UUID, instrument_version_id: str, ratified_by: UUID) -> bool: ...
 
     def is_ratified(self, assessor_id: UUID, instrument_version_id: str) -> bool: ...
 
-    def latest_ratified(
-        self, assessor_id: UUID, instrument_version_ids: list[str]
-    ) -> str | None:
+    def latest_ratified(self, assessor_id: UUID, instrument_version_ids: list[str]) -> str | None:
         """Most recently ratified among the candidates (the lineage's versions)."""
         ...
 

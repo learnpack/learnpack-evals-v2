@@ -161,11 +161,7 @@ def module_structure_well_formed(spec: CriterionSpec, profile: ProfileData) -> E
 def course_opens_with_general_intro(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
     """Module 00 exists and holds exactly one lesson."""
     entry = _entry(profile, "lesson_inventory")
-    intro = [
-        lesson
-        for lesson in entry.value
-        if _module(str(lesson["lessonId"])) == "00"
-    ]
+    intro = [lesson for lesson in entry.value if _module(str(lesson["lessonId"])) == "00"]
     return _result(entry, len(intro) == 1, spec, 0)
 
 

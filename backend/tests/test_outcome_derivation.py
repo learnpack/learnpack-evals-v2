@@ -209,9 +209,7 @@ def test_judgeable_criterion_without_executor_is_a_coverage_error():
 
 def test_executor_metrics_are_collected():
     def measuring(spec, prof):
-        return ExecutorResult(
-            passed=True, quote="q", metrics=(ComputedMetric("lesson_count", 7),)
-        )
+        return ExecutorResult(passed=True, quote="q", metrics=(ComputedMetric("lesson_count", 7),))
 
     _, metrics = run(
         instrument(criterion()), profile({"datum": declared()}), executors={"cr-x": measuring}

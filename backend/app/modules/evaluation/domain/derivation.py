@@ -99,9 +99,7 @@ def _derive_one(
         return _derived(criterion, OUTCOME_NOT_APPLICABLE), ()
 
     # (c) absence: the adapter looked and there was nothing.
-    absent = [
-        datum for datum in criterion.required_data if profile.entries[datum].is_absent
-    ]
+    absent = [datum for datum in criterion.required_data if profile.entries[datum].is_absent]
     if absent:
         if criterion.on_missing_evidence == "fail":
             return (
@@ -150,9 +148,7 @@ def _derived(criterion: CriterionSpec, outcome: str) -> CriterionOutcome:
     return CriterionOutcome(criterion_id=criterion.criterion_id, outcome=outcome, derived=True)
 
 
-def _condition_excludes(
-    criterion: CriterionSpec, binding_variables: Mapping[str, object]
-) -> bool:
+def _condition_excludes(criterion: CriterionSpec, binding_variables: Mapping[str, object]) -> bool:
     """A conditional criterion applies only when every named task variable matches.
 
     Minimal semantics for the first increment: `condition` is a mapping of task-variable

@@ -77,9 +77,7 @@ class EvaluateContent:
                 f"{instrument.instrument_version_id} is {instrument.status}: only "
                 "published versions are evaluable — calibrate drafts with --dry-run"
             )
-        if not self._ratifications.is_ratified(
-            command.assessor_id, command.instrument_version_id
-        ):
+        if not self._ratifications.is_ratified(command.assessor_id, command.instrument_version_id):
             raise AssessorNotRatified(
                 f"the assessor has not ratified {command.instrument_version_id} "
                 "(ADR-0019) — run ratify-assessor first"
@@ -90,9 +88,7 @@ class EvaluateContent:
                 f"content {command.content_id} has no ok profile — profile it first"
             )
 
-        outcomes, metrics = derive_and_execute(
-            instrument, profile, self._coverage, self._executors
-        )
+        outcomes, metrics = derive_and_execute(instrument, profile, self._coverage, self._executors)
         evaluation = AutomatedEvaluation.complete(
             evaluation_id=new_id(),
             assessor_id=command.assessor_id,

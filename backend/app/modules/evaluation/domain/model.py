@@ -166,8 +166,7 @@ class CriterionOutcome:
             )
         if self.outcome == OUTCOME_PASS and (self.derived or not (self.quote or "").strip()):
             raise InvalidAutomatedEvaluation(
-                f"criterion {self.criterion_id}: a pass is always executed and quoted "
-                "(ADR-0021)"
+                f"criterion {self.criterion_id}: a pass is always executed and quoted (ADR-0021)"
             )
         if self.outcome == OUTCOME_FAIL and not self.derived and not (self.quote or "").strip():
             raise InvalidAutomatedEvaluation(

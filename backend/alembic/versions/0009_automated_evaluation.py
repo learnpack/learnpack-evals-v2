@@ -40,9 +40,7 @@ def upgrade() -> None:
         sa.Column("kind", sa.Text(), nullable=False, server_default="human"),
     )
     op.add_column("assessors", sa.Column("source_config", postgresql.JSONB()))
-    op.create_check_constraint(
-        "ck_assessors_kind", "assessors", "kind in ('human','automated')"
-    )
+    op.create_check_constraint("ck_assessors_kind", "assessors", "kind in ('human','automated')")
     op.create_check_constraint(
         "ck_assessors_kind_shape",
         "assessors",
