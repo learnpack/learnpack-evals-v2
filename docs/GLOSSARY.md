@@ -234,6 +234,17 @@
   **Immutable and derived** from the evaluation; disputes are separate facts *about* a finding,
   which feed the improvement of the instrument — not the score.
 
+- **Fitness** — a **read-side projection for optimization, never a judgment** (ADR-0023): the
+  proportion of passed criteria per `Quality`, over a denominator that keeps `no_evidence` and
+  the absence-derived `fail` (the generator's omissions) and drops `not_assessed` (an assessor
+  limitation) and `not_applicable`. A `PedagogicalDimension`'s fitness is the unweighted **mean**
+  of its defined qualities; a `GeneratorVersion`'s **pools** the criterion counts across its
+  contents. An empty denominator is `undefined`, never `0`. It is the fitness function of the
+  genetic-algorithm experiment (individual = `GeneratorVersion`, generation = `EvaluationStudy`),
+  it carries its **formula version** and its **coverage** — including which assessors were
+  ratified, since values from different coverages are not comparable — and it **never enters a
+  `StudyReport`** (ADR-0011 is untouched: claims and findings remain the product).
+
 ## Orchestration & calibration (supporting)
 
 - **EvaluationRun** — **merged into `EvaluationStudy`** (Define slice 2, DP28): the run was the
