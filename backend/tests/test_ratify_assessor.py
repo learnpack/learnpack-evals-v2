@@ -97,6 +97,23 @@ def test_undecided_criteria_block_the_ratification(
     assert ratifications(session, version_id) == 0
 
 
+def test_ratifications_are_on_the_public_surface(cleanup, unique, session, admin, patched_package):
+    from app.modules.evaluation.public import EvaluationQueries
+
+    admin_id, email = admin
+    v1 = publish_instrument(cleanup, copy_spec(unique), admin_id)
+
+    assert EvaluationQueries(session).list_ratifications(v1) == []
+
+    assert run_ratify_assessor(patched_package.name, "1", v1, email, []) == 0
+    track_automated(cleanup, patched_package.name)
+
+    listed = EvaluationQueries(session).list_ratifications(v1)
+    assert len(listed) == 1
+    assert listed[0].instrument_version_id == v1
+    assert listed[0].ratified_at is not None
+
+
 def test_unchanged_second_version_ratifies_alone(cleanup, unique, session, admin, patched_package):
     admin_id, email = admin
     v1 = publish_instrument(cleanup, copy_spec(unique), admin_id)

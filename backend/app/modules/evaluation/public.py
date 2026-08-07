@@ -21,10 +21,12 @@ from app.modules.evaluation.application.dtos import (
     FindingDTO,
     JudgmentClaimDTO,
     QualityJudgmentDTO,
+    RatificationDTO,
 )
 from app.modules.evaluation.infrastructure.repository import (
     SqlAlchemyEvaluationRepository,
     SqlAlchemyJudgmentRepository,
+    SqlAlchemyRatificationRepository,
 )
 from app.platform.uow import UnitOfWork, get_uow
 
@@ -48,6 +50,7 @@ __all__ = [
     "JudgmentClaimDTO",
     "QualityJudgmentDTO",
     "QualityJudgmentPublishedFact",
+    "RatificationDTO",
     "get_evaluation_queries",
 ]
 
@@ -139,6 +142,7 @@ class EvaluationQueries:
     def __init__(self, session: Session) -> None:
         self._evaluations = SqlAlchemyEvaluationRepository(session)
         self._judgments = SqlAlchemyJudgmentRepository(session)
+        self._ratifications = SqlAlchemyRatificationRepository(session)
 
     def list_for_contents(self, content_ids: list[UUID]) -> list[EvaluationDTO]:
         """Every evaluation of those contents, scores included. Batch (ADR-0006)."""
@@ -152,6 +156,10 @@ class EvaluationQueries:
 
     def get_findings(self, content_ids: list[UUID], instrument_version_id: str) -> list[FindingDTO]:
         return self._judgments.list_findings_for_contents(content_ids, instrument_version_id)
+
+    def list_ratifications(self, instrument_version_id: str) -> list[RatificationDTO]:
+        """Who may evaluate with that version (ADR-0019) — readiness reads this."""
+        return self._ratifications.list_for_instrument(instrument_version_id)
 
 
 def get_evaluation_queries(uow: Annotated[UnitOfWork, Depends(get_uow)]) -> EvaluationQueries:

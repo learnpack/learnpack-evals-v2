@@ -13,6 +13,7 @@ from app.modules.evaluation.application.dtos import (
     FindingDTO,
     JudgmentClaimDTO,
     QualityJudgmentDTO,
+    RatificationDTO,
 )
 from app.modules.evaluation.application.ports import JudgmentRecord
 from app.modules.evaluation.domain.automated import AutomatedEvaluation
@@ -442,6 +443,32 @@ class SqlAlchemyRatificationRepository:
             ).scalar()
             is not None
         )
+
+    def list_for_instrument(self, instrument_version_id: str) -> list[RatificationDTO]:
+        """Every ratification of that version — readiness' 'is anyone eligible?' input."""
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT assessor_id, instrument_version_id, ratified_at
+                      FROM assessor_ratifications
+                     WHERE instrument_version_id = :id
+                     ORDER BY ratified_at
+                    """
+                ),
+                {"id": instrument_version_id},
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            RatificationDTO(
+                assessor_id=row["assessor_id"],
+                instrument_version_id=row["instrument_version_id"],
+                ratified_at=row["ratified_at"],
+            )
+            for row in rows
+        ]
 
     def latest_ratified(self, assessor_id: UUID, instrument_version_ids: list[str]) -> str | None:
         """Most recently ratified among the candidates (the caller resolves the lineage

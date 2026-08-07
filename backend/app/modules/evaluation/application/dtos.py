@@ -56,6 +56,15 @@ class QualityJudgmentDTO:
 
 
 @dataclass(frozen=True)
+class RatificationDTO:
+    """One ADR-0019 act: this assessor may evaluate with that instrument version."""
+
+    assessor_id: UUID
+    instrument_version_id: str
+    ratified_at: datetime
+
+
+@dataclass(frozen=True)
 class FindingDTO:
     finding_id: UUID
     judgment_id: UUID
