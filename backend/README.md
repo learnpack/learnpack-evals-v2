@@ -272,6 +272,17 @@ Two aggregation rules not to confuse:
   `uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email <admin>`
   (ADR-0012), after reviewing samples in `/admin/profiles` or via
   `uv run python -m app.cli profile-content --content-id <id>`.
+- **Automated evaluation** (`evaluation`): calibrate an instrument — drafts included —
+  against real content with
+  `uv run python -m app.cli evaluate --content-id <id> --instrument-version-id <id> --dry-run`
+  (prints the five-state outcome table and the claim summary; persists nothing). The real
+  path requires a **published** version and a **ratified** assessor (ADR-0019):
+  `uv run python -m app.cli ratify-assessor --name structural --version 1
+  --instrument-version-id <id> --email <admin>` — the initial registration is the first
+  ratification; against a later version of the same lineage the diff is computed
+  mechanically and only changed/new **executed** criteria demand
+  `--confirm <criterion-id>`. Then `evaluate` without `--dry-run` persists the evaluation
+  (outcomes + raw metrics) and the judgment policy derives claims, coverage and findings.
 
 ## Bulk course import
 

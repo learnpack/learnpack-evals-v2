@@ -1,6 +1,6 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
 import-instrument | publish-instrument | bump-instrument | profile-content |
-accept-extraction | reprofile`.
+accept-extraction | reprofile | ratify-assessor | evaluate`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -61,6 +61,28 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
+from app.modules.evaluation.application.evaluate_content import (
+    AssessorNotRatified,
+    EvaluateContent,
+    EvaluateContentCommand,
+    InstrumentNotEvaluable,
+    ProfileNotAvailable,
+)
+from app.modules.evaluation.application.preview_evaluation import (
+    PreviewEvaluation,
+    PreviewEvaluationCommand,
+)
+from app.modules.evaluation.domain.model import InvalidAutomatedEvaluation
+from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
+from app.modules.evaluation.infrastructure.gateways import (
+    DesignInstrumentGateway,
+    ProfilingGateway,
+)
+from app.modules.evaluation.infrastructure.repository import (
+    SqlAlchemyAutomatedEvaluationRepository,
+    SqlAlchemyJudgmentRepository,
+    SqlAlchemyRatificationRepository,
+)
 from app.modules.evaluation_design.application.import_instrument_draft import (
     ImportInstrumentDraft,
     ImportInstrumentDraftCommand,
@@ -80,7 +102,7 @@ from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyInstrumentRepository,
     SqlAlchemyReferenceDataRepository,
 )
-from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
+from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Kind, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
     AssignContent,
@@ -514,6 +536,261 @@ def run_bump_instrument(spec_file: Path, to_version: str | None, reason: str | N
     print(f"  2. python -m app.cli import-instrument --file {target_file}")
     print(f"  3. python -m app.cli publish-instrument --id {new_id} --email <admin>")
     return 0
+
+
+# ------------------------------------------------------------- automated evaluation
+
+
+def _assessor_package(name: str, version: str) -> AssessorPackage | None:
+    package = AUTOMATED_ASSESSORS.get((name, version))
+    if package is None:
+        known = ", ".join(f"{n}:{v}" for n, v in sorted(AUTOMATED_ASSESSORS))
+        print(f"unknown assessor {name}:{version} (registry has: {known})", file=sys.stderr)
+    return package
+
+
+def run_ratify_assessor(
+    name: str, version: str, instrument_version_id: str, email: str, confirmed: list[str]
+) -> int:
+    """The ADR-0019 act: make one instrument version evaluable by one assessor.
+
+    Initial registration IS the first ratification. Against a later version of the same
+    lineage, the diff is computed mechanically (literal pass_condition + required_data):
+    unchanged criteria carry their coverage over; changed/new EXECUTED criteria demand an
+    explicit `--confirm <criterion_id>`; changed abstained ones are informational (an
+    abstention realizes no normative text)."""
+    package = _assessor_package(name, version)
+    if package is None:
+        return 1
+
+    with SessionLocal() as session:
+        admin = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if admin is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+
+        instruments = SqlAlchemyInstrumentRepository(session)
+        target = instruments.get(instrument_version_id)
+        if target is None:
+            print(f"instrument version {instrument_version_id} not found", file=sys.stderr)
+            return 1
+        if target.instrument_id != package.instrument_id:
+            print(
+                f"{name}:{version} owes itself to lineage '{package.instrument_id}', "
+                f"not '{target.instrument_id}' (ADR-0019)",
+                file=sys.stderr,
+            )
+            return 1
+        if not target.is_published:
+            print(
+                f"{instrument_version_id} is {target.status}: ratification requires a "
+                "published version - calibrate drafts with `evaluate --dry-run`",
+                file=sys.stderr,
+            )
+            return 1
+
+        # Coverage restricted to this version must decide every criterion (ADR-0018).
+        version_criteria = {c.criterion_id for c in target.criteria}
+        undecided = version_criteria - package.coverage.declared
+        if undecided:
+            print(
+                "coverage does not decide every criterion of the version: "
+                f"{', '.join(sorted(undecided))} - executing or abstaining is a change "
+                "of the artifact, i.e. a new assessor version (ADR-0016)",
+                file=sys.stderr,
+            )
+            return 1
+
+        assessors = SqlAlchemyAssessorRepository(session)
+        row = assessors.get_automated(name, version)
+        if row is None:
+            row = Assessor(
+                id=new_id(),
+                clerk_user_id=None,
+                display_name=package.display_name,
+                kind=Kind.AUTOMATED,
+                source_config=package.source_config,
+            )
+            assessors.add(row)
+            print(f"registered automated assessor {package.display_name} ({row.id})")
+        elif row.source_config != package.source_config:
+            print(
+                f"stored source_config of {name}:{version} differs from the code - the "
+                "artifact changed without a version bump; bump VERSION (ADR-0016)",
+                file=sys.stderr,
+            )
+            return 1
+
+        ratifications = SqlAlchemyRatificationRepository(session)
+        siblings = [
+            i.id
+            for i in instruments.list_all()
+            if i.instrument_id == package.instrument_id and i.id != target.id
+        ]
+        previous_id = ratifications.latest_ratified(row.id, siblings)
+        if previous_id is not None:
+            previous = instruments.get(previous_id)
+            assert previous is not None  # ratifications FK to instrument_versions
+            before = {c.criterion_id: c for c in previous.criteria}
+            needs_confirmation: list[str] = []
+            for criterion in target.criteria:
+                prior = before.get(criterion.criterion_id)
+                unchanged = (
+                    prior is not None
+                    and prior.pass_condition == criterion.pass_condition
+                    and prior.required_data == criterion.required_data
+                )
+                if unchanged:
+                    continue
+                label = "new" if prior is None else "changed"
+                if criterion.criterion_id in package.coverage.abstains:
+                    print(f"  {label:8} {criterion.criterion_id}: abstained (no confirm needed)")
+                elif criterion.criterion_id in confirmed:
+                    print(f"  {label:8} {criterion.criterion_id}: confirmed by {email}")
+                else:
+                    needs_confirmation.append(criterion.criterion_id)
+            if needs_confirmation:
+                print(
+                    "executed criteria changed since the last ratified version "
+                    f"({previous_id}) - confirm the executor still realizes each text "
+                    "with: " + " ".join(f"--confirm {c}" for c in needs_confirmation),
+                    file=sys.stderr,
+                )
+                return 1
+
+        newly = ratifications.insert(row.id, target.id, admin.id)
+        session.commit()
+
+    if not newly:
+        print(f"{name}:{version} already ratified {instrument_version_id}")
+    else:
+        print(f"ratified {instrument_version_id} for {name}:{version} (by {email})")
+    return 0
+
+
+def run_evaluate(
+    raw_content_id: str, instrument_version_id: str, assessor_spec: str | None, dry_run: bool
+) -> int:
+    """Evaluate a content's profile with an automated assessor - or preview it.
+
+    `--dry-run` (the calibration loop): accepts drafts, needs no ratification, and
+    persists NOTHING - no evaluation, no events, no judgment."""
+    try:
+        content_id = UUID(raw_content_id)
+    except ValueError:
+        print(f"invalid content id: {raw_content_id}", file=sys.stderr)
+        return 1
+    if assessor_spec is None and len(AUTOMATED_ASSESSORS) == 1:
+        ((assessor_name, assessor_version),) = AUTOMATED_ASSESSORS
+    elif assessor_spec is None or ":" not in assessor_spec:
+        print("pass --assessor <name>:<version>", file=sys.stderr)
+        return 1
+    else:
+        assessor_name, assessor_version = assessor_spec.split(":", 1)
+    package = _assessor_package(assessor_name, assessor_version)
+    if package is None:
+        return 1
+
+    with SessionLocal() as session:
+        instruments = DesignInstrumentGateway(session)
+        profiles = ProfilingGateway(session)
+        if dry_run:
+            preview_use_case = PreviewEvaluation(
+                instruments=instruments,
+                profiles=profiles,
+                coverage=package.coverage,
+                executors=dict(package.executors),
+            )
+            try:
+                preview = preview_use_case(
+                    PreviewEvaluationCommand(
+                        content_id=content_id, instrument_version_id=instrument_version_id
+                    )
+                )
+            except (InstrumentNotEvaluable, ProfileNotAvailable) as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+            _print_outcomes(preview.outcomes, preview.judgment)
+            print("dry run: nothing persisted (no evaluation, no events, no judgment)")
+            return 0
+
+        assessor = SqlAlchemyAssessorRepository(session).get_automated(
+            assessor_name, assessor_version
+        )
+        if assessor is None:
+            print(
+                f"{assessor_name}:{assessor_version} is not registered - run ratify-assessor first",
+                file=sys.stderr,
+            )
+            return 1
+        uow = UnitOfWork(session)
+        use_case = EvaluateContent(
+            evaluations=SqlAlchemyAutomatedEvaluationRepository(session),
+            instruments=instruments,
+            profiles=profiles,
+            ratifications=SqlAlchemyRatificationRepository(session),
+            coverage=package.coverage,
+            executors=dict(package.executors),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            evaluation = use_case(
+                EvaluateContentCommand(
+                    content_id=content_id,
+                    instrument_version_id=instrument_version_id,
+                    assessor_id=assessor.id,
+                )
+            )
+        except (
+            InstrumentNotEvaluable,
+            AssessorNotRatified,
+            ProfileNotAvailable,
+            InvalidAutomatedEvaluation,
+        ) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+        print(
+            f"evaluation {evaluation.id} (attempt {evaluation.attempt}, "
+            f"assessor {package.display_name})"
+        )
+        # The judgment policy ran synchronously post-commit; show what it derived.
+        judgments = SqlAlchemyJudgmentRepository(session).list_for_contents(
+            [content_id], instrument_version_id
+        )
+        current = next((j for j in reversed(judgments) if j.evaluation_id == evaluation.id), None)
+        outcome_counts: dict[str, int] = {}
+        for outcome in evaluation.outcomes:
+            outcome_counts[outcome.outcome] = outcome_counts.get(outcome.outcome, 0) + 1
+        print("outcomes: " + ", ".join(f"{k}={v}" for k, v in sorted(outcome_counts.items())))
+        if current is not None:
+            for claim in current.claims:
+                print(f"  {claim.status:12} {claim.claim_id}")
+            excluded = current.coverage.get("excludedClaims", [])
+            if excluded:
+                print(f"  excluded (all not_applicable): {', '.join(excluded)}")
+    return 0
+
+
+def _print_outcomes(outcomes, judgment) -> None:  # noqa: ANN001 — CLI presentation only
+    width = max(len(o.criterion_id) for o in outcomes)
+    for outcome in outcomes:
+        origin = "derived " if outcome.derived else "executed"
+        detail = ""
+        if outcome.failure_mode:
+            detail = f"  [{outcome.failure_mode}]"
+        elif outcome.quote:
+            quote = outcome.quote.replace("\n", " ")
+            detail = f'  "{quote[:60]}..."' if len(quote) > 60 else f'  "{quote}"'
+        print(f"  {outcome.criterion_id:{width}}  {outcome.outcome:14} {origin}{detail}")
+    print("claims:")
+    for claim in judgment.claims:
+        basis = ", ".join(f"{k}={v}" for k, v in claim.evidence_basis.items() if v)
+        print(f"  {claim.status:12} {claim.claim_id}  ({basis})")
+    excluded = judgment.coverage.get("excludedClaims", [])
+    if excluded:
+        print(f"  excluded (all not_applicable): {', '.join(excluded)}")
 
 
 # ----------------------------------------------------------------- content profiling
@@ -1102,6 +1379,39 @@ def main(argv: list[str] | None = None) -> int:
     )
     reprofile_parser.add_argument("--base-dir", type=Path)
 
+    ratify_parser = subparsers.add_parser(
+        "ratify-assessor",
+        help="make an instrument version evaluable by an automated assessor (ADR-0019)",
+    )
+    ratify_parser.add_argument("--name", required=True)
+    ratify_parser.add_argument("--version", required=True)
+    ratify_parser.add_argument("--instrument-version-id", required=True)
+    ratify_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (ratified_by)"
+    )
+    ratify_parser.add_argument(
+        "--confirm",
+        action="append",
+        dest="confirmed",
+        default=[],
+        metavar="CRITERION_ID",
+        help="repeatable: confirm the existing executor realizes a changed/new criterion",
+    )
+
+    evaluate_parser = subparsers.add_parser(
+        "evaluate", help="evaluate a content's profile with an automated assessor"
+    )
+    evaluate_parser.add_argument("--content-id", required=True)
+    evaluate_parser.add_argument("--instrument-version-id", required=True)
+    evaluate_parser.add_argument(
+        "--assessor", help="name:version (default: the only registered package)"
+    )
+    evaluate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="calibration mode: accepts drafts, needs no ratification, persists nothing",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -1136,6 +1446,14 @@ def main(argv: list[str] | None = None) -> int:
         return run_accept_extraction(args.package_format, args.email)
     elif args.command == "reprofile":
         return run_reprofile(args.package_format, args.content_ids, args.base_dir)
+    elif args.command == "ratify-assessor":
+        return run_ratify_assessor(
+            args.name, args.version, args.instrument_version_id, args.email, args.confirmed
+        )
+    elif args.command == "evaluate":
+        return run_evaluate(
+            args.content_id, args.instrument_version_id, args.assessor, args.dry_run
+        )
     return 0
 
 

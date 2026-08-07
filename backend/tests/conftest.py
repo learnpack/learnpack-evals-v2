@@ -145,6 +145,16 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
                 ),
                 {"id": content_id},
             )
+            # Judgment outbox rows are keyed by the judgment id (QualityJudgmentPublished
+            # + FindingRaised share the aggregate); the judgment/claim/finding/outcome/
+            # metric rows themselves cascade with the evaluations delete below.
+            s.execute(
+                text(
+                    "DELETE FROM events WHERE aggregate_id IN "
+                    "(SELECT id::text FROM quality_judgments WHERE content_id = :id)"
+                ),
+                {"id": content_id},
+            )
             s.execute(
                 text(
                     "DELETE FROM events WHERE aggregate_id IN "
@@ -224,6 +234,15 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
                 {"f": package_format, "v": adapter_version},
             )
         for assessor_id in created["assessors"]:
+            # Ratifications usually cascade with the tracked instrument versions above;
+            # this covers the assessor-as-ratifier side (ratified_by has no cascade).
+            s.execute(
+                text(
+                    "DELETE FROM assessor_ratifications "
+                    "WHERE assessor_id = :id OR ratified_by = :id"
+                ),
+                {"id": assessor_id},
+            )
             s.execute(text("DELETE FROM assessors WHERE id = :id"), {"id": assessor_id})
         s.commit()
 

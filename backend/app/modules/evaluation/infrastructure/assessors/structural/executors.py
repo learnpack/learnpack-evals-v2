@@ -89,12 +89,12 @@ def prerequisites_declared(spec: CriterionSpec, profile: ProfileData) -> Executo
 
 def _positions(inventory: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Lessons in declared order (position when present, list order as fallback)."""
-    return sorted(
-        inventory,
-        key=lambda lesson: (
-            lesson.get("position") if lesson.get("position") is not None else float("inf")
-        ),
-    )
+
+    def declared_order(lesson: dict[str, Any]) -> float:
+        position = lesson.get("position")
+        return float(position) if position is not None else float("inf")
+
+    return sorted(inventory, key=declared_order)
 
 
 def _module(lesson_id: str) -> str | None:
