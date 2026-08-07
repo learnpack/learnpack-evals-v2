@@ -64,6 +64,10 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
 )
+from app.modules.evaluand_registry.application.register_generator_version import (
+    RegisterGeneratorVersion,
+    RegisterGeneratorVersionCommand,
+)
 from app.modules.evaluand_registry.domain.content import (
     GeneratorAlreadyAttributed,
     InvalidContent,
@@ -1275,8 +1279,9 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
         "external_id": "introduction-to-generative-ai",
         "version": "1",
         "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
-        # Declared, not defaulted (ADR-0024); the seeder resolves the linked one.
-        "generator_version_id": None,
+        # Declared, not defaulted (ADR-0024). The seeder links this one to the demo
+        # generator and leaves the other unknown, so both paths are visible locally.
+        "generator_version_id": "demo",
     },
     {
         "package_format": "LearnpackV1",
@@ -1377,11 +1382,41 @@ def _demo_artifacts(course_slug: str) -> list[dict[str, Any]]:
     return artifacts
 
 
-def _seed_demo_contents() -> dict[str, UUID]:
+DEMO_GENERATOR = ("learnpack-generator", "1.0.0")
+
+
+def _seed_demo_generator() -> UUID:
+    """The demo's declared examinee. One course is linked to it and the other is declared
+    unknown (ADR-0024), so the local study report exercises both paths: a populated
+    generator level and the `unknownExclusions` caveat."""
+    name, version = DEMO_GENERATOR
+    with SessionLocal() as session:
+        generators = SqlAlchemyGeneratorVersionRepository(session)
+        existing = next(
+            (g for g in generators.list_all() if (g.name, g.version) == DEMO_GENERATOR), None
+        )
+        if existing is not None:
+            return existing.id
+
+        uow = UnitOfWork(session)
+        generator = RegisterGeneratorVersion(generators, uow.events, uow)(
+            RegisterGeneratorVersionCommand(
+                name=name,
+                version=version,
+                metadata={"promptPreprocessor": "not versioned yet"},
+            )
+        )
+        return generator.id
+
+
+def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
     """Register the demo courses through `RegisterContentVersion`; reuse them if already there."""
     ids: dict[str, UUID] = {}
 
     for raw in DEMO_CONTENTS:
+        declared = {**raw, "generator_version_id": None}
+        if raw["generator_version_id"] == "demo":
+            declared["generator_version_id"] = generator_id
         with SessionLocal() as session:
             uow = UnitOfWork(session)
             register = RegisterContentVersion(
@@ -1395,7 +1430,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
             try:
                 content = register(
                     RegisterContentVersionCommand(
-                        **raw, artifacts=_demo_artifacts(raw["external_id"])
+                        **declared, artifacts=_demo_artifacts(raw["external_id"])
                     )
                 )
                 ids[raw["external_id"]] = content.id
@@ -1501,6 +1536,8 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM contents",
         # Intake-derived (ADR-0022), not seeded reference data; after contents (FK).
         "DELETE FROM generation_briefs",
+        # Registered by the seeder (ADR-0024), not seeded reference data; after contents.
+        "DELETE FROM generator_versions",
         "DELETE FROM events",
         # Ratifications reference assessors on both sides (ADR-0019); before assessors.
         "DELETE FROM assessor_ratifications",
@@ -1565,7 +1602,9 @@ def run_seed_demo(reset: bool) -> int:
         return 1
     _seed_demo_acceptance(assessor_ids["admin@local.dev"])
 
-    content_ids = _seed_demo_contents()  # new registrations auto-profile via the policy
+    generator_id = _seed_demo_generator()
+    # New registrations auto-profile via the policy.
+    content_ids = _seed_demo_contents(generator_id)
     profiled = _seed_demo_profiles(content_ids)
     campaign_id = _seed_demo_campaign(list(content_ids.values()))
     evaluator_ids = [
