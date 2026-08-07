@@ -1,67 +1,67 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — plan del slice 1, ya implementado. El diseño vigente
-> es la serie `09`–`13`; el plan de código actual está en `docs/design/13-code-qa.md`. **No usar
-> este doc como fuente para código nuevo ni como referencia del estado actual del desarrollo.**
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)** — plan for slice 1, already implemented. The current design
+> is the series `09`–`13`; the current code plan is in `docs/design/13-code-qa.md`. **Do not use
+> this doc as a source for new code nor as a reference for the current state of development.**
 
-# 08 — Code (plan de implementación del MVP)
+# 08 — Code (MVP implementation plan)
 
-> Paso 8 del DDD Starter Modelling Process. **Snapshot congelado**: es el plan tal como se
-> escribió antes de implementar, no un backlog vivo. En qué punto está el desarrollo hoy →
-> `../../STATUS.md`. Reglas vigentes → `../ARCHITECTURE.md` y los READMEs de `backend/` y
+> Step 8 of the DDD Starter Modelling Process. **Frozen snapshot**: this is the plan as it was
+> written before implementing, not a living backlog. Where the development stands today →
+> `../../STATUS.md`. Current rules → `../ARCHITECTURE.md` and the READMEs of `backend/` and
 > `frontend/`.
-> Alcance: slice humano del MVP. Stack confirmado: **Next.js/Tailwind/shadcn en Netlify ·
-> FastAPI en Render Starter · Postgres/pgvector en Neon · Clerk (invite-only) como identidad**.
-> Reglas duras: `../ARCHITECTURE.md`. Nombres: `../GLOSSARY.md`. Este plan **no** cierra puertas al
-> modelo objetivo (fuentes automáticas, calibración = `[futuro]`).
+> Scope: human slice of the MVP. Confirmed stack: **Next.js/Tailwind/shadcn on Netlify ·
+> FastAPI on Render Starter · Postgres/pgvector on Neon · Clerk (invite-only) as identity**.
+> Hard rules: `../ARCHITECTURE.md`. Names: `../GLOSSARY.md`. This plan does **not** close doors to the
+> target model (automatic sources, calibration = `[future]`).
 
-## Principio rector para este plan
-El MVP es una **rebanada fina**: implementar solo el backbone humano (fases 1→4 → golden),
-respetando los boundaries de módulo y la Dependency Rule, **sin** ceremonia de más. Cada
-subdominio = un módulo Python; cada módulo = domain / application / infrastructure.
+## Guiding principle for this plan
+The MVP is a **thin slice**: implement only the human backbone (phases 1→4 → golden),
+respecting the module boundaries and the Dependency Rule, **without** extra ceremony. Each
+subdomain = a Python module; each module = domain / application / infrastructure.
 
 ---
 
-## 1. Layout del repo (monorepo)
+## 1. Repo layout (monorepo)
 
 ```
 / (repo root)
   CLAUDE.md
-  docs/…                      # este diseño (fuente de verdad)
-  backend/                    # FastAPI → deploy a Render (root = /backend)
-    app/…                     # ver §2
-    alembic/                  # migraciones
+  docs/…                      # this design (source of truth)
+  backend/                    # FastAPI → deploy to Render (root = /backend)
+    app/…                     # see §2
+    alembic/                  # migrations
     tests/
     pyproject.toml
     Dockerfile
-  frontend/                   # Next.js → deploy a Netlify (root = /frontend)
-    src/app/…                 # ver §6
+  frontend/                   # Next.js → deploy to Netlify (root = /frontend)
+    src/app/…                 # see §6
     package.json
 ```
 
-## 2. Backend hexagonal (por módulo, Dependency Rule)
+## 2. Hexagonal backend (per module, Dependency Rule)
 
 ```
 backend/app/
-  main.py                     # ensambla FastAPI, DI wiring, registra routers (capa frameworks)
-  config.py                   # settings desde env
+  main.py                     # assembles FastAPI, DI wiring, registers routers (frameworks layer)
+  config.py                   # settings from env
   platform/                   # frameworks & drivers
-    db.py                     # engine/session SQLAlchemy (Neon)
-    events.py                 # dispatcher in-process + outbox (ver §4)
-    clerk.py                  # cliente/JWKS de Clerk
+    db.py                     # SQLAlchemy engine/session (Neon)
+    events.py                 # in-process dispatcher + outbox (see §4)
+    clerk.py                  # Clerk client/JWKS
     security.py               # dependency get_current_assessor / require_admin
-  shared/                     # shared kernel mínimo
-    domain/                   # base DomainEvent, ids, value objects comunes
+  shared/                     # minimal shared kernel
+    domain/                   # base DomainEvent, ids, common value objects
     application/              # EventPublisherPort, UnitOfWorkPort
   modules/
-    identity/                 # Clerk adapter detrás de IdentityPort; resolución de Assessor
+    identity/                 # Clerk adapter behind IdentityPort; Assessor resolution
       domain/ application/ infrastructure/
     content_registry/
       domain/                 # EducationalContent, ContentMetadata(open), MetadataEntry, events
       application/            # RegisterContent, UpdateContentMetadata; ports (repo, publisher)
-      infrastructure/         # repo SQLAlchemy, ACL LearnPack, router FastAPI
+      infrastructure/         # SQLAlchemy repo, LearnPack ACL, FastAPI router
     rubric_authoring/
-      domain/ application/ infrastructure/   # seed loader de rubric-v1.json; getRubric query
+      domain/ application/ infrastructure/   # seed loader for rubric-v1.json; getRubric query
     evaluation/
-      domain/                 # Evaluation (root), EvaluationResult, CriterionScore, invariantes
+      domain/                 # Evaluation (root), EvaluationResult, CriterionScore, invariants
       application/            # SubmitEvaluation; ports
       infrastructure/         # repo, router
     orchestration/
@@ -71,30 +71,30 @@ backend/app/
     golden_dataset/
       domain/ application/ infrastructure/   # coverage rule → GoldenReferenceEstablished
     reporting/
-      application/            # aggregation.py PURA (media, dispersión, collapse) — sin I/O
-      infrastructure/         # composición vía public.py de otros módulos + reports + router
+      application/            # aggregation.py PURE (mean, dispersion, collapse) — no I/O
+      infrastructure/         # composition via public.py of other modules + reports + router
 ```
 
-Regla: `domain` sin imports de framework; `application` define los ports (Protocols); los
-adapters (repos, routers, Clerk, ACL) viven en `infrastructure`; `platform` + `main.py` son la
-capa externa que inyecta todo. **Ningún módulo importa el dominio interno de otro** — se hablan
-por eventos (§4) y por queries de solo-lectura (DTOs).
+Rule: `domain` with no framework imports; `application` defines the ports (Protocols); the
+adapters (repos, routers, Clerk, ACL) live in `infrastructure`; `platform` + `main.py` are the
+outer layer that injects everything. **No module imports another's internal domain** — they talk
+via events (§4) and read-only queries (DTOs).
 
-## 3. Esquema Postgres (Neon) — sketch por agregado
+## 3. Postgres schema (Neon) — sketch per aggregate
 
 ```sql
 -- identity
 assessors(id uuid pk, clerk_user_id text unique, email text, display_name text,
           role text check (role in ('admin','evaluator')), expertise text, created_at timestamptz)
 
--- content_registry — cada fila es una VERSIÓN concreta (contentId = versión);
--- contenido lógico = (generating_system, external_id). Ver ADR-0005.
+-- content_registry — each row is a concrete VERSION (contentId = version);
+-- logical content = (generating_system, external_id). See ADR-0005.
 contents(id uuid pk, generating_system text, external_id text, version text not null default '1',
          consumable_url text, metadata jsonb not null default '{}', created_at timestamptz,
          unique(generating_system, external_id, version))
-metadata_schemas(generating_system text pk, spec jsonb)   -- seed 'LearnpackV1' (keys+tipos)
+metadata_schemas(generating_system text pk, spec jsonb)   -- seed 'LearnpackV1' (keys+types)
 
--- rubric_authoring (seed desde docs/seed/rubric-v1.json)
+-- rubric_authoring (seed from docs/seed/rubric-v1.json)
 rubric_versions(id text pk, rubric_id text, version text, name text, status text,
                 scope text, scale_min int, scale_max int, published_at timestamptz,
                 unique(rubric_id, version))
@@ -113,70 +113,70 @@ campaign_contents(campaign_id uuid, content_id uuid, primary key(campaign_id, co
 assignments(id uuid pk, campaign_id uuid, content_id uuid, assessor_id uuid,
             status text check (status in ('assigned','opened','submitted','cancelled')),
             created_at timestamptz, updated_at timestamptz)
--- unicidad de assignment activa:
+-- uniqueness of the active assignment:
 create unique index on assignments(campaign_id, content_id, assessor_id)
   where status <> 'cancelled';
 
 -- evaluation
 evaluations(id uuid pk, assessor_id uuid, content_id uuid, rubric_version_id text,
             attempt int not null default 1, occurred_at timestamptz, submitted_at timestamptz)
--- Identidad = id propio. SIN unicidad por (assessor, content, rubricVersion): se permiten
--- REPETICIONES del mismo assessor sobre el mismo (content, rubric) — p.ej. LLMJudge N veces para
--- dispersión — y distintas versiones de contenido (content_id es version-specific). CAMPAIGN-
--- AGNOSTIC (sin campaign_id): el nexo con la campaña es el assignment; la completitud se cuenta
--- por assignments con status='submitted' (§5). La anti-duplicación humana vive en el assignment
--- (re-submit sobre uno ya 'submitted' → 409). Ver ADR-0005.
+-- Identity = own id. NO uniqueness by (assessor, content, rubricVersion): REPETITIONS of the
+-- same assessor on the same (content, rubric) are allowed — e.g. LLMJudge N times for
+-- dispersion — and different content versions (content_id is version-specific). CAMPAIGN-
+-- AGNOSTIC (no campaign_id): the link to the campaign is the assignment; completion is counted
+-- by assignments with status='submitted' (§5). Human anti-duplication lives in the assignment
+-- (re-submit on one already 'submitted' → 409). See ADR-0005.
 criterion_scores(evaluation_id uuid references evaluations(id), criterion_id text,
                  score int check (score between 1 and 5), comment text,
                  primary key(evaluation_id, criterion_id))
 
--- completitud (emitido por orchestration; alternativamente una vista)
+-- completion (emitted by orchestration; alternatively a view)
 content_evaluation_completions(campaign_id uuid, content_id uuid, rubric_version_id text,
                                completed_at timestamptz,
                                primary key(campaign_id, content_id))
 
--- golden_dataset (thin en MVP)
+-- golden_dataset (thin in MVP)
 golden_references(campaign_id uuid, rubric_version_id text, coverage numeric,
                   established_at timestamptz, primary key(campaign_id, rubric_version_id))
 
--- events (append-only, events-first / outbox) — ver §4
+-- events (append-only, events-first / outbox) — see §4
 events(id bigserial pk, occurred_at timestamptz default now(), event_type text,
        aggregate_type text, aggregate_id text, payload jsonb, dispatched_at timestamptz)
 ```
 
-Notas de implementación (decisiones concretas):
-- `contents.metadata` es JSONB abierto (ADR-0001), validado en app contra `metadata_schemas`.
-  **Spec seed `LearnpackV1`:** `learningObjectives: string_list (required)` ·
-  `targetAudience: string (required)` · `prerequisites: string_list (optional)`. Sin lessonPlan.
-  **Validate-on-write / trust-on-read:** la validación contra el schema corre solo al *escribir*;
-  al leer se rehidrata sin revalidar (un cambio futuro de schema no rompe lecturas ya guardadas).
-- **Convención de `rubric_versions.id`:** `{rubricId}-{version}` (p.ej. `learnpack-pedagogical-v1`),
-  determinístico e inmutable → seed idempotente.
-- **FKs:** intra-módulo → siempre. Cross-módulo (p.ej. `evaluations.assessor_id→assessors`,
-  `assignments.content_id→contents`, `campaigns.rubric_version_id→rubric_versions`) → declaradas en
-  el MVP (una sola DB, integridad), pero la columna referencia el *id (Published Language)* del
-  módulo dueño; el código **no hace JOINs cross-módulo** (lecturas por query port). Si un módulo se
-  extrae a su DB, esa FK pasa a chequeo a nivel de app.
-- **CHECKs** en todos los campos de estado/rol: `assessors.role`, `rubric_versions.status`,
+Implementation notes (concrete decisions):
+- `contents.metadata` is open JSONB (ADR-0001), validated in-app against `metadata_schemas`.
+  **Seed spec `LearnpackV1`:** `learningObjectives: string_list (required)` ·
+  `targetAudience: string (required)` · `prerequisites: string_list (optional)`. No lessonPlan.
+  **Validate-on-write / trust-on-read:** validation against the schema runs only on *write*;
+  on read it rehydrates without revalidating (a future schema change does not break already-saved reads).
+- **Convention for `rubric_versions.id`:** `{rubricId}-{version}` (e.g. `learnpack-pedagogical-v1`),
+  deterministic and immutable → idempotent seed.
+- **FKs:** intra-module → always. Cross-module (e.g. `evaluations.assessor_id→assessors`,
+  `assignments.content_id→contents`, `campaigns.rubric_version_id→rubric_versions`) → declared in
+  the MVP (single DB, integrity), but the column references the *id (Published Language)* of the
+  owning module; the code **does no cross-module JOINs** (reads via query port). If a module gets
+  extracted to its own DB, that FK becomes an app-level check.
+- **CHECKs** on all state/role fields: `assessors.role`, `rubric_versions.status`,
   `campaigns.status`, `assignments.status`.
-- pgvector no se usa en el MVP humano, pero la extensión ya está en Neon para el `[futuro]`.
-- **Sesiones SQLAlchemy síncronas** en el MVP (no async): más simples, y el workload no necesita
-  concurrencia async; el outbox es atómico igual (async no lo rompería, pero sync es preferible
-  acá). Revisable si crece la concurrencia.
+- pgvector is not used in the human MVP, but the extension is already on Neon for the `[future]`.
+- **Synchronous SQLAlchemy sessions** in the MVP (not async): simpler, and the workload does not need
+  async concurrency; the outbox is atomic either way (async would not break it, but sync is preferable
+  here). Revisable if concurrency grows.
 
-## 4. Events-first sobre Postgres (ADR-0003)
+## 4. Events-first on Postgres (ADR-0003)
 
-- Cada use case, dentro de **una transacción**: escribe el/los agregado(s) **y** hace `INSERT`
-  en `events` (patrón outbox). Commit atómico → "publicar un evento = insertar fila".
-- Tras el commit, un **dispatcher in-process** entrega el evento a las policies suscritas
-  (síncrono en MVP). Si una policy falla, se puede reprocesar desde `events` (idempotencia por
+- Each use case, within **one transaction**: writes the aggregate(s) **and** does an `INSERT`
+  into `events` (outbox pattern). Atomic commit → "publishing an event = inserting a row".
+- After the commit, an **in-process dispatcher** delivers the event to the subscribed policies
+  (synchronous in MVP). If a policy fails, it can be reprocessed from `events` (idempotency by
   `event_type + aggregate_id`).
-- Evolución `[futuro]`: reemplazar el dispatcher por un bus real / relay de integration events
-  (p.ej. `QualityJudgmentPublished` → API a LearnPack) sin tocar los contratos de módulo.
+- `[future]` evolution: replace the dispatcher with a real bus / integration-events relay
+  (e.g. `QualityJudgmentPublished` → API to LearnPack) without touching the module contracts.
 
-## 5. Mapeo comando → evento → tabla(s) → policy
+## 5. Mapping command → event → table(s) → policy
 
-| Comando (módulo) | Evento | Escribe | Policy que dispara |
+| Command (module) | Event | Writes | Policy it triggers |
 |---|---|---|---|
 | RegisterContent (content_registry) | `ContentRegistered` | contents | — |
 | UpdateContentMetadata | `ContentMetadataUpdated` | contents.metadata | — |
@@ -184,110 +184,110 @@ Notas de implementación (decisiones concretas):
 | OpenCampaign (orchestration) | `CampaignOpened` | campaigns, campaign_contents | — |
 | AssignContent | `AssignmentCreated` | assignments | — |
 | OpenAssignment | `AssignmentOpened` | assignments.status | — |
-| CancelAssignment / Reassign | `AssignmentCancelled` (+ nuevo `AssignmentCreated`) | assignments | — |
-| SubmitEvaluation (evaluation) | `EvaluationSubmitted` | evaluations, criterion_scores | (orch) pone `status='submitted'` en TODAS las assignments abiertas de `(assessor, content)` con `campaign.rubric_version == rubricVersion`; para cada campaña afectada, si `COUNT(assignments submitted for (campaign, content)) ≥ required` → `ContentEvaluationCompleted` |
-| — (policy orchestration) | `ContentEvaluationCompleted` | content_evaluation_completions | (golden) recalcula coverage → si `≥ campaign.golden_coverage_threshold` (default 1.0) → `GoldenReferenceEstablished` |
-| — (policy golden) | `GoldenReferenceEstablished` | golden_references | — |
+| CancelAssignment / Reassign | `AssignmentCancelled` (+ new `AssignmentCreated`) | assignments | — |
+| SubmitEvaluation (evaluation) | `EvaluationSubmitted` | evaluations, criterion_scores | (orch) sets `status='submitted'` on ALL open assignments of `(assessor, content)` with `campaign.rubric_version == rubricVersion`; for each affected campaign, if `COUNT(assignments submitted for (campaign, content)) ≥ required` → `ContentEvaluationCompleted` |
+| — (orchestration policy) | `ContentEvaluationCompleted` | content_evaluation_completions | (golden) recomputes coverage → if `≥ campaign.golden_coverage_threshold` (default 1.0) → `GoldenReferenceEstablished` |
+| — (golden policy) | `GoldenReferenceEstablished` | golden_references | — |
 
-Reporting (MVP) **lee on-demand por los query ports** (public.py) de los módulos dueños y
-**agrega en Python** (media + inter-rater), sin proyecciones por eventos ni JOINs cross-módulo
-(ADR-0006). Las proyecciones CQRS alimentadas por eventos = `[futuro]`.
+Reporting (MVP) **reads on-demand via the query ports** (public.py) of the owning modules and
+**aggregates in Python** (mean + inter-rater), with no event-fed projections nor cross-module JOINs
+(ADR-0006). Event-fed CQRS projections = `[future]`.
 
-## 6. Identidad con Clerk (ADR-0004)
+## 6. Identity with Clerk (ADR-0004)
 
-- **Front (Next en Netlify):** `@clerk/nextjs` — `<ClerkProvider>`, `clerkMiddleware`, `<SignIn/>`
-  / `<UserButton/>`. Acceso **solo por invitación** (feature del free de Clerk). Un JWT template
-  en Clerk para que el token traiga los claims necesarios.
-- **Back (FastAPI en Render):** dependency `get_current_assessor` que valida el `Bearer` JWT
-  contra el **JWKS de Clerk** (issuer + exp + firma), extrae `sub`, hace *upsert* del `assessor`
-  (primer login) y lo devuelve. `require_admin` chequea `role='admin'`.
-- **Cross-origin (Netlify ↔ Render):** el token viaja en `Authorization: Bearer` (no cookie
-  cross-site); el front lo obtiene con `getToken()` y lo adjunta a cada `fetch`. Middleware CORS
-  de FastAPI: permitir el origin de Netlify + header `Authorization`.
-- Es un **adapter detrás del IdentityPort**: el dominio solo ve `assessorId`. Cambiar de proveedor
-  no toca el dominio.
+- **Front (Next on Netlify):** `@clerk/nextjs` — `<ClerkProvider>`, `clerkMiddleware`, `<SignIn/>`
+  / `<UserButton/>`. Access **by invitation only** (a feature of Clerk's free tier). A JWT template
+  in Clerk so the token carries the necessary claims.
+- **Back (FastAPI on Render):** dependency `get_current_assessor` that validates the `Bearer` JWT
+  against **Clerk's JWKS** (issuer + exp + signature), extracts `sub`, *upserts* the `assessor`
+  (first login) and returns it. `require_admin` checks `role='admin'`.
+- **Cross-origin (Netlify ↔ Render):** the token travels in `Authorization: Bearer` (no cross-site
+  cookie); the front obtains it with `getToken()` and attaches it to each `fetch`. FastAPI CORS
+  middleware: allow the Netlify origin + `Authorization` header.
+- It is an **adapter behind the IdentityPort**: the domain only sees `assessorId`. Changing provider
+  does not touch the domain.
 
-## 7. API (FastAPI) y páginas (Next)
+## 7. API (FastAPI) and pages (Next)
 
-**Evaluador**
-- `GET /me/assignments` → pendientes del assessor actual (status assigned/opened).
-- `GET /assignments/{id}` → metadata (filtrada por `metadata_view`) + `RubricSnapshot v1` +
+**Evaluator**
+- `GET /me/assignments` → pending items of the current assessor (status assigned/opened).
+- `GET /assignments/{id}` → metadata (filtered by `metadata_view`) + `RubricSnapshot v1` +
   `consumable_url`.
-- `POST /assignments/{id}/open` → `AssignmentOpened` (opcional).
-- `POST /evaluations` (endpoint en `evaluation`) → `SubmitEvaluation`
-  `{assignmentId, scores:[{criterionId, score, comment?}]}`. Lee la assignment por el **query port
-  de orchestration** (sync) para sacar content+rubricVersion. Valida cobertura exacta de los 5
-  criteria y score ∈ [1,5]. Si el `Assignment` ya está `submitted` → **409** (fast-fail;
-  anti-duplicación real = transición de la assignment vía policy, ADR-0005). La assignment la marca
-  `submitted` la policy de orchestration al oír `EvaluationSubmitted` (sin comando cruzado).
+- `POST /assignments/{id}/open` → `AssignmentOpened` (optional).
+- `POST /evaluations` (endpoint in `evaluation`) → `SubmitEvaluation`
+  `{assignmentId, scores:[{criterionId, score, comment?}]}`. Reads the assignment via the **query port
+  of orchestration** (sync) to get content+rubricVersion. Validates exact coverage of the 5
+  criteria and score ∈ [1,5]. If the `Assignment` is already `submitted` → **409** (fast-fail;
+  real anti-duplication = assignment transition via policy, ADR-0005). The assignment is marked
+  `submitted` by the orchestration policy on hearing `EvaluationSubmitted` (no cross-command).
 
-Páginas: `/sign-in` (Clerk) · `/evaluations` (lista de pendientes) · `/evaluations/[assignmentId]`
-(flujo 3 pasos: **1** ver metadata → **2** consumir contenido (iframe si el sitio lo permite,
-si no link en pestaña nueva) → **3** formulario de 5 criteria, score 1–5 obligatorio + comentario
-opcional, con hints de 1 y 5).
+Pages: `/sign-in` (Clerk) · `/evaluations` (pending list) · `/evaluations/[assignmentId]`
+(3-step flow: **1** view metadata → **2** consume content (iframe if the site allows it,
+otherwise a link in a new tab) → **3** form of 5 criteria, mandatory score 1–5 + optional
+comment, with hints for 1 and 5).
 
 **Admin** (`require_admin`)
 - `POST /admin/contents`, `PATCH /admin/contents/{id}/metadata`
-- **Carga de contenido = manual, de a un curso** (`POST /admin/contents` + form de metadata en la
-  admin UI, bloque 5). No hay export de LearnPack → el **ACL `acl_learnpack.py` queda como seam
-  documentado y testeado (no conectado)**. Bulk import CLI = `[futuro]` opcional cuando exista un
-  JSON canónico (`import-content --file <canonical.json>`, sin ACL).
-- `POST /admin/campaigns` (crea directo en `open`, `contentSet` no vacío; `Draft` no expuesto —
-  decisión C), `POST /admin/campaigns/{id}/assignments`,
+- **Content loading = manual, one course at a time** (`POST /admin/contents` + metadata form in the
+  admin UI, block 5). There is no LearnPack export → the **ACL `acl_learnpack.py` stays as a
+  documented and tested seam (not connected)**. Bulk import CLI = optional `[future]` when a
+  canonical JSON exists (`import-content --file <canonical.json>`, no ACL).
+- `POST /admin/campaigns` (creates directly in `open`, non-empty `contentSet`; `Draft` not exposed —
+  decision C), `POST /admin/campaigns/{id}/assignments`,
   `POST /admin/assignments/{id}/cancel`
-- Invitaciones de evaluadores: vía Clerk (dashboard o Management API).
-- `GET /admin/progress` → quién evaluó qué / pendientes por evaluador y por curso.
-- `GET /admin/reports/scores` → scores por curso (individual y promedio), promedio por evaluador,
-  global, e inter-rater. (Reporting **compone vía query ports + agrega en Python**, no vistas
-  SQL cross-módulo — ADR-0006. `evaluation.public` expone una query de scores.)
+- Evaluator invitations: via Clerk (dashboard or Management API).
+- `GET /admin/progress` → who evaluated what / pending items per evaluator and per course.
+- `GET /admin/reports/scores` → scores per course (individual and average), average per evaluator,
+  global, and inter-rater. (Reporting **composes via query ports + aggregates in Python**, no
+  cross-module SQL views — ADR-0006. `evaluation.public` exposes a scores query.)
 
-## 8. iframe del contenido — riesgo a verificar
-Muchos sitios bloquean el iframe con `X-Frame-Options`/`CSP frame-ancestors`. **Verificar
-`https://<curso>.learn-pack.com/` al empezar**; si bloquea → fallback "abrir en pestaña nueva".
-No es dominio: vive en la UI.
+## 8. Content iframe — risk to verify
+Many sites block the iframe with `X-Frame-Options`/`CSP frame-ancestors`. **Verify
+`https://<curso>.learn-pack.com/` at the start**; if it blocks → fallback "open in new tab".
+It is not domain: it lives in the UI.
 
-> Desenlace (fuera del snapshot): el embed funciona con LearnPack y el fallback se mantiene igual,
-> porque el bloqueo depende del sitio de cada curso. Ver `../../frontend/README.md` y
+> Outcome (outside the snapshot): the embed works with LearnPack and the fallback stays the same,
+> because the blocking depends on each course's site. See `../../frontend/README.md` and
 > `../../STATUS.md`.
 
-## 9. Seed y migraciones
-- Alembic para el schema.
+## 9. Seed and migrations
+- Alembic for the schema.
 - Seed script: `docs/seed/rubric-v1.json` → `rubric_versions` + `criteria` +
-  `pedagogical_frameworks`; `metadata_schemas` con `LearnpackV1`.
-- Rubric v1 se siembra como `status='published'`, locked (sin UI de autoría).
+  `pedagogical_frameworks`; `metadata_schemas` with `LearnpackV1`.
+- Rubric v1 is seeded as `status='published'`, locked (no authoring UI).
 
-## 10. Deploy (env por servicio)
+## 10. Deploy (env per service)
 - **Netlify (frontend):** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`,
-  `NEXT_PUBLIC_API_URL` (URL de Render). Base dir `/frontend`.
+  `NEXT_PUBLIC_API_URL` (Render URL). Base dir `/frontend`.
 - **Render Starter (backend):** `DATABASE_URL` (Neon), `CLERK_ISSUER`/`CLERK_JWKS_URL`,
-  `CLERK_SECRET_KEY`, `ALLOWED_ORIGINS` (Netlify). Root `/backend`, siempre encendido (sin cold
+  `CLERK_SECRET_KEY`, `ALLOWED_ORIGINS` (Netlify). Root `/backend`, always on (no cold
   start).
-- **Neon:** connection string; extensión pgvector habilitada (para `[futuro]`).
+- **Neon:** connection string; pgvector extension enabled (for the `[future]`).
 
-## 11. Testing (foco mínimo, no exhaustivo)
-- Dominio: invariantes de `Evaluation` (cobertura exacta, score 1–5; **se permiten repeticiones**,
-  sin unicidad por assessor/content/rubric) y del lifecycle de `Assignment` (cancel solo si no
-  submitted; re-submit sobre `submitted` → 409).
-- Policy de completitud: `COUNT(assignments submitted) ≥ quorum` → `ContentEvaluationCompleted`
-  (incluye caso de reasignación y de una evaluación que satisface dos campañas).
+## 11. Testing (minimal focus, not exhaustive)
+- Domain: invariants of `Evaluation` (exact coverage, score 1–5; **repetitions are allowed**,
+  no uniqueness by assessor/content/rubric) and of the `Assignment` lifecycle (cancel only if not
+  submitted; re-submit on `submitted` → 409).
+- Completion policy: `COUNT(assignments submitted) ≥ quorum` → `ContentEvaluationCompleted`
+  (includes the reassignment case and one evaluation satisfying two campaigns).
 
-## 12. Orden sugerido de implementación
-1. Scaffolding backend (platform: db, events, clerk, security) + migraciones + seed rubric v1.
+## 12. Suggested implementation order
+1. Backend scaffolding (platform: db, events, clerk, security) + migrations + seed rubric v1.
 2. identity (Clerk) + content_registry (register + metadata).
-3. **rubric_authoring (read-only: dtos/queries + repo, sin `domain` — ver decisión A)** +
-   evaluation (SubmitEvaluation + invariantes; endpoint lee la assignment por el query port de
-   orchestration, decisión B) + orchestration (campaign/assignments + policy de quórum).
+3. **rubric_authoring (read-only: dtos/queries + repo, no `domain` — see decision A)** +
+   evaluation (SubmitEvaluation + invariants; endpoint reads the assignment via the query port of
+   orchestration, decision B) + orchestration (campaign/assignments + quorum policy).
 4. golden_dataset (coverage) + reporting (read models).
-5. frontend: sign-in (Clerk), pendientes del evaluador, flujo 3 pasos; **admin: form de alta
-   manual de curso + creación de campaña + asignación** (no solo vistas de lectura) — habilita el
-   happy-path del demo (alta de cursos → campaña → evaluar).
+5. frontend: sign-in (Clerk), evaluator's pending items, 3-step flow; **admin: form for manual
+   course registration + campaign creation + assignment** (not just read views) — enables the
+   demo happy-path (course registration → campaign → evaluate).
 
-> Decisiones de bloque 3: **A** rubric_authoring read-only (domain rico = `[futuro]` con
-> `PublishRubric`). **B** submit vive en `evaluation`, lee assignment por query port de
-> orchestration (sync, permitido); la transición de la assignment la hace la policy vía evento
-> (sin comando cruzado); 409 = fast-fail. **C** `POST /admin/campaigns` crea directo en `open`
-> (contentSet no vacío); `Draft` en el dominio pero no expuesto.
+> Block 3 decisions: **A** rubric_authoring read-only (rich domain = `[future]` with
+> `PublishRubric`). **B** submit lives in `evaluation`, reads the assignment via orchestration's
+> query port (sync, allowed); the assignment transition is done by the policy via event
+> (no cross-command); 409 = fast-fail. **C** `POST /admin/campaigns` creates directly in `open`
+> (non-empty contentSet); `Draft` in the domain but not exposed.
 
-## ADRs relacionados
-`0001` metadata abierta · `0002` campañas/assignments/quórum · `0003` Postgres+events ·
-`0004` Clerk · `0005` identidad de Evaluation + versionado de contenido.
+## Related ADRs
+`0001` open metadata · `0002` campaigns/assignments/quorum · `0003` Postgres+events ·
+`0004` Clerk · `0005` Evaluation identity + content versioning.

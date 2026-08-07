@@ -1,87 +1,87 @@
 # CLAUDE.md
 
-Guía para generar el código de este repositorio. **Leer `docs/` antes de escribir código.**
+Guide for generating the code of this repository. **Read `docs/` before writing code.**
 
-## Orden de lectura
-1. `docs/ARCHITECTURE.md` — invariantes no negociables (empezar acá).
-2. `docs/GLOSSARY.md` — ubiquitous language (los nombres del código salen de acá; incluye la
-   **tabla de equivalencias con la industria de evals**).
-3. `docs/design/09-align-discover-qa.md` … `13-code-qa.md` — **el diseño vigente** (QA
-   interno de generadores): estratégico (09–11), táctico por contexto (12) y plan de
-   código (13).
-4. `docs/adr/` — decisiones inmutables: 0001–0008 (slice 1) · **0009–0021 (slice 2)**.
-5. `STATUS.md` — en qué punto está el desarrollo **hoy**.
+## Reading order
+1. `docs/ARCHITECTURE.md` — non-negotiable invariants (start here).
+2. `docs/GLOSSARY.md` — ubiquitous language (code names come from here; it includes the
+   **equivalences table with the evals industry**).
+3. `docs/design/09-align-discover-qa.md` … `13-code-qa.md` — **the current design** (internal
+   QA of generators): strategic (09–11), tactical per context (12) and the code
+   plan (13).
+4. `docs/adr/` — immutable decisions: 0001–0008 (slice 1) · **0009–0021 (slice 2)**.
+5. `STATUS.md` — where the development stands **today**.
 
-⚠️ `docs/design/01-…-08` son **snapshots históricos** del diseño que produjo el slice 1 —
-llevan banner y **no se usan como fuente para código nuevo**.
+⚠️ `docs/design/01-…-08` are **historical snapshots** of the design that produced slice 1 —
+they carry a banner and are **not used as a source for new code**.
 
-## No negociables (resumen de ARCHITECTURE.md)
-- **Dependency Rule:** las dependencias apuntan **solo hacia adentro**
-  (Frameworks → Adapters → Application → Domain). El **Domain es Python puro**: sin FastAPI,
-  SQLAlchemy, LiteLLM ni I/O.
-- **Ports & adapters:** los ports se definen en Application/Domain; los adapters (Postgres/Neon,
-  Clerk, LiteLLM) se implementan afuera y se inyectan.
-- **Aislamiento de módulos:** los módulos hablan por **domain events + DTOs de query**; nunca
-  se importa el dominio interno de otro módulo. ACL en los bordes externos (LearnPack, LLM).
-- **Events-first:** el estado evoluciona por domain events; las policies reaccionan; sin
-  comandos cruzados. En el MVP un evento es un `INSERT` en la tabla `events` (outbox, ADR-0003).
+## Non-negotiables (summary of ARCHITECTURE.md)
+- **Dependency Rule:** dependencies point **inwards only**
+  (Frameworks → Adapters → Application → Domain). The **Domain is pure Python**: no FastAPI,
+  SQLAlchemy, LiteLLM or I/O.
+- **Ports & adapters:** ports are defined in Application/Domain; adapters (Postgres/Neon,
+  Clerk, LiteLLM) are implemented outside and injected.
+- **Module isolation:** modules talk via **domain events + query DTOs**; another module's
+  internal domain is never imported. ACL at the external boundaries (LearnPack, LLM).
+- **Events-first:** state evolves via domain events; policies react; no cross-module
+  commands. In the MVP an event is an `INSERT` into the `events` table (outbox, ADR-0003).
 
-## Documentación — dónde escribir qué (regla dura)
+## Documentation — where to write what (hard rule)
 
-Cada documento tiene un **contrato de mantenimiento**, y la ubicación lo declara. Antes de
-escribir un `.md`, elegir clase:
+Every document has a **maintenance contract**, and its location declares it. Before writing
+a `.md`, choose its class:
 
-| Clase | Dónde | Contrato |
+| Class | Where | Contract |
 |---|---|---|
-| **reference** | raíz de `docs/`, `backend/README.md`, `frontend/README.md` | **Siempre cierto de `main`.** Se actualiza en el **mismo commit** que el código que lo vuelve falso. |
-| **decision** | `docs/adr/` | **Inmutable.** Nunca se edita el contenido de un ADR: se escribe uno nuevo que lo supersede. Única excepción: la línea **Estado** del superseded se actualiza a "superseded por ADR-XXXX" — metadata de ciclo de vida, para que nadie actúe sobre una decisión muerta. |
-| **snapshot** | `docs/design/` | **Congelado.** No se mantiene ni se corrige, aunque el sistema lo contradiga. |
-| **working** | `notes/` (gitignored) | Efímero. Al cerrar la tarea **se promueve o se borra**. |
+| **reference** | root of `docs/`, `backend/README.md`, `frontend/README.md` | **Always true of `main`.** Updated in the **same commit** as the code that makes it false. |
+| **decision** | `docs/adr/` | **Immutable.** The content of an ADR is never edited: a new one is written that supersedes it. Sole exception: the **Status** line of the superseded ADR is updated to "superseded by ADR-XXXX" — lifecycle metadata, so nobody acts on a dead decision. |
+| **snapshot** | `docs/design/` | **Frozen.** Not maintained or corrected, even if the system contradicts it. |
+| **working** | `notes/` (gitignored) | Ephemeral. When the task closes it is **promoted or deleted**. |
 
-Reglas que no se negocian:
+Non-negotiable rules:
 
-1. **Nada de estado fuera de `STATUS.md`.** Ni "ya está hecho", ni "falta X", ni "N tests en
-   verde", ni "✔ verificado el 30-jul", ni fechas de cuándo se probó algo. En un doc reference
-   se escribe **cómo funciona y por qué**, en presente y sin fecha. El estado va a `STATUS.md`,
-   que se reescribe entero.
-2. **Todo análisis, plan o investigación nace en `notes/`** — no en `docs/`. Incluye lo que
-   generes vos (planes de implementación, auditorías, comparativas).
-3. **Al terminar la tarea, cada nota tiene cuatro salidas y solo cuatro:** fue una *decisión con
-   alternativas descartadas* → ADR · fue una *regla o instrucción* → se funde en un reference
-   existente (no un archivo nuevo) · fue un *análisis de un momento* → se congela en
-   `docs/design/` · **ninguna de las anteriores → se borra**.
-4. **Test para admitir algo en reference:** ¿va a seguir siendo cierto dentro de seis meses sin
-   que nadie lo toque? Si no, no va ahí.
-5. **Lo operativo vive al lado del código que opera** (READMEs de `backend/`/`frontend/`);
-   `docs/` es solo lo transversal.
-6. **Antes de crear un `.md` nuevo, buscar dónde fundirlo.** Un doc nuevo se justifica por tener
-   un ciclo de vida propio, no por ser un tema nuevo.
+1. **No status outside `STATUS.md`.** No "already done", no "X missing", no "N tests
+   green", no "✔ verified on 30-Jul", no dates of when something was tested. A reference doc
+   states **how it works and why**, in the present tense and undated. Status goes to
+   `STATUS.md`, which is rewritten whole.
+2. **Every analysis, plan or investigation is born in `notes/`** — not in `docs/`. Including
+   what you generate (implementation plans, audits, comparisons).
+3. **When the task ends, each note has four exits and only four:** it was a *decision with
+   discarded alternatives* → ADR · it was a *rule or instruction* → merged into an existing
+   reference (not a new file) · it was a *point-in-time analysis* → frozen in
+   `docs/design/` · **none of the above → it is deleted**.
+4. **Test for admitting something into reference:** will it still be true six months from now
+   without anyone touching it? If not, it does not go there.
+5. **Operational content lives next to the code it operates** (`backend/`/`frontend/`
+   READMEs); `docs/` is only for the cross-cutting.
+6. **Before creating a new `.md`, look for where to merge it.** A new doc is justified by
+   having a lifecycle of its own, not by being a new topic.
 
-## Convenciones
-- **Ubiquitous language y código en inglés**; docs y comentarios de negocio pueden ir en
-  español. Usar exactamente los nombres del `docs/GLOSSARY.md`.
-- Distinguir siempre: `EvaluationSource` (tipo/port) vs. `Assessor` (instancia versionada) ·
-  `Criterion` (qué se verifica) vs. `Assessor` (quién/cómo lo produce) · `ComputedMetric`
-  (medición) vs. `CriterionScore` (desenlace discreto + cita) · `instrumentVersion` inmutable
-  + **pinning** por study.
-- **Los términos de la industria de evals** (experiment, scorer, run, dataset…) no nombran
-  conceptos de dominio: aparecen solo en adapters (ACL) y en la tabla de equivalencias del
+## Conventions
+- **Ubiquitous language, code and ALL documentation in English** — docs and business comments
+  included. Use exactly the names from `docs/GLOSSARY.md`.
+- Always distinguish: `EvaluationSource` (type/port) vs. `Assessor` (versioned instance) ·
+  `Criterion` (what is verified) vs. `Assessor` (who/how produces it) · `ComputedMetric`
+  (measurement) vs. `CriterionScore` (discrete outcome + quote) · immutable `instrumentVersion`
+  + **pinning** per study.
+- **The terms of the evals industry** (experiment, scorer, run, dataset…) do not name domain
+  concepts: they appear only in adapters (ACL) and in the equivalences table of the
   `GLOSSARY.md`.
 
-## Dos horizontes (crítico)
-- El **modelo vigente** (QA interno de generadores) está completo en `docs/design/09–12` y su
-  plan de código en `13-code-qa.md`, pero **el primer incremento es una rebanada fina** — ver
-  las marcas "primer incremento: thin/no" en `12-define-qa.md` y los **deferrals explícitos a
-  Code**, ya decididos en `13-code-qa.md` §7 (sufficiency, métricas de validez, annotation
+## Two horizons (critical)
+- The **current model** (internal QA of generators) is complete in `docs/design/09–12` and its
+  code plan in `13-code-qa.md`, but **the first increment is a thin slice** — see the
+  "first increment: thin/no" marks in `12-define-qa.md` and the **explicit deferrals to
+  Code**, already decided in `13-code-qa.md` §7 (sufficiency, validity metrics, annotation
   queues, value domains).
-- `[futuro]` explícitos: calibración de assessors, claims de grano generador con regla propia,
-  deliberación, integration events salientes. No construirlos sin decisión.
-- Ante la duda: implementar el slice mínimo **sin cerrar puertas** al modelo de 09–12; si una
-  decisión nueva contradice el diseño, se escribe un ADR primero.
+- Explicit `[future]` items: assessor calibration, generator-grain claims with their own rule,
+  deliberation, outgoing integration events. Do not build them without a decision.
+- When in doubt: implement the minimal slice **without closing doors** on the 09–12 model; if a
+  new decision contradicts the design, an ADR is written first.
 
 ## Stack
-**MVP (confirmado):** Next/Tailwind/shadcn en Netlify · FastAPI en Render Starter ·
-Postgres/pgvector en Neon · Clerk (invite-only). Ver `docs/design/08-code.md`, ADR-0003 y
+**MVP (confirmed):** Next/Tailwind/shadcn on Netlify · FastAPI on Render Starter ·
+Postgres/pgvector on Neon · Clerk (invite-only). See `docs/design/08-code.md`, ADR-0003 and
 ADR-0004.
-**Target `[futuro]`:** LiteLLM/OpenRouter y LangGraph (solo si hace falta orquestar agentes) —
-no se usan en el MVP.
+**Target `[future]`:** LiteLLM/OpenRouter and LangGraph (only if orchestrating agents becomes
+necessary) — not used in the MVP.

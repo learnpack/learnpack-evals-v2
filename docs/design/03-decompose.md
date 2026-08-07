@@ -1,79 +1,79 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño que produjo el slice 1 (MVP humano). El diseño
-> vigente es la serie **`09-align-discover-qa.md` … `12-define-qa.md`** (QA interno). **No usar
-> este doc como fuente para código nuevo.**
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)** — design that produced slice 1 (human MVP). The current
+> design is the series **`09-align-discover-qa.md` … `12-define-qa.md`** (internal QA). **Do not
+> use this doc as a source for new code.**
 
 # 03 — Decompose
 
-> Paso 3 del DDD Starter Modelling Process. Estado: **cerrado (v0, living)**.
-> Objetivo: agrupar los domain events de Discover en subdominios de baja acoplamiento y
-> alta cohesión. En el monolito modular, cada subdominio ≈ un módulo.
+> Step 3 of the DDD Starter Modelling Process. State: **closed (v0, living)**.
+> Goal: group Discover's domain events into subdomains with low coupling and
+> high cohesion. In the modular monolith, each subdomain ≈ one module.
 
-## Subdominios y eventos que posee cada uno
+## Subdomains and the events each one owns
 
 ### Pedagogical Evaluation
-Producir juicios de calidad con provenance a partir de `(Content, Rubric, Assessor)`.
-- Eventos: `EvaluationRunStarted` (parte automática), `MetricComputed`, `EvaluationSubmitted`,
+Produce quality judgments with provenance from `(Content, Rubric, Assessor)`.
+- Events: `EvaluationRunStarted` (automatic part), `MetricComputed`, `EvaluationSubmitted`,
   `ContentEvaluationCompleted`, `EvaluationResultsAggregated`, `QualityJudgmentPublished`.
-- Conceptos: `Evaluation`, `EvaluationSource`/`Assessor`, `ComputedMetric`, `ScoringPolicy`,
+- Concepts: `Evaluation`, `EvaluationSource`/`Assessor`, `ComputedMetric`, `ScoringPolicy`,
   `CriterionScore`, `EvaluationResult`.
-- Depende de: Rubric Authoring (rubrics publicadas), Content Registry (targets + metadata).
+- Depends on: Rubric Authoring (published rubrics), Content Registry (targets + metadata).
 
 ### Rubric Authoring
-El modelo pedagógico encodeado + versionado de instrumentos.
-- Eventos: `CriterionDefined`, `RubricAssembled`, `RubricPublished`, `RubricRevised`,
+The encoded pedagogical model + instrument versioning.
+- Events: `CriterionDefined`, `RubricAssembled`, `RubricPublished`, `RubricRevised`,
   `RubricDeprecated`.
-- Conceptos: `PedagogicalFramework`, `PedagogicalDimension`, `Quality`, `EvaluationCriterion`
-  (grounding N:M, `eligible_sources`, anchors), `Rubric` (versionada, inmutable al publicar).
-- Reference data: frameworks/dimensions/qualities (versionadas, no hardcodeadas).
+- Concepts: `PedagogicalFramework`, `PedagogicalDimension`, `Quality`, `EvaluationCriterion`
+  (grounding N:M, `eligible_sources`, anchors), `Rubric` (versioned, immutable on publish).
+- Reference data: frameworks/dimensions/qualities (versioned, not hardcoded).
 
 ### Evaluation Orchestration  *(supporting)*
-Workflow humano de evaluación (abierto e incremental — ver ADR-0002).
-- Eventos: `CampaignOpened`, `AssignmentCreated`, `AssignmentOpened`, `AssignmentCancelled`,
+Human evaluation workflow (open and incremental — see ADR-0002).
+- Events: `CampaignOpened`, `AssignmentCreated`, `AssignmentOpened`, `AssignmentCancelled`,
   `ContentEvaluationCompleted`, `CampaignClosed`.
-- Conceptos: `EvaluationCampaign` (abierta; no dueña transaccional de assignments), `Assignment`
-  (lifecycle propio), quórum por umbral de submissions.
-- Dispara runs humanos de Pedagogical Evaluation y detecta completitud.
+- Concepts: `EvaluationCampaign` (open; not the transactional owner of assignments), `Assignment`
+  (own lifecycle), quorum by submissions threshold.
+- Triggers human runs of Pedagogical Evaluation and detects completion.
 
 ### Golden Dataset  *(supporting)*
-Curar el ground truth humano.
-- Eventos: `GoldenReferenceEstablished`.
-- Reglas: cada contenido incluido alcanzó su quórum (`ContentEvaluationCompleted`, de
-  Orchestration); `coverage ≥ threshold` para "usable".
-- Se alimenta de resultados humanos de Pedagogical Evaluation.
+Curate the human ground truth.
+- Events: `GoldenReferenceEstablished`.
+- Rules: every included content reached its quorum (`ContentEvaluationCompleted`, from
+  Orchestration); `coverage ≥ threshold` for "usable".
+- Fed by human results from Pedagogical Evaluation.
 
 ### Calibration  *(supporting)*
-Medir/ajustar `Assessor` automáticos vs. la referencia.
-- Eventos: `AutomatedResultsCollectedForCalibration`, `SourceCalibrated`.
-- Conceptos: `CalibrationProfile` keyado por `(Assessor, Criterion)`.
-- Depende de: Golden Dataset + resultados automáticos de Pedagogical Evaluation. `[futuro]`
+Measure/adjust automatic `Assessor`s vs. the reference.
+- Events: `AutomatedResultsCollectedForCalibration`, `SourceCalibrated`.
+- Concepts: `CalibrationProfile` keyed by `(Assessor, Criterion)`.
+- Depends on: Golden Dataset + automatic results from Pedagogical Evaluation. `[future]`
 
 ### Content Registry  *(supporting → generic)*
-Registrar contenido + metadata + provenance del generador.
-- Eventos: `ContentRegistered`, `ContentMetadataUpdated`.
-- Conceptos: `EducationalContent`/`Course`, `GeneratingSystem`, `ContentMetadata`.
+Register content + metadata + generator provenance.
+- Events: `ContentRegistered`, `ContentMetadataUpdated`.
+- Concepts: `EducationalContent`/`Course`, `GeneratingSystem`, `ContentMetadata`.
 
 ### Reporting / Projections  *(supporting-generic)*
-Read models sobre domain events.
-- Vistas: pendientes por evaluador, scores por curso, promedios (por curso, por evaluador,
-  global). `[parcial MVP]`
+Read models over domain events.
+- Views: pending items per evaluator, scores per course, averages (per course, per evaluator,
+  global). `[partial MVP]`
 
-### Genéricos
-- **Identity & Access** — usuarios/evaluadores/admin, auth. `[MVP: id simple]`
-- **Notifications** — avisos de assignment, etc. `[futuro]`
-- **Localization** — i18n EN/ES. `[futuro]`
+### Generic
+- **Identity & Access** — users/evaluators/admin, auth. `[MVP: simple id]`
+- **Notifications** — assignment notices, etc. `[future]`
+- **Localization** — i18n EN/ES. `[future]`
 
-## Mapa de dependencias (anticipo de Connect)
+## Dependency map (preview of Connect)
 
 ```
-Identity  ← (todos)
+Identity  ← (all)
 Content Registry ──► Pedagogical Evaluation ◄── Rubric Authoring
-Evaluation Orchestration ──dispara──► Pedagogical Evaluation (runs humanos)
-Pedagogical Evaluation ──resultados humanos──► Golden Dataset
-Golden Dataset + resultados automáticos ──► Calibration
-Pedagogical Evaluation / Orchestration ──eventos──► Reporting
+Evaluation Orchestration ──triggers──► Pedagogical Evaluation (human runs)
+Pedagogical Evaluation ──human results──► Golden Dataset
+Golden Dataset + automatic results ──► Calibration
+Pedagogical Evaluation / Orchestration ──events──► Reporting
 ```
 
-Estas flechas son los flujos de eventos/API permitidos entre módulos del monolito.
+These arrows are the allowed event/API flows between modules of the monolith.
 
-## Próximo paso
-**04 — Strategize** (clasificación core/supporting/generic + Core Domain Chart).
+## Next step
+**04 — Strategize** (core/supporting/generic classification + Core Domain Chart).

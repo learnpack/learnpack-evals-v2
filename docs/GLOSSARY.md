@@ -1,308 +1,312 @@
 # Ubiquitous Language — Glossary (v0, living document)
 
-> Convención: los **términos del dominio y del código van en inglés**; las glosas y la
-> discusión, en español. Este glosario es *vivo*: cambia a medida que aprendemos en
-> Discover / Define. Cada término es candidato a `class` / `value object` / `event`.
+> Convention: the **entire glossary is written in English** — glosses and discussion included,
+> not just the domain and code terms. This glossary is *living*: it changes as we learn in
+> Discover / Define. Each term is a candidate `class` / `value object` / `event`.
 
-## Content axis — qué se evalúa
+## Content axis — what is evaluated
 
-- **EducationalContent** (aka `ContentArtifact`) — lo que se evalúa. Un contenido registrado es
-  **una versión concreta** (identificada por `contentId`); el contenido *lógico* es la agrupación
-  `(PackageFormat, externalId)`. El target de evaluación es siempre una versión.
-- **Course** — un tipo concreto de `EducationalContent` (p.ej. un curso LearnPack).
-- **ContentVersion** — versión de un contenido lógico. Permite evaluar el mismo curso en `v1`,
-  `v2`… (mejora/regresión). Unicidad lógica: `(PackageFormat, externalId, version)`. MVP:
-  default `"1"`. Referencia `generatorVersionId` (nullable → `unknown`) y `briefId`, y lleva
-  **provenance de edición**: `pure | human_edited | unknown`.
-- **PackageFormat** *(antes `GeneratingSystem`; el código del slice 1 conserva
-  `generating_system` hasta su migración)* — la **convención del paquete** que un extraction
-  adapter sabe leer (p.ej. `LearnpackV1`). Eje de *formato*: selecciona el adapter y hace de
-  namespace del `externalId` (ADR-0005). Distinto del eje de *examinado* (`GeneratorVersion`);
-  pueden divergir — el generador v2.3 y el v2.4 pueden emitir ambos paquetes `LearnpackV1`.
-  *(Trigger anotado: si una plataforma emitiera varios formatos compartiendo externalIds,
-  nacería un `SourceSystem` separado.)*
-- **GeneratorVersion** *(antes `GeneratorConfiguration`)* — la **identidad declarada del
-  examinado**: `{id, name, version, metadata libre opcional}`. **Inmutable**; un generador
-  realmente distinto ⇒ registro nuevo. Es la clave de acumulación de los claims a nivel
-  generador (ADR-0013) — simetría de *rol* con `SourceConfiguration`, no de mecanismo: acá la
-  identidad es **declarativa e incomprobable** (el generador está fuera del sistema), por eso no
-  hay campos de config obligatorios (se promueven del blob a campos tipados solo cuando algo los
-  consuma). `unknown` permitido: contenido válido para juicios por contenido, **excluido** de la
-  acumulación a nivel generador. El drift silencioso es indetectable desde adentro — disciplina
-  de proceso, y causa registrada en la taxonomía de diagnóstico del bucle B.
-- **ContentPackage** — el work product **completo** que entrega el generador para un contenido:
-  VO de artefactos `{kind, locator, formato}` con vocabulario de `kind` **abierto** (consumable,
-  manifest, knowledge-graph, item-bank, … — sin enum en el dominio). El registro captura el
-  paquete, no solo una `consumable_url`; los artefactos internos suelen ser la mejor evidencia
-  (`declared_structured`, ADR-0009). Puede haber artefactos **a nivel generador** (compartidos
-  entre contenidos; se registran ya, se perfilan cuando un claim los necesite).
-- **GenerationBrief** — el encargo de generación: **agregado propio, inmutable, con identidad**
-  (`briefId`) que los `ContentVersion` referencian — la clave del **diseño pareado** entre
-  `GeneratorVersion`s (mismos briefs, productos nuevos). Contenido lean: texto libre + solo los
-  campos tipados que las task variables consuman (demand-driven). Brief ausente = registrado
-  ausente (limita la comparación pareada y deja explicaciones alternativas sin descartar).
-- **ContentMetadata** — colección **abierta y tipada** de `MetadataEntry` usada como *referencia*
-  de evaluación; validada contra un `MetadataSchema` ligado al `PackageFormat`/tipo. El
-  dominio no referencia keys concretas. MVP: schema `learnpack-v1` =
-  `{learningObjectives, targetAudience, prerequisites}`. Ver `adr/0001-open-content-metadata.md`.
+- **EducationalContent** (aka `ContentArtifact`) — what is evaluated. A registered content is
+  **one concrete version** (identified by `contentId`); the *logical* content is the grouping
+  `(PackageFormat, externalId)`. The evaluation target is always a version.
+- **Course** — a concrete type of `EducationalContent` (e.g. a LearnPack course).
+- **ContentVersion** — version of a logical content. Allows evaluating the same course at `v1`,
+  `v2`… (improvement/regression). Logical uniqueness: `(PackageFormat, externalId, version)`. MVP:
+  default `"1"`. It references `generatorVersionId` (nullable → `unknown`) and `briefId`, and
+  carries **edit provenance**: `pure | human_edited | unknown`.
+- **PackageFormat** *(formerly `GeneratingSystem`; slice 1 code keeps
+  `generating_system` until its migration)* — the **package convention** that an extraction
+  adapter knows how to read (e.g. `LearnpackV1`). The *format* axis: it selects the adapter and
+  acts as the namespace of the `externalId` (ADR-0005). Distinct from the *examinee* axis
+  (`GeneratorVersion`); they can diverge — generator v2.3 and v2.4 may both emit `LearnpackV1`
+  packages.
+  *(Annotated trigger: if a platform emitted several formats sharing externalIds,
+  a separate `SourceSystem` would be born.)*
+- **GeneratorVersion** *(formerly `GeneratorConfiguration`)* — the **declared identity of the
+  examinee**: `{id, name, version, optional free-form metadata}`. **Immutable**; a genuinely
+  different generator ⇒ new record. It is the accumulation key of generator-level claims
+  (ADR-0013) — a symmetry of *role* with `SourceConfiguration`, not of mechanism: here the
+  identity is **declarative and unverifiable** (the generator lives outside the system), which is
+  why there are no mandatory config fields (they are promoted from the blob to typed fields only
+  when something consumes them). `unknown` allowed: content valid for per-content judgments,
+  **excluded** from generator-level accumulation. Silent drift is undetectable from the inside —
+  process discipline, and a registered cause in loop B's diagnostic taxonomy.
+- **ContentPackage** — the **complete** work product the generator delivers for a content:
+  a VO of artifacts `{kind, locator, format}` with an **open** `kind` vocabulary (consumable,
+  manifest, knowledge-graph, item-bank, … — no enum in the domain). Registration captures the
+  package, not just a `consumable_url`; the internal artifacts are usually the best evidence
+  (`declared_structured`, ADR-0009). There may be **generator-level** artifacts (shared
+  across contents; they are registered now, profiled when a claim needs them).
+- **GenerationBrief** — the generation commission: **its own aggregate, immutable, with identity**
+  (`briefId`) that `ContentVersion`s reference — the key to the **paired design** across
+  `GeneratorVersion`s (same briefs, new products). Lean content: free text + only the typed
+  fields that task variables consume (demand-driven). Absent brief = absent registration (it
+  limits paired comparison and leaves alternative explanations unruled-out).
+- **ContentMetadata** — an **open, typed** collection of `MetadataEntry` used as an evaluation
+  *reference*; validated against a `MetadataSchema` bound to the `PackageFormat`/type. The
+  domain references no concrete keys. MVP: schema `learnpack-v1` =
+  `{learningObjectives, targetAudience, prerequisites}`. See `adr/0001-open-content-metadata.md`.
 - **MetadataEntry** — `{key, value, valueType}`.
-- **MetadataSchema** — declara keys permitidas/requeridas + tipos por `PackageFormat`/tipo
+- **MetadataSchema** — declares allowed/required keys + types per `PackageFormat`/type
   (reference data).
-- **ContentProfile** — representación **canónica** de lo que un `ContentPackage` contiene
-  pedagógicamente, producida por un extraction adapter por `PackageFormat`. Datos keyados por
-  los ids de datos de ADR-0014, cada uno con su `EvidenceProvenance` y **con la forma que
-  declara su `DataRequirement`** (verificada al construirlo — ADR-0020). **Se persiste** (reusable
-  entre instrumentos) y lleva la **versión del adapter** en su provenance. Los criteria operan
-  sobre el profile, nunca sobre el contenido crudo.
-- **EvidenceProvenance** — origen de cada dato extraído:
-  `declared_structured | declared_in_content | absent`, con **locator** (cita verbatim +
-  ubicación). No existe `inferred`: el motor no completa lo que el contenido no dice (ADR-0009).
-  Distinta de la provenance del `Assessor`: aquella dice *quién juzgó*; esta, *de dónde salió el
-  dato juzgado*.
+- **ContentProfile** — the **canonical** representation of what a `ContentPackage` contains
+  pedagogically, produced by an extraction adapter per `PackageFormat`. Data keyed by the
+  data ids of ADR-0014, each with its `EvidenceProvenance` and **with the shape its
+  `DataRequirement` declares** (verified when built — ADR-0020). **It is persisted** (reusable
+  across instruments) and carries the **adapter version** in its provenance. Criteria operate
+  on the profile, never on the raw content.
+- **EvidenceProvenance** — the origin of each extracted datum:
+  `declared_structured | declared_in_content | absent`, with a **locator** (verbatim quote +
+  location). There is no `inferred`: the engine does not fill in what the content does not say
+  (ADR-0009). Distinct from the `Assessor`'s provenance: that one says *who judged*; this one,
+  *where the judged datum came from*.
 
-## Criteria axis — qué se mide (el "qué")
+## Criteria axis — what is measured (the "what")
 
-- **PedagogicalFramework** — teoría de referencia que *fundamenta* (grounding), no
-  contiene. Set inicial: Merrill (First Principles), Biggs (Constructive Alignment),
+- **PedagogicalFramework** — reference theory that *grounds* (grounding), does not
+  contain. Initial set: Merrill (First Principles), Biggs (Constructive Alignment),
   Revised Bloom (Anderson & Krathwohl), SOLO, Schmidt (Coherence), Learning Progressions.
-- **PedagogicalDimension** — agrupación de qualities (las "dimensiones" del equipo).
-- **Quality** — cualidad pedagógica granular, evaluable: la **variable del modelo del examinado**
-  (ECD). Los `Claim`s afirman *sobre* ella. `grounded_in` uno o varios `PedagogicalFramework`
-  (relación N:M). Es la **columna estable del lenguaje**: claims y criteria cambian entre
-  versiones de instrumento; los `qualityId` persisten y dan continuidad temática entre líneas de
-  studies. *(Naming abierto: quizá `PedagogicalAttribute`.)*
-- **EvaluationCriterion** — la unidad de juicio verificable. Con claims (ADR-0013), el criterion
-  **evidencia claims** y alcanza la `Quality` a través de ellos — el claim media; en `Rubric v1`
-  (legacy) la operacionalización criterion↔dimension es directa. **Cita** su grounding (N:M); no
-  lo contiene. Declara sus `eligible_sources`, los **datos que requiere** (ids, ADR-0014) y
-  `onMissingEvidence` ∈ {`no_evidence` (default), `fail`} — la **consecuencia** de la ausencia
-  del dato; el **hecho** lo determinan matching/profile (mecánico, nunca el assessor), y
-  `not_applicable` solo nace de capacidad/condicionales.
-  ADR-0010 define su forma: **condición de pase verificable + modos de falla enumerados**,
-  desenlace `scored (pass/fail) | not_applicable | no_evidence | not_assessed` (ADR-0018) — no
-  una escala de apreciación. (La escala 1–5 sobrevive en `Rubric v1`, que **no se migra**: es el instrumento
-  de referencia de la calibración — ADR-0015.)
-- **Rubric** (aka `EvaluationInstrument`) — conjunto ordenado y **versionado** de criteria.
-  Unidad intercambiable. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
-  Génesis (ADR-0012): un instrumento nace del **propósito + tipo de contenido** (designed-for);
-  los frameworks **fundamentan** (warrant), no originan. Reusarlo sobre otro tipo = acto
-  deliberado, re-ligando el task model.
-  **Rol de `Rubric v1` (ADR-0015):** no se migra a la forma ADR-0010 — se **estabiliza como el
-  instrumento de referencia** de la calibración (capa 1): elicitación holística por dimensión
-  (1–5) para el panel humano. Su estabilidad es una feature: una referencia que cambia no es
-  referencia.
+- **PedagogicalDimension** — grouping of qualities (the team's "dimensions").
+- **Quality** — granular, assessable pedagogical quality: the **variable of the examinee model**
+  (ECD). `Claim`s assert *about* it. `grounded_in` one or more `PedagogicalFramework`
+  (N:M relationship). It is the **stable column of the language**: claims and criteria change
+  across instrument versions; the `qualityId`s persist and give thematic continuity across lines
+  of studies. *(Naming open: perhaps `PedagogicalAttribute`.)*
+- **EvaluationCriterion** — the verifiable unit of judgment. With claims (ADR-0013), the criterion
+  **evidences claims** and reaches the `Quality` through them — the claim mediates; in `Rubric v1`
+  (legacy) the criterion↔dimension operationalization is direct. It **cites** its grounding (N:M);
+  it does not contain it. It declares its `eligible_sources`, the **data it requires** (ids,
+  ADR-0014) and `onMissingEvidence` ∈ {`no_evidence` (default), `fail`} — the **consequence** of
+  the datum's absence; the **fact** is determined by matching/profile (mechanical, never the
+  assessor), and `not_applicable` only arises from capability/conditionals.
+  ADR-0010 defines its shape: **verifiable pass condition + enumerated failure modes**,
+  outcome `scored (pass/fail) | not_applicable | no_evidence | not_assessed` (ADR-0018) — not
+  an appreciation scale. (The 1–5 scale survives in `Rubric v1`, which is **not migrated**: it is
+  the reference instrument of calibration — ADR-0015.)
+- **Rubric** (aka `EvaluationInstrument`) — an ordered, **versioned** set of criteria.
+  Interchangeable unit. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
+  Genesis (ADR-0012): an instrument is born from **purpose + content type** (designed-for);
+  frameworks **ground** (warrant), they do not originate. Reusing it on another type = a
+  deliberate act, re-binding the task model.
+  **Role of `Rubric v1` (ADR-0015):** it is not migrated to the ADR-0010 shape — it is
+  **stabilized as the reference instrument** of calibration (layer 1): holistic elicitation per
+  dimension (1–5) for the human panel. Its stability is a feature: a reference that changes is
+  no reference.
 
-## Evaluation design — el argumento evidencial (ECD-lite, ADRs 0012–0014)
+## Evaluation design — the evidential argument (ECD-lite, ADRs 0012–0014)
 
-- **Instrument / InstrumentVersion** — el **agregado central del diseño**: una versión del
-  argumento evidencial completo. Root = `InstrumentVersion`; **posee como VOs** sus `Claim`s,
-  sus `Criterion`s y sus **bindings de aplicabilidad** por `PackageFormat` (designed-for).
-  Ciclo: `Draft (editable, asistible) → Published (locked) → Deprecated`; publicar es atómico y
-  **humano**. `Published` ⇒ inmutable — todo cambio ⇒ versión nueva; `claimId`/`criterionId`
-  estables entre versiones (linaje). **Es "el compuesto"**: con el instrument poseyendo
-  claims + criteria + sufficiency + bindings, el viejo "preset de rúbricas" no necesita nombre
-  propio (DP28). Relación con `Rubric`: término del slice 1 que el Instrument supersede;
-  `Rubric v1` pervive como instrumento de referencia (ADR-0015).
-- **Claim** — afirmación evaluable sobre la calidad, de **una frase**, con: evidencia requerida,
-  warrant (framework) y explicaciones alternativas. **Dos granos:** sobre un contenido y sobre el
-  **generador** (acumulada a través de contenidos — el producto central del QA interno). Estatus
-  evidencial: `soportado | refutado | evidencia insuficiente`. Los findings se organizan **bajo
-  el claim que comprometen**. El diseño corre hacia atrás: claims → evidencia → observables →
-  requisitos de extracción (ADR-0013).
-- **EvidenceModel** — para cada claim: qué evidencia lo soporta/refuta, qué observables la
-  constituyen y qué **datos requiere** (ahí se mintean los ids — ADR-0014; el "diccionario" es
-  una vista generada, no un artefacto).
-- **DataRequirement** — un id del namespace de la demanda, minteado al escribir un evidence
-  rule que necesita un dato sin id. Lleva dos cosas obligatorias, escritas en ese mismo acto:
-  **definición** (qué *significa* el dato — ADR-0014) y **`value_domain`** (qué *forma* toma —
-  ADR-0020: `string · number · boolean · string_list · record · record_list`, con `nullable`
-  por campo, que significa "presente y puede ser null", nunca "puede faltar"). Las dos mitades
-  son el contrato: los adapters declaran sus capacidades contra el id y el `ContentProfile`
-  verifica la forma contra el value domain.
-- **Sufficiency** *(antes `Assembly` — el término ECD; renombrada por claridad en el plan de
-  código, `design/13-code-qa.md` §7)* — cuánta evidencia basta **por claim**, decidido en
-  diseño; expresada con la taxonomía psicométrica de modelos de decisión: `conjunctive`
-  (default) · `existential` · `m_of_n`. Lo **compensatorio (pesos/promedios/umbral de puntos)
-  está prohibido** — ADR-0011 un nivel arriba. El cuantificador fino ("al menos 2 de 3…")
-  pertenece a la `pass_condition` del criterion, no a esta regla. En el camino automático
-  reemplaza la noción de quórum (el quórum humano de ADR-0002 sigue rigiendo las campañas con
-  evaluadores humanos).
-- **AlternativeExplanation** — enumeradas *por adelantado* por claim: qué produciría la misma
-  observación sin que el claim aplique (extracción fallida, formato atípico, criterion ambiguo).
-  Formaliza el diagnóstico del bucle de mejora y el canal de impugnación.
-- **TaskModelBinding** — la ligadura **por tipo de contenido**, del lado del instrumento:
-  aplicabilidad declarada (`designedFor`) + **task variables** que condicionan el juicio (nivel
-  esperado, audiencia — la "referencia contextual" del `ScoringPolicy`) + criteria condicionales.
-  El **dónde vive cada dato en el formato** NO está acá: es el mapeo del adapter de extracción
-  (Content Profiling). Claims y evidence models son portables; solo el binding se rehace por
-  tipo — reusar un instrumento sobre un tipo nuevo = **nueva versión que agrega el binding**.
-- **EvaluationStudy** — el **encargo**: una ronda de evaluación con propósito (inicial /
-  regresión / comparación). Lifecycle: `Declared` (propósito, instrumento pendiente) →
-  `Prepared` (instrumento **fijado** una vez, inmutable; set compuesto) → `Open` (set fijo) →
-  `Published` (acto humano; informe inmutable, jamás re-emitido, siempre con cobertura y
-  caveats). La comparación entre rondas (`CompareStudies`) exige mismo `instrumentVersion` +
-  sets pareados por briefs; la "línea" es agrupamiento derivado, no entidad.
-  **Mapeo de industria:** ver §"Equivalencias con la industria de evals".
-- **EvaluationDataset** *(antes `EvaluationSet` — rename final por alineación con el término
-  universal)* — VO del study (no agregado): la **receta** (briefIds — la clave reutilizable del
-  diseño pareado) + el **dataset materializado** (contentIds, fijado al abrir), con composición
-  estratificada según qué claims necesitan qué variedad (content module, ADR-0013). Sus ítems
-  son contenidos, sin *expected output* (eso lo aporta la referencia humana, ADR-0015). Distinto
-  del `GoldenDataset` (que es de *resultados humanos*).
+- **Instrument / InstrumentVersion** — the **central aggregate of design**: one version of the
+  complete evidential argument. Root = `InstrumentVersion`; it **owns as VOs** its `Claim`s,
+  its `Criterion`s and its **applicability bindings** per `PackageFormat` (designed-for).
+  Lifecycle: `Draft (editable, assistable) → Published (locked) → Deprecated`; publishing is
+  atomic and **human**. `Published` ⇒ immutable — any change ⇒ new version; `claimId`/`criterionId`
+  stable across versions (lineage). **It is "the composite"**: with the instrument owning
+  claims + criteria + sufficiency + bindings, the old "rubric preset" needs no name of its
+  own (DP28). Relationship to `Rubric`: a slice 1 term that the Instrument supersedes;
+  `Rubric v1` survives as the reference instrument (ADR-0015).
+- **Claim** — an assessable, **one-sentence** assertion about quality, with: required evidence,
+  warrant (framework) and alternative explanations. **Two grains:** about a content and about the
+  **generator** (accumulated across contents — the central product of internal QA). Evidential
+  status: `supported | refuted | insufficient evidence`. Findings are organized **under the
+  claim they compromise**. Design runs backwards: claims → evidence → observables →
+  extraction requirements (ADR-0013).
+- **EvidenceModel** — for each claim: what evidence supports/refutes it, which observables
+  constitute it and what **data it requires** (that is where the ids are minted — ADR-0014; the
+  "dictionary" is a generated view, not an artifact).
+- **DataRequirement** — an id in the demand-side namespace, minted when writing an evidence
+  rule that needs a datum without an id. It carries two mandatory things, written in that same
+  act: a **definition** (what the datum *means* — ADR-0014) and a **`value_domain`** (what
+  *shape* it takes — ADR-0020: `string · number · boolean · string_list · record · record_list`,
+  with per-field `nullable`, which means "present and may be null", never "may be missing"). The
+  two halves are the contract: adapters declare their capabilities against the id and the
+  `ContentProfile` verifies the shape against the value domain.
+- **Sufficiency** *(formerly `Assembly` — the ECD term; renamed for clarity in the code plan,
+  `design/13-code-qa.md` §7)* — how much evidence is enough **per claim**, decided at design
+  time; expressed with the psychometric taxonomy of decision models: `conjunctive`
+  (default) · `existential` · `m_of_n`. Anything **compensatory (weights/averages/point
+  thresholds) is forbidden** — ADR-0011 one level up. The fine-grained quantifier ("at least
+  2 of 3…") belongs to the criterion's `pass_condition`, not to this rule. On the automated path
+  it replaces the notion of quorum (the human quorum of ADR-0002 still governs campaigns with
+  human evaluators).
+- **AlternativeExplanation** — enumerated *in advance* per claim: what would produce the same
+  observation without the claim applying (failed extraction, atypical format, ambiguous
+  criterion). It formalizes the diagnosis of the improvement loop and the dispute channel.
+- **TaskModelBinding** — the **per-content-type** binding, on the instrument's side:
+  declared applicability (`designedFor`) + **task variables** that condition the judgment
+  (expected level, audience — the `ScoringPolicy`'s "contextual reference") + conditional
+  criteria. **Where each datum lives in the format** is NOT here: that is the extraction
+  adapter's mapping (Content Profiling). Claims and evidence models are portable; only the
+  binding is redone per type — reusing an instrument on a new type = **a new version that adds
+  the binding**.
+- **EvaluationStudy** — the **commission**: an evaluation round with a purpose (initial /
+  regression / comparison). Lifecycle: `Declared` (purpose, instrument pending) →
+  `Prepared` (instrument **pinned** once, immutable; set composed) → `Open` (set fixed) →
+  `Published` (human act; immutable report, never re-issued, always with coverage and
+  caveats). Comparing rounds (`CompareStudies`) requires the same `instrumentVersion` +
+  sets paired by briefs; the "line" is a derived grouping, not an entity.
+  **Industry mapping:** see §"Equivalences with the evals industry".
+- **EvaluationDataset** *(formerly `EvaluationSet` — final rename for alignment with the
+  universal term)* — a VO of the study (not an aggregate): the **recipe** (briefIds — the
+  reusable key of the paired design) + the **materialized dataset** (contentIds, fixed at
+  opening), with stratified composition according to which claims need which variety (content
+  module, ADR-0013). Its items are contents, with no *expected output* (that is supplied by the
+  human reference, ADR-0015). Distinct from the `GoldenDataset` (which is made of *human
+  results*).
 
-## Source axis — cómo se produce el juicio (el "cómo")
+## Source axis — how the judgment is produced (the "how")
 
-- **EvaluationSource** — **port** único (el *tipo* de fuente); produce el juicio. Taxonomía
-  (ADR-0016): **`human | automated`** — la única distinción con diferencia estructural real
-  (los humanos entran por assignments/UI; los automatizados por config + ejecución). *(Los
-  tipos anteriores `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` eran un espectro, no
-  identidades: todo assessor automatizado es código que, por criterion, usa el mecanismo
-  idóneo — con o sin LLM adentro. Ver tabla de equivalencias.)*
-  - **human** — SME interno/externo. **Dos modos de participación (ADR-0015):** *panel de
-    referencia* — juzga qualities directamente leyendo el contenido, sin profile (capa 1 de
-    calibración; elicitación holística, fuera del alcance de ADR-0010) · *assessor/verificador
-    dentro del instrumento* — trabaja sobre el profile, verificando outcomes citados (capa 2;
-    prerequisito de profile intacto).
-  - **automated** — artefacto de software **modular y versionado** con un mapeo interno
-    `criterion → ejecutor` (código puro, fórmulas/índices, llamadas a LLM — detalle interno,
-    nunca identidad). **Se debe a un instrumento (linaje)**: declara su **cobertura** por
-    `criterionId` — mapeo ∪ **abstenciones**, sin solapamiento (ADR-0018; lo abstenido
-    deriva a `not_assessed`) — y evalúa solo versiones **ratificadas** para él (ADR-0019:
-    el diff se computa sobre el linaje, solo el delta exige decisión del autor; ratificar
-    no cambia identidad). Los humanos no están ligados a instrumentos.
-- **Assessor** — la *instancia concreta, identificable y versionada* de una
-  `EvaluationSource` que realmente produce resultados (el "quién/qué exactamente", vs. el
-  "qué clase" del tipo). Es la **clave de provenance y de calibración**.
-  - `human` → un SME concreto (con expertise profile). *(En el MVP, el usuario que evalúa ES
-    un `Assessor` humano.)*
-  - `automated` → una `SourceConfiguration` `{name, version, instrumentId, coverage, config}`
-    (+ las ratificaciones por versión, que viven aparte — ADR-0019).
-- **SourceConfiguration** — la config que define a un `Assessor` automatizado (ADR-0016).
-  Cualquier cambio — código, mapeo, modelo, prompt, threshold interno — ⇒ *otro* `Assessor`
-  (la calibración no transfiere: invalidación por identidad).
-- **eligible_sources** — relación de compatibilidad `Criterion` ↔ `EvaluationSource`, valores
-  `{human, automated}`: no todo criterion admite toda fuente.
+- **EvaluationSource** — the single **port** (the *type* of source); it produces the judgment.
+  Taxonomy (ADR-0016): **`human | automated`** — the only distinction with a real structural
+  difference (humans enter via assignments/UI; automated ones via config + execution). *(The
+  earlier types `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` were a spectrum, not
+  identities: every automated assessor is code that, per criterion, uses the fitting
+  mechanism — with or without an LLM inside. See the equivalences table.)*
+  - **human** — internal/external SME. **Two participation modes (ADR-0015):** *reference
+    panel* — judges qualities directly by reading the content, without a profile (calibration
+    layer 1; holistic elicitation, outside the scope of ADR-0010) · *assessor/verifier
+    inside the instrument* — works on the profile, verifying quoted outcomes (layer 2;
+    prerequisite of an intact profile).
+  - **automated** — a **modular, versioned** software artifact with an internal mapping
+    `criterion → executor` (pure code, formulas/indices, LLM calls — an internal detail,
+    never identity). **It is owed to an instrument (lineage)**: it declares its **coverage**
+    per `criterionId` — mapping ∪ **abstentions**, without overlap (ADR-0018; what is
+    abstained derives to `not_assessed`) — and evaluates only versions **ratified** for it
+    (ADR-0019: the diff is computed over the lineage, only the delta demands a decision from
+    the author; ratifying does not change identity). Humans are not bound to instruments.
+- **Assessor** — the *concrete, identifiable, versioned instance* of an
+  `EvaluationSource` that actually produces results (the "who/what exactly", vs. the
+  "what class" of the type). It is the **key of provenance and of calibration**.
+  - `human` → a concrete SME (with an expertise profile). *(In the MVP, the evaluating user IS
+    a human `Assessor`.)*
+  - `automated` → a `SourceConfiguration` `{name, version, instrumentId, coverage, config}`
+    (+ the per-version ratifications, which live apart — ADR-0019).
+- **SourceConfiguration** — the config that defines an automated `Assessor` (ADR-0016).
+  Any change — code, mapping, model, prompt, internal threshold — ⇒ *another* `Assessor`
+  (calibration does not transfer: invalidation by identity).
+- **eligible_sources** — compatibility relationship `Criterion` ↔ `EvaluationSource`, values
+  `{human, automated}`: not every criterion admits every source.
 
 ## Evaluation & results
 
-- **Evaluation** — un **acto** concreto de evaluación (no un hecho único): un `Assessor` evalúa
-  una versión de contenido usando un `InstrumentVersion` (legacy: `Rubric v1`). Identidad =
-  **id propio** (`evaluationId`) + coordenadas `{assessorId, contentId (versión),
-  instrumentVersion (antes rubricVersion), adapterVersion del profile, occurredAt/attempt}`.
-  **No** hay unicidad por coordenadas: se permiten **repeticiones** del mismo `Assessor` (p.ej.
-  un assessor automatizado corrido N veces para medir dispersión). La anti-duplicación humana vive en el
-  `Assignment`, no acá. Ver ADR-0005 — **intacto**. Los desenlaces
-  `not_applicable`/`no_evidence`/`not_assessed` se **derivan mecánicamente** (matching +
-  profile + abstenciones registradas del assessor, ADR-0018) — también el `fail` por ausencia
-  cuando `on_missing_evidence='fail'` (ADR-0021) —, nunca los decide el assessor en runtime;
-  `scored` **ejecutado** exige cita (el `fail` derivado no la tiene: su evidencia es la
-  entrada `absent` del profile).
-- **ComputedMetric** (aka `Signal`) — **medición cruda** producida por fuentes
-  determinísticas/híbridas (p.ej. FK grade level, índice de cohesión, coseno de alineación,
-  distribución de niveles de Bloom). **Admite valores estructurados** (distribuciones, listas),
-  no solo escalares; forma concreta demand-driven. *No es un desenlace*: se mapea a
-  `CriterionScore` vía la **condición de pase del criterion** (ADR-0010 — los umbrales son
-  parte del evidence rule).
-- **ScoringPolicy** — **disuelta** (Define slice 2): su mitad "mapear `ComputedMetric` →
-  desenlace" vive ahora en la **condición de pase del criterion** (los umbrales son parte del
-  evidence rule, ADR-0010); su mitad "agregar/componer" vive en la **sufficiency** por claim
-  (ADR-0013), bajo la prohibición de ADR-0011. La entrada se conserva como trazabilidad; el
-  código del slice 1 puede referirla hasta su migración.
-- **CriterionScore** — el desenlace de un criterion sobre un contenido (+ `Comment` opcional).
-  Forma ADR-0010 + ADR-0018: `scored (pass/fail) | not_applicable | no_evidence | not_assessed`,
-  **con la cita que lo sostiene** (la exige solo `scored` ejecutado; el `fail` **derivado** de
-  ausencia va sin cita, con su origen registrado — ADR-0021). Los tres estados no-scored son tres
-  causas con tres remedios: sin capacidad/condicional (`not_applicable`) · dato ausente del
-  contenido (`no_evidence`) · assessor sin ejecutor para el criterion (`not_assessed`). (El
-  score 1–5 sobrevive en el flujo del **panel de referencia** — `Rubric v1`, ADR-0015.)
-- **EvaluationResult** — el conjunto de `CriterionScore` (+ comentarios) de una `Evaluation`.
-- **QualityJudgment** — el juicio de calidad publicado sobre un contenido: **perfil por
-  criterion** (nunca un score agregado único, ADR-0011) + **cobertura** (evaluados / no aplican /
-  sin evidencia / sin assessor capaz — ADR-0018) + **provenance** (`assessor` +
-  `assessorCalibrationStatus`). Con ECD-lite
-  (ADR-0013) se comunica como **claims con estatus evidencial** y findings bajo cada claim.
-  Evento: `QualityJudgmentPublished`.
-- **Finding** — hallazgo derivado de un criterion no cumplido: qué falló, la **cita** (ausente
-  solo en el fail derivado de ausencia, cuyo modo de falla es mecánico — ADR-0021), y la
-  sugerencia que sale del modo de falla declarado (la falla *es* la sugerencia). **Inmutable y
-  derivado** de la evaluación; las impugnaciones son hechos separados *sobre* un finding, que
-  alimentan la mejora del instrumento — no el score.
+- **Evaluation** — one concrete **act** of evaluation (not a unique fact): an `Assessor`
+  evaluates a content version using an `InstrumentVersion` (legacy: `Rubric v1`). Identity =
+  **its own id** (`evaluationId`) + coordinates `{assessorId, contentId (version),
+  instrumentVersion (formerly rubricVersion), adapterVersion of the profile,
+  occurredAt/attempt}`. There is **no** uniqueness by coordinates: **repetitions** of the same
+  `Assessor` are allowed (e.g. an automated assessor run N times to measure dispersion). Human
+  anti-duplication lives in the `Assignment`, not here. See ADR-0005 — **intact**. The outcomes
+  `not_applicable`/`no_evidence`/`not_assessed` are **derived mechanically** (matching +
+  profile + the assessor's registered abstentions, ADR-0018) — so is the absence-derived `fail`
+  when `on_missing_evidence='fail'` (ADR-0021) —, never decided by the assessor at runtime;
+  **executed** `scored` demands a quote (the derived `fail` has none: its evidence is the
+  profile's `absent` entry).
+- **ComputedMetric** (aka `Signal`) — a **raw measurement** produced by
+  deterministic/hybrid sources (e.g. FK grade level, cohesion index, alignment cosine,
+  Bloom level distribution). **It admits structured values** (distributions, lists),
+  not just scalars; concrete shape demand-driven. *It is not an outcome*: it is mapped to a
+  `CriterionScore` via the **criterion's pass condition** (ADR-0010 — thresholds are
+  part of the evidence rule).
+- **ScoringPolicy** — **dissolved** (Define slice 2): its "map `ComputedMetric` →
+  outcome" half now lives in the **criterion's pass condition** (thresholds are part of the
+  evidence rule, ADR-0010); its "aggregate/compose" half lives in the per-claim
+  **sufficiency** (ADR-0013), under the prohibition of ADR-0011. The entry is kept as
+  traceability; slice 1 code may refer to it until its migration.
+- **CriterionScore** — the outcome of a criterion on a content (+ optional `Comment`).
+  ADR-0010 + ADR-0018 shape: `scored (pass/fail) | not_applicable | no_evidence | not_assessed`,
+  **with the quote that sustains it** (only executed `scored` demands it; the
+  absence-**derived** `fail` goes without a quote, with its origin recorded — ADR-0021). The
+  three non-scored states are three causes with three remedies: no capability/conditional
+  (`not_applicable`) · datum absent from the content (`no_evidence`) · assessor with no
+  executor for the criterion (`not_assessed`). (The 1–5 score survives in the **reference
+  panel** flow — `Rubric v1`, ADR-0015.)
+- **EvaluationResult** — the set of `CriterionScore`s (+ comments) of an `Evaluation`.
+- **QualityJudgment** — the published quality judgment on a content: a **per-criterion
+  profile** (never a single aggregated score, ADR-0011) + **coverage** (assessed / not
+  applicable / no evidence / no capable assessor — ADR-0018) + **provenance** (`assessor` +
+  `assessorCalibrationStatus`). With ECD-lite
+  (ADR-0013) it is communicated as **claims with evidential status** and findings under each
+  claim. Event: `QualityJudgmentPublished`.
+- **Finding** — a finding derived from an unmet criterion: what failed, the **quote** (absent
+  only in the absence-derived fail, whose failure mode is mechanical — ADR-0021), and the
+  suggestion that comes from the declared failure mode (the failure *is* the suggestion).
+  **Immutable and derived** from the evaluation; disputes are separate facts *about* a finding,
+  which feed the improvement of the instrument — not the score.
 
 ## Orchestration & calibration (supporting)
 
-- **EvaluationRun** — **fundido en `EvaluationStudy`** (Define slice 2, DP28): el run era el
-  mecanismo sin porqué; el study es el porqué con mecanismo. `EvaluationRunStarted` muere; los
-  eventos de study lo reemplazan. Entrada conservada como trazabilidad; el código del slice 1
-  puede referirlo hasta su migración.
-- **EvaluationCampaign** — realización humana de un `EvaluationRun`, **abierta e incremental**
-  (config + scope): fija `rubricVersion`, `requiredEvaluationsPerContent` (umbral de completitud,
-  no provisioning) y `metadataView`. Se abre con los assessors que haya y suma más; **no posee
-  las assignments transaccionalmente**. Ver ADR-0002.
-- **Assignment** — invitación a un `Assessor` a evaluar un `Content` en una campaña; agregado
-  chico con lifecycle `Assigned → Opened → Submitted | Cancelled`. Reassign = cancel + nueva.
-  **Es la unidad de anti-duplicación humana:** ≤1 assignment activa por
-  `(campaign, content, assessor)`, cumplida con **una** submission (re-enviar sobre una ya
-  `Submitted` → 409). Ver ADR-0005.
-- **quorum / requiredEvaluationsPerContent** — umbral de completitud **del camino humano**
-  (ADR-0002): un contenido está `Completed` cuando el nº de **assessors distintos que enviaron**
-  una evaluación válida alcanza el umbral. Las assignments canceladas/incompletas no cuentan.
-  En el camino automático "completo" = **cobertura**, y la suficiencia de evidencia por claim la
-  fija la **sufficiency** (ADR-0013).
-- **GoldenDataset** — agregado de referencia etiquetado por humanos, con **regla propia**:
-  `usable` cuando alcanza una cobertura mínima (`coverage ≥ threshold`); cada contenido
-  requiere un quórum de **N=2–3** evaluaciones humanas.
-- **Calibration** — ajuste/validación de fuentes automáticas contra la referencia humana,
-  keyada por **`(Assessor, Criterion)`** (no por el tipo abstracto): se calibra una
-  configuración concreta, criterion por criterion.
-- **CalibrationProfile** (aka `SourceCalibration`) — output de la calibración: el agreement
-  de un `Assessor` con la referencia, por criterion. *Cualifica* (no habilita) las
-  evaluaciones futuras de ese `Assessor`, vía `assessorCalibrationStatus` en la provenance
-  del `QualityJudgment`.
+- **EvaluationRun** — **merged into `EvaluationStudy`** (Define slice 2, DP28): the run was the
+  mechanism without a why; the study is the why with a mechanism. `EvaluationRunStarted` dies;
+  the study events replace it. Entry kept as traceability; slice 1 code may refer to it until
+  its migration.
+- **EvaluationCampaign** — the human realization of an `EvaluationRun`, **open and incremental**
+  (config + scope): it pins `rubricVersion`, `requiredEvaluationsPerContent` (completeness
+  threshold, not provisioning) and `metadataView`. It opens with whatever assessors exist and
+  adds more; it does **not own the assignments transactionally**. See ADR-0002.
+- **Assignment** — an invitation to an `Assessor` to evaluate a `Content` in a campaign; a small
+  aggregate with lifecycle `Assigned → Opened → Submitted | Cancelled`. Reassign = cancel + new
+  one. **It is the unit of human anti-duplication:** ≤1 active assignment per
+  `(campaign, content, assessor)`, fulfilled with **one** submission (re-submitting over an
+  already `Submitted` one → 409). See ADR-0005.
+- **quorum / requiredEvaluationsPerContent** — completeness threshold **of the human path**
+  (ADR-0002): a content is `Completed` when the number of **distinct assessors who submitted**
+  a valid evaluation reaches the threshold. Cancelled/incomplete assignments do not count.
+  On the automated path "complete" = **coverage**, and per-claim evidence sufficiency is set by
+  the **sufficiency** (ADR-0013).
+- **GoldenDataset** — the human-labeled reference aggregate, with **its own rule**:
+  `usable` when it reaches a minimum coverage (`coverage ≥ threshold`); each content
+  requires a quorum of **N=2–3** human evaluations.
+- **Calibration** — adjustment/validation of automated sources against the human reference,
+  keyed by **`(Assessor, Criterion)`** (not by the abstract type): a concrete configuration is
+  calibrated, criterion by criterion.
+- **CalibrationProfile** (aka `SourceCalibration`) — the output of calibration: the agreement
+  of an `Assessor` with the reference, per criterion. It *qualifies* (does not enable) that
+  `Assessor`'s future evaluations, via `assessorCalibrationStatus` in the provenance of the
+  `QualityJudgment`.
 
 ## Cross-cutting
 
-- **DomainEvent** — hecho pasado del dominio; medio por el que evoluciona el estado
-  (events-first). Ej. (modelo slice 2): `GeneratorVersionRegistered` · `BriefRegistered` ·
+- **DomainEvent** — a past fact of the domain; the means by which state evolves
+  (events-first). E.g. (slice 2 model): `GeneratorVersionRegistered` · `BriefRegistered` ·
   `ContentVersionRegistered` · `ContentProfiled` / `ContentProfilingFailed` ·
   `ExtractionAccepted` · `InstrumentVersionPublished` · `InstrumentDefectIdentified` ·
   `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` · `FindingRaised` ·
   `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudyPublished` /
-  `StudiesCompared` · camino humano: `AssignmentCreated`/`AssignmentCancelled`,
-  `ContentEvaluationCompleted` (quórum) · `GoldenReferenceEstablished` · `SourceCalibrated`
-  `[futuro]`. Muertos por Define: `EvaluationRunStarted` (DP28) · `MetricComputed` como evento
-  (DP19: es fila, no evento) · `RubricPublished` → `InstrumentVersionPublished`.
-- **Localization** — i18n de la UI (EN/ES). Preocupación del modelo objetivo; MVP = EN.
+  `StudiesCompared` · human path: `AssignmentCreated`/`AssignmentCancelled`,
+  `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` · `SourceCalibrated`
+  `[future]`. Killed by Define: `EvaluationRunStarted` (DP28) · `MetricComputed` as an event
+  (DP19: it is a row, not an event) · `RubricPublished` → `InstrumentVersionPublished`.
+- **Localization** — UI i18n (EN/ES). A concern of the target model; MVP = EN.
 
-## Equivalencias con la industria de evals
+## Equivalences with the evals industry
 
-> El lenguaje ubicuo es nuestro; la alineación con la industria importa en los **bordes**
-> (onboarding, tooling, integraciones). **Disciplina:** en docs y código de dominio, los
-> términos de industria **no nombran conceptos de dominio** — aparecen solo en adapters (ACL,
-> `ARCHITECTURE.md` §3) y en esta tabla. Regla de adopción: término estándar solo cuando no
-> colapsa una distinción que pagamos por mantener.
+> The ubiquitous language is ours; alignment with the industry matters at the **boundaries**
+> (onboarding, tooling, integrations). **Discipline:** in domain docs and code, industry
+> terms **do not name domain concepts** — they appear only in adapters (ACL,
+> `ARCHITECTURE.md` §3) and in this table. Adoption rule: a standard term only when it does not
+> collapse a distinction we pay to maintain.
 
-| Nuestro término | Industria | Nota |
+| Our term | Industry | Note |
 |---|---|---|
-| `EvaluationStudy` | *experiment* (LangSmith/Braintrust/Phoenix/Langfuse offline) · *evaluation run* (MLflow) | "experiment" es ambiguo entre ecosistemas (unidad vs. **contenedor** en MLflow); el study es más rico: propósito, gate, publicación, camino humano, nivel generador |
-| línea de studies | *benchmark interno* / historial vs. baseline | comparación válida solo dentro de la línea (pinning) |
-| `EvaluationDataset` | *dataset* | adoptado — término universal |
-| `GoldenDataset` | *golden dataset* | ya alineado (referencia humana) |
-| `Criterion` **+** `Assessor` ejecutándolo | *scorer* (Braintrust/MLflow) · *evaluator* (LangSmith/Azure) · *metric* (DeepEval/Ragas) · *grader* (OpenAI) · *assertion* (promptfoo) | **cinco nombres, ningún estándar** — y todos fusionan el *qué* con el *quién*; nuestra separación es la precisión que no cedemos |
-| `Assessor` automatizado (ADR-0016) | *LLM-as-judge* · *scorer/evaluator* automatizado · nuestros ex `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` | el mecanismo (con o sin LLM) es detalle interno del assessor; `Assessor` (instancia versionada con instrumento target) es más preciso — la industria no versiona jueces |
-| `Sufficiency` | *evidence assembly / accumulation* (ECD) · agregación de assertions (promptfoo et al.) | acumulación simple y explícita (ADR-0013), taxonomía conjunctive/existential/m_of_n; lo compensatorio de la industria está prohibido (ADR-0011) |
-| `CriterionScore` | *score* (el "objeto universal" de Langfuse) | el nuestro lleva cita + desenlace de estados discretos (`scored`/`not_applicable`/`no_evidence`/`not_assessed`) |
-| `Evaluation` (el acto) | ≈ *trace con scores* / fila de un dataset run | su "run" es a nivel dataset — **falso amigo, no adoptar** |
-| colas de verificación (capa 2, ADR-0015) | *annotation queue* | **adoptado** como término de realización |
-| `StudiesComparison` | *experiment comparison* / *regression testing* | dentro de una línea |
-| `QualityJudgment` / `StudyReport` | *evaluation results* / scorecard | claims con estatus — sin análogo directo |
-| (observabilidad, infra) | *trace* | vocabulario de infraestructura (Langfuse/MLflow); sin colisión con el dominio |
+| `EvaluationStudy` | *experiment* (LangSmith/Braintrust/Phoenix/Langfuse offline) · *evaluation run* (MLflow) | "experiment" is ambiguous across ecosystems (unit vs. **container** in MLflow); the study is richer: purpose, gate, publication, human path, generator level |
+| line of studies | *internal benchmark* / history vs. baseline | comparison valid only within the line (pinning) |
+| `EvaluationDataset` | *dataset* | adopted — universal term |
+| `GoldenDataset` | *golden dataset* | already aligned (human reference) |
+| `Criterion` **+** `Assessor` executing it | *scorer* (Braintrust/MLflow) · *evaluator* (LangSmith/Azure) · *metric* (DeepEval/Ragas) · *grader* (OpenAI) · *assertion* (promptfoo) | **five names, no standard** — and all of them fuse the *what* with the *who*; our separation is the precision we do not concede |
+| Automated `Assessor` (ADR-0016) | *LLM-as-judge* · automated *scorer/evaluator* · our former `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` | the mechanism (with or without an LLM) is an internal detail of the assessor; `Assessor` (versioned instance with a target instrument) is more precise — the industry does not version judges |
+| `Sufficiency` | *evidence assembly / accumulation* (ECD) · aggregation of assertions (promptfoo et al.) | simple, explicit accumulation (ADR-0013), conjunctive/existential/m_of_n taxonomy; the industry's compensatory schemes are forbidden (ADR-0011) |
+| `CriterionScore` | *score* (Langfuse's "universal object") | ours carries a quote + an outcome of discrete states (`scored`/`not_applicable`/`no_evidence`/`not_assessed`) |
+| `Evaluation` (the act) | ≈ *trace with scores* / row of a dataset run | their "run" is at dataset level — **false friend, do not adopt** |
+| verification queues (layer 2, ADR-0015) | *annotation queue* | **adopted** as a realization term |
+| `StudiesComparison` | *experiment comparison* / *regression testing* | within a line |
+| `QualityJudgment` / `StudyReport` | *evaluation results* / scorecard | claims with status — no direct analogue |
+| (observability, infra) | *trace* | infrastructure vocabulary (Langfuse/MLflow); no collision with the domain |
 
-## Combinación de frameworks — dos niveles (no confundir)
+## Framework combination — two levels (do not confuse)
 
-- **Design-time synthesis** — un instrumento cuyos claims/criteria están `grounded_in` varios
-  frameworks (el caso de `Rubric v1`: 5 preguntas destilan 6 marcos; en el modelo de claims, el
-  warrant de cada claim cita sus frameworks).
-- **Runtime composition** — *(superado por Define slice 2)*: el "compuesto de rubrics/lentes"
-  ya no existe como concepto aparte — **el `Instrument` es el compuesto** (posee claims +
-  criteria + sufficiency + bindings, DP28), y la agregación la fija su **sufficiency**, nunca
-  un `ScoringPolicy` (disuelta) ni un score único (ADR-0011).
+- **Design-time synthesis** — an instrument whose claims/criteria are `grounded_in` several
+  frameworks (the case of `Rubric v1`: 5 questions distill 6 frameworks; in the claims model,
+  each claim's warrant cites its frameworks).
+- **Runtime composition** — *(superseded by Define slice 2)*: the "composite of rubrics/lenses"
+  no longer exists as a separate concept — **the `Instrument` is the composite** (it owns
+  claims + criteria + sufficiency + bindings, DP28), and aggregation is set by its
+  **sufficiency**, never by a `ScoringPolicy` (dissolved) nor by a single score (ADR-0011).

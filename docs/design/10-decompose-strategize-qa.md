@@ -1,25 +1,25 @@
-# 10 — Decompose & Strategize (segunda vuelta: QA interno)
+# 10 — Decompose & Strategize (second pass: internal QA)
 
-> **Snapshot del diseño vigente (ago-2026)** — pasos 3–4 del DDDSMP, segunda vuelta. Congelado.
-> Supersede a `03-decompose.md` y `04-strategize.md` (históricos) para todo trabajo nuevo.
-> Serie: 09 → 12. *(06 — Organise sigue siendo placeholder: equipo chico, un solo dueño.)*
+> **Snapshot of the current design (Aug-2026)** — DDDSMP steps 3–4, second pass. Frozen.
+> Supersedes `03-decompose.md` and `04-strategize.md` (historical) for all new work.
+> Series: 09 → 12. *(06 — Organise remains a placeholder: small team, single owner.)*
 
-## Subdominios
+## Subdomains
 
-| Subdominio | Clase | Misión | Razón para cambiar |
+| Subdomain | Class | Mission | Reason to change |
 |---|---|---|---|
-| **Evaluation Design** (ex `rubric_authoring`, ensanchado — el bucle B) | **Core** | Poseer el argumento evidencial: claims, evidence models, criteria, assembly, bindings; mintear el namespace de ids (ADR-0014); reference data del lado norma; diagnóstico de defectos; port de asistencia | Cambia qué afirmamos o cómo se reconoce |
-| **Pedagogical Evaluation** (existente, reformulado) | **Core** | Ejecutar el argumento: juicio por contenido, findings, hechos de acuerdo | Cambia cómo se produce/registra un juicio |
-| **Content Profiling** *(nuevo)* | Supporting (ACL interpretativo) | Paquetes crudos → evidencia canónica **citada**; adapters por `PackageFormat`; capacidades; aceptación | Cambia cómo se *lee* un formato |
-| **Evaluand Registry** (ex `content_registry`, ensanchado) | Supporting | El examinado y sus productos: `GeneratorVersion`, `GenerationBrief`, `ContentVersion`+`ContentPackage` | Generador/formato/dato de origen nuevo |
-| **Evaluation Studies** *(nuevo — el encargo)* | Supporting (thin deliberado) | La ronda con propósito: dataset, pinning, gate, publicación, informe del generador, comparación | Cambian las preguntas de negocio de una ronda |
-| **Evaluation Orchestration** (acotado) | Supporting | Coordinar **esfuerzo humano** (campañas del panel de referencia; annotation queues) — ADR-0002/0005 intactos | Cambia cómo se organiza a las personas |
-| **Golden Dataset** | Supporting | Ground truth humano + **referencia de calibración de instrumentos** (ADR-0015) | — |
+| **Evaluation Design** (ex `rubric_authoring`, widened — loop B) | **Core** | Own the evidentiary argument: claims, evidence models, criteria, assembly, bindings; mint the id namespace (ADR-0014); norm-side reference data; defect diagnosis; assistance port | What we assert, or how it is recognized, changes |
+| **Pedagogical Evaluation** (existing, reformulated) | **Core** | Execute the argument: per-content judgment, findings, agreement facts | How a judgment is produced/recorded changes |
+| **Content Profiling** *(new)* | Supporting (interpretive ACL) | Raw packages → **quoted** canonical evidence; adapters per `PackageFormat`; capabilities; acceptance | How a format is *read* changes |
+| **Evaluand Registry** (ex `content_registry`, widened) | Supporting | The examinee and its products: `GeneratorVersion`, `GenerationBrief`, `ContentVersion`+`ContentPackage` | New generator/format/source datum |
+| **Evaluation Studies** *(new — the commission)* | Supporting (deliberately thin) | The round with a purpose: dataset, pinning, gate, publication, generator report, comparison | A round's business questions change |
+| **Evaluation Orchestration** (narrowed) | Supporting | Coordinate **human effort** (reference panel campaigns; annotation queues) — ADR-0002/0005 intact | How people are organized changes |
+| **Golden Dataset** | Supporting | Human ground truth + **instrument calibration reference** (ADR-0015) | — |
 | **Reporting** | Supporting-generic | Read models (ADR-0006) | — |
 | **Identity** | Generic | — | — |
-| **Calibration** | Supporting `[futuro]` | Calibrar assessors vs. referencia, por `(Assessor, Criterion)` | — |
+| **Calibration** | Supporting `[future]` | Calibrate assessors vs. reference, per `(Assessor, Criterion)` | — |
 
-## Eventos que posee cada subdominio
+## Events each subdomain owns
 
 - **Evaluand Registry:** `GeneratorVersionRegistered` · `BriefRegistered` ·
   `ContentVersionRegistered` · `ContentMetadataUpdated` · `GeneratorArtifactRegistered`.
@@ -31,77 +31,76 @@
 - **Evaluation Studies:** `StudyDeclared` · `InstrumentPinned` · `StudyOpened` ·
   `StudyPublished` · `StudiesCompared`.
 - **Orchestration:** `CampaignOpened` · `AssignmentCreated/Opened/Cancelled` ·
-  `ContentEvaluationCompleted` (quórum humano) · `CampaignClosed`.
+  `ContentEvaluationCompleted` (human quorum) · `CampaignClosed`.
 - **Golden Dataset:** `GoldenReferenceEstablished`.
 
-## Flujo entre subdominios (solo eventos + queries — ARCHITECTURE §3)
+## Flow between subdomains (events + queries only — ARCHITECTURE §3)
 
 ```
 Evaluand Registry ──ContentVersionRegistered──► Content Profiling ──ContentProfiled──► Pedagogical Evaluation
                                                                                             │
 Evaluation Design ──InstrumentVersionPublished──► (Evaluation · Studies)                    │ QualityJudgmentPublished
       ▲                                                                                     ▼ FindingRaised
-      │  DisagreementDetected · FindingDisputed · huecos de cobertura · oferta informal  Evaluation Studies ──► informe generador
-      └──────────────────────────────── (bucle B) ◄─────────────────────────────────────────┘
-Orchestration (humano) ◄──reacciona a EvaluationSubmitted── · alimenta Golden Dataset · Reporting lee por query ports
+      │  DisagreementDetected · FindingDisputed · coverage gaps · informal supply       Evaluation Studies ──► generator report
+      └──────────────────────────────── (loop B) ◄──────────────────────────────────────────┘
+Orchestration (human) ◄──reacts to EvaluationSubmitted── · feeds Golden Dataset · Reporting reads via query ports
 ```
 
-- **El matching** (cobertura esperada + demanda insatisfecha) es una **query compuesta** —
-  Design posee la demanda (ids), Profiling la oferta (capacidades). Sin estado propio.
-- **Las líneas de study disuelven la tensión resultados↔versión de instrumento:** el study fija
-  instrumento + receta de briefs; la comparación es válida **dentro de una línea**; instrumento
-  nuevo ⇒ línea nueva (re-evaluando baseline si se quiere comparar). Nunca se re-emiten
-  resultados publicados.
+- **Matching** (expected coverage + unmet demand) is a **composed query** —
+  Design owns the demand side (ids), Profiling the supply side (capabilities). No state of its own.
+- **Study lines dissolve the results↔instrument-version tension:** the study pins
+  instrument + brief recipe; comparison is valid **within a line**; new instrument ⇒ new
+  line (re-evaluating the baseline if comparison is wanted). Published results are never
+  re-emitted.
 
-## Decisiones de decomposición
+## Decomposition decisions
 
-1. El generador **no** es subdominio propio: vive en Evaluand Registry (config, brief y paquete
-   llegan juntos en el intake; una sola razón de cambio).
-2. Evaluation Design **incluye el diagnóstico** del bucle B (quien escribió el claim y sus
-   explicaciones alternativas es quien elige entre ellas).
-3. Evaluation Studies es subdominio **propio** (lifecycle y decisiones: componer dataset, gate,
-   comparar) — ni Reporting (vistas sin decisiones) ni Orchestration (esfuerzo, no encargos).
-4. **Evaluation emite los hechos de acuerdo/dispersión** (posee las evaluaciones); Studies los
-   consume para el gate, Design para el diagnóstico. Sin comandos cruzados.
-5. **La acumulación a nivel generador vive en Studies** (es el informe del encargo); primera
-   realización con composición estilo ADR-0006.
+1. The generator is **not** its own subdomain: it lives in Evaluand Registry (config, brief and
+   package arrive together at intake; a single reason to change).
+2. Evaluation Design **includes loop B's diagnosis** (whoever wrote the claim and its
+   alternative explanations is the one who chooses among them).
+3. Evaluation Studies is its **own** subdomain (lifecycle and decisions: compose dataset, gate,
+   compare) — neither Reporting (views without decisions) nor Orchestration (effort, not commissions).
+4. **Evaluation emits the agreement/dispersion facts** (it owns the evaluations); Studies
+   consumes them for the gate, Design for the diagnosis. No cross-commands.
+5. **Generator-level accumulation lives in Studies** (it is the commission's report); first
+   realization with ADR-0006-style composition.
 
-**Deltas vs. el código del slice 1:** `rubric_authoring` → Evaluation Design ·
-`content_registry` → Evaluand Registry · nuevos `content_profiling` y `evaluation_studies` ·
-`evaluation`/`orchestration`/`golden_dataset`/`reporting`/`identity` quedan (orchestration
-acotado al camino humano).
+**Deltas vs. the slice 1 code:** `rubric_authoring` → Evaluation Design ·
+`content_registry` → Evaluand Registry · new `content_profiling` and `evaluation_studies` ·
+`evaluation`/`orchestration`/`golden_dataset`/`reporting`/`identity` remain (orchestration
+narrowed to the human path).
 
 ## Strategize — Core Domain Chart
 
-| Subdominio | Clase | Diferenciación | Complejidad |
+| Subdomain | Class | Differentiation | Complexity |
 |---|---|---|---|
-| Evaluation Design | **Core** | alta | alta |
-| Pedagogical Evaluation | **Core** | alta | media-alta |
-| Content Profiling | Supporting | media (potencial alto) | media |
-| Evaluation Studies | Supporting | media-alta | media-baja |
-| Evaluand Registry | Supporting | baja-media | baja-media |
-| Orchestration | Supporting | baja-media | media |
-| Golden Dataset | Supporting | media-alta | media |
-| Reporting | Supporting-generic | baja | baja |
-| Identity | Generic | baja | baja |
-| Calibration `[futuro]` | Supporting | media (potencial alto) | alta |
+| Evaluation Design | **Core** | high | high |
+| Pedagogical Evaluation | **Core** | high | medium-high |
+| Content Profiling | Supporting | medium (high potential) | medium |
+| Evaluation Studies | Supporting | medium-high | medium-low |
+| Evaluand Registry | Supporting | low-medium | low-medium |
+| Orchestration | Supporting | low-medium | medium |
+| Golden Dataset | Supporting | medium-high | medium |
+| Reporting | Supporting-generic | low | low |
+| Identity | Generic | low | low |
+| Calibration `[future]` | Supporting | medium (high potential) | high |
 
-**Decisiones estratégicas registradas:**
+**Recorded strategic decisions:**
 
-1. **El conocimiento diferenciador vive en Evaluation Design** — asciende de "Core secundario"
-   (chart original) a core pleno: lo que era CRUD fino se volvió el dueño del argumento.
-2. **Profiling es supporting *deliberadamente*** (el mismo movimiento que el chart original hizo
-   con Calibration): habilita el determinismo, pero **sirve** al core. Un Profiling sofisticado
-   es señal de sobre-inversión en traducción.
-3. **Studies es supporting aunque entrega el producto**: la riqueza está en lo que transporta,
-   no en su estructura. Un `Study` complicado es un smell.
+1. **The differentiating knowledge lives in Evaluation Design** — it rises from "secondary Core"
+   (original chart) to full core: what used to be thin CRUD became the owner of the argument.
+2. **Profiling is supporting *deliberately*** (the same move the original chart made
+   with Calibration): it enables determinism, but it **serves** the core. A sophisticated
+   Profiling is a sign of over-investment in translation.
+3. **Studies is supporting even though it delivers the product**: the richness is in what it
+   carries, not in its structure. A complicated `Study` is a smell.
 
-**Guía de inversión:** modelo rico + invariantes + tests de dominio en Design y Evaluation ·
-pragmático y fino en Studies, Profiling (**la inversión va a fixtures, no a modelo**), Registry,
-Orchestration/Golden/Reporting · comprar/trivial en Identity.
+**Investment guide:** rich model + invariants + domain tests in Design and Evaluation ·
+pragmatic and thin in Studies, Profiling (**the investment goes to fixtures, not model**), Registry,
+Orchestration/Golden/Reporting · buy/trivial in Identity.
 
-**Primer incremento del slice 2:** el core de a poco con supporting mínimo — Design con pocos
-claims reales · Profiling con **un** adapter (`LearnpackV1`) · Evaluation por el camino
-automático mínimo · Studies thin. El camino humano no se toca hasta que el instrumento nuevo
-exista; el panel de referencia (ADR-0015) usa la maquinaria existente.
-</content>
+**First increment of slice 2:** the core bit by bit with minimal supporting — Design with few
+real claims · Profiling with **one** adapter (`LearnpackV1`) · Evaluation through the minimal
+automated path · Studies thin. The human path is untouched until the new instrument
+exists; the reference panel (ADR-0015) uses the existing machinery.

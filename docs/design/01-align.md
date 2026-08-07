@@ -1,116 +1,116 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño que produjo el slice 1 (MVP humano). El diseño
-> vigente es la serie **`09-align-discover-qa.md` … `12-define-qa.md`** (QA interno). **No usar
-> este doc como fuente para código nuevo.**
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)** — design that produced slice 1 (human MVP). The current
+> design is the series **`09-align-discover-qa.md` … `12-define-qa.md`** (internal QA). **Do not
+> use this doc as a source for new code.**
 
 # 01 — Align
 
-> Paso 1 del DDD Starter Modelling Process (ddd-crew). Estado: **cerrado (v0, living)**.
-> Fases del proceso: Understand → **Align** → Discover → Decompose → Strategize →
-> Connect → Organise → Define → Code. Iterativo: se repite Discover→Organise antes de
-> Define; Define y Code pueden ir en paralelo.
+> Step 1 of the DDD Starter Modelling Process (ddd-crew). State: **closed (v0, living)**.
+> Phases of the process: Understand → **Align** → Discover → Decompose → Strategize →
+> Connect → Organise → Define → Code. Iterative: Discover→Organise is repeated before
+> Define; Define and Code can go in parallel.
 
-## Visión de producto
+## Product vision
 
-Un sistema para **evaluar la calidad pedagógica de contenido educativo generado (total o
-parcialmente) por IA generativa**. Evalúa contenidos de distinto formato y procedencia,
-mediante distintas **fuentes de evaluación** (SME humano, LLM-as-judge, verificadores
-determinísticos, híbridos) y bajo distintos **criterios/enfoques pedagógicos**, de forma
-modular e intercambiable. Produce juicios de calidad trazables y comparables
-(score + evidencia/comentario), y permite **calibrar y validar** las evaluaciones
-automáticas contra una referencia humana.
+A system to **evaluate the pedagogical quality of educational content generated (fully or
+partially) by generative AI**. It evaluates content of different formats and origins,
+through different **evaluation sources** (human SME, LLM-as-judge, deterministic
+verifiers, hybrids) and under different **pedagogical criteria/approaches**, in a modular
+and interchangeable way. It produces traceable and comparable quality judgments
+(score + evidence/comment), and allows **calibrating and validating** automatic
+evaluations against a human reference.
 
-## Qué es el core (y qué NO)
+## What the core is (and what it is NOT)
 
-- **Core = evaluación pedagógica.** El significado de "calidad pedagógica", los criterios/
-  rúbricas, la producción de un juicio, y la representación de múltiples **fuentes** y
-  **enfoques**. Ahí vive el diferenciador.
-- **La calibración NO es el core.** Es un subdominio de *soporte* que alimenta al core. La
-  evaluación humana del MVP es simplemente *una fuente (HumanExpert) ejerciendo el core*,
-  envuelta en orquestación (asignar cursos, ver pendientes).
+- **Core = pedagogical evaluation.** The meaning of "pedagogical quality", the criteria/
+  rubrics, the production of a judgment, and the representation of multiple **sources** and
+  **approaches**. That is where the differentiator lives.
+- **Calibration is NOT the core.** It is a *supporting* subdomain that feeds the core. The
+  human evaluation of the MVP is simply *one source (HumanExpert) exercising the core*,
+  wrapped in orchestration (assigning courses, viewing pending items).
 
-## Framing estratégico (insumo del paso 4, Strategize)
+## Strategic framing (input for step 4, Strategize)
 
-- **Core** → *Pedagogical Evaluation*: criteria/rubrics, producción de juicios, taxonomía
-  de fuentes, grounding en frameworks, separación medición/score.
-- **Supporting** → Evaluation Orchestration (campaigns, assignments, pendientes) ·
+- **Core** → *Pedagogical Evaluation*: criteria/rubrics, production of judgments, taxonomy
+  of sources, grounding in frameworks, measurement/score separation.
+- **Supporting** → Evaluation Orchestration (campaigns, assignments, pending items) ·
   Golden Dataset management · Calibration.
 - **Generic** → Identity/users · Content registry & metadata · Notifications ·
   Projections/reporting · Localization (i18n).
 
-## Dos horizontes (no confundir en la implementación)
+## Two horizons (do not confuse them in the implementation)
 
-1. **Modelo objetivo** — app modular, fuentes/criterios intercambiables, modular monolith
-   + domain events (evolucionable a microservicios). Se **diseña completo** aunque no se
-   implemente ya.
-2. **Slice del MVP** — herramienta de evaluación humana para construir el golden dataset,
-   la más ligera posible (Google Sheets como store si acelera), sin deploys pagos, lista en
-   horas. Es una **rebanada vertical fina** consistente con el modelo objetivo, sin ceremonia
-   de clean architecture completa. Los docs preservan el norte; el código crece hacia ahí.
+1. **Target model** — modular app, interchangeable sources/criteria, modular monolith
+   + domain events (evolvable to microservices). It is **designed in full** even if it is not
+   implemented yet.
+2. **MVP slice** — human evaluation tool to build the golden dataset, as lightweight as
+   possible (Google Sheets as store if it speeds things up), no paid deploys, ready in
+   hours. It is a **thin vertical slice** consistent with the target model, without the full
+   clean-architecture ceremony. The docs preserve the north star; the code grows toward it.
 
-> ⚠️ Riesgo a evitar: intentar construir el modulith completo en horas. El MVP es
-> deliberadamente simple; la calidad la garantizan los boundaries documentados, no la
-> ceremonia prematura.
+> ⚠️ Risk to avoid: trying to build the complete modulith in hours. The MVP is
+> deliberately simple; quality is guaranteed by the documented boundaries, not by
+> premature ceremony.
 
-## Alcance del MVP (features priorizadas)
+## MVP scope (prioritized features)
 
-Prioridad absoluta: **que las personas puedan evaluar cursos y que esa data quede guardada.**
-Las proyecciones/reportes pueden venir después.
+Absolute priority: **that people can evaluate courses and that this data gets saved.**
+Projections/reports can come later.
 
-- Crear un golden dataset de ~50 cursos e-learning (registro liviano: `GeneratingSystem`,
-  id externo, url consumible, metadata a definir, id propio). Sin almacenar el contenido
-  completo.
-- Registrar evaluadores y asignarles cursos (`Assignment`).
-- Definir la lista de preguntas (= `LearnPack Pedagogical Rubric v1`, 5 criteria).
-- Flujo del evaluador (3 pasos): 1) ver metadata · 2) acceder al contenido (url; iframe si
-  es viable) · 3) responder el formulario (5 criteria, score 1–5 obligatorio + comentario
-  opcional, con hints de qué es 1 y qué es 5).
-- Persistir respuestas (qué evaluador, qué curso, qué scores).
-- Vistas de admin: quién evaluó qué / pendientes; scores por curso (individual y promedios).
+- Create a golden dataset of ~50 e-learning courses (lightweight registry: `GeneratingSystem`,
+  external id, consumable url, metadata to be defined, own id). Without storing the full
+  content.
+- Register evaluators and assign courses to them (`Assignment`).
+- Define the list of questions (= `LearnPack Pedagogical Rubric v1`, 5 criteria).
+- Evaluator flow (3 steps): 1) view metadata · 2) access the content (url; iframe if
+  viable) · 3) answer the form (5 criteria, mandatory score 1–5 + optional comment,
+  with hints of what 1 is and what 5 is).
+- Persist responses (which evaluator, which course, which scores).
+- Admin views: who evaluated what / pending items; scores per course (individual and averages).
 
-## Decisiones y restricciones registradas
+## Recorded decisions and constraints
 
-- **Idioma:** ubiquitous language y código en **inglés**; docs y diálogo en español.
-- **UI i18n:** objetivo EN/ES; **MVP English-only**.
-- **LearnPack:** contenido accesible por url tipo
-  `https://introduction-to-generative-ai.learn-pack.com/`; metadata a mano por ahora.
-  Riesgo a verificar en el paso Code: `X-Frame-Options`/`CSP frame-ancestors` puede
-  bloquear el iframe → fallback "abrir en pestaña nueva".
-- **Evaluadores:** SMEs internos y externos, expertise variado; identificación simple para
-  el MVP (sin auth robusta).
-- **Costos:** sin deploys pagos en la primera versión.
+- **Language:** ubiquitous language and code in **English**; docs and dialogue in Spanish.
+- **UI i18n:** goal EN/ES; **MVP English-only**.
+- **LearnPack:** content accessible via a url like
+  `https://introduction-to-generative-ai.learn-pack.com/`; metadata by hand for now.
+  Risk to verify in the Code step: `X-Frame-Options`/`CSP frame-ancestors` may
+  block the iframe → fallback "open in new tab".
+- **Evaluators:** internal and external SMEs, varied expertise; simple identification for
+  the MVP (no robust auth).
+- **Costs:** no paid deploys in the first version.
 
-## Modelado conceptual acordado en Align
+## Conceptual modelling agreed in Align
 
-Ver `../GLOSSARY.md`. Puntos clave que gobiernan el diseño:
+See `../GLOSSARY.md`. Key points governing the design:
 
-1. **Framework como grounding, no como contenedor.** `Criterion` cita frameworks (N:M);
-   los frameworks/dimensiones/qualities son *reference data versionada*, no están
-   hardcodeados (el equipo puede cambiarlos).
-2. **Ejes ortogonales e intercambiables:** `Content` (qué) · `Criterion`/`Rubric` (qué se
-   mide) · `EvaluationSource` (cómo se produce). Con una relación de compatibilidad
-   `eligible_sources` entre `Criterion` y `Source`.
-3. **`EvaluationSource` es un port con 4 adapters:** HumanExpert, LLMJudge,
+1. **Framework as grounding, not as container.** `Criterion` cites frameworks (N:M);
+   the frameworks/dimensions/qualities are *versioned reference data*, not hardcoded
+   (the team can change them).
+2. **Orthogonal and interchangeable axes:** `Content` (what) · `Criterion`/`Rubric` (what is
+   measured) · `EvaluationSource` (how it is produced). With a compatibility relation
+   `eligible_sources` between `Criterion` and `Source`.
+3. **`EvaluationSource` is a port with 4 adapters:** HumanExpert, LLMJudge,
    DeterministicVerifier, HybridVerifier ("Hybrid Norm").
-4. **Medición ≠ juicio:** las fuentes determinísticas/híbridas producen `ComputedMetric`
-   (señal cruda) que una `ScoringPolicy` mapea a `CriterionScore`; humano/LLM puntúan
-   directo. Ver `research/deterministic-evaluation-landscape.md`.
-5. **El `criterion` es la clave de join de la calibración:** la misma rubric puntuada por
-   distintas fuentes permite comparar automático vs. referencia humana por criterion.
+4. **Measurement ≠ judgment:** deterministic/hybrid sources produce `ComputedMetric`
+   (raw signal) which a `ScoringPolicy` maps to `CriterionScore`; human/LLM score
+   directly. See `research/deterministic-evaluation-landscape.md`.
+5. **The `criterion` is the join key of calibration:** the same rubric scored by
+   different sources allows comparing automatic vs. human reference per criterion.
 
-## Business model (canvas liviano)
+## Business model (lightweight canvas)
 
-- **Propuesta de valor:** juicios de calidad pedagógica trazables, comparables y
-  auditables sobre contenido generado por IA, con fuentes intercambiables (humano/
-  automático) y calibrables contra referencia humana.
-- **Usuarios:** admin (curador/calibrador) · evaluadores SME · (futuro) consumidores de
-  reportes de calidad; sistemas generadores como origen del contenido (LearnPack).
-- **Actividad clave inmediata:** construir el golden dataset humano (fuente de verdad para
-  calibrar).
-- **Restricciones:** tiempo (horas para el MVP), costo (sin deploys pagos).
+- **Value proposition:** traceable, comparable and auditable pedagogical-quality
+  judgments on AI-generated content, with interchangeable sources (human/
+  automatic) calibratable against a human reference.
+- **Users:** admin (curator/calibrator) · SME evaluators · (future) consumers of
+  quality reports; generating systems as the origin of the content (LearnPack).
+- **Immediate key activity:** build the human golden dataset (source of truth for
+  calibration).
+- **Constraints:** time (hours for the MVP), cost (no paid deploys).
 
-## Estado y próximo paso
+## State and next step
 
-- Align: **cerrado**.
-- Siguiente: **02 — Discover** (Big-Picture EventStorming del dominio de evaluación, con
-  las 4 fuentes como ramas paralelas y `LLMJudge`/`Calibration` incluidos aunque no entren
-  al MVP). El slice del MVP saldrá como recorte de esa línea de tiempo.
+- Align: **closed**.
+- Next: **02 — Discover** (Big-Picture EventStorming of the evaluation domain, with
+  the 4 sources as parallel branches and `LLMJudge`/`Calibration` included even though they
+  do not enter the MVP). The MVP slice will come out as a cut of that timeline.
