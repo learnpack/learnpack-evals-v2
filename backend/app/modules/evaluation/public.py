@@ -4,7 +4,8 @@ What crosses this boundary: the human **event** `EvaluationSubmitted` (Orchestra
 completion policy consumes it), the automated-path events `EvaluationCompleted`,
 `QualityJudgmentPublished` and `FindingRaised` (coordinates only — subscribers read via
 the queries), and the **read side** — scores for Reporting (ADR-0006) plus the batch
-judgment/finding queries Evaluation Studies will compose from (13-code §3.6).
+judgment/finding/criterion-outcome queries Evaluation Studies composes from (13-code §3.6,
+ADR-0023).
 """
 
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.evaluation.application import queries as _queries
 from app.modules.evaluation.application.dtos import (
+    CriterionOutcomeDTO,
     CriterionScoreDTO,
     EvaluationDTO,
     FindingDTO,
@@ -40,6 +42,7 @@ __all__ = [
     "EVALUATION_SUBMITTED",
     "FINDING_RAISED",
     "QUALITY_JUDGMENT_PUBLISHED",
+    "CriterionOutcomeDTO",
     "CriterionScoreDTO",
     "EvaluationCompletedFact",
     "EvaluationDTO",
@@ -153,6 +156,19 @@ class EvaluationQueries:
     ) -> list[QualityJudgmentDTO]:
         """Append-only; the most recent per content is the current one. Batch."""
         return self._judgments.list_for_contents(content_ids, instrument_version_id)
+
+    def get_criterion_outcomes(
+        self, content_ids: list[UUID], instrument_version_id: str
+    ) -> list[CriterionOutcomeDTO]:
+        """The five states per criterion behind those judgments. Batch.
+
+        The judgments' own `evidence_basis` counts the same states per claim; this is the
+        un-aggregated form, for consumers that must attribute a criterion somewhere other
+        than to its claim (ADR-0023).
+        """
+        return self._judgments.list_criterion_outcomes_for_contents(
+            content_ids, instrument_version_id
+        )
 
     def get_findings(self, content_ids: list[UUID], instrument_version_id: str) -> list[FindingDTO]:
         return self._judgments.list_findings_for_contents(content_ids, instrument_version_id)

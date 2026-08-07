@@ -33,6 +33,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
 )
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
 from app.modules.evaluation.infrastructure.policies import on_evaluation_completed
+from app.modules.evaluation.public import EvaluationQueries
 from app.modules.evaluation_design.application.publish_instrument import (
     PublishInstrument,
     PublishInstrumentCommand,
@@ -42,6 +43,7 @@ from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyInstrumentRepository,
     SqlAlchemyReferenceDataRepository,
 )
+from app.modules.evaluation_design.public import InstrumentQueries
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
@@ -254,6 +256,36 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
     assert any(
         f["criterion_id"] == "cr-module-structure-well-formed" and f["quote"] for f in findings
     )
+
+    # --- the un-aggregated outcomes behind that judgment (what ADR-0023 reads) ---
+    outcomes = EvaluationQueries(session).get_criterion_outcomes([profiled_course], instrument_id)
+    instrument = InstrumentQueries(session).get_instrument(instrument_id)
+    assert instrument is not None
+    assert {o.criterion_id for o in outcomes} == set(instrument.criterion_ids)  # exact coverage
+    assert all(o.judgment_id == judgment["id"] for o in outcomes)
+    assert any(o.outcome == "not_applicable" for o in outcomes)  # the ADR-0017 unmet demand
+    # The un-aggregated form must agree with the aggregated one, claim by claim: the same
+    # states, counted there and identified here. Note the excluded claims have no
+    # `judgment_claims` row at all — which is why ADR-0023 attributes criteria from the
+    # instrument and never from the judgment.
+    state_key = {
+        "pass": "pass",
+        "fail": "fail",
+        "no_evidence": "noEvidence",
+        "not_applicable": "notApplicable",
+        "not_assessed": "notAssessed",
+    }
+    outcome_of = {o.criterion_id: o.outcome for o in outcomes}
+    for claim_id, basis in session.execute(
+        text("SELECT claim_id, evidence_basis FROM judgment_claims WHERE judgment_id = :id"),
+        {"id": judgment["id"]},
+    ):
+        recomputed: dict[str, int] = {}
+        for criterion in instrument.criteria:
+            if claim_id in criterion.claim_ids:
+                state = state_key[outcome_of[criterion.criterion_id]]
+                recomputed[state] = recomputed.get(state, 0) + 1
+        assert {k: v for k, v in basis.items() if v} == recomputed
 
     # --- events ---
     assert "EvaluationCompleted" in event_types(session, str(evaluation["id"]))

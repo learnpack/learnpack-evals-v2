@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.modules.evaluation.application.dtos import (
+    CriterionOutcomeDTO,
     CriterionScoreDTO,
     EvaluationDTO,
     FindingDTO,
@@ -361,6 +362,45 @@ class SqlAlchemyJudgmentRepository:
                 derived_at=row["derived_at"],
                 coverage=row["coverage"],
                 claims=claims_by_judgment.get(row["id"], []),
+            )
+            for row in rows
+        ]
+
+    def list_criterion_outcomes_for_contents(
+        self, content_ids: list[UUID], instrument_version_id: str
+    ) -> list[CriterionOutcomeDTO]:
+        """The outcomes behind the published judgments, one row per criterion. One query.
+
+        `quality_judgments.evaluation_id` is unique, so the join is one-to-one: these are
+        exactly the outcomes the judgment was derived from, not any other evaluation's.
+        """
+        if not content_ids:
+            return []
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT j.id AS judgment_id, j.content_id, o.criterion_id, o.outcome,
+                           o.derived
+                      FROM criterion_outcomes o
+                      JOIN quality_judgments j ON j.evaluation_id = o.evaluation_id
+                     WHERE j.content_id = ANY(:content_ids)
+                       AND j.instrument_version_id = :instrument_version_id
+                     ORDER BY j.content_id, o.criterion_id
+                    """
+                ),
+                {"content_ids": content_ids, "instrument_version_id": instrument_version_id},
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            CriterionOutcomeDTO(
+                judgment_id=row["judgment_id"],
+                content_id=row["content_id"],
+                criterion_id=row["criterion_id"],
+                outcome=row["outcome"],
+                derived=row["derived"],
             )
             for row in rows
         ]
