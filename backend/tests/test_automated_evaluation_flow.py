@@ -128,6 +128,8 @@ def profiled_course(cleanup, unique, namespace):
                 external_id=f"e2e-course-{unique}",
                 consumable_url=f"https://e2e-{unique}.learn-pack.com/",
                 artifacts=_demo_artifacts(COURSE),
+                # This flow is about the automated path, not attribution (ADR-0024).
+                generator_version_id=None,
             )
         )
     cleanup["contents"].append(content.id)

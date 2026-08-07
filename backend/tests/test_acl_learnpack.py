@@ -6,6 +6,10 @@ whatever the platform declares about a course travels as package artifacts, so a
 `metadata` in the external payload is deliberately ignored.
 """
 
+from uuid import uuid4
+
+import pytest
+
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
 
 RAW = {
@@ -19,7 +23,7 @@ RAW = {
 
 
 def test_maps_external_fields_to_our_command():
-    command = to_register_command(RAW)
+    command = to_register_command(RAW, None)
 
     assert command.package_format == "LearnpackV1"
     assert command.external_id == "introduction-to-generative-ai"
@@ -29,9 +33,22 @@ def test_maps_external_fields_to_our_command():
 
 def test_external_metadata_is_ignored_not_registered():
     # The command has no metadata at all (ADR-0017): a payload carrying it changes nothing.
-    command = to_register_command(RAW)
+    command = to_register_command(RAW, None)
     assert not hasattr(command, "metadata")
 
 
 def test_version_is_carried_through():
-    assert to_register_command(RAW | {"version": 2}).version == "2"
+    assert to_register_command(RAW | {"version": 2}, None).version == "2"
+
+
+def test_the_generator_declaration_comes_from_the_caller():
+    """LearnPack's shape carries no generator, so the ACL cannot invent one (ADR-0024)."""
+    generator_id = uuid4()
+
+    assert to_register_command(RAW, generator_id).generator_version_id == generator_id
+    assert to_register_command(RAW, None).generator_version_id is None  # declared unknown
+
+
+def test_the_acl_cannot_be_called_without_a_declaration():
+    with pytest.raises(TypeError):
+        to_register_command(RAW)  # type: ignore[call-arg]

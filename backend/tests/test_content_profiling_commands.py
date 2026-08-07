@@ -63,6 +63,8 @@ def register_content(cleanup, unique):
                     external_id=f"profiled-course-{unique}",
                     consumable_url=f"https://profiled-{unique}.learn-pack.com/",
                     artifacts=artifacts or [],
+                    # These tests are about profiling, not attribution (ADR-0024).
+                    generator_version_id=None,
                 )
             )
         cleanup["contents"].append(content.id)

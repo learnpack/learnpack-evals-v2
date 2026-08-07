@@ -1005,7 +1005,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
             )
             try:
                 command = (
-                    to_register_command(raw)
+                    to_register_command(raw, None)
                     if use_acl
                     else RegisterContentVersionCommand(
                         package_format=raw["package_format"],
@@ -1197,12 +1197,15 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
         "external_id": "introduction-to-generative-ai",
         "version": "1",
         "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
+        # Declared, not defaulted (ADR-0024); the seeder resolves the linked one.
+        "generator_version_id": None,
     },
     {
         "package_format": "LearnpackV1",
         "external_id": "object-representation-in-python",
         "version": "1",
         "consumable_url": "https://object-representation-in-python.learn-pack.com/",
+        "generator_version_id": None,
     },
 ]
 
