@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-06._
+_Last updated: 2026-08-07._
 
 ## Where we are
 
@@ -131,7 +131,15 @@ persists nothing). `structural:1` executes 7 criteria and abstains from the 4 ju
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **Mechanical intake of the `GenerationBrief` from the LearnpackV1 package: pending**
   (small registry PR, before or during block 7 — today all content is left with
-  `brief_id = null` and cannot enter paired datasets). Design agreed, ADR when
+  `brief_id = null` and cannot enter paired datasets). Two clarifications agreed
+  (2026-08-07): the brief is extracted from the package **at registration, by the
+  registry's intake ACL** — never as a profile entry (the brief is the commission's
+  identity on the evaluand axis, not pedagogical evidence) — and pairing needs no
+  coordination between packages because the **hash identity dedupes**: same effective
+  instruction → same hash → same `briefId` across generator versions. LearnpackV2
+  (expected soon, with native briefs) arrives through the same intake channel with
+  better completeness; the mechanism is built once, with V1's partial brief.
+  Design agreed, ADR when
   implementing: the real pipeline has two stages — (user prompt + attached
   material) → syllabus → lessons — and the original prompt **is not persisted**
   (unrecoverable for what was already generated). The brief is registered partial and with its
@@ -153,6 +161,35 @@ persists nothing). `structural:1` executes 7 criteria and abstains from the 4 ju
   `not_applicable` in LearnpackV1 until the generator declares those data in the
   package and a new adapter reads them; block 7's matching/readiness will report that
   unmet demand.)
+- **Fitness projection for the genetic-algorithm experiment: decided, after block 7.**
+  New requirement (2026-08-07): a global numeric value per evaluation — and per
+  pedagogical dimension — as the fitness function for evolving the generator. Decision
+  taken, **ADR-0022 when implementing**: the fitness is a **read-side projection for
+  optimization, never a judgment** — it does not touch ADR-0011 (no aggregate score in
+  QA reports; claims/findings remain the product). Computed from `judgment_claims` +
+  the qualities → dimension mapping (no schema change); the **formula is versioned and
+  pinned** like the instrument (comparability across GA generations). State semantics
+  are the anti-gaming core the ADR must fix: `not_assessed` out of the denominator
+  (assessor limitation), `no_evidence` and the derived fail penalize (the generator's
+  omission — otherwise evolution learns to produce unevaluable content),
+  `not_applicable` out. Experiment mapping: individual = `GeneratorVersion` ·
+  generation = `Study` (pinned instrument + brief-paired dataset) · fitness =
+  projection over the study's judgments — which is why this lands after block 7.
+- **Package intake in the registration form: decided, two stages.** Today the UI has no
+  reasonable way to load a package's artifacts. Stage 1 (first): **register by link** —
+  the form takes the package's base URL (prod) or local folder (dev) and the system
+  **discovers the artifacts mechanically** (fetch `learn.json` +
+  `.learn/package-manifest.json` → build the locator list, as the adapter/demo already
+  do); no storage needed, covers packages LearnPack already serves. Stage 2 (later, own
+  ADR): **zip upload + storage** (`PackageStoragePort`, filesystem in dev, S3-compatible
+  bucket in prod — a stack decision) for packages not hosted anywhere. Priority rises
+  when the GA experiment needs bulk registration.
+- **Generator registration is a prerequisite of generator-level analysis.**
+  `learnpack-generator v1.0` (major.minor scheme; prompt preprocessor not versioned yet
+  — noted in its metadata) is registered in the local dev DB; **repeat the act in
+  production before registering real content** (there is no command to link a generator
+  to an already-registered content: `unknown` is forever, and stays out of
+  generator-level accumulation).
 - **Outside the first increment** (named in `13-code-qa.md` §9): loop B operational
   (disputes/defects), annotation queues, per-claim validity metrics, `CompareStudies`.
 
