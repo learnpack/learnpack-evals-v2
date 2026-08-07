@@ -35,6 +35,8 @@ def _to_snapshot(content: EducationalContent) -> ContentSnapshot:
         brief_id=content.brief_id,
         generator_version_id=content.generator_version_id,
         edit_provenance=content.edit_provenance,
+        generator_attributed_by=content.generator_attributed_by,
+        generator_attributed_at=content.generator_attributed_at,
     )
 
 

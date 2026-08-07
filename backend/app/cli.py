@@ -1,7 +1,8 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
 import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
-pin-study | compose-dataset | open-study | publish-study | show-report`.
+pin-study | compose-dataset | open-study | publish-study | show-report |
+attribute-generator`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -49,12 +50,28 @@ from app.modules.content_profiling.infrastructure.repository import (
     SqlAlchemyAcceptanceRepository,
     SqlAlchemyProfileRepository,
 )
+from app.modules.evaluand_registry.application.attribute_generator import (
+    AttributeGenerator,
+    AttributeGeneratorCommand,
+)
+from app.modules.evaluand_registry.application.attribute_generator import (
+    # Profiling has a same-named exception; both are imported here.
+    ContentNotFound as UnregisteredContent,
+)
 from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
     RegisterContentVersionCommand,
+    UnknownGeneratorVersion,
 )
-from app.modules.evaluand_registry.domain.content import InvalidContent
+from app.modules.evaluand_registry.application.register_generator_version import (
+    RegisterGeneratorVersion,
+    RegisterGeneratorVersionCommand,
+)
+from app.modules.evaluand_registry.domain.content import (
+    GeneratorAlreadyAttributed,
+    InvalidContent,
+)
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import (
@@ -977,18 +994,81 @@ def run_reprofile(
     return 0 if errors == 0 else 1
 
 
-def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None = None) -> int:
+def run_attribute_generator(content_id: UUID, generator_version_id: UUID, email: str) -> int:
+    """The repair act (ADR-0024): record a generator learnt after registration."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+        uow = UnitOfWork(session)
+        use_case = AttributeGenerator(
+            contents=SqlAlchemyContentRepository(session),
+            generators=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            content = use_case(
+                AttributeGeneratorCommand(
+                    content_id=content_id,
+                    generator_version_id=generator_version_id,
+                    attributed_by=assessor.id,
+                )
+            )
+        except (UnregisteredContent, UnknownGeneratorVersion, GeneratorAlreadyAttributed) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"attributed {content.external_id} to generator {generator_version_id} (by {email})")
+    return 0
+
+
+def _generator_declaration(value: str) -> str:
+    """`--generator` takes a generator version id or the literal `unknown` (ADR-0024).
+    Validated at parse time so a typo fails before anything is registered."""
+    if value == "unknown":
+        return value
+    try:
+        return str(UUID(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected a generator version id or 'unknown', got {value!r}"
+        ) from None
+
+
+def run_import_learnpack(
+    seed_file: Path,
+    use_acl: bool,
+    base_dir: Path | None = None,
+    generator: str | None = None,
+) -> int:
     """Bulk-register courses, reusing the `RegisterContentVersion` use case.
 
     `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
     shape); without it the file is expected in our canonical shape. Which one becomes the
     default depends on the real LearnPack export. `--base-dir` resolves artifact locators on
     the filesystem (local packages); without it the intake fetches over HTTP (ADR-0022).
+
+    The generator declaration (ADR-0024) comes from whoever owns the payload's shape: the
+    canonical file carries it per entry, LearnPack's does not, so `--generator` declares it
+    for the whole file. Deliberately no fallback between the two — a rule of precedence is
+    where silence hides again.
     """
     raw_courses = json.loads(seed_file.read_text(encoding="utf-8"))
     if not isinstance(raw_courses, list):
         print("the file must contain a JSON list of courses", file=sys.stderr)
         return 1
+
+    # A file-wide declaration deserves a file-wide check: resolved once, before the loop,
+    # so an unregistered generator fails as one error instead of once per course.
+    acl_generator: UUID | None = None
+    if use_acl and generator != "unknown":
+        acl_generator = UUID(str(generator))
+        with SessionLocal() as session:
+            if SqlAlchemyGeneratorVersionRepository(session).get_by_id(acl_generator) is None:
+                print(f"generator version {acl_generator} is not registered", file=sys.stderr)
+                return 1
 
     fetcher = FilesystemArtifactFetcher(base_dir) if base_dir else HttpArtifactFetcher()
     created = duplicated = failed = 0
@@ -1005,7 +1085,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
             )
             try:
                 command = (
-                    to_register_command(raw)
+                    to_register_command(raw, acl_generator)
                     if use_acl
                     else RegisterContentVersionCommand(
                         package_format=raw["package_format"],
@@ -1014,9 +1094,11 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
                         version=str(raw.get("version", "1")),
                         artifacts=raw.get("artifacts", []),
                         brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
+                        # Required key (ADR-0024): a missing one is a KeyError, caught
+                        # below as a counted INVALID row — declared per entry or not at all.
                         generator_version_id=(
                             UUID(raw["generator_version_id"])
-                            if raw.get("generator_version_id")
+                            if raw["generator_version_id"]
                             else None
                         ),
                         edit_provenance=raw.get("edit_provenance", "unknown"),
@@ -1030,7 +1112,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
                 print(
                     f"  skipped  {raw.get('external_id') or raw.get('slug')} (already registered)"
                 )
-            except (InvalidContent, KeyError) as exc:
+            except (InvalidContent, KeyError, UnknownGeneratorVersion, ValueError) as exc:
                 failed += 1
                 print(
                     f"  INVALID  {raw.get('external_id') or raw.get('slug')}: {exc}",
@@ -1197,12 +1279,16 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
         "external_id": "introduction-to-generative-ai",
         "version": "1",
         "consumable_url": "https://introduction-to-generative-ai.learn-pack.com/",
+        # Declared, not defaulted (ADR-0024). The seeder links this one to the demo
+        # generator and leaves the other unknown, so both paths are visible locally.
+        "generator_version_id": "demo",
     },
     {
         "package_format": "LearnpackV1",
         "external_id": "object-representation-in-python",
         "version": "1",
         "consumable_url": "https://object-representation-in-python.learn-pack.com/",
+        "generator_version_id": None,
     },
 ]
 
@@ -1296,11 +1382,41 @@ def _demo_artifacts(course_slug: str) -> list[dict[str, Any]]:
     return artifacts
 
 
-def _seed_demo_contents() -> dict[str, UUID]:
+DEMO_GENERATOR = ("learnpack-generator", "1.0.0")
+
+
+def _seed_demo_generator() -> UUID:
+    """The demo's declared examinee. One course is linked to it and the other is declared
+    unknown (ADR-0024), so the local study report exercises both paths: a populated
+    generator level and the `unknownExclusions` caveat."""
+    name, version = DEMO_GENERATOR
+    with SessionLocal() as session:
+        generators = SqlAlchemyGeneratorVersionRepository(session)
+        existing = next(
+            (g for g in generators.list_all() if (g.name, g.version) == DEMO_GENERATOR), None
+        )
+        if existing is not None:
+            return existing.id
+
+        uow = UnitOfWork(session)
+        generator = RegisterGeneratorVersion(generators, uow.events, uow)(
+            RegisterGeneratorVersionCommand(
+                name=name,
+                version=version,
+                metadata={"promptPreprocessor": "not versioned yet"},
+            )
+        )
+        return generator.id
+
+
+def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
     """Register the demo courses through `RegisterContentVersion`; reuse them if already there."""
     ids: dict[str, UUID] = {}
 
     for raw in DEMO_CONTENTS:
+        declared = {**raw, "generator_version_id": None}
+        if raw["generator_version_id"] == "demo":
+            declared["generator_version_id"] = generator_id
         with SessionLocal() as session:
             uow = UnitOfWork(session)
             register = RegisterContentVersion(
@@ -1314,7 +1430,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
             try:
                 content = register(
                     RegisterContentVersionCommand(
-                        **raw, artifacts=_demo_artifacts(raw["external_id"])
+                        **declared, artifacts=_demo_artifacts(raw["external_id"])
                     )
                 )
                 ids[raw["external_id"]] = content.id
@@ -1420,6 +1536,8 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM contents",
         # Intake-derived (ADR-0022), not seeded reference data; after contents (FK).
         "DELETE FROM generation_briefs",
+        # Registered by the seeder (ADR-0024), not seeded reference data; after contents.
+        "DELETE FROM generator_versions",
         "DELETE FROM events",
         # Ratifications reference assessors on both sides (ADR-0019); before assessors.
         "DELETE FROM assessor_ratifications",
@@ -1484,7 +1602,9 @@ def run_seed_demo(reset: bool) -> int:
         return 1
     _seed_demo_acceptance(assessor_ids["admin@local.dev"])
 
-    content_ids = _seed_demo_contents()  # new registrations auto-profile via the policy
+    generator_id = _seed_demo_generator()
+    # New registrations auto-profile via the policy.
+    content_ids = _seed_demo_contents(generator_id)
     profiled = _seed_demo_profiles(content_ids)
     campaign_id = _seed_demo_campaign(list(content_ids.values()))
     evaluator_ids = [
@@ -1533,6 +1653,13 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="resolve artifact locators on the filesystem (local packages) instead of HTTP",
+    )
+    import_parser.add_argument(
+        "--generator",
+        type=_generator_declaration,
+        default=None,
+        help="required with --acl: the generator version id for the whole file, or the "
+        "literal 'unknown' (ADR-0024). The canonical shape declares it per entry instead",
     )
 
     demo_parser = subparsers.add_parser(
@@ -1670,6 +1797,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     show_report_parser.add_argument("--study-id", required=True)
 
+    attribute_parser = subparsers.add_parser(
+        "attribute-generator",
+        help="record a generator learnt after registration (once, one way — ADR-0024)",
+    )
+    attribute_parser.add_argument("--content-id", required=True)
+    attribute_parser.add_argument("--generator-version-id", required=True)
+    attribute_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (attributed_by)"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -1683,7 +1820,23 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
-        return run_import_learnpack(args.file, args.acl, args.base_dir)
+        # argparse cannot express "required with --acl"; the declaration belongs to
+        # whoever owns the payload's shape (ADR-0024), so each path refuses the other's.
+        if args.acl and args.generator is None:
+            print(
+                "--acl needs --generator <uuid|unknown>: LearnPack's shape carries no "
+                "generator, so the declaration comes from the command line",
+                file=sys.stderr,
+            )
+            return 1
+        if not args.acl and args.generator is not None:
+            print(
+                "--generator applies to --acl only: the canonical shape declares the "
+                "generator per entry",
+                file=sys.stderr,
+            )
+            return 1
+        return run_import_learnpack(args.file, args.acl, args.base_dir, args.generator)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
     elif args.command == "import-instrument":
@@ -1724,6 +1877,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_publish_study(UUID(args.study_id), args.email)
     elif args.command == "show-report":
         return run_show_report(UUID(args.study_id))
+    elif args.command == "attribute-generator":
+        return run_attribute_generator(
+            UUID(args.content_id), UUID(args.generator_version_id), args.email
+        )
     return 0
 
 

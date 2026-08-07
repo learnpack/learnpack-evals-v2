@@ -20,6 +20,9 @@ def payload(unique: str, **overrides) -> dict:
         "package_format": "LearnpackV1",
         "external_id": f"course-{unique}",
         "consumable_url": COURSE_URL,
+        # Declared once, here: these tests are about registration, not attribution
+        # (ADR-0024). The rule itself is protected by the tests that bypass this helper.
+        "generator_version_id": None,
     }
     return body | overrides
 
@@ -252,8 +255,9 @@ def test_unknown_brief_or_generator_is_rejected(admin_client, unique):
     )
 
 
-def test_registration_without_evaluand_fields_still_works(admin_client, cleanup, unique):
-    """The legacy manual path: no package, no brief, no generator — provenance unknown."""
+def test_registration_may_declare_an_unknown_generator(admin_client, cleanup, unique):
+    """No package, no brief, and a generator explicitly declared unknown (ADR-0024):
+    a legitimate registration — a human-written baseline has no generator."""
     response = admin_client.post("/admin/contents", json=payload(unique))
     assert response.status_code == 201
     body = response.json()
@@ -265,3 +269,83 @@ def test_registration_without_evaluand_fields_still_works(admin_client, cleanup,
     package = admin_client.get(f"/admin/contents/{body['content_id']}/package").json()
     assert package["artifacts"] == []
     assert package["consumable_url"] == COURSE_URL
+
+
+def test_registration_without_the_generator_key_is_rejected(admin_client, unique):
+    """The rule itself, bypassing `payload()`: silence is not a declaration (ADR-0024)."""
+    silent = {
+        "package_format": "LearnpackV1",
+        "external_id": f"course-{unique}",
+        "consumable_url": COURSE_URL,
+    }
+
+    response = admin_client.post("/admin/contents", json=silent)
+
+    assert response.status_code == 422
+    assert "generator_version_id" in response.text
+
+
+def test_a_discovered_generator_can_be_attributed_through_the_api(
+    admin_client, cleanup, unique, session
+):
+    generator = admin_client.post(
+        "/admin/generators", json={"name": f"late-gen-{unique}", "version": "1.0.0"}
+    ).json()
+    cleanup["generators"].append(generator["generator_version_id"])
+    content = admin_client.post("/admin/contents", json=payload(unique)).json()
+    cleanup["contents"].append(content["content_id"])
+    assert content["generator_version_id"] is None
+
+    response = admin_client.post(
+        f"/admin/contents/{content['content_id']}/generator",
+        json={"generator_version_id": generator["generator_version_id"]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["generator_version_id"] == generator["generator_version_id"]
+    # The provenance of a discovery, so it stays distinguishable from a declaration.
+    assert body["generator_attributed_by"] is not None
+    assert body["generator_attributed_at"] is not None
+
+    # Attributing again is refused: the act fills a void, it does not revise.
+    again = admin_client.post(
+        f"/admin/contents/{content['content_id']}/generator",
+        json={"generator_version_id": generator["generator_version_id"]},
+    )
+    assert again.status_code == 409
+
+
+def test_attribution_rejects_a_ghost_generator_and_a_ghost_content(admin_client, cleanup, unique):
+    ghost = "00000000-0000-0000-0000-000000000000"
+    content = admin_client.post("/admin/contents", json=payload(unique)).json()
+    cleanup["contents"].append(content["content_id"])
+
+    assert (
+        admin_client.post(
+            f"/admin/contents/{content['content_id']}/generator",
+            json={"generator_version_id": ghost},
+        ).status_code
+        == 422
+    )
+    assert (
+        admin_client.post(
+            f"/admin/contents/{ghost}/generator", json={"generator_version_id": ghost}
+        ).status_code
+        == 404
+    )
+
+
+def test_the_command_cannot_be_built_without_a_declaration():
+    """The second of the two gates ADR-0024 names — the application command, guarded
+    independently of the request model above."""
+    from app.modules.evaluand_registry.application.register_content_version import (
+        RegisterContentVersionCommand,
+    )
+
+    with pytest.raises(TypeError):
+        RegisterContentVersionCommand(  # type: ignore[call-arg]
+            package_format="LearnpackV1",
+            external_id="silent-course",
+            consumable_url=COURSE_URL,
+        )

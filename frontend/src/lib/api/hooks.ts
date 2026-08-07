@@ -12,6 +12,7 @@ import { apiFetch, type RequestOptions } from "./client";
 import type {
   AssessorResponse,
   AssignContentRequest,
+  AttributeGeneratorRequest,
   AssignmentDetail,
   AssignmentResponse,
   BriefResponse,
@@ -147,6 +148,17 @@ export function useCreateContent() {
   return useMutation({
     mutationFn: (body: RegisterContentRequest) =>
       api<ContentResponse>("/admin/contents", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
+  });
+}
+
+/** Records a generator learnt after registration — once, one way (ADR-0024). */
+export function useAttributeGenerator() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contentId, body }: { contentId: Uuid; body: AttributeGeneratorRequest }) =>
+      api<ContentResponse>(`/admin/contents/${contentId}/generator`, { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
   });
 }

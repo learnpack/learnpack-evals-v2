@@ -35,7 +35,9 @@ class UnknownGeneratorVersion(Exception):
     """The referenced generator version is not registered."""
 
 
-@dataclass(frozen=True)
+# kw_only so the mandatory declaration below can sit where it belongs semantically
+# instead of ahead of the fields that have defaults. Every caller already uses kwargs.
+@dataclass(frozen=True, kw_only=True)
 class RegisterContentVersionCommand:
     package_format: str
     external_id: str
@@ -44,7 +46,9 @@ class RegisterContentVersionCommand:
     # {kind, locator, format?} rows — the ContentPackage (open kinds; ADR-0009 evidence).
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     brief_id: UUID | None = None
-    generator_version_id: UUID | None = None
+    # No default (ADR-0024): the caller declares a generator version or declares `unknown`
+    # by passing None. Silence is not a declaration.
+    generator_version_id: UUID | None
     edit_provenance: str = "unknown"
 
 

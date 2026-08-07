@@ -188,7 +188,12 @@ def _caveats(
         "unresolvedDisagreements": [],
         "unknownExclusions": {
             "contentIds": unknown_contents,
-            "note": "generator unknown — excluded from generator-level accumulation",
+            # Since ADR-0024 the state is declared, not an oversight, and it is repairable:
+            # reports published before it keep their old wording, frozen.
+            "note": (
+                "generator declared unknown — excluded from generator-level accumulation; "
+                "attributable later"
+            ),
         },
         "unacceptedAdapters": unaccepted,
         "briefCompleteness": brief_completeness,

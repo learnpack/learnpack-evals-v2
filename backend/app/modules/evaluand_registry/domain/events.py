@@ -51,6 +51,21 @@ def generator_artifact_registered(artifact: GeneratorArtifact) -> DomainEvent:
     )
 
 
+def generator_attributed(content: EducationalContent) -> DomainEvent:
+    """A generator discovered after registration (ADR-0024) — same aggregate as the
+    registration, so the outbox and its cleanup already carry it."""
+    return DomainEvent(
+        event_type="GeneratorAttributed",
+        aggregate_type=AGGREGATE_TYPE,
+        aggregate_id=str(content.id),
+        payload={
+            "contentId": str(content.id),
+            "generatorVersionId": str(content.generator_version_id),
+            "attributedBy": str(content.generator_attributed_by),
+        },
+    )
+
+
 def content_version_registered(content: EducationalContent) -> DomainEvent:
     return DomainEvent(
         event_type="ContentVersionRegistered",

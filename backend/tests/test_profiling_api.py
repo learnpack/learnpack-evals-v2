@@ -49,6 +49,7 @@ def profiled_content(admin, cleanup, unique, namespace):
             "package_format": "LearnpackV1",
             "external_id": f"viewer-course-{unique}",
             "consumable_url": "https://viewer.learn-pack.com/",
+            "generator_version_id": None,
             "artifacts": [
                 {
                     "kind": "package_manifest",

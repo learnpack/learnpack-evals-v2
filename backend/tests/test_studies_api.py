@@ -49,6 +49,7 @@ def register_content(admin_client, cleanup, unique, suffix, brief_id=None) -> st
             "package_format": "LearnpackV1",
             "external_id": f"study-api-{suffix}-{unique}",
             "consumable_url": f"{SYLLABUS_URL}/{suffix}-{unique}/",
+            "generator_version_id": None,
             "brief_id": brief_id,
         },
     )

@@ -8,6 +8,7 @@ real, nothing outside this file changes.
 import hashlib
 import json
 from typing import Any
+from uuid import UUID
 
 from app.modules.evaluand_registry.application.ports import DerivedBrief
 from app.modules.evaluand_registry.application.register_content_version import (
@@ -20,17 +21,23 @@ PACKAGE_FORMAT = "LearnpackV1"
 SYLLABUS_LOCATOR_SUFFIX = ".learn/initialSyllabus.json"
 
 
-def to_register_command(raw: dict[str, Any]) -> RegisterContentVersionCommand:
+def to_register_command(
+    raw: dict[str, Any], generator_version_id: UUID | None
+) -> RegisterContentVersionCommand:
     """Map a raw LearnPack course payload to `RegisterContentVersion`.
 
     Only identity and the consumable surface: whatever the platform declares about a
     course travels as package artifacts, never as a side metadata channel (ADR-0017).
+
+    LearnPack's shape carries no generator, so the declaration (ADR-0024) cannot come from
+    the payload — the caller supplies it, and `None` declares `unknown`.
     """
     return RegisterContentVersionCommand(
         package_format=PACKAGE_FORMAT,
         external_id=raw["slug"],
         consumable_url=raw["url"],
         version=str(raw.get("version") or DEFAULT_VERSION),
+        generator_version_id=generator_version_id,
     )
 
 

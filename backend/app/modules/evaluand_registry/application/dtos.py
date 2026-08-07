@@ -5,6 +5,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -58,3 +59,6 @@ class ContentSnapshot:
     brief_id: UUID | None = None
     generator_version_id: UUID | None = None
     edit_provenance: str = "unknown"
+    # Set only when the generator was attributed after registration (ADR-0024).
+    generator_attributed_by: UUID | None = None
+    generator_attributed_at: datetime | None = None

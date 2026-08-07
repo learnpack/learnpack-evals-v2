@@ -15,6 +15,9 @@ import type { EditProvenance } from "@/lib/api/types";
 
 type ArtifactRow = { kind: string; locator: string };
 
+/** The declared "no generator" option — distinct from the unchosen placeholder (ADR-0024). */
+const UNKNOWN_GENERATOR = "unknown";
+
 // No metadata fields on purpose (ADR-0017): whatever the platform declares travels as
 // package artifacts; hand-typed declarations would contaminate the evaluated surface.
 export function ContentForm({ onDone }: { onDone: () => void }) {
@@ -53,7 +56,9 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
           .filter((a) => a.kind.trim() && a.locator.trim())
           .map((a) => ({ kind: a.kind.trim(), locator: a.locator.trim() })),
         brief_id: briefId || null,
-        generator_version_id: generatorVersionId || null,
+        // Three states, not two (ADR-0024): the placeholder never reaches here because the
+        // select is required; "unknown" is a declaration, and it is not the same as silence.
+        generator_version_id: generatorVersionId === UNKNOWN_GENERATOR ? null : generatorVersionId,
         edit_provenance: editProvenance,
       },
       {
@@ -89,12 +94,24 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
         <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1" />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Generator" hint="Optional — unknown if omitted.">
+        <Field
+          label="Generator"
+          required
+          hint={
+            (generators ?? []).length === 0
+              ? "No generator registered yet — declare unknown, or register one first."
+              : "Unknown is a valid answer, but it must be chosen: content with an unknown generator stays out of generator-level accumulation."
+          }
+        >
           <Select
             value={generatorVersionId}
             onChange={(e) => setGeneratorVersionId(e.target.value)}
+            required
           >
-            <option value="">Unknown</option>
+            <option value="" disabled>
+              Choose…
+            </option>
+            <option value={UNKNOWN_GENERATOR}>Unknown — cannot be attributed</option>
             {(generators ?? []).map((g) => (
               <option key={g.generator_version_id} value={g.generator_version_id}>
                 {g.name} {g.version}

@@ -38,6 +38,7 @@ def content(admin, cleanup, unique):
             "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
+            "generator_version_id": None,
         },
     ).json()
     cleanup["contents"].append(body["content_id"])
