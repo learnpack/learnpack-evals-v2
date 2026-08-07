@@ -6,6 +6,7 @@ is a first-class case (ADR-0005).
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID
 
 from app.modules.evaluand_registry.domain.package import ContentPackage
@@ -18,6 +19,11 @@ EDIT_PROVENANCES = ("pure", "human_edited", "unknown")
 
 class InvalidContent(Exception):
     """The content breaks an invariant of its aggregate."""
+
+
+class GeneratorAlreadyAttributed(Exception):
+    """The generator link is already known: `unknown → known` is a discovery,
+    `known → other known` would rewrite what was declared (ADR-0024)."""
 
 
 @dataclass
@@ -40,6 +46,10 @@ class EducationalContent:
     brief_id: UUID | None = None
     generator_version_id: UUID | None = None
     edit_provenance: str = "unknown"
+    # Set only when the link was filled after registration (ADR-0024): null on both means
+    # the generator was declared when the content was registered.
+    generator_attributed_by: UUID | None = None
+    generator_attributed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.package_format or not self.package_format.strip():
@@ -55,6 +65,20 @@ class EducationalContent:
             raise InvalidContent("consumable_url must be an http(s) URL")
         if self.edit_provenance not in EDIT_PROVENANCES:
             raise InvalidContent(f"edit_provenance must be one of {', '.join(EDIT_PROVENANCES)}")
+
+    def attribute_generator(
+        self, generator_version_id: UUID, attributed_by: UUID, at: datetime
+    ) -> None:
+        """Record a generator discovered after registration (ADR-0024). One-way: it fills a
+        declared void, it never replaces an attribution. `edit_provenance` is orthogonal —
+        human-edited content is still attributable to whatever produced the first draft."""
+        if self.generator_version_id is not None:
+            raise GeneratorAlreadyAttributed(
+                f"content {self.id} is already attributed to generator {self.generator_version_id}"
+            )
+        self.generator_version_id = generator_version_id
+        self.generator_attributed_by = attributed_by
+        self.generator_attributed_at = at
 
     @property
     def logical_id(self) -> tuple[str, str]:

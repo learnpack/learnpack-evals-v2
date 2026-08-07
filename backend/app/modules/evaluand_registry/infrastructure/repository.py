@@ -16,7 +16,8 @@ from app.modules.evaluand_registry.domain.package import ContentPackage, Package
 
 _COLUMNS = (
     "id, package_format, external_id, version, consumable_url, "
-    "brief_id, generator_version_id, edit_provenance"
+    "brief_id, generator_version_id, edit_provenance, "
+    "generator_attributed_by, generator_attributed_at"
 )
 
 
@@ -36,6 +37,8 @@ class SqlAlchemyContentRepository:
             brief_id=row["brief_id"],
             generator_version_id=row["generator_version_id"],
             edit_provenance=row["edit_provenance"],
+            generator_attributed_by=row["generator_attributed_by"],
+            generator_attributed_at=row["generator_attributed_at"],
         )
 
     def _packages_for(self, content_ids: list[UUID]) -> dict[UUID, ContentPackage]:
@@ -138,6 +141,30 @@ class SqlAlchemyContentRepository:
         )
         packages = self._packages_for([row["id"] for row in rows])
         return [self._to_domain(row, packages.get(row["id"], ContentPackage())) for row in rows]
+
+    def attribute_generator(self, content: EducationalContent) -> bool:
+        """Fill an unknown generator link. The `IS NULL` in the WHERE **is** the one-way
+        rule of ADR-0024, enforced in the database: the aggregate states it where it is
+        read, this holds it under concurrency. False = someone else got there first."""
+        applied = self._session.execute(
+            text(
+                """
+                UPDATE contents
+                   SET generator_version_id = :gvid,
+                       generator_attributed_by = :by,
+                       generator_attributed_at = :at
+                 WHERE id = :id AND generator_version_id IS NULL
+                RETURNING 1
+                """
+            ),
+            {
+                "id": content.id,
+                "gvid": content.generator_version_id,
+                "by": content.generator_attributed_by,
+                "at": content.generator_attributed_at,
+            },
+        ).scalar()
+        return applied is not None
 
     def list_filtered(
         self,
