@@ -1401,6 +1401,7 @@ def _reset_demo(session: Session) -> None:
     identity is never touched.
     """
     for statement in (
+        "DELETE FROM studies",  # recipe/dataset/report cascade; before contents (stale refs)
         "DELETE FROM criterion_scores",
         "DELETE FROM evaluations",
         "DELETE FROM content_evaluation_completions",
@@ -1417,6 +1418,8 @@ def _reset_demo(session: Session) -> None:
         # Intake-derived (ADR-0022), not seeded reference data; after contents (FK).
         "DELETE FROM generation_briefs",
         "DELETE FROM events",
+        # Ratifications reference assessors on both sides (ADR-0019); before assessors.
+        "DELETE FROM assessor_ratifications",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
     ):
         session.execute(text(statement))
