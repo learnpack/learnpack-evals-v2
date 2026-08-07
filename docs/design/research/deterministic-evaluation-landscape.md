@@ -1,84 +1,84 @@
-# Research note — Panorama de evaluación determinística / híbrida de calidad pedagógica
+# Research note — Landscape of deterministic / hybrid evaluation of pedagogical quality
 
-> Insumo de diseño recopilado en Align (jul-2026) para enriquecer el modelado de
-> `EvaluationSource`, `ComputedMetric` y `eligible_sources`. No es exhaustivo; es una base
-> para Discover/Define. Todas las afirmaciones parafraseadas; ver fuentes.
+> Design input gathered in Align (Jul-2026) to enrich the modelling of
+> `EvaluationSource`, `ComputedMetric` and `eligible_sources`. Not exhaustive; a base
+> for Discover/Define. All statements paraphrased; see sources.
 
-## Tesis central
+## Central thesis
 
-"Determinístico vs. rúbrica" **no es una dicotomía**: es un espectro de verificadores que
-se **combinan** (la "Hybrid Norm"): checks programáticos para las verdades objetivas ("qué"),
-rúbricas vía juez LLM para la calidad matizada ("cómo"), y supervisión humana para
-gobernanza y calibración.
+"Deterministic vs. rubric" **is not a dichotomy**: it is a spectrum of verifiers that are
+**combined** (the "Hybrid Norm"): programmatic checks for the objective truths ("what"),
+rubrics via LLM judge for the nuanced quality ("how"), and human oversight for
+governance and calibration.
 
-## Familias de evaluación determinística (o det. + LLM)
+## Families of deterministic evaluation (or det. + LLM)
 
-### 1. Legibilidad (readability) — totalmente determinística
-Fórmulas computables: Flesch-Kincaid Grade Level, Gunning Fog, SMOG, ARI, Dale-Chall.
-Estiman el grado escolar/años de educación para comprender un texto. Baratas y
-reproducibles; correlación media con nivel percibido por humanos → señal útil, no suficiente.
-Aplicable a: "legibilidad adecuada al público objetivo".
+### 1. Readability — fully deterministic
+Computable formulas: Flesch-Kincaid Grade Level, Gunning Fog, SMOG, ARI, Dale-Chall.
+They estimate the school grade/years of education needed to understand a text. Cheap and
+reproducible; medium correlation with human-perceived level → useful signal, not sufficient.
+Applicable to: "readability appropriate for the target audience".
 
-### 2. Cohesión y coherencia — determinística sobre features lingüísticos
-Herramientas tipo Coh-Metrix / TAACO: decenas de índices (cohesión referencial, conectores,
-solapamiento léxico). Diseñadas porque las fórmulas de legibilidad dependen demasiado de
-rasgos superficiales; los índices se validan contra juicios expertos de coherencia.
-Aplicable a: "secuenciación coherente", "cohesión del material".
+### 2. Cohesion and coherence — deterministic over linguistic features
+Tools like Coh-Metrix / TAACO: dozens of indices (referential cohesion, connectives,
+lexical overlap). Designed because readability formulas depend too much on
+surface features; the indices are validated against expert coherence judgments.
+Applicable to: "coherent sequencing", "cohesion of the material".
 
-### 3. Nivel cognitivo (Bloom / SOLO) — clasificación ML, hoy también LLM
-Clasificar objetivos y preguntas por nivel de Bloom es tarea madura (clasificadores
-entrenados sobre decenas de miles de objetivos); los LLMs habilitan zero/few-shot.
-Aplicable a: "¿los objetivos cubren niveles cognitivos altos o solo recordar?".
+### 3. Cognitive level (Bloom / SOLO) — ML classification, today also LLM
+Classifying objectives and questions by Bloom level is a mature task (classifiers
+trained on tens of thousands of objectives); LLMs enable zero/few-shot.
+Applicable to: "do the objectives cover high cognitive levels or only recall?".
 
-### 4. Alineación (curricular y constructiva) — embeddings / matching semántico
-Similitud semántica objetivo↔contenido↔evaluación con Sentence-BERT / DeBERTa / RoBERTa
-(alineación de ítems a estándares con F1 alto). Operacionaliza el triángulo de Biggs
-(constructive alignment: objetivos ↔ actividades ↔ evaluación) y la detección de
-desalineación/defectos de ítems.
-→ **Encaje directo con `pgvector`.**
-Aplicable a: "alineación constructiva", "cobertura de objetivos".
+### 4. Alignment (curricular and constructive) — embeddings / semantic matching
+Semantic similarity objective↔content↔assessment with Sentence-BERT / DeBERTa / RoBERTa
+(item-to-standard alignment with high F1). It operationalizes Biggs' triangle
+(constructive alignment: objectives ↔ activities ↔ assessment) and the detection of
+misalignment/item defects.
+→ **Direct fit with `pgvector`.**
+Applicable to: "constructive alignment", "objective coverage".
 
-### 5. Presencia/estructura y progresión — chequeos de reglas
-Verificaciones tipo "blueprint": ¿hay objetivos explícitos, ejemplos, worked examples,
-actividades, evaluación, feedback? ¿el orden respeta prerrequisitos / learning progressions?
-Mapean casi 1:1 a Merrill (First Principles) y Learning Progressions.
-La **metadata del curso** (objetivos, público, prerrequisitos) es la *referencia* de estos
+### 5. Presence/structure and progression — rule checks
+"Blueprint"-style verifications: are there explicit objectives, examples, worked examples,
+activities, assessment, feedback? Does the order respect prerequisites / learning progressions?
+They map almost 1:1 to Merrill (First Principles) and Learning Progressions.
+The **course metadata** (objectives, audience, prerequisites) is the *reference* of these
 checks.
 
-## La "Hybrid Norm" (patrón arquitectónico clave)
+## The "Hybrid Norm" (key architectural pattern)
 
-- Verificadores **programáticos**: deterministas, auditables, **nunca alucinan**, con modos
-  de falla enumerables — pero frágiles.
-- Jueces **LLM**: flexibles pero opacos; heredan sesgos del modelo.
-- Patrones de fusión observados: regla → señal binaria o score base acotado que luego se
-  **fusiona** con el juez LLM; en código, LLM evalúa la lógica y un compilador
-  determinístico verifica la sintaxis, y se **suman** los puntajes.
-- **Rúbricas analíticas** (criterio por criterio) > holísticas (score único y opaco) →
-  coincide con cómo modelamos `Rubric`.
+- **Programmatic** verifiers: deterministic, auditable, **never hallucinate**, with
+  enumerable failure modes — but brittle.
+- **LLM** judges: flexible but opaque; they inherit the model's biases.
+- Observed fusion patterns: rule → binary signal or bounded base score that is later
+  **fused** with the LLM judge; in code, LLM evaluates the logic and a deterministic
+  compiler verifies the syntax, and the scores are **summed**.
+- **Analytic rubrics** (criterion by criterion) > holistic ones (single, opaque score) →
+  matches how we model `Rubric`.
 
-## Implicaciones de modelado (llevadas al modelo)
+## Modelling implications (carried into the model)
 
-1. `EvaluationSource` = taxonomía de 4 adapters (HumanExpert, LLMJudge,
-   DeterministicVerifier, HybridVerifier) detrás de un port.
-2. Separar *qué se mide* (`Criterion`, grounded) de *cómo se produce* (`EvaluationSource`).
-3. Relación `eligible_sources`: algunos criteria son computables, otros requieren juicio.
-4. Introducir `ComputedMetric` (medición cruda) distinto de `CriterionScore` (juicio);
-   `ScoringPolicy` mapea métrica→score, a menudo contra un umbral/referencia de la metadata.
-5. Regalo para la calibración: los determinísticos se pueden correr sobre los 50 cursos ya
-   y correlacionar contra el golden humano por dimensión. Caveat: determinístico ≠ válido
-   (las fórmulas tienen límites conocidos) → por eso existe el golden dataset.
+1. `EvaluationSource` = taxonomy of 4 adapters (HumanExpert, LLMJudge,
+   DeterministicVerifier, HybridVerifier) behind a port.
+2. Separate *what is measured* (`Criterion`, grounded) from *how it is produced* (`EvaluationSource`).
+3. `eligible_sources` relation: some criteria are computable, others require judgment.
+4. Introduce `ComputedMetric` (raw measurement) distinct from `CriterionScore` (judgment);
+   `ScoringPolicy` maps metric→score, often against a threshold/reference from the metadata.
+5. A gift for calibration: the deterministic ones can be run over the 50 courses already
+   and correlated against the human golden per dimension. Caveat: deterministic ≠ valid
+   (the formulas have known limits) → that is why the golden dataset exists.
 
-## Fuentes (selección)
+## Sources (selection)
 
-- COGENT — Curriculum-oriented framework, tríada readability/comprehensibility/curriculum
-  alignment (arXiv 2506.09367).
-- Coh-Metrix / TAACO — cohesión y coherencia automáticas.
+- COGENT — Curriculum-oriented framework, readability/comprehensibility/curriculum
+  alignment triad (arXiv 2506.09367).
+- Coh-Metrix / TAACO — automatic cohesion and coherence.
 - Readability formulas — Flesch-Kincaid, Gunning Fog, SMOG, ARI, Dale-Chall.
-- Bloom auto-classification — EDM 2022 (Monash, 21k objetivos); BEA 2025 (Kolagar et al.);
-  Almatrafi & Johri 2025 (GenAI para categorización de outcomes).
+- Bloom auto-classification — EDM 2022 (Monash, 21k objectives); BEA 2025 (Kolagar et al.);
+  Almatrafi & Johri 2025 (GenAI for outcome categorization).
 - Item↔standard alignment — DeBERTa/RoBERTa/Sentence-BERT (arXiv 2510.05129).
-- Constructive alignment (Biggs) — triángulo objetivos/actividades/evaluación; alineación
-  de MCQ a objetivos (BMC Med Educ 2025; arXiv 2506.23815).
-- Hybrid Norm / RLVR — verificadores programáticos vs. aprendidos vs. híbridos
-  (rlvrbook.com cap.4); RaR / RLCF; Autorubric (arXiv 2603.00077); KnowU-Bench hybrid
+- Constructive alignment (Biggs) — objectives/activities/assessment triangle; alignment
+  of MCQs to objectives (BMC Med Educ 2025; arXiv 2506.23815).
+- Hybrid Norm / RLVR — programmatic vs. learned vs. hybrid verifiers
+  (rlvrbook.com ch.4); RaR / RLCF; Autorubric (arXiv 2603.00077); KnowU-Bench hybrid
   (arXiv 2604.08455); "Rubric is all you need" (ICER 2025).

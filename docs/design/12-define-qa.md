@@ -1,9 +1,9 @@
-# 12 — Define (segunda vuelta: QA interno)
+# 12 — Define (second pass: internal QA)
 
-> **Snapshot del diseño vigente (ago-2026)** — paso 7 del DDDSMP, segunda vuelta. Congelado.
-> Supersede a `07-define.md` (histórico) para todo trabajo nuevo; este doc es **autocontenido**
-> (incluye los contextos que casi no cambiaron). Serie: 09 → 12. Los nombres exactos y las
-> equivalencias con la industria: `../GLOSSARY.md`.
+> **Snapshot of the current design (Aug-2026)** — DDDSMP step 7, second pass. Frozen.
+> Supersedes `07-define.md` (historical) for all new work; this doc is **self-contained**
+> (it includes the contexts that barely changed). Series: 09 → 12. The exact names and the
+> equivalences with the industry: `../GLOSSARY.md`.
 
 ---
 
@@ -11,110 +11,110 @@
 
 ### Bounded Context Canvas
 
-- **Propósito:** poseer el argumento evidencial: diseñar, versionar, publicar y diagnosticar
-  instrumentos; mintear el namespace de ids (ADR-0014); reference data del lado norma
-  (frameworks, qualities, dimensions, data requirements); asistir la autoría vía port.
-- **Comandos:** `DefineClaim` · `DefineCriterion` · `AssembleInstrument` · `PublishInstrument` ·
+- **Purpose:** own the evidentiary argument: design, version, publish and diagnose
+  instruments; mint the id namespace (ADR-0014); norm-side reference data
+  (frameworks, qualities, dimensions, data requirements); assist authoring via port.
+- **Commands:** `DefineClaim` · `DefineCriterion` · `AssembleInstrument` · `PublishInstrument` ·
   `ReviseInstrument` · `DeprecateInstrument` · `RegisterFramework` · `MintDataRequirement`.
-  **Port de asistencia:** `RequestDrafts(purpose, frameworkIds, oferta)` → borradores.
+  **Assistance port:** `RequestDrafts(purpose, frameworkIds, supply)` → drafts.
   **Queries:** `getInstrument(version) → InstrumentSnapshot` · `getDataRequirements()`.
-- **Reacciona a (bucle B):** `DisagreementDetected` · `FindingDisputed` · patrones de
-  `no_evidence` · oferta informal → diagnóstico → `InstrumentDefectIdentified` → revisión.
-- **Eventos:** `ClaimDefined` · `CriterionDefined` · `DataRequirementMinted` ·
-  `InstrumentVersionPublished` (lleva el snapshot) · `InstrumentDefectIdentified` ·
+- **Reacts to (loop B):** `DisagreementDetected` · `FindingDisputed` · patterns of
+  `no_evidence` · informal supply → diagnosis → `InstrumentDefectIdentified` → revision.
+- **Events:** `ClaimDefined` · `CriterionDefined` · `DataRequirementMinted` ·
+  `InstrumentVersionPublished` (carries the snapshot) · `InstrumentDefectIdentified` ·
   `InstrumentDeprecated`.
 
-### Agregado `Instrument`
+### `Instrument` aggregate
 
-Root = `InstrumentVersion`; **posee como VOs** sus `Claim`s (enunciado + refs a qualities +
-warrants + explicaciones alternativas + assembly), sus `Criterion`s y sus **bindings de
-aplicabilidad** por `PackageFormat`. Referencia por id a frameworks/qualities (reference data).
-Ciclo: `Draft (editable, asistible) → Published (locked) → Deprecated`.
+Root = `InstrumentVersion`; it **owns as VOs** its `Claim`s (statement + refs to qualities +
+warrants + alternative explanations + assembly), its `Criterion`s and its **applicability
+bindings** per `PackageFormat`. References frameworks/qualities by id (reference data).
+Cycle: `Draft (editable, assistable) → Published (locked) → Deprecated`.
 
-**Invariantes:**
-1. `Published` ⇒ inmutable; todo cambio ⇒ versión nueva. `claimId`/`criterionId` estables entre
-   versiones (linaje del bucle B).
-2. Todo claim: enunciado de una frase · ≥1 `Quality` · ≥1 warrant de framework (si es
-   pedagógico) · ≥1 criterion como evidencia · regla de assembly · ≥1 explicación alternativa
-   **específica del claim** (el boilerplate no cuenta; causas genéricas → taxonomía de
-   diagnóstico).
-3. Todo criterion: condición de pase verificable · modos de falla · requisitos de datos que
-   existen en el namespace · `onMissingEvidence` ∈ {`no_evidence` (default), `fail`} — la
-   **consecuencia** de la ausencia; el **hecho** lo determinan matching/profile (mecánico);
-   `not_applicable` solo nace de capacidad/condicionales, jamás del criterion · ≥1 eligible
-   source. *(Esta es la lectura autorizada que reconcilia ADR-0010 §5 con la derivación
-   mecánica.)*
-4. Publicar exige ≥1 binding (`designedFor`) + invariantes 2–3. Atómico. **No exige capacidad de
-   extracción** (el diseño queda desacoplado de los adapters; readiness informa al fijar el
-   study).
-5. **Nada producido por asistencia entra a `Published` sin acto humano.**
+**Invariants:**
+1. `Published` ⇒ immutable; every change ⇒ new version. `claimId`/`criterionId` stable across
+   versions (loop B lineage).
+2. Every claim: one-sentence statement · ≥1 `Quality` · ≥1 framework warrant (if
+   pedagogical) · ≥1 criterion as evidence · assembly rule · ≥1 alternative explanation
+   **specific to the claim** (boilerplate does not count; generic causes → diagnosis
+   taxonomy).
+3. Every criterion: verifiable pass condition · failure modes · data requirements that
+   exist in the namespace · `onMissingEvidence` ∈ {`no_evidence` (default), `fail`} — the
+   **consequence** of absence; the **fact** is determined by matching/profile (mechanical);
+   `not_applicable` only arises from capability/conditionals, never from the criterion · ≥1 eligible
+   source. *(This is the authorized reading that reconciles ADR-0010 §5 with the mechanical
+   derivation.)*
+4. Publishing requires ≥1 binding (`designedFor`) + invariants 2–3. Atomic. **It does not require
+   extraction capability** (the design stays decoupled from the adapters; readiness informs when
+   pinning the study).
+5. **Nothing produced by assistance enters `Published` without a human act.**
 
-**Metadata de revisión:** autor + motivo + `assistedBy` (config del asistente).
+**Revision metadata:** author + reason + `assistedBy` (assistant config).
 
-### Reference data del lado norma (agregados chicos)
+### Norm-side reference data (small aggregates)
 
-- `PedagogicalFramework` — **delgado**: id · name · citations · scopeNote. El corpus de los
-  asistentes NO va acá: es conocimiento de adapter, keyado por framework id.
-- `Quality` / `PedagogicalDimension` — id · name · definición · `groundedIn` · `dimensionId`.
-- `DataRequirement` — id · **definición obligatoria** · aliases · value domain opcional (las
-  estructuras de teoría —niveles de Bloom, jerarquías de unidades— entran acá **demand-driven**,
-  citando al framework; sin jerarquía de tipos aparte) · grounding opcional. Unicidad por
-  revisión de diseño + lint (ADR-0014).
+- `PedagogicalFramework` — **thin**: id · name · citations · scopeNote. The assistants'
+  corpus does NOT go here: it is adapter knowledge, keyed by framework id.
+- `Quality` / `PedagogicalDimension` — id · name · definition · `groundedIn` · `dimensionId`.
+- `DataRequirement` — id · **mandatory definition** · aliases · optional value domain (theory
+  structures —Bloom levels, unit hierarchies— enter here **demand-driven**,
+  citing the framework; no separate type hierarchy) · optional grounding. Uniqueness via design
+  review + lint (ADR-0014).
 
-### Ciclo de vida de las Qualities
+### Qualities lifecycle
 
-Cadena: `Framework ←grounded_in← Quality ←afirma-sobre← Claim ←evidenciado-por← Criterion
-←requiere← DataRequirement`. Se crean en el seed + minteo **raro** en la génesis de claims. Se
-usan al diseñar claims y como **eje de agregación y lectura** de informes. No aparecen en la
-ejecución. Son la **columna estable del lenguaje**: claims y criteria cambian entre versiones;
-los `qualityId` persisten (continuidad temática entre líneas de studies; ancla de la referencia
-humana, ADR-0015).
+Chain: `Framework ←grounded_in← Quality ←asserts-about← Claim ←evidenced-by← Criterion
+←requires← DataRequirement`. Created in the seed + **rare** minting during claim genesis. Used
+when designing claims and as the **aggregation and reading axis** of reports. They do not appear
+in execution. They are the **stable column of the language**: claims and criteria change across
+versions; the `qualityId`s persist (thematic continuity across study lines; anchor of the human
+reference, ADR-0015).
 
-### Port de asistencia (`DesignAssistancePort`)
+### Assistance port (`DesignAssistancePort`)
 
-Dado (propósito + framework ids + oferta del tipo), propone **borradores** de
-claims/criteria/evidence models. Adapters LLM = infraestructura en este repo; corpus/prompts =
-artefactos versionados del adapter, keyados por framework id. Frontera dura: borrador ≠
-publicado (invariante 5). Trigger para volverse subdominio: que las sesiones de asistencia
-adquieran lifecycle/estado con reglas propias.
+Given (purpose + framework ids + the type's supply), it proposes **drafts** of
+claims/criteria/evidence models. LLM adapters = infrastructure in this repo; corpus/prompts =
+versioned artifacts of the adapter, keyed by framework id. Hard boundary: draft ≠
+published (invariant 5). Trigger to become a subdomain: assistance sessions
+acquiring lifecycle/state with rules of their own.
 
 ---
 
-## Content Profiling (Supporting — ACL interpretativo)
+## Content Profiling (Supporting — interpretive ACL)
 
 ### Bounded Context Canvas
 
-- **Propósito:** traducir `ContentPackage`s crudos a evidencia canónica **citada**; adapters por
-  `PackageFormat`; capacidades contra el namespace; reproducibilidad por versionado de adapter;
-  acto de aceptación.
-- **Comandos:** `ProfileContent` · `AcceptExtraction(packageFormat, adapterVersion)` ·
-  `ReprofileBatch(selección)`. **Reacciona a:** `ContentVersionRegistered` (perfilar si hay
-  adapter aceptado). **Queries:** `getProfile` · `getCapabilities(packageFormat)`.
-- **Eventos:** `ContentProfiled` · `ContentProfilingFailed` · `ExtractionAccepted`.
+- **Purpose:** translate raw `ContentPackage`s into **quoted** canonical evidence; adapters per
+  `PackageFormat`; capabilities against the namespace; reproducibility via adapter versioning;
+  acceptance act.
+- **Commands:** `ProfileContent` · `AcceptExtraction(packageFormat, adapterVersion)` ·
+  `ReprofileBatch(selection)`. **Reacts to:** `ContentVersionRegistered` (profile if there is an
+  accepted adapter). **Queries:** `getProfile` · `getCapabilities(packageFormat)`.
+- **Events:** `ContentProfiled` · `ContentProfilingFailed` · `ExtractionAccepted`.
 
-### Agregado `ContentProfile`
+### `ContentProfile` aggregate
 
-Root con coordenadas `{contentId, adapterVersion}`. Posee entradas canónicas
-(`dataRequirementId` → valor + `EvidenceProvenance` con cita verbatim y locator) y extras
-no-canónicos (marcados).
+Root with coordinates `{contentId, adapterVersion}`. It owns canonical entries
+(`dataRequirementId` → value + `EvidenceProvenance` with verbatim quote and locator) and
+non-canonical extras (marked).
 
-**Invariantes:**
-1. Toda entrada canónica referencia un `DataRequirement` existente (Conformist) y lleva
-   `EvidenceProvenance`: `declared_structured | declared_in_content | absent` — sin `inferred`,
-   con cita obligatoria cuando hay valor (ADR-0009).
-2. **Inmutable.** Re-perfilar con otro adapter ⇒ profile nuevo; el viejo se conserva (los
-   juicios publicados lo referencian).
-3. **Entrada `absent` ≠ ausencia de entrada.** Capacidad declarada + contenido sin el dato →
-   `absent` explícito (→ `no_evidence`). Sin capacidad → sin entrada (→ `not_applicable` /
-   demanda insatisfecha). La trampa del denominador queda bloqueada **por construcción**.
-4. Extras jamás usan ids canónicos; fuera de contrato.
+**Invariants:**
+1. Every canonical entry references an existing `DataRequirement` (Conformist) and carries
+   `EvidenceProvenance`: `declared_structured | declared_in_content | absent` — no `inferred`,
+   with a mandatory quote whenever there is a value (ADR-0009).
+2. **Immutable.** Re-profiling with another adapter ⇒ new profile; the old one is kept (the
+   published judgments reference it).
+3. **An `absent` entry ≠ absence of an entry.** Declared capability + content without the datum →
+   explicit `absent` (→ `no_evidence`). No capability → no entry (→ `not_applicable` /
+   unmet demand). The denominator trap is blocked **by construction**.
+4. Extras never use canonical ids; out of contract.
 
-**El adapter es infraestructura**, no agregado: `ExtractorAdapter` por `PackageFormat`,
-versionado, capacidades declaradas, **fixtures obligatorios** (la inversión de este contexto va
-a fixtures, no a modelo). `ExtractionAccepted` por `(packageFormat, adapterVersion)`, repetida
-en cada versión — el acto humano que habilita descartar "extracción fallida" como explicación
-alternativa. Perfilado automático al registrar; **re-perfilado batch como acto explícito**
-(nunca cascada silenciosa: puede invalidar evaluaciones).
+**The adapter is infrastructure**, not an aggregate: `ExtractorAdapter` per `PackageFormat`,
+versioned, declared capabilities, **mandatory fixtures** (this context's investment goes
+to fixtures, not model). `ExtractionAccepted` per `(packageFormat, adapterVersion)`, repeated
+on each version — the human act that enables discarding "failed extraction" as an alternative
+explanation. Automatic profiling on registration; **batch re-profiling as an explicit act**
+(never a silent cascade: it can invalidate evaluations).
 
 ---
 
@@ -122,35 +122,35 @@ alternativa. Perfilado automático al registrar; **re-perfilado batch como acto 
 
 ### Bounded Context Canvas
 
-- **Propósito:** el examinado y sus productos: `GeneratorVersion`, `GenerationBrief`,
-  `ContentVersion` + `ContentPackage` + provenance de edición.
-- **Comandos:** `RegisterGeneratorVersion` · `RegisterBrief` · `RegisterContentVersion` ·
-  `UpdateContentMetadata` · `RegisterGeneratorArtifact`. **ACL de intake** mecánico; carga
-  manual sigue existiendo. **Queries:** `getContentPackage` · `getAvailableContents(filtros)` ·
+- **Purpose:** the examinee and its products: `GeneratorVersion`, `GenerationBrief`,
+  `ContentVersion` + `ContentPackage` + edit provenance.
+- **Commands:** `RegisterGeneratorVersion` · `RegisterBrief` · `RegisterContentVersion` ·
+  `UpdateContentMetadata` · `RegisterGeneratorArtifact`. Mechanical **intake ACL**; manual
+  load still exists. **Queries:** `getContentPackage` · `getAvailableContents(filters)` ·
   `getGeneratorVersion` · `getBrief`.
-- **Eventos:** `GeneratorVersionRegistered` · `BriefRegistered` · `ContentVersionRegistered` ·
+- **Events:** `GeneratorVersionRegistered` · `BriefRegistered` · `ContentVersionRegistered` ·
   `ContentMetadataUpdated` · `GeneratorArtifactRegistered`.
 
-### Agregados (tres chicos)
+### Aggregates (three small ones)
 
-- **`GeneratorVersion`** — identidad **declarada** del examinado:
-  `{id, name, version, metadata libre opcional, createdAt}`. Identidad inmutable; un generador
-  realmente distinto ⇒ registro nuevo (disciplina declarativa — no enforceable). El **drift
-  silencioso es indetectable desde adentro**; "drift no registrado" es causa estándar de la
-  taxonomía de diagnóstico. Campos de config se promueven del blob **solo cuando algo los
-  consuma**.
-- **`GenerationBrief`** — inmutable, con identidad (`briefId`) referenciada por los
-  `ContentVersion`: la clave del **diseño pareado**. Contenido lean: texto libre + campos
-  tipados que las task variables consuman. Brief ausente = registrado ausente.
-- **`EducationalContent`/`ContentVersion`** — unicidad `(PackageFormat, externalId, version)`
-  (ADR-0005 intacto) · `ContentMetadata` (ADR-0001 intacto) · `ContentPackage` (VO de artefactos
-  `{kind, locator, formato}`, `kind` **abierto**) · `briefId` · `generatorVersionId` (nullable →
-  `unknown`, excluido de acumulación) · provenance de edición
+- **`GeneratorVersion`** — the examinee's **declared** identity:
+  `{id, name, version, optional free-form metadata, createdAt}`. Immutable identity; a genuinely
+  different generator ⇒ new registration (declarative discipline — not enforceable). **Silent
+  drift is undetectable from the inside**; "unregistered drift" is a standard cause in the
+  diagnosis taxonomy. Config fields are promoted out of the blob **only when something consumes
+  them**.
+- **`GenerationBrief`** — immutable, with identity (`briefId`) referenced by the
+  `ContentVersion`s: the key to the **paired design**. Lean content: free text + typed fields
+  that task variables consume. Absent brief = registered absent.
+- **`EducationalContent`/`ContentVersion`** — uniqueness `(PackageFormat, externalId, version)`
+  (ADR-0005 intact) · `ContentMetadata` (ADR-0001 intact) · `ContentPackage` (VO of artifacts
+  `{kind, locator, format}`, `kind` **open**) · `briefId` · `generatorVersionId` (nullable →
+  `unknown`, excluded from accumulation) · edit provenance
   `pure | human_edited | unknown`.
 
-`PackageFormat` (formato → elige adapter) y `GeneratorVersion` (examinado → acumula claims) son
-**dos ejes distintos**; el `ContentVersion` lleva ambos. *(Trigger: si una plataforma emitiera
-varios formatos compartiendo externalIds, nacería un `SourceSystem`.)*
+`PackageFormat` (format → picks the adapter) and `GeneratorVersion` (examinee → accumulates
+claims) are **two distinct axes**; the `ContentVersion` carries both. *(Trigger: if a platform
+emitted several formats sharing externalIds, a `SourceSystem` would be born.)*
 
 ---
 
@@ -158,140 +158,139 @@ varios formatos compartiendo externalIds, nacería un `SourceSystem`.)*
 
 ### Bounded Context Canvas
 
-- **Propósito:** ejecutar el argumento sobre un contenido; derivar findings; publicar el juicio
-  (claims con estatus); emitir hechos crudos de acuerdo.
-- **Comandos:** `EvaluateContent(contentId, instrumentVersion, assessorId)` (automático) ·
-  `SubmitEvaluation` (humano — ADR-0005 intacto) · `DisputeFinding`. **Queries batch:**
+- **Purpose:** execute the argument over a content; derive findings; publish the judgment
+  (claims with status); emit raw agreement facts.
+- **Commands:** `EvaluateContent(contentId, instrumentVersion, assessorId)` (automated) ·
+  `SubmitEvaluation` (human — ADR-0005 intact) · `DisputeFinding`. **Batch queries:**
   `getJudgments` · `getFindings` · `getEvaluations`.
-- **Eventos:** `EvaluationCompleted`/`EvaluationSubmitted` · `QualityJudgmentPublished` ·
+- **Events:** `EvaluationCompleted`/`EvaluationSubmitted` · `QualityJudgmentPublished` ·
   `FindingRaised` · `DisagreementDetected` · `FindingDisputed`.
 
-### Agregado `Evaluation`
+### `Evaluation` aggregate
 
-Un **acto**. Root con `evaluationId` propio; coordenadas `{assessorId, contentId,
-instrumentVersion, adapterVersion del profile, occurredAt/attempt}`. Repeticiones permitidas;
-anti-duplicación humana en el `Assignment` (ADR-0005). Posee el `EvaluationResult` = un
-`CriterionScore` (tri-estado) por criterion + `ComputedMetric`s crudos (que admiten valores
-estructurados).
+An **act**. Root with its own `evaluationId`; coordinates `{assessorId, contentId,
+instrumentVersion, the profile's adapterVersion, occurredAt/attempt}`. Repetitions allowed;
+human anti-duplication in the `Assignment` (ADR-0005). It owns the `EvaluationResult` = one
+`CriterionScore` (tri-state) per criterion + raw `ComputedMetric`s (which admit structured
+values).
 
-**Invariantes:**
-1. **Cobertura exacta tri-estado:** un outcome por cada criterion del `instrumentVersion` — ni
-   falta ni sobra. *(Supersede la invariante "score ∈ [1,5]" del 07 histórico; el 1–5 pervive
-   solo en el panel de referencia, ADR-0015.)*
-2. **Derivación mecánica:** sin capacidad o condicional excluido → `not_applicable`; entrada
-   `absent` del profile → `no_evidence` (o `fail` si el criterion lo declara); `scored` exige
-   **cita**. El assessor solo juzga lo juzgable.
-3. Inmutable al completarse. Referencias válidas (instrumento publicado, profile existente,
-   assessor registrado).
-4. **Cadena de provenance completa:** `{instrumentVersion, adapterVersion, assessorId,
-   contentVersion}` — sin excepciones.
+**Invariants:**
+1. **Exact tri-state coverage:** one outcome for each criterion of the `instrumentVersion` —
+   nothing missing, nothing extra. *(Supersedes the "score ∈ [1,5]" invariant of the historical
+   07; the 1–5 survives only in the reference panel, ADR-0015.)*
+2. **Mechanical derivation:** no capability or excluded conditional → `not_applicable`; `absent`
+   entry in the profile → `no_evidence` (or `fail` if the criterion declares it); `scored`
+   requires a **quote**. The assessor only judges the judgeable.
+3. Immutable upon completion. Valid references (published instrument, existing profile,
+   registered assessor).
+4. **Complete provenance chain:** `{instrumentVersion, adapterVersion, assessorId,
+   contentVersion}` — no exceptions.
 
-**Eventos por evaluación, no por criterion** (outcomes como filas; sin consumidor por-criterion
-independiente). **Umbrales de acuerdo en el assembly** (Design): Evaluation mide siempre y emite
-`DisagreementDetected` al cruzarse el umbral. **`ScoringPolicy` está disuelta**: mapeo
-métrica→desenlace = condición de pase del criterion; agregación = assembly + ADR-0011.
+**Events per evaluation, not per criterion** (outcomes as rows; no independent per-criterion
+consumer). **Agreement thresholds in the assembly** (Design): Evaluation always measures and emits
+`DisagreementDetected` when the threshold is crossed. **`ScoringPolicy` is dissolved**: the
+metric→outcome mapping = the criterion's pass condition; aggregation = assembly + ADR-0011.
 
-### `QualityJudgment` y `Finding` — derivados, inmutables
+### `QualityJudgment` and `Finding` — derived, immutable
 
-- `QualityJudgment` por `(contentVersion, instrumentVersion)`: claims con estatus + perfil por
-  criterion + cobertura + métricas de acuerdo. Compartido entre studies que fijaron el mismo
-  instrumento (espeja "una evaluación satisface varias campañas", ADR-0005).
-- `Finding`: `{claimId, criterionId, cita, modo de falla → sugerencia}`. `FindingDisputed` =
-  hecho registrado *sobre* un finding, consumido por Design.
+- `QualityJudgment` per `(contentVersion, instrumentVersion)`: claims with status + per-criterion
+  profile + coverage + agreement metrics. Shared across studies that pinned the same
+  instrument (mirrors "one evaluation satisfies several campaigns", ADR-0005).
+- `Finding`: `{claimId, criterionId, quote, failure mode → suggestion}`. `FindingDisputed` =
+  a fact recorded *about* a finding, consumed by Design.
 
-**Participación humana (ADR-0015):** el modo *panel de referencia* (qualities directas, sin
-profile — `Rubric v1` estabilizada como instrumento de referencia) queda **fuera** de la
-ejecución de instrumentos; el modo *assessor/verificador* trabaja sobre el profile (annotation
-queues muestreadas). El prerequisito de profile en la ejecución se mantiene.
+**Human participation (ADR-0015):** the *reference panel* mode (direct qualities, no
+profile — `Rubric v1` stabilized as reference instrument) stays **outside** instrument
+execution; the *assessor/verifier* mode works over the profile (sampled annotation
+queues). The profile prerequisite in execution is kept.
 
 ---
 
-## Evaluation Studies (Supporting — thin deliberado)
+## Evaluation Studies (Supporting — deliberately thin)
 
 ### Bounded Context Canvas
 
-- **Propósito:** la ronda con propósito: dataset, pinning, gate de confiabilidad, publicación,
-  informe del generador, comparación entre rondas.
-- **Comandos:** `DeclareStudy(propósito, aserciones deseadas)` · `PinInstrument` ·
+- **Purpose:** the round with a purpose: dataset, pinning, reliability gate, publication,
+  generator report, comparison across rounds.
+- **Commands:** `DeclareStudy(purpose, desired assertions)` · `PinInstrument` ·
   `ComposeDataset(briefIds/contentIds)` · `OpenStudy` · `PublishStudy` · `CompareStudies(a,b)`.
-  **Reacciona a:** `QualityJudgmentPublished` · `FindingRaised` · `DisagreementDetected` ·
-  `ContentEvaluationCompleted` (humano). **Queries:** `getStudyReport` · `getComparison` ·
+  **Reacts to:** `QualityJudgmentPublished` · `FindingRaised` · `DisagreementDetected` ·
+  `ContentEvaluationCompleted` (human). **Queries:** `getStudyReport` · `getComparison` ·
   readiness.
-- **Eventos:** `StudyDeclared` · `InstrumentPinned` · `StudyOpened` · `StudyPublished` ·
+- **Events:** `StudyDeclared` · `InstrumentPinned` · `StudyOpened` · `StudyPublished` ·
   `StudiesCompared`.
 
-### Agregado `EvaluationStudy`
+### `EvaluationStudy` aggregate
 
-Root; posee propósito, pin, **receta** (briefIds) y **dataset materializado** (contentIds) como
-VOs (`EvaluationDataset`). Ciclo: `Declared (instrumento pendiente — el estado del arranque en
-frío) → Prepared → Open → Published`.
+Root; it owns purpose, pin, **recipe** (briefIds) and **materialized dataset** (contentIds) as
+VOs (`EvaluationDataset`). Cycle: `Declared (instrument pending — the cold-start
+state) → Prepared → Open → Published`.
 
-**Invariantes:**
-1. Instrumento fijado **una vez**, antes de abrir, inmutable después. Readiness **informa, no
-   bloquea**.
-2. Dataset fijo al abrir (el camino humano puede llenarlo incrementalmente vía campañas).
-3. `Published` ⇒ informe inmutable, jamás re-emitido. Publicar es **acto humano**.
-4. El informe siempre lleva **cobertura y caveats** (evidencia insuficiente, desacuerdos sin
-   resolver, exclusiones `unknown`, adapters sin aceptar). Publicar con caveats es legítimo y
-   visible; **publicar en silencio, imposible**.
+**Invariants:**
+1. Instrument pinned **once**, before opening, immutable afterwards. Readiness **informs, it
+   does not block**.
+2. Dataset fixed on open (the human path can fill it incrementally via campaigns).
+3. `Published` ⇒ immutable report, never re-emitted. Publishing is a **human act**.
+4. The report always carries **coverage and caveats** (insufficient evidence, unresolved
+   disagreements, `unknown` exclusions, unaccepted adapters). Publishing with caveats is
+   legitimate and visible; **publishing silently, impossible**.
 
-### `StudyReport` — derivado, inmutable
+### `StudyReport` — derived, immutable
 
-Por contenido: claims con estatus. A nivel generador: **por cada claim, la distribución de
-estatus a través del dataset** + **patrones condicionados por task variables** ("objetivos vagos
-*solo* en cursos introductorios"). Nunca agregado cross-claim (ADR-0011 rige). Claims de grano
-generador explícitos con regla de acumulación propia = `[futuro]`, definidos en el instrumento.
-`CompareStudies` valida compatibilidad (mismo `instrumentVersion` + datasets pareados por
-briefs) → `StudiesComparison`; la "línea" es agrupamiento derivado, no entidad.
-
----
-
-## Contextos que casi no cambian (autocontenido — ajustes sobre el 07 histórico)
-
-- **Evaluation Orchestration (Supporting):** coordina **esfuerzo humano**. `EvaluationCampaign`
-  (abierta e incremental, ADR-0002: fija versión de instrumento, umbral
-  `requiredEvaluationsPerContent`, `metadataView`; no posee assignments transaccionalmente) +
-  `Assignment` (lifecycle `Assigned → Opened → Submitted | Cancelled`; ≤1 activa por
-  `(campaign, content, assessor)`; re-enviar sobre `Submitted` → 409, ADR-0005). Quórum por
-  umbral de submissions (policy sobre `EvaluationSubmitted`). Usos: campañas del **panel de
-  referencia** (capa 1) y **annotation queues** del modo verificador (capa 2). Nunca recibe
-  comandos de Studies.
-- **Golden Dataset (Supporting):** agregado por `(contentSet, versión del instrumento de
-  referencia)`; cada contenido con ≥N evaluaciones humanas; `usable` cuando
-  `coverage ≥ threshold`; policy sobre `ContentEvaluationCompleted` →
-  `GoldenReferenceEstablished`. **Rol adicional (ADR-0015): referencia de calibración de
-  instrumentos** — los coeficientes de validez por claim se computan contra él.
-- **Reporting (Supporting-generic):** composición vía query ports + agregación en Python
-  (ADR-0006); inter-rater por criterion (dispersión simple); repeticiones colapsan a la más
-  reciente por assessor. **Sin score agregado único** (ADR-0011 — `overall_average`/
-  `global_average` se retiran); vistas agrupadas por quality/dimensión permitidas como
-  presentación.
-- **Identity (Generic):** usuarios/roles; provee `assessorId`. Sin cambios (ADR-0004/0007/0008).
+Per content: claims with status. At generator level: **for each claim, the distribution of
+status across the dataset** + **patterns conditioned by task variables** ("vague objectives
+*only* in introductory courses"). Never a cross-claim aggregate (ADR-0011 rules). Explicit
+generator-grain claims with their own accumulation rule = `[future]`, defined in the instrument.
+`CompareStudies` validates compatibility (same `instrumentVersion` + datasets paired by
+briefs) → `StudiesComparison`; the "line" is a derived grouping, not an entity.
 
 ---
 
-## Registro de decisiones y deferrals
+## Contexts that barely change (self-contained — adjustments over the historical 07)
 
-Los 28 puntos de decisión de esta vuelta (DP1–DP28), la revisión de coherencia pre-cierre y sus
-resoluciones están razonados en los ADRs 0009–0015 y resumidos arriba en cada canvas. Piezas
-transversales:
+- **Evaluation Orchestration (Supporting):** coordinates **human effort**. `EvaluationCampaign`
+  (open and incremental, ADR-0002: pins instrument version, threshold
+  `requiredEvaluationsPerContent`, `metadataView`; does not own assignments transactionally) +
+  `Assignment` (lifecycle `Assigned → Opened → Submitted | Cancelled`; ≤1 active per
+  `(campaign, content, assessor)`; re-submitting over `Submitted` → 409, ADR-0005). Quorum by
+  submission threshold (policy over `EvaluationSubmitted`). Uses: campaigns of the **reference
+  panel** (layer 1) and **annotation queues** of the verifier mode (layer 2). It never receives
+  commands from Studies.
+- **Golden Dataset (Supporting):** aggregate per `(contentSet, version of the reference
+  instrument)`; each content with ≥N human evaluations; `usable` when
+  `coverage ≥ threshold`; policy over `ContentEvaluationCompleted` →
+  `GoldenReferenceEstablished`. **Additional role (ADR-0015): instrument calibration
+  reference** — the per-claim validity coefficients are computed against it.
+- **Reporting (Supporting-generic):** composition via query ports + aggregation in Python
+  (ADR-0006); per-criterion inter-rater (simple dispersion); repetitions collapse to the most
+  recent per assessor. **No single aggregate score** (ADR-0011 — `overall_average`/
+  `global_average` are retired); views grouped by quality/dimension allowed as presentation.
+- **Identity (Generic):** users/roles; provides `assessorId`. Unchanged (ADR-0004/0007/0008).
 
-- **Claim afirma *sobre* una Quality; el claim media entre criterion y quality** (en `Rubric v1`
-  la relación criterion↔dimensión es directa — es el instrumento de referencia).
-- **Sin biblioteca de claims:** portabilidad por copia con linaje (`claimId` estable). Reuso
-  sobre un tipo nuevo = **versión nueva que agrega el binding**.
-- **`TaskModelBinding`**: lado instrumento = aplicabilidad + task variables + criteria
-  condicionales; el "dónde vive cada dato en el formato" es del adapter (Profiling).
-- **`EvaluationRun` está fundido en `EvaluationStudy`**; el "compuesto/preset" no necesita
-  nombre: **es el `Instrument`**.
+---
 
-**Deferrals explícitos a Code (deliberados — no inventar sin plan):** el esquema operativo del
-**assembly** (qué significa "suficiente": criteria scored, % pass, mínimo de assessors, umbral
-de acuerdo) · la forma concreta de las **métricas de validez por claim** (ADR-0015) · la
-realización de las **annotation queues** · la forma concreta de value domains estructurados.
+## Decision log and deferrals
 
-**Primer incremento — thin/no:** implementación del port de asistencia (el modelo queda; los
-adapters LLM no) · perfilado de `GeneratorArtifact` (registrar sí, extraer no) ·
-`StudiesCompared` (necesita dos rondas) · eventos de draft por edición (con el evento de
-publicación alcanza).
-</content>
+The 28 decision points of this pass (DP1–DP28), the pre-closure coherence review and their
+resolutions are reasoned in ADRs 0009–0015 and summarized above in each canvas. Cross-cutting
+pieces:
+
+- **A Claim asserts *about* a Quality; the claim mediates between criterion and quality** (in
+  `Rubric v1` the criterion↔dimension relation is direct — it is the reference instrument).
+- **No claim library:** portability by copy with lineage (stable `claimId`). Reuse
+  over a new type = **new version that adds the binding**.
+- **`TaskModelBinding`**: instrument side = applicability + task variables + conditional
+  criteria; the "where each datum lives in the format" belongs to the adapter (Profiling).
+- **`EvaluationRun` is merged into `EvaluationStudy`**; the "composite/preset" needs no
+  name: **it is the `Instrument`**.
+
+**Explicit deferrals to Code (deliberate — do not invent without a plan):** the operational
+scheme of the **assembly** (what "sufficient" means: scored criteria, % pass, minimum number of
+assessors, agreement threshold) · the concrete shape of the **per-claim validity metrics**
+(ADR-0015) · the realization of the **annotation queues** · the concrete shape of structured
+value domains.
+
+**First increment — thin/no:** implementation of the assistance port (the model stays; the
+LLM adapters do not) · profiling of `GeneratorArtifact` (register yes, extract no) ·
+`StudiesCompared` (needs two rounds) · per-edit draft events (the publication event
+suffices).

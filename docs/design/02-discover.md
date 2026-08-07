@@ -1,174 +1,174 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño que produjo el slice 1 (MVP humano). El diseño
-> vigente es la serie **`09-align-discover-qa.md` … `12-define-qa.md`** (QA interno). **No usar
-> este doc como fuente para código nuevo.**
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)** — design that produced slice 1 (human MVP). The current
+> design is the series **`09-align-discover-qa.md` … `12-define-qa.md`** (internal QA). **Do not
+> use this doc as a source for new code.**
 
 # 02 — Discover (Big-Picture EventStorming)
 
-> Paso 2 del DDD Starter Modelling Process. Estado: **cerrado (v0, living)**.
-> Técnica: Big-Picture EventStorming. Alcance: **dominio completo** (4 fuentes +
-> calibración). El MVP es el *prefijo del backbone humano* (fases 1→4 → bridge 6).
+> Step 2 of the DDD Starter Modelling Process. State: **closed (v0, living)**.
+> Technique: Big-Picture EventStorming. Scope: **full domain** (4 sources +
+> calibration). The MVP is the *prefix of the human backbone* (phases 1→4 → bridge 6).
 
-## Leyenda (convención EventStorming)
+## Legend (EventStorming convention)
 
-- ● **domain event** (naranja) — hecho pasado, en inglés.
-- ▸ **command / actor** (azul / amarillo) — lo que dispara el evento y quién.
-- ⟳ **policy** (lila) — "cuando pasó X → reacciona con Y". Motor events-first.
-- ⚡ **hotspot** (rojo) — incertidumbre/decisión pendiente para Define.
-- `[MVP]` / `[futuro]` — pertenencia al slice.
+- ● **domain event** (orange) — past fact, in English.
+- ▸ **command / actor** (blue / yellow) — what triggers the event and who.
+- ⟳ **policy** (lilac) — "when X happened → react with Y". Events-first engine.
+- ⚡ **hotspot** (red) — uncertainty/decision pending for Define.
+- `[MVP]` / `[future]` — membership in the slice.
 
-## Estructura: backbone + side-stream
+## Structure: backbone + side-stream
 
-**Evaluación** (backbone recurrente, source-agnostic, con o sin calibración) — sujeto: el
-*contenido*. **Calibración** (side-stream ocasional) — sujeto: la *fuente*. La calibración
-NO es un hito por el que pase toda evaluación; se ramifica. Evaluar sin calibrar es válido
-(la fuente solo produce juicios con más grounding si está calibrada) → se modela como
-*provenance* (`sourceCalibrationStatus`), no como prerrequisito.
+**Evaluation** (recurring backbone, source-agnostic, with or without calibration) — subject: the
+*content*. **Calibration** (occasional side-stream) — subject: the *source*. Calibration
+is NOT a milestone every evaluation passes through; it branches off. Evaluating without calibrating is valid
+(the source only produces judgments with more grounding if it is calibrated) → it is modelled as
+*provenance* (`sourceCalibrationStatus`), not as a prerequisite.
 
 ---
 
-## Backbone de evaluación
+## Evaluation backbone
 
-### Fase 1 — Content inventory · abre `ContentRegistered` `[MVP]`
+### Phase 1 — Content inventory · opens `ContentRegistered` `[MVP]`
 - ▸ Admin: `RegisterContent`, `UpdateContentMetadata`
 - ● `ContentRegistered` (generatingSystem, externalId, consumableUrl, internalId)
 - ● `ContentMetadataUpdated` (learningObjectives, targetAudience, prerequisites)
-- ⚡ ¿metadata mínima obligatoria vs. opcional?
-- ⚡ ¿versionado de un mismo contenido? (futuro)
-- ⚡ iframe del consumableUrl — `X-Frame-Options`/CSP (técnico → Code)
+- ⚡ minimum mandatory vs. optional metadata?
+- ⚡ versioning of the same content? (future)
+- ⚡ iframe of the consumableUrl — `X-Frame-Options`/CSP (technical → Code)
 
-### Fase 2 — Instrument ready · abre `RubricPublished` `[MVP]`
+### Phase 2 — Instrument ready · opens `RubricPublished` `[MVP]`
 - ▸ Admin/designer: `DefineCriterion`, `AssembleRubric`, `PublishRubric`
 - ● `CriterionDefined` (text, guidance, scale 1–5, anchors, grounded_in[], eligible_sources[])
-- ● `RubricAssembled` (criteria ordenados, draft)
-- ● `RubricPublished` (versión *locked* → usable) — **pivotal**
-- ● `RubricDeprecated` / `RubricRevised` → nueva versión (futuro)
-- ⚡ **¿criteria inmutables tras publicar?** (invariante de versionado — join key de calibración)
-- ⚡ ¿frameworks/dimensions/qualities como reference data desde ya, o seed en MVP?
-- ⚡ eligible_sources: ¿se declara ya, o MVP asume todo → `HumanExpert`?
+- ● `RubricAssembled` (ordered criteria, draft)
+- ● `RubricPublished` (*locked* version → usable) — **pivotal**
+- ● `RubricDeprecated` / `RubricRevised` → new version (future)
+- ⚡ **criteria immutable after publishing?** (versioning invariant — join key of calibration)
+- ⚡ frameworks/dimensions/qualities as reference data from the start, or seed in MVP?
+- ⚡ eligible_sources: declared already, or does MVP assume everything → `HumanExpert`?
 
-### Fase 3 — Evaluation in progress · abre `EvaluationRunStarted` — **dos realizaciones**
+### Phase 3 — Evaluation in progress · opens `EvaluationRunStarted` — **two realizations**
 - ● `EvaluationRunStarted` (rubricVersion, contentSet, mode) — **pivotal**
 
-**Realización humana** `[MVP]` — provisioning **abierto e incremental** (ver ADR-0002):
-- ▸ Admin: `OpenCampaign` (→ `CampaignOpened`, realización humana de `EvaluationRunStarted`),
+**Human realization** `[MVP]` — **open and incremental** provisioning (see ADR-0002):
+- ▸ Admin: `OpenCampaign` (→ `CampaignOpened`, human realization of `EvaluationRunStarted`),
   `AssignContent`, `CancelAssignment` / `ReassignAssignment`
-- ● `CampaignOpened` · `AssignmentCreated` (crea `Assignment`) · `AssignmentCancelled`
+- ● `CampaignOpened` · `AssignmentCreated` (creates `Assignment`) · `AssignmentCancelled`
 - ▸ Evaluator (SME): `OpenAssignment`, `AccessContent`, `SubmitEvaluation`
 - ● `AssignmentOpened`
-- ● `ContentAccessed` (abrió la url / consumió el contenido)
+- ● `ContentAccessed` (opened the url / consumed the content)
 - ● `EvaluationSubmitted` (evaluator, content, CriterionScores[] + comments) — *workhorse,
-  alta frecuencia, NO pivotal*
+  high frequency, NOT pivotal*
 
-**Realización automática** `[futuro]` (no pasa por assignments):
+**Automatic realization** `[future]` (does not go through assignments):
 - ▸ System: `RunSourceEvaluation` (batch)
-- ● `MetricComputed` (`ComputedMetric` crudo — para `DeterministicVerifier`/`HybridVerifier`)
-- ● `EvaluationSubmitted` (source automática; para determinística, score vía `ScoringPolicy`)
+- ● `MetricComputed` (raw `ComputedMetric` — for `DeterministicVerifier`/`HybridVerifier`)
+- ● `EvaluationSubmitted` (automatic source; for deterministic, score via `ScoringPolicy`)
 
-- ⟳ *`EvaluationSubmitted` → contar assessors distintos del contenido; al alcanzar el umbral
-  `requiredEvaluationsPerContent` → `ContentEvaluationCompleted` (quórum por submissions, ADR-0002)*
-- ⚡ **¿cuántas evaluaciones humanas por contenido?** (1 vs. N para inter-rater agreement —
-  impacta calidad del golden)
-- ⚡ ¿draft editable antes de `SubmitEvaluation`? (draft vs. submitted)
-- ⚡ identidad simple del evaluador atada a `EvaluationSubmitted` (sin auth robusta, MVP)
-- ⚡ ¿un run mezcla fuentes por-criterion? (algunos criteria determinísticos, otros LLM)
-- ⚡ costos/rate-limits de `LLMJudge` (LiteLLM/OpenRouter) → Code
+- ⟳ *`EvaluationSubmitted` → count distinct assessors of the content; on reaching the threshold
+  `requiredEvaluationsPerContent` → `ContentEvaluationCompleted` (quorum by submissions, ADR-0002)*
+- ⚡ **how many human evaluations per content?** (1 vs. N for inter-rater agreement —
+  impacts golden quality)
+- ⚡ editable draft before `SubmitEvaluation`? (draft vs. submitted)
+- ⚡ simple evaluator identity tied to `EvaluationSubmitted` (no robust auth, MVP)
+- ⚡ does a run mix sources per-criterion? (some criteria deterministic, others LLM)
+- ⚡ costs/rate-limits of `LLMJudge` (LiteLLM/OpenRouter) → Code
 
-### Fase 4 — Aggregation · abre `ContentEvaluationCompleted` `[MVP]`
-- ● `ContentEvaluationCompleted` (content, run — **relativo al run**, no global) — **pivotal**
-- ⟳ *al completarse → agregar resultados*
-- ● `EvaluationResultsAggregated` (agregación por-criterion vía `ScoringPolicy`)
-- ⚡ **¿cómo se agregan múltiples humanos?** (media/mediana/descartar outliers/umbral de acuerdo)
-- ⚡ ¿"completo" = N evaluaciones o basta 1? (liga con hotspot de fase 3)
+### Phase 4 — Aggregation · opens `ContentEvaluationCompleted` `[MVP]`
+- ● `ContentEvaluationCompleted` (content, run — **relative to the run**, not global) — **pivotal**
+- ⟳ *on completion → aggregate results*
+- ● `EvaluationResultsAggregated` (per-criterion aggregation via `ScoringPolicy`)
+- ⚡ **how are multiple humans aggregated?** (mean/median/discard outliers/agreement threshold)
+- ⚡ is "complete" = N evaluations or is 1 enough? (ties to phase 3 hotspot)
 
-### Fase 5 — Quality judgment · abre `QualityJudgmentPublished` `[parcial MVP: vistas admin]`
-- ⟳ *resultados agregados → publicar juicio*
+### Phase 5 — Quality judgment · opens `QualityJudgmentPublished` `[partial MVP: admin views]`
+- ⟳ *aggregated results → publish judgment*
 - ● `QualityJudgmentPublished` (content, rubricVersion, aggregatedScores, **provenance**:
   source + sourceCalibrationStatus)
-- ⚡ ¿rollup por set/general además de por contenido? (promedios de admin — vistas MVP)
-- ⚡ representación de la provenance (calibrada/no + contra qué referencia)
+- ⚡ rollup per set/overall in addition to per content? (admin averages — MVP views)
+- ⚡ representation of the provenance (calibrated/not + against which reference)
 
 ---
 
-## Side-stream de calibración (se ramifica, no continúa la línea)
+## Calibration side-stream (branches off, does not continue the line)
 
-### Bridge · `GoldenReferenceEstablished` `[MVP = meta final]`
-- ● `GoldenReferenceEstablished` (un `set × rubricVersion` de resultados humanos alcanzó
-  estado ground-truth usable) — **pivotal**
-- ⚡ **¿qué hace "usable" al golden?** (cobertura X% con ≥N evaluaciones, umbral de agreement)
+### Bridge · `GoldenReferenceEstablished` `[MVP = final goal]`
+- ● `GoldenReferenceEstablished` (a `set × rubricVersion` of human results reached
+  usable ground-truth state) — **pivotal**
+- ⚡ **what makes the golden "usable"?** (coverage X% with ≥N evaluations, agreement threshold)
 
-### Calibración · `SourceCalibrated` `[futuro]`
-- ▸ System: `RunCalibration` (requiere `GoldenReference` + resultados automáticos sobre *el
-  mismo* set×rubric — que son un `EvaluationRunStarted` mode=automated apuntando al golden set)
+### Calibration · `SourceCalibrated` `[future]`
+- ▸ System: `RunCalibration` (requires `GoldenReference` + automatic results on *the
+  same* set×rubric — which are an `EvaluationRunStarted` mode=automated pointing at the golden set)
 - ● `AutomatedResultsCollectedForCalibration`
-- ● `SourceCalibrated` (`CalibrationProfile` por `(Assessor, Criterion)`: agreement vs. referencia)
-- ⟳ *fuente calibrada → futuros `QualityJudgment` de esa fuente llevan assessorCalibrationStatus
-  actualizado*
-- ⚡ métrica de agreement por criterion (correlación / Cohen's kappa / MAE) → Define/Code
-- ⚡ ¿recalibrar al cambiar rubricVersion o modelo? (invalidación de calibración)
+- ● `SourceCalibrated` (`CalibrationProfile` per `(Assessor, Criterion)`: agreement vs. reference)
+- ⟳ *source calibrated → future `QualityJudgment`s from that source carry an updated
+  assessorCalibrationStatus*
+- ⚡ agreement metric per criterion (correlation / Cohen's kappa / MAE) → Define/Code
+- ⚡ recalibrate on rubricVersion or model change? (calibration invalidation)
 
 ---
 
-## Policies consolidadas (motor de evolución de estado)
+## Consolidated policies (state-evolution engine)
 
 1. `EvaluationSubmitted` → *check completion* → `ContentEvaluationCompleted`?
 2. `ContentEvaluationCompleted` → *aggregate* → `EvaluationResultsAggregated`
 3. `EvaluationResultsAggregated` → *publish* → `QualityJudgmentPublished`
-4. `GoldenReferenceEstablished` (+ resultados automáticos) → *habilita* `RunCalibration`
-5. `SourceCalibrated` → *actualiza provenance* de futuros `QualityJudgmentPublished`
+4. `GoldenReferenceEstablished` (+ automatic results) → *enables* `RunCalibration`
+5. `SourceCalibrated` → *updates provenance* of future `QualityJudgmentPublished`
 
-> Estas policies son internas hoy; varias son candidatas a **integration events** salientes
-> mañana (p.ej. `QualityJudgmentPublished` → API call a LearnPack o a reporting). Patrón
-> "domain events → servicios externos" del modulith objetivo.
+> These policies are internal today; several are candidates for outgoing **integration events**
+> tomorrow (e.g. `QualityJudgmentPublished` → API call to LearnPack or to reporting). The
+> "domain events → external services" pattern of the target modulith.
 
-## Boundaries candidatos (insumo para 03 — Decompose)
+## Candidate boundaries (input for 03 — Decompose)
 
-- **Content Registry** — fase 1.
-- **Rubric Authoring** — fase 2.
-- **Evaluation** (core) — fases 3–5, el acto recurrente source-agnostic.
-- **Evaluation Orchestration** (supporting) — campaigns/assignments; envuelve la realización
-  humana de fase 3.
+- **Content Registry** — phase 1.
+- **Rubric Authoring** — phase 2.
+- **Evaluation** (core) — phases 3–5, the recurring source-agnostic act.
+- **Evaluation Orchestration** (supporting) — campaigns/assignments; wraps the human
+  realization of phase 3.
 - **Calibration** (supporting) — side-stream.
-- **Golden Dataset** — agregado con vida propia (no una vista sobre contenidos completados).
+- **Golden Dataset** — aggregate with a life of its own (not a view over completed content).
 
-## Frontera MVP
+## MVP boundary
 
-MVP = backbone humano fases **1 → 4** desembocando en `GoldenReferenceEstablished` (bridge).
-Sin `LLMJudge`, sin `SourceCalibrated`. `QualityJudgmentPublished` aparece parcialmente como
-las vistas de admin (scores por curso, promedios).
+MVP = human backbone phases **1 → 4** flowing into `GoldenReferenceEstablished` (bridge).
+No `LLMJudge`, no `SourceCalibrated`. `QualityJudgmentPublished` appears partially as
+the admin views (scores per course, averages).
 
-## Hotspots resueltos en el cierre de Discover
+## Hotspots resolved at the close of Discover
 
-- ⚡→✔ **Criteria inmutables tras publicar.** `RubricPublished` bloquea la versión; toda
-  edición ⇒ nueva `rubricVersion`. Invariante de Rubric Authoring.
-- ⚡→✔ **Quórum humano N=2–3 por contenido.** `ContentEvaluationCompleted` requiere ≥N
-  evaluaciones; `EvaluationResultsAggregated` lleva media + inter-rater agreement.
-- ⚡→✔ **Golden usable = cobertura mínima.** `GoldenDataset` es agregado con regla
-  `coverage ≥ threshold` (umbral de acuerdo opcional a futuro).
-- ⚡→✔ **Recalibrar al cambiar el modelo** (ver refinamiento Assessor): resuelto por
-  identidad — otro config = otro `Assessor` = la calibración no transfiere.
+- ⚡→✔ **Criteria immutable after publishing.** `RubricPublished` locks the version; any
+  edit ⇒ new `rubricVersion`. Rubric Authoring invariant.
+- ⚡→✔ **Human quorum N=2–3 per content.** `ContentEvaluationCompleted` requires ≥N
+  evaluations; `EvaluationResultsAggregated` carries mean + inter-rater agreement.
+- ⚡→✔ **Usable golden = minimum coverage.** `GoldenDataset` is an aggregate with rule
+  `coverage ≥ threshold` (agreement threshold optional in the future).
+- ⚡→✔ **Recalibrate on model change** (see Assessor refinement): resolved by
+  identity — another config = another `Assessor` = the calibration does not transfer.
 
-## Refinamiento: identidad de la fuente (`Assessor`)
+## Refinement: identity of the source (`Assessor`)
 
-Se separa el *tipo* de la *instancia concreta* que produce resultados:
+The *type* is separated from the *concrete instance* that produces results:
 
-- `EvaluationSource` = tipo/port abstracto (HumanExpert / LLMJudge / DeterministicVerifier /
+- `EvaluationSource` = abstract type/port (HumanExpert / LLMJudge / DeterministicVerifier /
   HybridVerifier).
-- **`Assessor`** = instancia concreta, identificable y versionada. Es la **clave de
-  provenance y de calibración**. Para `LLMJudge` = una `SourceConfiguration`
-  (model, version, sampling, promptTemplate, rubricRendering); para `HumanExpert` = el SME
-  concreto; para `DeterministicVerifier` = fórmula/lib + thresholds.
+- **`Assessor`** = concrete, identifiable and versioned instance. It is the **provenance
+  and calibration key**. For `LLMJudge` = a `SourceConfiguration`
+  (model, version, sampling, promptTemplate, rubricRendering); for `HumanExpert` = the concrete
+  SME; for `DeterministicVerifier` = formula/lib + thresholds.
 
-Refinamientos de eventos derivados:
-- `EvaluationRunStarted` y `EvaluationSubmitted` referencian el `Assessor` (no solo el mode).
-- `SourceCalibrated` se keya por `(Assessor, Criterion)`.
-- `QualityJudgmentPublished.provenance` incluye `assessor` + `assessorCalibrationStatus`.
+Derived event refinements:
+- `EvaluationRunStarted` and `EvaluationSubmitted` reference the `Assessor` (not just the mode).
+- `SourceCalibrated` is keyed by `(Assessor, Criterion)`.
+- `QualityJudgmentPublished.provenance` includes `assessor` + `assessorCalibrationStatus`.
 
-MVP: el usuario evaluador ES un `Assessor` de tipo `HumanExpert` — el concepto se instancia
-en su caso trivial; el slot de provenance queda abierto para `LLMJudge` futuro. Detalles de
-`SourceConfiguration`, reproducibilidad y sampling → Define/Code.
+MVP: the evaluator user IS an `Assessor` of type `HumanExpert` — the concept is instantiated
+in its trivial case; the provenance slot stays open for a future `LLMJudge`. Details of
+`SourceConfiguration`, reproducibility and sampling → Define/Code.
 
-## Estado y próximo paso
+## State and next step
 
-- Discover: **cerrado**.
-- Siguiente: **03 — Decompose** — agrupar estos eventos en subdominios (boundaries
-  candidatos de arriba) y preparar Strategize (core/supporting/generic).
+- Discover: **closed**.
+- Next: **03 — Decompose** — group these events into subdomains (candidate boundaries
+  above) and prepare Strategize (core/supporting/generic).

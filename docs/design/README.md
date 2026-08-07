@@ -1,43 +1,42 @@
-# design — snapshots del proceso de modelado
+# design — snapshots of the modelling process
 
-**Todo lo que hay acá está congelado.** Son los artefactos del DDD Starter Modelling Process
-(ddd-crew) y sus insumos: registran **qué pensamos y por qué, en el momento en que lo pensamos**.
+**Everything in here is frozen.** These are the artifacts of the DDD Starter Modelling Process
+(ddd-crew) and their inputs: they record **what we thought and why, at the moment we thought it**.
 
-Contrato de esta carpeta:
+Contract of this folder:
 
-- **No se mantienen.** Si el sistema cambia y contradice a uno de estos documentos, el documento
-  **no se corrige**: gana el código y la doc vigente (`../ARCHITECTURE.md`, `../GLOSSARY.md`,
-  los READMEs de `backend/` y `frontend/`). Si la contradicción importa, se escribe un ADR.
-- **No describen el estado actual.** Para eso está `../../STATUS.md`.
-- Se leen para entender **el porqué** de un límite o de un nombre, no para saber cómo está hoy
-  el sistema.
-- **Supersession:** un cierre del proceso deja su snapshot; la vuelta siguiente lo supersede con
-  docs nuevos y un banner en los viejos (mismo modelo que los ADRs).
+- **Not maintained.** If the system changes and contradicts one of these documents, the document
+  is **not corrected**: the code and the current docs win (`../ARCHITECTURE.md`, `../GLOSSARY.md`,
+  the READMEs of `backend/` and `frontend/`). If the contradiction matters, an ADR is written.
+- **They do not describe the current state.** That is what `../../STATUS.md` is for.
+- They are read to understand **the why** of a boundary or a name, not to know how the system
+  is today.
+- **Supersession:** a closing of the process leaves its snapshot; the next round supersedes it with
+  new docs and a banner on the old ones (same model as the ADRs).
 
-## Serie vigente — segunda vuelta (ago-2026): QA interno de generadores
+## Current series — second round (Aug-2026): internal QA of generators
 
-| Doc | Pasos | Contenido |
+| Doc | Steps | Content |
 |---|---|---|
-| `09-align-discover-qa.md` | Align + Discover | propósito QA interno, tríada de génesis, ECD-lite, los dos bucles, recorrido del usuario, referencia humana en dos capas |
-| `10-decompose-strategize-qa.md` | Decompose + Strategize | 9 subdominios, eventos, flujo, líneas de study, core chart, guía de inversión |
-| `11-connect-qa.md` | Connect | context map, reglas de integración, queries compuestas (matching/readiness), ACLs, published language |
-| `12-define-qa.md` | Define | canvases de los 5 contextos + los 4 por referencia (autocontenido), invariantes, deferrals, marcas de primer incremento |
+| `09-align-discover-qa.md` | Align + Discover | internal QA purpose, genesis triad, ECD-lite, the two loops, user journey, human reference in two layers |
+| `10-decompose-strategize-qa.md` | Decompose + Strategize | 9 subdomains, events, flow, study lines, core chart, investment guide |
+| `11-connect-qa.md` | Connect | context map, integration rules, composed queries (matching/readiness), ACLs, published language |
+| `12-define-qa.md` | Define | canvases of the 5 contexts + the 4 by reference (self-contained), invariants, deferrals, first-increment marks |
 
-Decisiones con alternativas: `../adr/0009` … `0015`. Insumos: `research/qa-evals-landscape.md`.
+Decisions with alternatives: `../adr/0009` … `0015`. Inputs: `research/qa-evals-landscape.md`.
 
-## Serie histórica — primera vuelta (jul-2026): diseño del slice 1 (MVP humano)
+## Historical series — first round (Jul-2026): design of slice 1 (human MVP)
 
-**No usar como fuente para código nuevo** (banner en cada doc).
+**Do not use as a source for new code** (banner on each doc).
 
-| Doc | Paso | Estado al congelar |
+| Doc | Step | State when frozen |
 |---|---|---|
-| `01-align.md` | Align | cerrado — superseded por 09 |
-| `02-discover.md` | Discover | cerrado — superseded por 09 |
-| `03-decompose.md` | Decompose | cerrado — superseded por 10 |
-| `04-strategize.md` | Strategize | cerrado — superseded por 10 |
-| `05-connect.md` | Connect | cerrado — superseded por 11 |
-| `06-organise.md` | Organise | placeholder (sigue cierto en espíritu) |
-| `07-define.md` | Define | cerrado — superseded por 12 (autocontenido) |
-| `08-code.md` | Code (plan del MVP) | cerrado — implementado; el plan del slice 2 será doc propio |
-| `research/` | Insumos externos fechados | `deterministic-evaluation-landscape.md` (jul) · `qa-evals-landscape.md` (ago) |
-</content>
+| `01-align.md` | Align | closed — superseded by 09 |
+| `02-discover.md` | Discover | closed — superseded by 09 |
+| `03-decompose.md` | Decompose | closed — superseded by 10 |
+| `04-strategize.md` | Strategize | closed — superseded by 10 |
+| `05-connect.md` | Connect | closed — superseded by 11 |
+| `06-organise.md` | Organise | placeholder (still true in spirit) |
+| `07-define.md` | Define | closed — superseded by 12 (self-contained) |
+| `08-code.md` | Code (MVP plan) | closed — implemented; the slice 2 plan will be its own doc |
+| `research/` | Dated external inputs | `deterministic-evaluation-landscape.md` (Jul) · `qa-evals-landscape.md` (Aug) |

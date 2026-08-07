@@ -1,13 +1,13 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)**. Sigue siendo cierto en espíritu (equipo chico, un solo
-> dueño); la serie vigente es `09`–`12`.
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)**. Still true in spirit (small team, a single
+> owner); the current series is `09`–`12`.
 
 # 06 — Organise
 
-> Paso 6 del DDD Starter Modelling Process. Estado: **cerrado (placeholder)**.
+> Step 6 of the DDD Starter Modelling Process. State: **closed (placeholder)**.
 
-Equipo chico: **un solo dueño/equipo** para todos los módulos. No hay restricciones
-organizacionales (Conway) que condicionen los boundaries, así que la descomposición de
-`03-decompose.md` se toma tal cual, sin ajustes por estructura de equipos.
+Small team: **a single owner/team** for all modules. There are no organizational
+constraints (Conway) conditioning the boundaries, so the decomposition of
+`03-decompose.md` is taken as is, with no adjustments for team structure.
 
-Cuando el equipo crezca, revisar este paso: los boundaries de módulo están pensados para poder
-asignarse a equipos autónomos (fast flow) sin reescribir contratos — ver `05-connect.md`.
+When the team grows, revisit this step: the module boundaries are designed so they can be
+assigned to autonomous teams (fast flow) without rewriting contracts — see `05-connect.md`.

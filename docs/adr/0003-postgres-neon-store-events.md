@@ -1,29 +1,29 @@
-# ADR-0003 — Postgres (Neon) como store y events-first sobre tabla de eventos
+# ADR-0003 — Postgres (Neon) as store and events-first over an events table
 
-**Estado:** aceptada · **Fecha:** 2026-07 · **Contexto:** todo el backend
+**Status:** accepted · **Date:** 2026-07 · **Context:** the whole backend
 
-## Contexto
-El MVP necesita persistencia. Se descartó Google Sheets (no es DB real, querying/concurrencia
-pobres, sin pgvector, incómodo detrás de repository-ports). El stack objetivo ya usa
-Postgres/pgvector, y se quiere sostener el enfoque events-first sin montar un bus real todavía.
+## Context
+The MVP needs persistence. Google Sheets was discarded (not a real DB, poor
+querying/concurrency, no pgvector, awkward behind repository-ports). The target stack already uses
+Postgres/pgvector, and we want to sustain the events-first approach without standing up a real bus yet.
 
-## Decisión
-- **Neon (Postgres serverless, pgvector incluido)** como store, detrás de repository-ports. La DB
-  es un adapter; la lógica vive en el dominio.
-- **Events-first realizado como outbox en Postgres:** cada use case escribe el agregado y hace
-  `INSERT` en una tabla `events` **en la misma transacción**; tras el commit, un **dispatcher
-  in-process** entrega el evento a las policies suscritas (síncrono en MVP).
-- La tabla `events` es append-only y sirve de log de auditoría y base de futuras proyecciones.
+## Decision
+- **Neon (serverless Postgres, pgvector included)** as the store, behind repository-ports. The DB
+  is an adapter; the logic lives in the domain.
+- **Events-first realized as an outbox in Postgres:** each use case writes the aggregate and does an
+  `INSERT` into an `events` table **in the same transaction**; after the commit, an **in-process
+  dispatcher** delivers the event to the subscribed policies (synchronous in the MVP).
+- The `events` table is append-only and serves as an audit log and the basis for future projections.
 
-## Consecuencias
-- (+) Alineado al target (cero migración a futuro); pgvector ya disponible.
-- (+) "Publicar evento = insertar fila", con atomicidad real (a diferencia de Sheets).
-- (+) Evolución limpia: cambiar el dispatcher por un bus/relay de integration events sin tocar
-  contratos de módulo.
-- (+) Neon reanuda solo (~500 ms) tras scale-to-zero; sin pausa manual.
-- (−) El dispatch síncrono in-process no es tolerante a fallos como un bus; se mitiga con
-  reproceso desde `events` e idempotencia por `event_type + aggregate_id`.
+## Consequences
+- (+) Aligned with the target (zero future migration); pgvector already available.
+- (+) "Publishing an event = inserting a row", with real atomicity (unlike Sheets).
+- (+) Clean evolution: swap the dispatcher for a bus/relay of integration events without touching
+  module contracts.
+- (+) Neon resumes on its own (~500 ms) after scale-to-zero; no manual pause.
+- (−) The synchronous in-process dispatch is not fault-tolerant like a bus; mitigated with
+  reprocessing from `events` and idempotency by `event_type + aggregate_id`.
 
-## Alternativas
-- **Google Sheets** → rechazada (no es DB real; migración inmediata).
-- **Bus/broker real (Kafka/Rabbit) ya en el MVP** → over-engineering para el slice humano.
+## Alternatives
+- **Google Sheets** → rejected (not a real DB; immediate migration).
+- **Real bus/broker (Kafka/Rabbit) already in the MVP** → over-engineering for the human slice.

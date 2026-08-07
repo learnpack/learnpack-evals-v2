@@ -1,128 +1,127 @@
-# 09 — Align & Discover (segunda vuelta: QA interno de generadores)
+# 09 — Align & Discover (second pass: internal generator QA)
 
-> **Snapshot del diseño vigente (ago-2026)** — cierre de los pasos 1–2 del DDDSMP, segunda
-> vuelta (slice 2). Congelado. La verdad siempre-actual vive en `../ARCHITECTURE.md`,
-> `../GLOSSARY.md`, `../adr/` (0009–0015) y `../../STATUS.md`. Supersede a `01-align.md` y
-> `02-discover.md` (históricos) para todo trabajo nuevo. Serie completa: 09 → 12.
+> **Snapshot of the current design (Aug-2026)** — closure of DDDSMP steps 1–2, second
+> pass (slice 2). Frozen. The always-current truth lives in `../ARCHITECTURE.md`,
+> `../GLOSSARY.md`, `../adr/` (0009–0015) and `../../STATUS.md`. Supersedes `01-align.md` and
+> `02-discover.md` (historical) for all new work. Full series: 09 → 12.
 
-## Align — el encuadre
+## Align — the framing
 
-**Propósito: QA interno de generadores de contenido educativo.** El examinado es **el
-generador**; cada contenido es un *work product* suyo. No es señal de mercado ni certificación:
-el consumidor es el equipo que produce el contenido.
+**Purpose: internal QA of educational content generators.** The examinee is **the
+generator**; each content is one of its *work products*. It is not a market signal nor
+certification: the consumer is the team that produces the content.
 
-- **La generación y la regeneración quedan FUERA del sistema.** Entra una `ContentVersion`
-  registrada; salen hallazgos accionables. El sistema no observa si sus hallazgos causaron un
-  cambio — solo ve aparecer otra versión. Saber si sirvieron = **comparar evaluaciones entre
-  versiones**, que sí es capacidad nuestra.
-- **Credibilidad = trazabilidad, no independencia.** El modo de falla del QA interno es que el
-  equipo ignore el resultado; lo que compra confianza es poder ver la **cita** detrás de cada
-  hallazgo y discutirlo (ADR-0009). *(Riesgo diferido: si estas evaluaciones se usaran como
-  afirmación hacia afuera, el problema de independencia vuelve entero.)*
-- **Entregable: juicio + sugerencias.** Con criteria escritos según ADR-0010 (condición de pase
-  + modos de falla), **la falla ya es la sugerencia** — no hace falta motor de recomendaciones.
-- **Sin derecho de respuesta ceremonial; sí canal de impugnación de hallazgos** — que alimenta
-  la mejora del instrumento, nunca el score del contenido.
-- **Acuerdo estadístico por defecto** (raters independientes + dispersión), **escalación por
-  umbral**; el primer propósito de la escalación no es resolver el score sino diagnosticar el
-  desacuerdo — su salida es **un hallazgo sobre el instrumento**.
+- **Generation and regeneration stay OUTSIDE the system.** A registered `ContentVersion`
+  comes in; actionable findings come out. The system does not observe whether its findings
+  caused a change — it only sees another version appear. Knowing whether they helped =
+  **comparing evaluations across versions**, which is a capability we do have.
+- **Credibility = traceability, not independence.** The failure mode of internal QA is that
+  the team ignores the result; what buys trust is being able to see the **quote** behind each
+  finding and discuss it (ADR-0009). *(Deferred risk: if these evaluations were used as an
+  outward-facing assertion, the independence problem returns in full.)*
+- **Deliverable: judgment + suggestions.** With criteria written per ADR-0010 (pass condition
+  + failure modes), **the failure is already the suggestion** — no recommendation engine needed.
+- **No ceremonial right of reply; yes a channel for disputing findings** — which feeds
+  instrument improvement, never the content's score.
+- **Statistical agreement by default** (independent raters + dispersion), **threshold-based
+  escalation**; the first purpose of escalation is not to settle the score but to diagnose the
+  disagreement — its output is **a finding about the instrument**.
 
-### La tríada de génesis (ADR-0012)
+### The genesis triad (ADR-0012)
 
-| Insumo | Fija | Ejemplo |
+| Input | Fixes | Example |
 |---|---|---|
-| **Propósito** | el **alcance**: qué superficie se evalúa | UI/UX fuera — el generador no la controla |
-| **Tipo de contenido** | el **objeto**: qué elementos existen y dónde | los instrumentos nacen *para* un `PackageFormat` |
-| **Frameworks** | la **norma**: qué debería haber aunque no haya | sin norma, `no_evidence` es imposible |
+| **Purpose** | the **scope**: which surface is evaluated | UI/UX out — the generator does not control it |
+| **Content type** | the **object**: which elements exist and where | instruments are born *for* a `PackageFormat` |
+| **Frameworks** | the **norm**: what should be there even when it is not | without a norm, `no_evidence` is impossible |
 
-Regla de alcance: **se evalúa la superficie que el generador controla** (ligada al propósito
-actual). Guarda dura: **la demanda jamás se deriva de la oferta observada** — si los criteria
-salieran de lo que el contenido tiene, la ausencia dejaría de ser detectable.
+Scope rule: **the surface the generator controls is what gets evaluated** (tied to the current
+purpose). Hard guard: **the demand side is never derived from the observed supply side** — if
+the criteria came from what the content has, absence would stop being detectable.
 
-### El proceso de diseño (ADR-0013, ECD-lite)
+### The design process (ADR-0013, ECD-lite)
 
-Cadena del argumento evidencial: **claim ← acumulación ← observables ← identificación de
-evidencia ← work product**. El diseño corre **hacia atrás**: claims → evidencia → observables →
-requisitos de extracción. Cuatro piezas adoptadas: `Claim` como artefacto · **dos granos**
-(contenido / generador) · **explicaciones alternativas** por adelantado · **assembly** (cuánta
-evidencia basta, por claim). Informe = claims con estatus
-`soportado | refutado | evidencia insuficiente`; findings bajo el claim que comprometen.
+Evidentiary argument chain: **claim ← accumulation ← observables ← evidence
+identification ← work product**. Design runs **backwards**: claims → evidence → observables →
+extraction requirements. Four adopted pieces: `Claim` as an artifact · **two grains**
+(content / generator) · **alternative explanations** up front · **assembly** (how much
+evidence suffices, per claim). Report = claims with status
+`supported | refuted | insufficient evidence`; findings under the claim they compromise.
 
-## Discover — los dos bucles
+## Discover — the two loops
 
 ```
-  ⟦ generación / regeneración ⟧          ← FUERA del sistema
+  ⟦ generation / regeneration ⟧         ← OUTSIDE the system
               │
-   ┌──────────▼───────────────┐    contenido → paquete → perfil (citado) → evaluación →
-   │  BUCLE A — evaluar       │    juicio (claims con estatus) → hallazgos
+   ┌──────────▼───────────────┐    content → package → profile (quoted) → evaluation →
+   │  LOOP A — evaluate       │    judgment (claims with status) → findings
    └──────────┬───────────────┘
-              │ desacuerdo · impugnaciones · huecos de cobertura · oferta sin consumidor
-   ┌──────────▼───────────────┐    génesis (tipo nuevo → claims → instrumento) +
-   │  BUCLE B — instrumentos  │    mejora (diagnóstico → revisión → versión nueva)
+              │ disagreement · disputes · coverage gaps · supply side without a consumer
+   ┌──────────▼───────────────┐    genesis (new type → claims → instrument) +
+   │  LOOP B — instruments    │    improvement (diagnosis → revision → new version)
    └──────────┬───────────────┘
-              └──────────────► vuelve a alimentar el bucle A
+              └──────────────► feeds back into loop A
 ```
 
-**Los dos bucles están al mismo nivel:** A produce el valor (juicios/hallazgos); B mantiene la
-capacidad (es donde vive el conocimiento de dominio). A sin B degrada; B sin A no tiene contra
-qué contrastarse.
+**The two loops sit at the same level:** A produces the value (judgments/findings); B maintains
+the capability (it is where the domain knowledge lives). A without B degrades; B without A has
+nothing to test itself against.
 
-### Fases del bucle A
+### Loop A phases
 
-1. **Instrumento listo** — `InstrumentVersionPublished` (pivotal). Diseño según la cadena ECD.
-2. **Contenido disponible** — `ContentVersionRegistered`: el **`ContentPackage`** completo
-   (consumibles + artefactos internos: manifests, knowledge graph, banco de ítems) + `briefId` +
-   `generatorVersionId` + provenance de edición.
-3. **Perfilado** — `ContentProfiled` (pivotal, nuevo): evidencia canónica **citada** (ADR-0009),
-   por adapter versionado, aceptada por acto humano (`ExtractionAccepted`).
-4. **Evaluación** — outcomes tri-estado por criterion, con cita; cobertura exacta; `not_applicable`
-   y `no_evidence` derivados mecánicamente (nunca por el assessor).
-5. **Hallazgos** — `QualityJudgmentPublished` (claims con estatus + perfil por criterion +
-   cobertura) + `FindingRaised` por criterion fallado (cita + sugerencia).
+1. **Instrument ready** — `InstrumentVersionPublished` (pivotal). Designed per the ECD chain.
+2. **Content available** — `ContentVersionRegistered`: the complete **`ContentPackage`**
+   (consumables + internal artifacts: manifests, knowledge graph, item bank) + `briefId` +
+   `generatorVersionId` + edit provenance.
+3. **Profiling** — `ContentProfiled` (pivotal, new): **quoted** canonical evidence (ADR-0009),
+   by versioned adapter, accepted by a human act (`ExtractionAccepted`).
+4. **Evaluation** — tri-state outcomes per criterion, with quote; exact coverage; `not_applicable`
+   and `no_evidence` derived mechanically (never by the assessor).
+5. **Findings** — `QualityJudgmentPublished` (claims with status + per-criterion profile +
+   coverage) + `FindingRaised` per failed criterion (quote + suggestion).
 
-### Bucle B — génesis y mejora
+### Loop B — genesis and improvement
 
-- **Génesis:** tipo de contenido nuevo → perfilar muestras (extras no-canónicos incluidos) →
-  enumerar claims → derivar hacia atrás → publicar instrumento *para ese tipo*.
-- **Mejora:** `DisagreementDetected` · `FindingDisputed` · `no_evidence` sistemático → diagnóstico
-  eligiendo entre las **explicaciones alternativas pre-enumeradas** (+ taxonomía de causas:
-  criterion ambiguo · evidencia insuficiente · extractor fallando · conocimiento que cambió ·
-  **drift del generador no registrado**) → `InstrumentDefectIdentified` → revisión → versión
-  nueva. La autoría de revisiones registra autor + motivo + `assistedBy`.
+- **Genesis:** new content type → profile samples (non-canonical extras included) →
+  enumerate claims → derive backwards → publish an instrument *for that type*.
+- **Improvement:** `DisagreementDetected` · `FindingDisputed` · systematic `no_evidence` → diagnosis
+  choosing among the **pre-enumerated alternative explanations** (+ cause taxonomy:
+  ambiguous criterion · insufficient evidence · failing extractor · knowledge that changed ·
+  **unregistered generator drift**) → `InstrumentDefectIdentified` → revision → new
+  version. Revision authorship records author + reason + `assistedBy`.
 
-## El recorrido del usuario (E0–E9) y sus hallazgos estructurales
+## The user journey (E0–E9) and its structural findings
 
-El recorrido de actividades completo (encargo → registrar generador → inventariar artefactos →
-diseñar instrumento → aceptar extracción → componer dataset → ejecutar → confiabilidad antes que
-contenido → informe del generador → comparación entre rondas) destapó los conceptos que el
-storming no vio; todos incorporados al modelo:
+The full activity journey (commission → register generator → inventory artifacts →
+design instrument → accept extraction → compose dataset → execute → reliability before
+content → generator report → comparison across rounds) uncovered the concepts the
+storming did not see; all incorporated into the model:
 
-- **`GeneratorVersion`** — identidad **declarada** del examinado (nombre + versión + metadata
-  libre); inmutable; distinta config ⇒ otro examinado ⇒ los claims no transfieren (simetría de
-  rol con `SourceConfiguration`). `unknown` permitido (excluido de acumulación).
-- **`GenerationBrief`** — el encargo de generación con identidad propia: la clave del **diseño
-  pareado** entre versiones del generador (mismos briefs, productos nuevos).
-- **`ContentPackage`** — el work product multi-artefacto (los artefactos internos suelen ser la
-  mejor evidencia). Artefactos a nivel generador: se registran ya, se perfilan demand-driven.
-- **`EvaluationStudy`** — la ronda con propósito, gate de confiabilidad y acto de publicación;
-  **`StudiesCompared`** = la regresión pedagógica del generador.
-- **`ExtractionAccepted`** + versión de adapter en la provenance del perfil.
+- **`GeneratorVersion`** — the examinee's **declared** identity (name + version + free-form
+  metadata); immutable; different config ⇒ different examinee ⇒ claims do not transfer (role
+  symmetry with `SourceConfiguration`). `unknown` allowed (excluded from accumulation).
+- **`GenerationBrief`** — the generation commission with its own identity: the key to the
+  **paired design** across generator versions (same briefs, new products).
+- **`ContentPackage`** — the multi-artifact work product (the internal artifacts are often the
+  best evidence). Generator-level artifacts: registered now, profiled demand-driven.
+- **`EvaluationStudy`** — the round with a purpose, reliability gate and publication act;
+  **`StudiesCompared`** = the generator's pedagogical regression.
+- **`ExtractionAccepted`** + adapter version in the profile's provenance.
 
-## Referencia humana (ADR-0015) — dos modos
+## Human reference (ADR-0015) — two modes
 
-- **Panel de referencia (capa 1):** SMEs juzgan **qualities directamente**, sin profile,
-  elicitación holística. `Rubric v1` se **estabiliza como instrumento de referencia** (no se
-  migra). Comprada una vez, reusada contra todas las versiones de instrumento (ancla: las
-  qualities — la columna estable del lenguaje).
-- **Assessor/verificador (capa 2):** dentro de la ejecución, sobre el profile, verificando
-  outcomes citados; **annotation queues** muestreadas (5–10%), priorizadas por desacuerdo.
-- Comparación instrumento↔referencia: **coeficientes de validez por claim** (sin sumas);
-  techo = inter-rater humano (ADR-0006).
+- **Reference panel (layer 1):** SMEs judge **qualities directly**, without a profile,
+  holistic elicitation. `Rubric v1` is **stabilized as the reference instrument** (not
+  migrated). Bought once, reused against all instrument versions (anchor: the qualities — the
+  stable column of the language).
+- **Assessor/verifier (layer 2):** inside the execution, over the profile, verifying
+  quoted outcomes; sampled **annotation queues** (5–10%), prioritized by disagreement.
+- Instrument↔reference comparison: **per-claim validity coefficients** (no sums);
+  ceiling = human inter-rater (ADR-0006).
 
-## ADRs de esta etapa
+## ADRs from this stage
 
-0009 (sin inferencia — evidencia citada) · 0010 (criteria verificables, tri-estado) · 0011 (sin
-score único) · 0012 (génesis/tríada) · 0013 (ECD-lite/claims) · 0014 (vocabulario en evidence
-models) · 0015 (referencia humana en dos capas). Investigación de respaldo:
+0009 (no inference — quoted evidence) · 0010 (verifiable criteria, tri-state) · 0011 (no
+single score) · 0012 (genesis/triad) · 0013 (ECD-lite/claims) · 0014 (vocabulary in evidence
+models) · 0015 (human reference in two layers). Supporting research:
 `research/qa-evals-landscape.md`.
-</content>

@@ -1,96 +1,96 @@
-# ARCHITECTURE — invariantes no negociables
+# ARCHITECTURE — non-negotiable invariants
 
-> Estas reglas son **duras**. Todo el código generado debe respetarlas. Si una decisión de
-> Define/Code las contradice, gana esta doc (o se cambia esta doc explícitamente primero).
+> These rules are **hard**. All generated code must respect them. If a Define/Code decision
+> contradicts them, this doc wins (or this doc is explicitly changed first).
 
 ## 1. The Dependency Rule (Clean Architecture)
 
-**Las dependencias de código fuente solo pueden apuntar hacia adentro.** Una capa interna
-nunca conoce nada de una capa externa. Nombres, tipos y funciones de las capas externas no se
-mencionan en el código de las internas.
+**Source code dependencies can only point inwards.** An inner layer never knows anything
+about an outer layer. Names, types and functions of the outer layers are never mentioned in
+the code of the inner ones.
 
 ```
-        outer  ───────────────►  inner      (las dependencias apuntan HACIA ADENTRO)
+        outer  ───────────────►  inner      (dependencies point INWARDS)
 ┌──────────────────────────────────────────────────────────────┐
 │ Frameworks & Drivers                                          │
 │  FastAPI · Postgres/pgvector (Neon) · Clerk · LiteLLM/OpenRouter · │
 │  Next.js/Tailwind/shadcn · event bus                          │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ Interface Adapters                                      │  │
-│  │  controllers · repository impls · assessors             │  │
-│  │  automatizados (ADR-0016) · extraction adapters         │  │
-│  │  (por PackageFormat) · ACLs · outbox · projectors       │  │
+│  │  controllers · repository impls · automated             │  │
+│  │  assessors (ADR-0016) · extraction adapters             │  │
+│  │  (per PackageFormat) · ACLs · outbox · projectors       │  │
 │  │  ┌──────────────────────────────────────────────────┐  │  │
 │  │  │ Application (use cases)                           │  │  │
-│  │  │  orquesta el dominio · DEFINE los ports (interfaces)│ │  │
+│  │  │  orchestrates the domain · DEFINES the ports (interfaces)│ │  │
 │  │  │  ┌────────────────────────────────────────────┐  │  │  │
 │  │  │  │ Domain (entities / value objects)           │  │  │  │
 │  │  │  │  Instrument (claims·criteria) · Assessor · │  │  │  │
 │  │  │  │  Evaluation · ContentProfile · events      │  │  │  │
-│  │  │  │  PURO — cero imports de framework           │  │  │  │
+│  │  │  │  PURE — zero framework imports              │  │  │  │
 │  │  │  └────────────────────────────────────────────┘  │  │  │
 │  │  └──────────────────────────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Consecuencias obligatorias:
-- **Domain** es Python puro: sin `fastapi`, sin `sqlalchemy`, sin `pydantic` (o solo modelos
-  propios), sin `litellm`, sin I/O. Contiene entities, value objects, domain events e
-  invariantes.
-- **Application** depende solo de Domain. Contiene use cases y **define los ports**
-  (interfaces/Protocols) que necesita.
-- **Interface Adapters** dependen de Application + Domain. Implementan los ports (repos, source
-  adapters, event bus, ACLs) y traducen entre el mundo externo y el modelo.
-- **Frameworks & Drivers** es lo más externo (FastAPI, Postgres/pgvector, Clerk, LiteLLM,
-  Next). Nada interno los importa.
+Mandatory consequences:
+- **Domain** is pure Python: no `fastapi`, no `sqlalchemy`, no `pydantic` (or only its own
+  models), no `litellm`, no I/O. It contains entities, value objects, domain events and
+  invariants.
+- **Application** depends only on Domain. It contains use cases and **defines the ports**
+  (interfaces/Protocols) it needs.
+- **Interface Adapters** depend on Application + Domain. They implement the ports (repos, source
+  adapters, event bus, ACLs) and translate between the external world and the model.
+- **Frameworks & Drivers** is the outermost layer (FastAPI, Postgres/pgvector, Clerk, LiteLLM,
+  Next). Nothing internal imports them.
 
 ## 2. Dependency Inversion (ports & adapters)
 
-Los **ports se definen en las capas internas** (Application/Domain); los **adapters se
-implementan en las externas**. Ejemplos de ports:
-`AutomatedAssessorPort` (assessors automatizados — ADR-0016; el camino humano entra por
+**Ports are defined in the inner layers** (Application/Domain); **adapters are implemented in
+the outer ones**. Port examples:
+`AutomatedAssessorPort` (automated assessors — ADR-0016; the human path enters via
 assignments/UI), `ContentExtractorPort`
-(extracción por `PackageFormat`), `DesignAssistancePort` (borradores de claims/criteria),
-`InstrumentRepositoryPort` (antes `RubricRepositoryPort`), `ContentRepositoryPort`,
-`EvaluationResultRepositoryPort`, `EventPublisherPort`, `CalibrationStatusPort`. El dominio
-depende de la abstracción; el adapter concreto (Postgres/Neon, Clerk, LiteLLM, frameworks de
-observabilidad/evals) se inyecta desde afuera.
+(extraction per `PackageFormat`), `DesignAssistancePort` (claim/criteria drafts),
+`InstrumentRepositoryPort` (formerly `RubricRepositoryPort`), `ContentRepositoryPort`,
+`EvaluationResultRepositoryPort`, `EventPublisherPort`, `CalibrationStatusPort`. The domain
+depends on the abstraction; the concrete adapter (Postgres/Neon, Clerk, LiteLLM,
+observability/evals frameworks) is injected from the outside.
 
-## 3. Aislamiento de módulos (regla horizontal, además de la vertical)
+## 3. Module isolation (horizontal rule, in addition to the vertical one)
 
-Cada subdominio (ver `design/10-decompose-strategize-qa.md`) es un **módulo** con su propio
-dominio. Entre módulos:
-- Se comunican por **domain events publicados + DTOs de query** (el Published Language de cada
-  módulo; ver `design/11-connect-qa.md`).
-- **Superficie pública del módulo:** cada módulo expone su contrato de lectura (*query interface +
-  DTOs*), sus eventos, y un proveedor de queries `get_<m>_queries` (para inyectar por `Depends`),
-  todo en una `modules/<m>/public.py`. El módulo dueño arma su propio repo **dentro** de ese
-  proveedor.
-- **Nunca** se importa el dominio interno **ni la `infrastructure`** de otro módulo, ni se nombra
-  su repo/adapter concreto. Los módulos ajenos importan **solo** desde la `public.py` del módulo.
-- **Regla lint-eable:** ningún import a `modules/*/infrastructure` (ni a `modules/*/domain`) desde
-  fuera de ese mismo módulo; única excepción, `platform`/`main` (composition root).
-- Los bordes con sistemas externos (LearnPack, providers LLM) pasan por un **ACL** en el
-  adapter, que traduce el modelo externo al nuestro.
+Each subdomain (see `design/10-decompose-strategize-qa.md`) is a **module** with its own
+domain. Between modules:
+- They communicate via **published domain events + query DTOs** (each module's Published
+  Language; see `design/11-connect-qa.md`).
+- **Module public surface:** each module exposes its read contract (*query interface +
+  DTOs*), its events, and a query provider `get_<m>_queries` (to inject via `Depends`),
+  all in a `modules/<m>/public.py`. The owning module builds its own repo **inside** that
+  provider.
+- The internal domain **and the `infrastructure`** of another module are **never** imported, nor
+  is its concrete repo/adapter named. Other modules import **only** from the module's `public.py`.
+- **Lint-able rule:** no import of `modules/*/infrastructure` (nor `modules/*/domain`) from
+  outside that same module; the only exception is `platform`/`main` (composition root).
+- The boundaries with external systems (LearnPack, LLM providers) go through an **ACL** in the
+  adapter, which translates the external model into ours.
 
 ## 4. Events-first
 
-- El estado evoluciona publicando **domain events**; las *policies* reaccionan (ver
-  `design/09-align-discover-qa.md`). No hay comandos cruzados entre módulos.
-- En el MVP, "publicar un evento" se realiza como **`INSERT` en la tabla `events`** dentro de la
-  misma transacción del agregado (outbox) + dispatch in-process (ADR-0003). Los eventos son
-  *lógicos*; el contrato no cambia al migrar a un bus real.
-- `QualityJudgmentPublished` (y candidatos) pueden convertirse en **integration events**
-  salientes vía outbox/relay.
+- State evolves by publishing **domain events**; *policies* react (see
+  `design/09-align-discover-qa.md`). There are no cross-module commands.
+- In the MVP, "publishing an event" is realized as an **`INSERT` into the `events` table** within
+  the same transaction as the aggregate (outbox) + in-process dispatch (ADR-0003). Events are
+  *logical*; the contract does not change when migrating to a real bus.
+- `QualityJudgmentPublished` (and candidates) can become outgoing **integration events**
+  via outbox/relay.
 
-## 5. Contratos y mapeo en los bordes
+## 5. Contracts and mapping at the boundaries
 
-- Los modelos de dominio **no cruzan** fronteras de módulo ni de capa: se mapean a DTOs.
-- La capa de Frameworks traduce request/response ↔ use case input/output; nunca expone
-  entities crudas por la API.
+- Domain models **do not cross** module or layer boundaries: they are mapped to DTOs.
+- The Frameworks layer translates request/response ↔ use case input/output; it never exposes
+  raw entities through the API.
 
-## Referencias
-`GLOSSARY.md` (lenguaje), `design/10-decompose-strategize-qa.md` (módulos),
-`design/11-connect-qa.md` (contratos entre módulos), `design/12-define-qa.md` (agregados e
-invariantes por contexto). Serie histórica del slice 1: `design/01…08` (con banner).
+## References
+`GLOSSARY.md` (language), `design/10-decompose-strategize-qa.md` (modules),
+`design/11-connect-qa.md` (contracts between modules), `design/12-define-qa.md` (aggregates and
+invariants per context). Historical series of slice 1: `design/01…08` (with banner).

@@ -1,100 +1,100 @@
-# ADR-0008 — Modo local: correr el sistema sin Clerk ni Neon
+# ADR-0008 — Local mode: running the system without Clerk or Neon
 
-**Estado:** aceptada · **Fecha:** 2026-07 · **Contexto:** Identity & Access (genérico) + tooling
+**Status:** accepted · **Date:** 2026-07 · **Context:** Identity & Access (generic) + tooling
 
-## Contexto
-Hay colaboradores que trabajan **exclusivamente en rúbricas, métricas y evaluaciones**: editan
-`docs/seed/rubric-v1.json`, evalúan cursos y miran los reportes. No tocan infraestructura.
+## Context
+Some collaborators work **exclusively on rubrics, metrics and evaluations**: they edit
+`docs/seed/rubric-v1.json`, evaluate courses and look at the reports. They do not touch infrastructure.
 
-Para levantar el repo hoy necesitan (a) una cuenta en Clerk con JWT template e invitación
-(ADR-0004) y (b) una base en Neon (ADR-0003). Es una barrera desproporcionada para ese trabajo,
-y además acopla la iteración sobre la rúbrica a dos servicios externos.
+To bring up the repo today they need (a) a Clerk account with a JWT template and an invitation
+(ADR-0004) and (b) a database on Neon (ADR-0003). That is a disproportionate barrier for that work,
+and it also couples iteration on the rubric to two external services.
 
-La restricción a respetar: el rol vive en `assessors.role` y **loguearse nunca cambia un rol**
-(ADR-0007). Cualquier atajo de desarrollo no puede erosionar eso, ni convertirse en una forma de
-entrar a un entorno real.
+The constraint to respect: the role lives in `assessors.role` and **logging in never changes a role**
+(ADR-0007). No development shortcut may erode that, nor become a way to
+get into a real environment.
 
-El corte ya existía: `tests/conftest.py::as_user` corre toda la suite —incluida la cadena de
-autorización completa— sobreescribiendo **solo** `get_verified_claims`. Clerk ya estaba aislado
-detrás de "dame un dict de claims".
+The cut already existed: `tests/conftest.py::as_user` runs the entire suite —including the full
+authorization chain— overriding **only** `get_verified_claims`. Clerk was already isolated
+behind "give me a dict of claims".
 
-## Decisión
-**`AUTH_MODE` con dos adapters detrás de la misma dependency.** `clerk` (default) verifica el JWT
-contra el JWKS; `local` construye los mismos claims a partir del header `X-Dev-User: <email>`.
+## Decision
+**`AUTH_MODE` with two adapters behind the same dependency.** `clerk` (default) verifies the JWT
+against the JWKS; `local` builds the same claims from the `X-Dev-User: <email>` header.
 
-Todo lo que está debajo del claim —`ResolveAssessor`, creación del assessor, `assessors.role`,
-`require_admin`— es **el mismo código en los dos modos**. El modo local no bifurca reglas de
-negocio: solo reemplaza de dónde sale la identidad.
+Everything below the claim —`ResolveAssessor`, assessor creation, `assessors.role`,
+`require_admin`— is **the same code in both modes**. Local mode does not fork business
+rules: it only replaces where the identity comes from.
 
-Reglas duras que hacen que esto no se filtre:
+Hard rules that keep this from leaking:
 
-| Regla | Dónde |
+| Rule | Where |
 |---|---|
-| El default del código es `clerk`; un valor que no sea `clerk`/`local` **no arranca** (en el front, que no puede fallar así, cae a `clerk`) | `Settings.auth_mode`, `lib/auth/mode.ts` |
-| `AUTH_MODE=local` + `ENVIRONMENT=production` → **la app no arranca** | validador de `Settings` |
-| `AUTH_MODE=local` + `DATABASE_URL` remoto → **la app no arranca** | validador de `Settings` |
-| En modo `clerk` el header `X-Dev-User` **no se lee** (no es un fallback ante token ausente) | `get_verified_claims` |
-| `seed-demo` y `GET /dev/identities` solo existen en modo local | `app/cli.py`, `platform/dev_router.py` |
+| The code default is `clerk`; a value other than `clerk`/`local` **does not start** (on the front, which cannot fail like that, it falls back to `clerk`) | `Settings.auth_mode`, `lib/auth/mode.ts` |
+| `AUTH_MODE=local` + `ENVIRONMENT=production` → **the app does not start** | `Settings` validator |
+| `AUTH_MODE=local` + remote `DATABASE_URL` → **the app does not start** | `Settings` validator |
+| In `clerk` mode the `X-Dev-User` header **is not read** (it is not a fallback for a missing token) | `get_verified_claims` |
+| `seed-demo` and `GET /dev/identities` only exist in local mode | `app/cli.py`, `platform/dev_router.py` |
 
-Son **dos** condiciones para el guard y no una: `ENVIRONMENT` es una etiqueta que nada obliga a
-setear —un servicio creado sin esa variable la tiene en `development`—, mientras que el host de
-`DATABASE_URL` es un hecho sobre dónde viven los datos. Para servir una API sin autenticación
-haría falta, además de pedir el modo explícitamente, estar apuntando a una base local.
+The guard has **two** conditions and not one: `ENVIRONMENT` is a label that nothing forces you to
+set —a service created without that variable has it at `development`—, while the host of
+`DATABASE_URL` is a fact about where the data lives. To serve an API without authentication
+you would need, besides requesting the mode explicitly, to be pointing at a local database.
 
-Complementos que hacen el modo usable de verdad:
-- **Base local propia** (`db-dev`, puerto 5434) separada de la de tests, porque la fixture
-  `cleanup` de la suite borra filas.
-- **`app.cli seed-demo`**: 3 usuarios (1 admin + 2 evaluadores), 2 cursos, 1 campaña abierta con
-  quórum 2 y las 4 assignments — **todo pendiente**, sin evaluaciones precargadas. Idempotente,
-  con `--reset`. Va por los use cases reales, así que publica los eventos reales. Al ser un
-  seeder y no un login, **alinea el rol** de un usuario demo que ya exista: quien se logueó
-  antes de sembrar nació `evaluator` y quedaría con 403 en toda la consola de admin. El
-  invariante de ADR-0007 que no se toca es que *loguearse* nunca cambia un rol.
-- **`--reset` vacía el dataset local entero** (cursos, campañas, evaluaciones y usuarios
-  `local|`), no "lo que las listas del código dicen hoy". Editar esas listas es la forma normal
-  de armar un demo, y un borrado acotado deja huérfano lo que creó la versión anterior —un
-  usuario renombrado que sigue apareciendo en el selector, un curso reemplazado sin campaña— sin
-  ninguna forma de limpiarlo. Es seguro precisamente por el guard: solo corre contra una base
-  local.
-- **Selector de usuario** en `/sign-in`, alimentado por `GET /dev/identities` (la DB es la fuente
-  de verdad, no una lista hardcodeada en el front). Cambiar de usuario recarga la página para
-  descartar la caché de queries del anterior.
+Complements that make the mode genuinely usable:
+- **Its own local database** (`db-dev`, port 5434) separate from the tests one, because the suite's
+  `cleanup` fixture deletes rows.
+- **`app.cli seed-demo`**: 3 users (1 admin + 2 evaluators), 2 courses, 1 open campaign with
+  quorum 2 and the 4 assignments — **all pending**, no preloaded evaluations. Idempotent,
+  with `--reset`. It goes through the real use cases, so it publishes the real events. Being a
+  seeder and not a login, it **aligns the role** of a demo user that already exists: whoever logged in
+  before seeding was born `evaluator` and would be left with 403 across the entire admin console. The
+  ADR-0007 invariant that is not touched is that *logging in* never changes a role.
+- **`--reset` empties the entire local dataset** (courses, campaigns, evaluations and `local|`
+  users), not "whatever the code's lists say today". Editing those lists is the normal way
+  of putting together a demo, and a scoped deletion orphans what the previous version created —a
+  renamed user still showing up in the selector, a replaced course with no campaign— with
+  no way to clean it up. It is safe precisely because of the guard: it only runs against a local
+  database.
+- **User selector** on `/sign-in`, fed by `GET /dev/identities` (the DB is the source
+  of truth, not a hardcoded list in the front). Switching users reloads the page to
+  discard the previous one's query cache.
 
-Dos evaluadores no es un capricho: con uno solo el inter-rater es `null` y nunca se dispara la
-cadena `ContentEvaluationCompleted → GoldenReferenceEstablished`. El dataset mínimo para ejercitar
-las métricas necesita quórum 2.
+Two evaluators is not a whim: with only one, inter-rater is `null` and the
+`ContentEvaluationCompleted → GoldenReferenceEstablished` chain never fires. The minimal dataset to exercise
+the metrics needs quorum 2.
 
-## Consecuencias
-- (+) `docker compose up -d` + dos comandos y la app corre entera, sin cuentas ni nube.
-- (+) El camino de producción no cambia: mismo default, mismos tests, mismo deploy.
-- (+) El loop de quien trabaja en la rúbrica queda: editar el JSON → `app.cli seed` → refrescar.
-- (−) Dos caminos de autenticación; el local solo se ejercita en `tests/test_auth_local.py`. Se
-  mitiga manteniendo el corte finito: el modo local **solo** fabrica claims. Si algún día
-  necesitara lógica propia de roles, sería la señal de que el corte se movió al lugar equivocado.
-- (−) `X-Dev-User` queda en `allow_headers` de CORS también en producción. Es inerte (en modo
-  `clerk` nadie lo lee) y evita mantener dos configuraciones de CORS.
-- (−) El front empaqueta los dos adapters. Irrelevante en tamaño y hace que el switch sea una env
-  var, no un build distinto.
+## Consequences
+- (+) `docker compose up -d` + two commands and the whole app runs, without accounts or cloud.
+- (+) The production path does not change: same default, same tests, same deploy.
+- (+) The loop for whoever works on the rubric becomes: edit the JSON → `app.cli seed` → refresh.
+- (−) Two authentication paths; the local one is only exercised in `tests/test_auth_local.py`. Mitigated
+  by keeping the cut finite: local mode **only** fabricates claims. If it ever
+  needed role logic of its own, that would be the signal that the cut moved to the wrong place.
+- (−) `X-Dev-User` remains in CORS `allow_headers` in production too. It is inert (in `clerk`
+  mode nobody reads it) and avoids maintaining two CORS configurations.
+- (−) The front bundles both adapters. Irrelevant in size, and it makes the switch an env
+  var, not a different build.
 
-## Alternativas consideradas
-- **JWT local firmado con HS256** (un endpoint que emite tokens de dev) → rechazada: más fiel al
-  camino real, pero agrega emisión de tokens y manejo de claves para un público que no debería
-  enterarse de que existe un token. El corte quedaría en el mismo lugar igual.
-- **Instancia de Clerk compartida para desarrollo** → rechazada: sigue exigiendo cuenta,
-  invitación y red; no resuelve el problema, lo centraliza.
-- **Autodetectar el modo local cuando faltan las claves de Clerk** → rechazada: una variable mal
-  cargada en un deploy convertiría la app en un sistema sin autenticación. La activación tiene
-  que ser explícita y, además, incompatible con `ENVIRONMENT=production`.
-- **Un usuario único ficticio, sin selector** → rechazada: sin admin + dos evaluadores no se puede
-  ejercitar ni el quórum, ni el golden, ni la dispersión inter-rater.
-- **SQLite en vez de Postgres local** → rechazada: el schema usa JSONB e índices únicos parciales
-  (08-code.md §3); un motor distinto en desarrollo produciría divergencias reales.
+## Alternatives considered
+- **Local JWT signed with HS256** (an endpoint that issues dev tokens) → rejected: more faithful to the
+  real path, but adds token issuance and key handling for an audience that should not
+  need to know a token exists. The cut would end up in the same place anyway.
+- **Shared Clerk instance for development** → rejected: still requires an account,
+  an invitation and network; it does not solve the problem, it centralizes it.
+- **Auto-detecting local mode when the Clerk keys are missing** → rejected: a badly loaded variable
+  in a deploy would turn the app into a system without authentication. Activation has
+  to be explicit and, in addition, incompatible with `ENVIRONMENT=production`.
+- **A single fictitious user, no selector** → rejected: without an admin + two evaluators you cannot
+  exercise the quorum, the golden, or the inter-rater dispersion.
+- **SQLite instead of local Postgres** → rejected: the schema uses JSONB and partial unique indexes
+  (08-code.md §3); a different engine in development would produce real divergences.
 
-## Implementación
-`AUTH_MODE` → `Settings.auth_mode` / `is_local_auth`; `platform/auth_local.py` (claims desde el
-header) elegido en `platform/security.py::get_verified_claims`; `platform/dev_router.py`;
+## Implementation
+`AUTH_MODE` → `Settings.auth_mode` / `is_local_auth`; `platform/auth_local.py` (claims from the
+header) chosen in `platform/security.py::get_verified_claims`; `platform/dev_router.py`;
 `app/cli.py seed-demo`; `docker-compose.yml` (`db-dev`). Frontend: `src/lib/auth/`
-(`mode.ts` + adapters `clerk.tsx` / `local.tsx`), consumido por `layout.tsx`, `app-header.tsx`,
-`sign-in`, `lib/api/hooks.ts` y `middleware.ts`.
-Tests: `backend/tests/test_auth_local.py` (6 casos, incluidos el header ignorado en modo `clerk` y
-el arranque prohibido en producción).
+(`mode.ts` + adapters `clerk.tsx` / `local.tsx`), consumed by `layout.tsx`, `app-header.tsx`,
+`sign-in`, `lib/api/hooks.ts` and `middleware.ts`.
+Tests: `backend/tests/test_auth_local.py` (6 cases, including the header ignored in `clerk` mode and
+startup forbidden in production).

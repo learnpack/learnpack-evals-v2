@@ -1,53 +1,53 @@
-# ADR-0002 — Campañas abiertas, assignments dinámicos y quórum por submissions
+# ADR-0002 — Open campaigns, dynamic assignments and quorum by submissions
 
-**Estado:** aceptada · **Fecha:** 2026-07 · **Contexto DDD:** Evaluation Orchestration
+**Status:** accepted · **Date:** 2026-07 · **DDD context:** Evaluation Orchestration
 
-## Contexto
-La realidad operativa no es "tener todos los SMEs y todas las assignments antes de empezar":
-- Se arranca con los expertos disponibles y se **suman más con el tiempo**.
-- Un experto puede **no cumplir** o cumplir solo parte de lo asignado → hay que **cancelar** o
-  **reasignar**.
+## Context
+The operational reality is not "having all the SMEs and all the assignments before starting":
+- You start with the available experts and **add more over time**.
+- An expert may **not deliver**, or deliver only part of what was assigned → you need to **cancel**
+  or **reassign**.
 
-El modelo previo confundía *provisioning* (assignments) con *goal* (quórum): fijaba "N assessors
-distintos por contenido al crear la campaña" y definía completitud como "todas las assignments
-enviadas". Eso no soporta el aprovisionamiento incremental ni la rotación de assignments.
+The previous model conflated *provisioning* (assignments) with *goal* (quorum): it fixed "N distinct
+assessors per content when creating the campaign" and defined completeness as "all assignments
+submitted". That does not support incremental provisioning or assignment rotation.
 
-## Decisión
-1. **`EvaluationCampaign` = agregado abierto (config + scope), no dueño transaccional de las
-   assignments.** Fija `rubricVersion`, `requiredEvaluationsPerContent` (umbral) y `metadataView`.
-   Ciclo `Draft → Open → Closed`. **Abrir no requiere todas las assignments.**
-2. **`Assignment` = agregado propio, chico, con lifecycle** `Assigned → Opened → Submitted` |
-   `Cancelled`. Reassign = cancel + nueva assignment a otro assessor. Invariante: ≤1 assignment
-   activa por `(campaign, content, assessor)`; solo cancelable si no está `Submitted`.
-3. **Quórum = umbral de completitud sobre submissions, no provisioning.** Un contenido está
-   `Completed` cuando el nº de **assessors distintos que enviaron** una evaluación válida alcanza
-   el umbral. Assignments canceladas/incompletas **no cuentan**.
-4. **Completitud eventual por policy:** `EvaluationSubmitted` → contar distinct assessors →
-   `≥ umbral` → `ContentEvaluationCompleted`. No es invariante transaccional de un agregado grande.
+## Decision
+1. **`EvaluationCampaign` = open aggregate (config + scope), not the transactional owner of the
+   assignments.** It fixes `rubricVersion`, `requiredEvaluationsPerContent` (threshold) and `metadataView`.
+   Lifecycle `Draft → Open → Closed`. **Opening does not require all the assignments.**
+2. **`Assignment` = its own aggregate, small, with lifecycle** `Assigned → Opened → Submitted` |
+   `Cancelled`. Reassign = cancel + new assignment to another assessor. Invariant: ≤1 active assignment
+   per `(campaign, content, assessor)`; only cancellable if not `Submitted`.
+3. **Quorum = completeness threshold over submissions, not provisioning.** A content item is
+   `Completed` when the number of **distinct assessors who submitted** a valid evaluation reaches
+   the threshold. Cancelled/incomplete assignments **do not count**.
+4. **Eventual completeness via policy:** `EvaluationSubmitted` → count distinct assessors →
+   `≥ threshold` → `ContentEvaluationCompleted`. It is not a transactional invariant of a large aggregate.
 
-**Nota de implementación (alineada con 08 §5 y ADR-0005):** la `Evaluation` es **campaign-agnostic**
-(sin `campaign_id`). El nexo con la campaña es el `Assignment`: al enviar, se marcan `submitted`
-todas las assignments abiertas de `(assessor, content)` cuya `campaign.rubricVersion` coincida, y
-la completitud de `(campaign, content)` = `COUNT(assignments submitted) ≥ required`. Así una misma
-evaluación puede satisfacer varias campañas que la pidieron. La anti-duplicación humana (una
-submission por assignment) vive en el `Assignment`, no en una unicidad de `Evaluation` — ver
+**Implementation note (aligned with 08 §5 and ADR-0005):** the `Evaluation` is **campaign-agnostic**
+(no `campaign_id`). The link to the campaign is the `Assignment`: on submit, all open assignments of
+`(assessor, content)` whose `campaign.rubricVersion` matches are marked `submitted`, and
+the completeness of `(campaign, content)` = `COUNT(assignments submitted) ≥ required`. This way the same
+evaluation can satisfy several campaigns that requested it. Human anti-duplication (one
+submission per assignment) lives in the `Assignment`, not in an `Evaluation` uniqueness — see
 ADR-0005.
 
-## Consecuencias
-- (+) Se puede **empezar ya** con pocos expertos y sumar más sin reestructurar nada.
-- (+) Cancelar/reasignar es natural; solo mueven la aguja las entregas.
-- (+) `Assignment` chico → sin contención; escala bien.
-- (+) La anti-duplicación humana vive en el `Assignment` (una submission por assignment, ADR-0005),
-  así que contar `assignments submitted` es seguro sin depender de una unicidad de `Evaluation`.
-- (−) La completitud es eventual, no inmediata (aceptable: es un proceso humano asíncrono).
+## Consequences
+- (+) You can **start now** with few experts and add more without restructuring anything.
+- (+) Cancelling/reassigning is natural; only deliveries move the needle.
+- (+) Small `Assignment` → no contention; scales well.
+- (+) Human anti-duplication lives in the `Assignment` (one submission per assignment, ADR-0005),
+  so counting `assignments submitted` is safe without relying on an `Evaluation` uniqueness.
+- (−) Completeness is eventual, not immediate (acceptable: it is an asynchronous human process).
 
-## Open questions (no bloquean el MVP)
-- ¿Submission sin assignment previa? (MVP: no — la assignment alimenta pendientes.)
-- ¿Over-quórum? (permitido; completa al alcanzar N; extras se guardan.)
-- ¿Cambiar N con la campaña abierta? (MVP: fijo.)
+## Open questions (do not block the MVP)
+- Submission without a prior assignment? (MVP: no — the assignment feeds the pending list.)
+- Over-quorum? (allowed; completes upon reaching N; extras are stored.)
+- Changing N while the campaign is open? (MVP: fixed.)
 
-## Alternativas consideradas
-- **Provisioning fijo (N assignments al crear) + completitud = todas enviadas** → rechazada:
-  no soporta incrementalidad ni rotación; frágil ante incumplimientos.
-- **Campaign posee todas las assignments (agregado grande)** → rechazada: contención y agregado
-  gigante; viola "aggregates chicos".
+## Alternatives considered
+- **Fixed provisioning (N assignments at creation) + completeness = all submitted** → rejected:
+  it does not support incrementality or rotation; fragile in the face of non-delivery.
+- **Campaign owns all the assignments (large aggregate)** → rejected: contention and a giant
+  aggregate; violates "small aggregates".

@@ -1,18 +1,18 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño táctico que produjo el slice 1 (MVP humano).
-> **Superseded por `12-define-qa.md`** (autocontenido — incluye los contextos de este doc con
-> sus ajustes). **No usar este doc como fuente para código nuevo.** Nota: la invariante
-> "score ∈ [1,5], cobertura exacta" de Evaluation fue superseded por el tri-estado (ADR-0010,
-> `12-define-qa.md`); `Rubric v1` pervive como instrumento de referencia (ADR-0015).
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)** — tactical design that produced slice 1 (human MVP).
+> **Superseded by `12-define-qa.md`** (self-contained — includes the contexts of this doc with
+> their adjustments). **Do not use this doc as a source for new code.** Note: the invariant
+> "score ∈ [1,5], exact coverage" of Evaluation was superseded by the tri-state (ADR-0010,
+> `12-define-qa.md`); `Rubric v1` survives as the reference instrument (ADR-0015).
 
-# 07 — Define (opción B: MVP slice)
+# 07 — Define (option B: MVP slice)
 
-> Paso 7 del DDD Starter Modelling Process. Estado: **en curso**.
-> Alcance (opción B): solo lo que el MVP toca — la rebanada humana. Contextos:
-> Rubric Authoring · Content Registry · Evaluation (humano) · Evaluation Orchestration ·
-> Golden Dataset · Reporting · Identity. Cada uno: Bounded Context Canvas + Aggregate Design
-> Canvas. Las decisiones se toman sin cerrar puertas al modelo objetivo (01–05).
+> Step 7 of the DDD Starter Modelling Process. State: **in progress**.
+> Scope (option B): only what the MVP touches — the human slice. Contexts:
+> Rubric Authoring · Content Registry · Evaluation (human) · Evaluation Orchestration ·
+> Golden Dataset · Reporting · Identity. Each one: Bounded Context Canvas + Aggregate Design
+> Canvas. Decisions are made without closing doors to the target model (01–05).
 
-Orden de definición: **Rubric Authoring** (insumo del evaluador) → Evaluation (humano) →
+Definition order: **Rubric Authoring** (the evaluator's input) → Evaluation (human) →
 Content Registry → Orchestration → Golden Dataset → Reporting → Identity.
 
 ---
@@ -20,54 +20,54 @@ Content Registry → Orchestration → Golden Dataset → Reporting → Identity
 ## Rubric Authoring
 
 ### Bounded Context Canvas
-- **Propósito:** definir y versionar los instrumentos de evaluación (`Rubric`) y el modelo
-  pedagógico que los fundamenta (frameworks → dimensions → qualities → criteria, con grounding
-  y `eligible_sources`); garantizar la inmutabilidad de una rubric publicada.
-- **Clasificación:** Core (secundario). Modelo rico; workflow/CRUD fino.
-- **Inbound** — Comandos: `DefineCriterion`, `AssembleRubric`, `PublishRubric`,
+- **Purpose:** define and version the evaluation instruments (`Rubric`) and the pedagogical
+  model that grounds them (frameworks → dimensions → qualities → criteria, with grounding
+  and `eligible_sources`); guarantee the immutability of a published rubric.
+- **Classification:** Core (secondary). Rich model; thin workflow/CRUD.
+- **Inbound** — Commands: `DefineCriterion`, `AssembleRubric`, `PublishRubric`,
   `ReviseRubric`, `DeprecateRubric`. Query: `getRubric(rubricVersion) → RubricSnapshot`.
-- **Outbound** — Eventos: `CriterionDefined`, `RubricAssembled`, `RubricPublished` (lleva el
+- **Outbound** — Events: `CriterionDefined`, `RubricAssembled`, `RubricPublished` (carries the
   `RubricSnapshot`), `RubricRevised`, `RubricDeprecated`.
 - **Published Language `RubricSnapshot`:**
   `{ rubricId, version, criteria: [{ criterionId, prompt, guidance, scaleMin:1, scaleMax:5,
   anchorLow, anchorHigh, eligibleSources[], groundedIn[] }] }`.
 - **Ubiquitous language:** PedagogicalFramework, PedagogicalDimension, Quality,
   EvaluationCriterion, Rubric, rubricVersion, anchors, eligible_sources.
-- **Open questions:** estado `Draft` explícito en MVP vs seed directo a `Published`; pesos por
-  criterion (MVP: sin pesos, media simple); naming `Quality` vs `PedagogicalAttribute`.
+- **Open questions:** explicit `Draft` state in MVP vs direct seed to `Published`; weights per
+  criterion (MVP: no weights, simple mean); naming `Quality` vs `PedagogicalAttribute`.
 
 ### Aggregate Design Canvas — `Rubric`
-- **Descripción:** versión ordenada e inmutable de criteria para evaluar contenido. Root =
-  `Rubric` (una versión); **posee** sus `Criterion` (VOs). **Referencia por id** a
-  `PedagogicalFramework`/`Quality` (reference data, fuera del boundary).
-- **Ciclo de vida:** `Draft → Published (→ Deprecated)`. MVP: seed directo a `Published`.
-- **Invariantes:**
-  1. `Published` ⇒ versión inmutable; criteria congelados. Cambio ⇒ nueva `rubricVersion`.
-  2. ≥1 criterion; cada criterion: escala 1–5, ambos anchors (1 y 5), `prompt` + `guidance`
-     presentes, `eligible_sources` ≥1.
-  3. `criterionId` único dentro de la rubric.
-  4. `rubricVersion` estable y global (join key de evaluación y calibración).
-- **Enforcement:** síncrono; `PublishRubric` atómico (agregado completo = un límite
-  transaccional). Sin corrective policies.
-- **Comandos → eventos:** `DefineCriterion→CriterionDefined`, `AssembleRubric→RubricAssembled`,
+- **Description:** ordered, immutable version of criteria for evaluating content. Root =
+  `Rubric` (one version); **owns** its `Criterion`s (VOs). **References by id**
+  `PedagogicalFramework`/`Quality` (reference data, outside the boundary).
+- **Lifecycle:** `Draft → Published (→ Deprecated)`. MVP: direct seed to `Published`.
+- **Invariants:**
+  1. `Published` ⇒ immutable version; frozen criteria. Change ⇒ new `rubricVersion`.
+  2. ≥1 criterion; each criterion: scale 1–5, both anchors (1 and 5), `prompt` + `guidance`
+     present, `eligible_sources` ≥1.
+  3. `criterionId` unique within the rubric.
+  4. `rubricVersion` stable and global (join key of evaluation and calibration).
+- **Enforcement:** synchronous; atomic `PublishRubric` (whole aggregate = one transactional
+  boundary). No corrective policies.
+- **Commands → events:** `DefineCriterion→CriterionDefined`, `AssembleRubric→RubricAssembled`,
   `PublishRubric→RubricPublished`, `ReviseRubric→RubricRevised`,
   `DeprecateRubric→RubricDeprecated`.
-- **Tamaño:** chico (v1 = 5 criteria).
-- **Realización MVP:** sin UI de autoría. `Rubric v1` = *seed data* de una versión `Published`
-  y locked. Comandos de autoría `[futuro]`. El evaluador consume un `RubricSnapshot v1`
-  read-only.
+- **Size:** small (v1 = 5 criteria).
+- **MVP realization:** no authoring UI. `Rubric v1` = *seed data* of a `Published`, locked
+  version. Authoring commands `[future]`. The evaluator consumes a read-only
+  `RubricSnapshot v1`.
 
-### Reference data (agregados chicos, seed en MVP)
-`PedagogicalFramework`, `PedagogicalDimension`, `Quality` — CRUD mínimo; en el MVP se siembran.
-Los criteria los referencian por id (`groundedIn[]`, dimensión/quality).
+### Reference data (small aggregates, seeded in MVP)
+`PedagogicalFramework`, `PedagogicalDimension`, `Quality` — minimal CRUD; seeded in the MVP.
+The criteria reference them by id (`groundedIn[]`, dimension/quality).
 
-### Rubric v1 — instanciada (seed en `../seed/rubric-v1.json`)
-5 criteria (uno por dimensión; cada criterion colapsa las qualities de su dimensión en una
-pregunta 1–5). Anchors genéricos (1 = not at all/very low, 5 = fully/very high). Scope: calidad
-pedagógica del **contenido** (objetivos, lecciones, coherencia, progresión); **excluye
-presentación y ecosistema**.
+### Rubric v1 — instantiated (seed in `../seed/rubric-v1.json`)
+5 criteria (one per dimension; each criterion collapses the qualities of its dimension into one
+1–5 question). Generic anchors (1 = not at all/very low, 5 = fully/very high). Scope: pedagogical
+quality of the **content** (objectives, lessons, coherence, progression); **excludes
+presentation and ecosystem**.
 
-| # | criterionId | dimensión | groundedIn |
+| # | criterionId | dimension | groundedIn |
 |---|---|---|---|
 | 1 | `objectives-quality` | Quality and soundness of objectives | Biggs · Revised Bloom · SOLO |
 | 2 | `constructive-alignment` | Constructive alignment (objective↔content) | Biggs · Revised Bloom |
@@ -75,198 +75,198 @@ presentación y ecosistema**.
 | 4 | `inter-lesson-coherence` | Coherence and continuity between lessons | Schmidt |
 | 5 | `learning-progression` | Learning progression | Learning progressions · SOLO · Merrill · Schmidt · Revised Bloom |
 
-Observaciones que confirman/afinan el modelo:
-- **Criterion ↔ Dimension es 1:1 en v1** (score por dimensión, colapsando qualities). El modelo
-  ya lo admite (Criterion operacionaliza Quality *o* Dimension).
-- **Grounding a nivel Quality, agregado al Criterion** (`Criterion.groundedIn` = unión de los
-  frameworks de las qualities de su dimensión). Las 21 qualities + 5 dimensions + 6 frameworks
-  son reference data sembrable.
-- **Anchors genéricos** (mismos 1/5). Open question: ¿anchors por-criterion a futuro?
-- **`eligible_sources` v1 = [HumanExpert]** en los 5. Candidatos a automatización futura
-  (informativo): 1–2 → Bloom-tagging/embeddings; 4 → Coh-Metrix; etc.
-- **Metadata (corregido):** los evaluadores reciben el **curso completo** (todas las lecciones);
-  el `lessonPlan` era de una versión previa y se descarta. La metadata del contenido se modela
-  **abierta/extensible** (no campos fijos) — ver ADR-0001 y Content Registry.
+Observations that confirm/refine the model:
+- **Criterion ↔ Dimension is 1:1 in v1** (score per dimension, collapsing qualities). The model
+  already admits it (Criterion operationalizes Quality *or* Dimension).
+- **Grounding at the Quality level, aggregated onto the Criterion** (`Criterion.groundedIn` = union of the
+  frameworks of the qualities of its dimension). The 21 qualities + 5 dimensions + 6 frameworks
+  are seedable reference data.
+- **Generic anchors** (same 1/5). Open question: per-criterion anchors in the future?
+- **`eligible_sources` v1 = [HumanExpert]** in all 5. Candidates for future automation
+  (informative): 1–2 → Bloom-tagging/embeddings; 4 → Coh-Metrix; etc.
+- **Metadata (corrected):** evaluators receive the **full course** (all lessons);
+  the `lessonPlan` was from a previous version and is discarded. Content metadata is modelled
+  **open/extensible** (no fixed fields) — see ADR-0001 and Content Registry.
 
 ---
 
-## Evaluation (parte humana, MVP)
+## Evaluation (human part, MVP)
 
 ### Bounded Context Canvas
-- **Propósito:** producir y persistir el juicio de un `Assessor` sobre un contenido usando una
-  rubric — el acto core. MVP: solo `HumanExpert`.
-- **Clasificación:** Core.
-- **Inbound** — Comando: `SubmitEvaluation(assessorId, contentId, rubricVersion, scores[])`.
+- **Purpose:** produce and persist the judgment of an `Assessor` on a content using a
+  rubric — the core act. MVP: only `HumanExpert`.
+- **Classification:** Core.
+- **Inbound** — Command: `SubmitEvaluation(assessorId, contentId, rubricVersion, scores[])`.
   Queries: `getRubric(rubricVersion)`, `getContentMetadata(contentId)`.
-- **Outbound** — Evento: `EvaluationSubmitted(assessorId, contentId, rubricVersion,
-  EvaluationResult, mode=human)`. No publica `ContentEvaluationCompleted` (ver refinamiento).
+- **Outbound** — Event: `EvaluationSubmitted(assessorId, contentId, rubricVersion,
+  EvaluationResult, mode=human)`. Does not publish `ContentEvaluationCompleted` (see refinement).
 - **Ubiquitous language:** Evaluation, EvaluationResult, CriterionScore, Assessor, provenance.
 
 ### Aggregate Design Canvas — `Evaluation`
-- **Descripción:** un **acto** concreto de evaluación. Root = `Evaluation` (id propio
-  `evaluationId`), con coordenadas `{assessorId, contentId (versión), rubricVersion,
-  occurredAt/attempt}`; contiene un `EvaluationResult` (los `CriterionScore` + comments).
-- **Ciclo de vida (MVP):** `Submitted`. (Draft/InProgress = `[futuro]`.)
-- **Invariantes:**
-  1. Cobertura exacta: un `CriterionScore` por cada `criterionId` de la `rubricVersion` (ni
-     falta ni sobra).
-  2. score ∈ [1,5] entero; comment opcional.
-  3. Referencias válidas: `rubricVersion` publicada, `contentId` (versión) registrado, `assessorId`.
-  4. **Identidad = `evaluationId` propio. NO hay unicidad por `(assessor, content, rubric)`:** se
-     permiten **repeticiones** del mismo `Assessor` sobre el mismo `(content, rubric)` (necesario
-     para dispersión de `LLMJudge`) y evaluar distintas `contentVersion`. La anti-duplicación
-     humana se enforcea en el `Assignment` (Orchestration), no acá. Ver ADR-0005.
-  5. Inmutable una vez `Submitted` (MVP).
-- **Límite de consistencia:** `Evaluation` + `EvaluationResult` = unidad transaccional; submit
-  atómico.
-- **Comando → evento:** `SubmitEvaluation → EvaluationSubmitted`.
-- **Corrective policies:** validación síncrona; rubric/criteria inválidos → rechazo. Enviar sobre
-  un `Assignment` ya `Submitted` → 409 (regla de Orchestration).
-- **Throughput/tamaño:** bajo, sin concurrencia; agregado chico (5 scores).
-- **Provenance:** `EvaluationSubmitted` lleva el `Assessor` (HumanExpert id), `mode=human`.
+- **Description:** a concrete **act** of evaluation. Root = `Evaluation` (own id
+  `evaluationId`), with coordinates `{assessorId, contentId (version), rubricVersion,
+  occurredAt/attempt}`; contains an `EvaluationResult` (the `CriterionScore`s + comments).
+- **Lifecycle (MVP):** `Submitted`. (Draft/InProgress = `[future]`.)
+- **Invariants:**
+  1. Exact coverage: one `CriterionScore` for each `criterionId` of the `rubricVersion` (none
+     missing, none extra).
+  2. score ∈ [1,5] integer; comment optional.
+  3. Valid references: published `rubricVersion`, registered `contentId` (version), `assessorId`.
+  4. **Identity = own `evaluationId`. There is NO uniqueness by `(assessor, content, rubric)`:**
+     **repetitions** of the same `Assessor` on the same `(content, rubric)` are allowed (necessary
+     for `LLMJudge` dispersion) and evaluating different `contentVersion`s. Human anti-duplication
+     is enforced in the `Assignment` (Orchestration), not here. See ADR-0005.
+  5. Immutable once `Submitted` (MVP).
+- **Consistency boundary:** `Evaluation` + `EvaluationResult` = transactional unit; atomic
+  submit.
+- **Command → event:** `SubmitEvaluation → EvaluationSubmitted`.
+- **Corrective policies:** synchronous validation; invalid rubric/criteria → rejection. Submitting on
+  an `Assignment` already `Submitted` → 409 (Orchestration rule).
+- **Throughput/size:** low, no concurrency; small aggregate (5 scores).
+- **Provenance:** `EvaluationSubmitted` carries the `Assessor` (HumanExpert id), `mode=human`.
 
-> **Refinamiento vs Discover:** `ContentEvaluationCompleted` lo emite **Orchestration** (que
-> conoce el quórum: creó N assignments por contenido y detecta completitud al recibir los
-> `EvaluationSubmitted`), no el core `Evaluation`. La agregación cross-evaluador (media +
-> inter-rater) queda como proyección de Reporting/Golden.
+> **Refinement vs Discover:** `ContentEvaluationCompleted` is emitted by **Orchestration** (which
+> knows the quorum: it created N assignments per content and detects completion on receiving the
+> `EvaluationSubmitted`s), not the core `Evaluation`. Cross-evaluator aggregation (mean +
+> inter-rater) remains a Reporting/Golden projection.
 
-### Realización MVP
-`SubmitEvaluation` → `INSERT` en `evaluations` + `criterion_scores` y fila en `events`
-(`EvaluationSubmitted`), en una transacción (ADR-0003). La completitud la maneja Orchestration
-por status de assignment (ver 08 §5).
+### MVP realization
+`SubmitEvaluation` → `INSERT` into `evaluations` + `criterion_scores` and a row in `events`
+(`EvaluationSubmitted`), in one transaction (ADR-0003). Completion is handled by Orchestration
+via assignment status (see 08 §5).
 
 ---
 
 ## Content Registry (supporting → generic)
 
 ### Bounded Context Canvas
-- **Propósito:** registrar contenido evaluable + su metadata (abierta/extensible) + provenance del
-  sistema generador; servir metadata a los consumidores.
-- **Inbound** — Comandos: `RegisterContent`, `UpdateContentMetadata`. Queries:
-  `getContentMetadata(contentId)`, `getContentSnapshot(contentId)`. ACL: ingesta LearnPack
-  (MVP: carga manual → ACL trivial).
-- **Outbound** — Eventos: `ContentRegistered`, `ContentMetadataUpdated`. DTO:
+- **Purpose:** register evaluable content + its metadata (open/extensible) + provenance of the
+  generating system; serve metadata to consumers.
+- **Inbound** — Commands: `RegisterContent`, `UpdateContentMetadata`. Queries:
+  `getContentMetadata(contentId)`, `getContentSnapshot(contentId)`. ACL: LearnPack ingestion
+  (MVP: manual load → trivial ACL).
+- **Outbound** — Events: `ContentRegistered`, `ContentMetadataUpdated`. DTO:
   `ContentSnapshot { contentId, generatingSystem, externalId, consumableUrl, metadata: MetadataEntry[] }`.
 
 ### Aggregate Design Canvas — `EducationalContent`
-- Root = Content; **cada registro es una versión concreta** (`contentId` = versión). El contenido
-  *lógico* es `(generatingSystem, externalId)`. Posee su `ContentMetadata` (colección abierta de
+- Root = Content; **each record is a concrete version** (`contentId` = version). The *logical*
+  content is `(generatingSystem, externalId)`. Owns its `ContentMetadata` (open collection of
   `MetadataEntry`).
-- **Invariantes:** único `(generatingSystem, externalId, version)`; `consumableUrl` presente;
-  metadata válida contra el `MetadataSchema` de su tipo (si existe). El dominio no referencia keys
-  concretas (ver ADR-0001).
-- **Comandos → eventos:** `RegisterContent→ContentRegistered`,
+- **Invariants:** unique `(generatingSystem, externalId, version)`; `consumableUrl` present;
+  metadata valid against the `MetadataSchema` of its type (if it exists). The domain does not reference
+  concrete keys (see ADR-0001).
+- **Commands → events:** `RegisterContent→ContentRegistered`,
   `UpdateContentMetadata→ContentMetadataUpdated`.
-- **Realización MVP:** schema sembrado `learnpack-v1 = {learningObjectives, targetAudience,
-  prerequisites}`; metadata a mano; `version` default `"1"`; sin lessonPlan (los evaluadores
-  reciben el curso completo). Ver ADR-0005.
+- **MVP realization:** seeded schema `learnpack-v1 = {learningObjectives, targetAudience,
+  prerequisites}`; metadata by hand; `version` default `"1"`; no lessonPlan (evaluators
+  receive the full course). See ADR-0005.
 
-## Evaluation Orchestration (supporting) · refinado (ver ADR-0002)
+## Evaluation Orchestration (supporting) · refined (see ADR-0002)
 
 ### Bounded Context Canvas
-- **Propósito:** orquestar el esfuerzo humano de forma **abierta e incremental** — campañas que
-  se abren con los assessors que haya y suman más con el tiempo; assignments con lifecycle
-  (cancelar/reasignar); detectar completitud por **umbral de submissions**; presentar la
-  metadata al evaluador.
-- **Inbound** — Comandos: `OpenCampaign`, `AssignContent`, `CancelAssignment`,
-  `ReassignAssignment`, `CloseCampaign`. Reacciona a: `EvaluationSubmitted`. Queries:
+- **Purpose:** orchestrate the human effort in an **open and incremental** way — campaigns that
+  open with whatever assessors are available and add more over time; assignments with a lifecycle
+  (cancel/reassign); detect completion by **submissions threshold**; present the
+  metadata to the evaluator.
+- **Inbound** — Commands: `OpenCampaign`, `AssignContent`, `CancelAssignment`,
+  `ReassignAssignment`, `CloseCampaign`. Reacts to: `EvaluationSubmitted`. Queries:
   `getPendingAssignments(assessorId)`, `getCampaignProgress(campaignId)`.
-- **Outbound** — Eventos: `CampaignOpened`, `AssignmentCreated`, `AssignmentOpened`,
+- **Outbound** — Events: `CampaignOpened`, `AssignmentCreated`, `AssignmentOpened`,
   `AssignmentCancelled`, `ContentEvaluationCompleted`, `CampaignClosed`.
 
 ### Aggregate `EvaluationCampaign` (config + scope; open-ended)
-- **Descripción:** configuración y alcance de un esfuerzo de evaluación. **No** posee las
-  assignments transaccionalmente.
-- **Invariantes:** `rubricVersion` publicada y fija; `requiredEvaluationsPerContent` (umbral N,
-  típ. 2–3) fijo; `contentSet` no vacío para abrir; `metadataView`.
-- **Ciclo de vida:** `Draft → Open (acepta assignments y submissions de a poco) → Closed`.
-  **Abrir NO requiere tener todas las assignments.**
+- **Description:** configuration and scope of an evaluation effort. Does **not** own the
+  assignments transactionally.
+- **Invariants:** published, fixed `rubricVersion`; fixed `requiredEvaluationsPerContent` (threshold N,
+  typ. 2–3); non-empty `contentSet` to open; `metadataView`.
+- **Lifecycle:** `Draft → Open (accepts assignments and submissions bit by bit) → Closed`.
+  **Opening does NOT require having all the assignments.**
 
-### Aggregate `Assignment` (chico, lifecycle propio)
-- **Descripción:** invitación a un `Assessor` a evaluar un `Content` dentro de una campaña.
-- **Estados:** `Assigned → Opened → Submitted` · `Cancelled`. (Reassign = `Cancel` + nuevo
-  `Assign` a otro assessor.)
-- **Invariantes:** a lo sumo una assignment **activa** (no cancelada) por
-  `(campaign, content, assessor)`; solo se cancela si no está `Submitted`. **Unidad de
-  anti-duplicación humana:** se cumple con **una** submission; re-enviar sobre una ya `Submitted`
-  → 409 (ver ADR-0005).
-- **Comandos → eventos:** `AssignContent→AssignmentCreated`, `OpenAssignment→AssignmentOpened`,
-  `CancelAssignment→AssignmentCancelled`. Al oír `EvaluationSubmitted` (contexto Evaluation) la
-  assignment pasa a `Submitted`.
+### Aggregate `Assignment` (small, own lifecycle)
+- **Description:** invitation to an `Assessor` to evaluate a `Content` within a campaign.
+- **States:** `Assigned → Opened → Submitted` · `Cancelled`. (Reassign = `Cancel` + new
+  `Assign` to another assessor.)
+- **Invariants:** at most one **active** (non-cancelled) assignment per
+  `(campaign, content, assessor)`; only cancellable if not `Submitted`. **Unit of
+  human anti-duplication:** fulfilled with **one** submission; re-submitting on one already `Submitted`
+  → 409 (see ADR-0005).
+- **Commands → events:** `AssignContent→AssignmentCreated`, `OpenAssignment→AssignmentOpened`,
+  `CancelAssignment→AssignmentCancelled`. On hearing `EvaluationSubmitted` (Evaluation context) the
+  assignment moves to `Submitted`.
 
-### Quórum = umbral de completitud sobre submissions (no provisioning)
-- Un contenido está `Completed` en una campaña cuando `COUNT(assignments de esa (campaign,
-  content) en status 'submitted') ≥ requiredEvaluationsPerContent`. **Las assignments canceladas
-  o incompletas no cuentan**; solo cuentan las submissions.
-- **Policy:** al `EvaluationSubmitted(assessor, content, rubricVersion)` se marcan `submitted`
-  todas las assignments abiertas de `(assessor, content)` con `campaign.rubricVersion` coincidente;
-  para cada campaña afectada, si el conteo `≥ umbral` → `ContentEvaluationCompleted`. Una misma
-  evaluación puede satisfacer varias campañas; las reasignaciones funcionan solas.
-- **Consistencia:** conteo/completitud **eventual** (policy sobre eventos), no invariante
-  transaccional de un agregado grande.
+### Quorum = completion threshold over submissions (not provisioning)
+- A content is `Completed` in a campaign when `COUNT(assignments of that (campaign,
+  content) in status 'submitted') ≥ requiredEvaluationsPerContent`. **Cancelled or incomplete
+  assignments do not count**; only submissions count.
+- **Policy:** on `EvaluationSubmitted(assessor, content, rubricVersion)` all open assignments of
+  `(assessor, content)` with a matching `campaign.rubricVersion` are marked `submitted`;
+  for each affected campaign, if the count `≥ threshold` → `ContentEvaluationCompleted`. A single
+  evaluation can satisfy several campaigns; reassignments work on their own.
+- **Consistency:** **eventual** count/completion (policy over events), not a transactional
+  invariant of a large aggregate.
 
 ### Open questions
-- ¿submission sin assignment previa? (MVP: no — la assignment alimenta la lista de pendientes).
-- ¿over-quórum? (permitido; completa al alcanzar N; extras se guardan).
-- ¿cambiar N con la campaña abierta? (MVP: fijo).
+- submission without a prior assignment? (MVP: no — the assignment feeds the pending list).
+- over-quorum? (allowed; completes on reaching N; extras are stored).
+- change N while the campaign is open? (MVP: fixed).
 
-### Realización MVP
-Tablas `campaigns`, `assignments` (con `status`), `evaluations` (ADR-0003). Pendientes y
-progreso = queries. Completitud de `(campaign, content)` = `COUNT(assignments submitted) ≥
-required` (ver 08 §5); `ContentEvaluationCompleted` puede materializarse en tabla o vista.
+### MVP realization
+Tables `campaigns`, `assignments` (with `status`), `evaluations` (ADR-0003). Pending items and
+progress = queries. Completion of `(campaign, content)` = `COUNT(assignments submitted) ≥
+required` (see 08 §5); `ContentEvaluationCompleted` can be materialized in a table or view.
 
 ## Golden Dataset (supporting)
 
 ### Bounded Context Canvas
-- **Propósito:** curar el ground truth humano — acumular resultados, aplicar cobertura, declarar
+- **Purpose:** curate the human ground truth — accumulate results, apply coverage, declare
   usable.
-- **Inbound** — Reacciona a: `ContentEvaluationCompleted`. Queries: `getGoldenReference(rubricVersion)`,
+- **Inbound** — Reacts to: `ContentEvaluationCompleted`. Queries: `getGoldenReference(rubricVersion)`,
   `getCoverage`.
-- **Outbound** — Evento: `GoldenReferenceEstablished`.
+- **Outbound** — Event: `GoldenReferenceEstablished`.
 
-### Aggregate Design Canvas — `GoldenDataset` (por `(contentSet, rubricVersion)`)
-- **Invariantes:** cada contenido incluido con ≥N evaluaciones humanas; `usable` cuando
+### Aggregate Design Canvas — `GoldenDataset` (per `(contentSet, rubricVersion)`)
+- **Invariants:** each included content with ≥N human evaluations; `usable` when
   `coverage ≥ threshold`.
-- **Policy:** `ContentEvaluationCompleted` → cubre contenido; `coverage ≥ threshold` →
+- **Policy:** `ContentEvaluationCompleted` → covers content; `coverage ≥ threshold` →
   `GoldenReferenceEstablished`.
-- **Realización MVP:** thin; `threshold` configurable (p.ej. ~50 cursos o ≥X%).
+- **MVP realization:** thin; configurable `threshold` (e.g. ~50 courses or ≥X%).
 
 ## Reporting / Projections (supporting-generic)
 
-- **Propósito:** read models (CQRS read side): pendientes, scores por curso, promedios (curso /
-  evaluador / global), inter-rater agreement.
-- **Inbound** — Lee **por query ports** (public.py) de los módulos dueños (evaluation expone una
-  query de scores; orchestration, assignments/progreso; content, contents; identity, assessors).
-  Sin agregado propio.
-- **Realización MVP (ver ADR-0006):** **composición vía query ports + agregación en Python** — NO
-  vistas/JOINs cross-módulo (rompería el aislamiento) ni proyecciones CQRS por eventos (over-
-  engineering para supporting-generic; = `[futuro]`). A escala MVP (~750 scores) el costo es nulo;
-  usar queries **batch** para evitar N+1.
-  - **Inter-rater por criterion:** dispersión simple (desvío + diferencia absoluta media entre
-    pares + % de acuerdo exacto). Formal (Krippendorff's α) = `[futuro]` con calibración.
-  - **Repeticiones del mismo assessor:** colapsar a **la más reciente** por assessor (corrección),
-    luego promediar entre assessors — consistente con el quórum (assessors distintos). El muestreo
-    automático intencional (media por assessor + dispersión intra) = `[futuro]`.
+- **Purpose:** read models (CQRS read side): pending items, scores per course, averages (course /
+  evaluator / global), inter-rater agreement.
+- **Inbound** — Reads **via query ports** (public.py) of the owning modules (evaluation exposes a
+  scores query; orchestration, assignments/progress; content, contents; identity, assessors).
+  No aggregate of its own.
+- **MVP realization (see ADR-0006):** **composition via query ports + aggregation in Python** — NOT
+  cross-module views/JOINs (it would break isolation) nor event-driven CQRS projections (over-
+  engineering for supporting-generic; = `[future]`). At MVP scale (~750 scores) the cost is nil;
+  use **batch** queries to avoid N+1.
+  - **Inter-rater per criterion:** simple dispersion (std dev + mean absolute pairwise
+    difference + % exact agreement). Formal (Krippendorff's α) = `[future]` with calibration.
+  - **Repetitions by the same assessor:** collapse to **the most recent** per assessor (correction),
+    then average across assessors — consistent with the quorum (distinct assessors). Intentional
+    automatic sampling (mean per assessor + intra dispersion) = `[future]`.
 
 ## Identity & Access (generic)
 
-- **Propósito:** usuarios (admin, evaluadores) + identificación simple; provee `assessorId`.
-- **Realización MVP:** identificación simple (link/id conocido; flag de admin), sin auth robusta.
-  La identidad del `HumanExpert` (`Assessor`) se origina acá.
+- **Purpose:** users (admin, evaluators) + simple identification; provides `assessorId`.
+- **MVP realization:** simple identification (known link/id; admin flag), no robust auth.
+  The identity of the `HumanExpert` (`Assessor`) originates here.
 
-## Modelado de metadata variable (ADR-0001)
+## Modelling of variable metadata (ADR-0001)
 
-Dos concerns separados para no contaminar el dominio:
-1. **Metadata intrínseca del contenido** (Content Registry): colección **abierta y tipada**
-   (`MetadataEntry`) validada contra un `MetadataSchema` por `GeneratingSystem`/tipo (reference
-   data, no código). → "varía por tipo de contenido".
-2. **Vista de la campaña** (Orchestration): `EvaluationCampaign.metadataView` = qué keys
-   presentar/requerir al evaluador. → "varía por campaña".
+Two separate concerns to avoid contaminating the domain:
+1. **Intrinsic content metadata** (Content Registry): **open and typed** collection
+   (`MetadataEntry`) validated against a `MetadataSchema` per `GeneratingSystem`/type (reference
+   data, not code). → "varies by content type".
+2. **Campaign view** (Orchestration): `EvaluationCampaign.metadataView` = which keys to
+   present/require of the evaluator. → "varies by campaign".
 
-El dominio nunca ramifica sobre keys concretas; la presentación vive en adapters/UI. Detalle y
-alternativas en `../adr/0001-open-content-metadata.md`.
+The domain never branches on concrete keys; presentation lives in adapters/UI. Detail and
+alternatives in `../adr/0001-open-content-metadata.md`.
 
-## Estado
-Define del **MVP slice: completo** (Rubric Authoring · Evaluation · Content Registry ·
-Orchestration · Golden Dataset · Reporting · Identity). Próximo: **08 — Code** (plan de
-implementación del MVP + ADRs).
+## State
+Define of the **MVP slice: complete** (Rubric Authoring · Evaluation · Content Registry ·
+Orchestration · Golden Dataset · Reporting · Identity). Next: **08 — Code** (MVP
+implementation plan + ADRs).

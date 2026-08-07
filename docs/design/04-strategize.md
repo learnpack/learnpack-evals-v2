@@ -1,51 +1,51 @@
-> ⚠️ **SNAPSHOT HISTÓRICO (jul-2026)** — diseño que produjo el slice 1 (MVP humano). El diseño
-> vigente es la serie **`09-align-discover-qa.md` … `12-define-qa.md`** (QA interno). **No usar
-> este doc como fuente para código nuevo.**
+> ⚠️ **HISTORICAL SNAPSHOT (Jul-2026)** — design that produced slice 1 (human MVP). The current
+> design is the series **`09-align-discover-qa.md` … `12-define-qa.md`** (internal QA). **Do not
+> use this doc as a source for new code.**
 
 # 04 — Strategize (Core Domain Chart)
 
-> Paso 4 del DDD Starter Modelling Process. Estado: **cerrado (v0, living)**.
-> Ejes del chart: diferenciación de negocio (vertical) × complejidad del modelo (horizontal).
-> Core = alta diferenciación + alta complejidad (arriba-derecha).
+> Step 4 of the DDD Starter Modelling Process. State: **closed (v0, living)**.
+> Chart axes: business differentiation (vertical) × model complexity (horizontal).
+> Core = high differentiation + high complexity (top-right).
 
-## Clasificación
+## Classification
 
-| Subdominio | Clase | Diferenciación | Complejidad | Nota |
+| Subdomain | Class | Differentiation | Complexity | Note |
 |---|---|---|---|---|
-| Pedagogical Evaluation | **Core** | alta | alta | La razón de ser del producto. |
-| Rubric Authoring | **Core (secundario)** | alta | alta | Encierra la expertise; su CRUD es fino. |
-| Golden Dataset | Supporting | media-alta | media | Ground truth; agregado con reglas. |
-| Calibration | Supporting | media (potencial alto) | alta | Valida/sirve al core; **no** es el core. |
-| Evaluation Orchestration | Supporting | baja-media | media | Workflow humano necesario. |
-| Content Registry | Supporting→Generic | baja | baja-media | Metadata domain-informed. |
-| Reporting / Projections | Supporting-generic | baja | baja | Read models. |
-| Identity & Access | Generic | baja | baja | Auth off-the-shelf. |
-| Notifications | Generic | baja | baja | — |
-| Localization | Generic | baja | baja | i18n. |
+| Pedagogical Evaluation | **Core** | high | high | The product's reason for being. |
+| Rubric Authoring | **Core (secondary)** | high | high | Encloses the expertise; its CRUD is thin. |
+| Golden Dataset | Supporting | medium-high | medium | Ground truth; aggregate with rules. |
+| Calibration | Supporting | medium (high potential) | high | Validates/serves the core; it is **not** the core. |
+| Evaluation Orchestration | Supporting | low-medium | medium | Necessary human workflow. |
+| Content Registry | Supporting→Generic | low | low-medium | Domain-informed metadata. |
+| Reporting / Projections | Supporting-generic | low | low | Read models. |
+| Identity & Access | Generic | low | low | Off-the-shelf auth. |
+| Notifications | Generic | low | low | — |
+| Localization | Generic | low | low | i18n. |
 
-## Decisión estratégica clave (registrada)
+## Key strategic decision (recorded)
 
-**Core = evaluación pedagógica, NO calibración.** La calibración tiene potencial de
-diferenciación, pero se clasifica *supporting* de forma deliberada: valida y sirve al core.
-El diferenciador es la *capacidad de producir juicios de calidad confiables, multi-fuente y
-multi-criterio*, no el proceso que los valida contra humanos.
+**Core = pedagogical evaluation, NOT calibration.** Calibration has differentiation
+potential, but it is deliberately classified as *supporting*: it validates and serves the core.
+The differentiator is the *ability to produce reliable, multi-source and multi-criterion
+quality judgments*, not the process that validates them against humans.
 
-## Guía de inversión
+## Investment guide
 
-- **Modelo de dominio rico, clean architecture, invariantes cuidados:**
-  `Pedagogical Evaluation` + el *modelo* de `Rubric Authoring`.
-- **Pragmático y fino (good-enough, sin sobre-ingeniería):**
+- **Rich domain model, clean architecture, carefully tended invariants:**
+  `Pedagogical Evaluation` + the *model* of `Rubric Authoring`.
+- **Pragmatic and thin (good-enough, no over-engineering):**
   `Orchestration`, `Golden Dataset`, `Content Registry`, `Reporting`.
-- **Comprar / adoptar / trivial:** `Identity`, `Notifications`, `Localization`.
+- **Buy / adopt / trivial:** `Identity`, `Notifications`, `Localization`.
 
-## Implicación para el MVP
+## Implication for the MVP
 
-El MVP ejercita **casi puro supporting/generic** (`Orchestration` + `Content Registry` +
-`Golden Dataset` como meta + `Reporting` de admin + `Identity` simple) con **una rebanada
-trivial del core** (el `EvaluationSubmitted` humano y su persistencia). Por eso puede
-construirse liviano (incluso sobre Sheets) sin comprometer el core: la parte pesada del core
-(fuentes automáticas, métricas, calibración) es toda `[futuro]`.
+The MVP exercises **almost pure supporting/generic** (`Orchestration` + `Content Registry` +
+`Golden Dataset` as the goal + admin `Reporting` + simple `Identity`) with **a trivial
+slice of the core** (the human `EvaluationSubmitted` and its persistence). That is why it can
+be built lightweight (even on Sheets) without compromising the core: the heavy part of the core
+(automatic sources, metrics, calibration) is all `[future]`.
 
-## Próximo paso
-**05 — Connect** (context map + relaciones entre bounded contexts / módulos, y flujos de
+## Next step
+**05 — Connect** (context map + relations between bounded contexts / modules, and flows of
 domain events / integration events).

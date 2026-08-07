@@ -18,7 +18,7 @@ Every document carries a **maintenance contract**, declared by its location:
 
 Rule for admitting something into the `docs/` root: *will it still be true six months from now
 without anyone touching it?* If not, it does not belong there. The full rules — including what
-to do with a note when its task ends — are in `../CLAUDE.md`, section **Documentación**.
+to do with a note when its task ends — are in `../CLAUDE.md`, section **Documentation**.
 
 ## Reading order (for Claude Code)
 

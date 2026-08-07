@@ -1,160 +1,161 @@
 # STATUS
 
-**El único lugar del repo con estado fechado.** Se **reescribe** entero cuando cambia algo; no se
-apila historia (para eso está git). Si encontrás estado en cualquier otro documento —"ya está
-hecho", "falta X", "N tests en verde", "verificado el tal día"— está en el archivo equivocado y
-va acá.
+**The only place in the repo with dated status.** It is **rewritten** whole whenever something
+changes; history is not stacked here (that is what git is for). If you find status in any other
+document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
+in the wrong file and belongs here.
 
-_Última actualización: 2026-08-06._
+_Last updated: 2026-08-06._
 
-## Dónde estamos
+## Where we are
 
-**Slice 1 (MVP humano): completo y verificado en local; falta el deploy.
-Slice 2 (motor de QA de generadores): en implementación por bloques — 6 de 7 hechos.**
+**Slice 1 (human MVP): complete and verified locally; the deploy is missing.
+Slice 2 (generator QA engine): in implementation by blocks — 6 of 7 done.**
 
-El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el quickstart del
-`README.md` de la raíz.
+The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
+the root `README.md`.
 
 ### Slice 1 — MVP
 
-| Bloque (`docs/design/08-code.md` §12) | Estado |
+| Block (`docs/design/08-code.md` §12) | Status |
 |---|---|
-| 1. Scaffolding + migraciones + seed | ✔ |
+| 1. Scaffolding + migrations + seed | ✔ |
 | 2. identity + content_registry | ✔ |
 | 3. rubric_authoring + evaluation + orchestration | ✔ |
 | 4. golden_dataset + reporting | ✔ |
-| 5. frontend (evaluador + consola admin) | ✔ |
-| Deploy (§10: Render + Netlify) | ✗ pendiente |
+| 5. frontend (evaluator + admin console) | ✔ |
+| Deploy (§10: Render + Netlify) | ✗ pending |
 
-### Slice 2 — en implementación por bloques
+### Slice 2 — in implementation by blocks
 
-- **Diseño:** serie `docs/design/09…12` + ADRs 0009–0015 (promovido antes).
-- **Plan de código:** **`docs/design/13-code-qa.md`** (promovido) + **ADR-0016** (assessors
-  automatizados uniformes). GLOSSARY actualizado (eje Source `human | automated`;
-  `Sufficiency` ex assembly); ARCHITECTURE y CLAUDE.md re-apuntados.
-- **Decisiones tomadas durante la implementación:** **ADR-0017** (la superficie declarada del
-  evaluando es el paquete — supersede ADR-0001; realizado en el bloque 5), **ADR-0018**
-  (cobertura declarada del assessor + estado `not_assessed` — refina ADR-0016 §3; el bloque 6
-  lo realiza), **ADR-0019** (cobertura por linaje de criteria + ratificación por versión del
-  instrumento — refina ADR-0016 §3 y ADR-0018; el bloque 6 lo realiza) y **ADR-0020**
-  (`value_domain` obligatorio y verificado en `ContentProfile.ok()` — completa ADR-0014;
-  realizado antes del bloque 6, que es su primer consumidor) y **ADR-0021** (el `fail`
-  derivado de ausencia: sin cita, con origen `derived` registrado — refina ADR-0018 §5).
-  0018, 0019 y 0021 quedaron **realizados en el bloque 6**. GLOSSARY re-actualizado
-  (cinco estados; assessor automatizado por linaje; `DataRequirement` con sus dos mitades;
-  cita exigida solo a scored ejecutado).
+- **Design:** series `docs/design/09…12` + ADRs 0009–0015 (promoted earlier).
+- **Code plan:** **`docs/design/13-code-qa.md`** (promoted) + **ADR-0016** (uniform automated
+  assessors). GLOSSARY updated (Source axis `human | automated`;
+  `Sufficiency` ex assembly); ARCHITECTURE and CLAUDE.md re-pointed.
+- **Decisions taken during implementation:** **ADR-0017** (the declared surface of the
+  evaluand is the package — supersedes ADR-0001; realized in block 5), **ADR-0018**
+  (declared assessor coverage + `not_assessed` state — refines ADR-0016 §3; block 6
+  realizes it), **ADR-0019** (coverage by criteria lineage + ratification per instrument
+  version — refines ADR-0016 §3 and ADR-0018; block 6 realizes it) and **ADR-0020**
+  (`value_domain` mandatory and verified in `ContentProfile.ok()` — completes ADR-0014;
+  realized before block 6, which is its first consumer) and **ADR-0021** (the `fail`
+  derived from absence: no quote, with its `derived` origin recorded — refines ADR-0018 §5).
+  0018, 0019 and 0021 were **realized in block 6**. GLOSSARY re-updated
+  (five states; automated assessor by lineage; `DataRequirement` with its two halves;
+  quote demanded only of executed scored).
 
-| Bloque (`13-code-qa.md` §9) | Estado |
+| Block (`13-code-qa.md` §9) | Status |
 |---|---|
-| 1. CI (workflow + mypy scoped a módulos nuevos) | ✔ |
-| 2. Renames + retiro de promedios (ADR-0011) | ✔ |
-| 3. Evaluand Registry ensanchado | ✔ |
-| 4. Evaluation Design (instrumento + primer YAML real) | ✔ |
-| 5. Content Profiling (adapter LearnpackV1 + visor) | ✔ |
-| 6. Evaluation automático (primer assessor) | ✔ |
+| 1. CI (workflow + mypy scoped to new modules) | ✔ |
+| 2. Renames + retirement of averages (ADR-0011) | ✔ |
+| 3. Evaluand Registry widened | ✔ |
+| 4. Evaluation Design (instrument + first real YAML) | ✔ |
+| 5. Content Profiling (LearnpackV1 adapter + viewer) | ✔ |
+| 6. Automated Evaluation (first assessor) | ✔ |
 | 7. Evaluation Studies thin | ✗ |
 
-**Modo de trabajo acordado:** rama + PR por bloque, con nombres de ramas y commits que
-describen **el cambio** (feature/fix), nunca etapas del plan; Claude commitea solo dentro de
-las ramas de trabajo; Marta revisa y mergea. Cada PR con la suite completa en verde.
-(`13-code-qa.md` §8 menciona un esquema de nombres viejo — snapshot congelado, no se corrige.)
+**Agreed working mode:** branch + PR per block, with branch names and commits that describe
+**the change** (feature/fix), never plan stages; Claude commits only inside the working
+branches; Marta reviews and merges. Each PR with the full suite green.
+(`13-code-qa.md` §8 mentions an old naming scheme — frozen snapshot, not corrected.)
 
-**Convención de fase experimental:** mientras no exista el primer study publicado, las
-versiones de instrumento son **descartables** — se itera con versiones baratas
-(`bump-instrument` → editar → import → publish), se depreca sin culpa y no hay compromiso de
-compatibilidad entre versiones. El compromiso de reproducibilidad plena arranca con el primer
-study publicado, que pinnea su versión.
+**Experimental-phase convention:** as long as the first published study does not exist,
+instrument versions are **disposable** — iterate with cheap versions
+(`bump-instrument` → edit → import → publish), deprecate guilt-free, and there is no
+compatibility commitment between versions. The full reproducibility commitment starts with the
+first published study, which pins its version.
 
-**Input pendiente del equipo:** revisar y editar el borrador del primer instrumento
-(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, redactado como
-asistencia) y **publicarlo** cuando el equipo lo haga suyo
+**Pending input from the team:** review and edit the draft of the first instrument
+(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, written as
+assistance) and **publish it** when the team makes it its own
 (`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`,
-`POST /admin/instruments/{id}/publish`, o el botón **Publish** en `/admin/instruments`, que
-confirma antes de ejecutar). Hasta entonces queda en `draft` — la publicación es
-acto humano (12-define, invariante 5). Los `data_requirement` ids minteados
+`POST /admin/instruments/{id}/publish`, or the **Publish** button in `/admin/instruments`, which
+confirms before executing). Until then it stays in `draft` — publication is a
+human act (12-define, invariant 5). The minted `data_requirement` ids
 (`learning_objectives`, `target_audience`, `prerequisites`, `lesson_inventory`,
-`lesson_bodies`, `lesson_activities`) son el contrato contra el que el adapter
-`LearnpackV1` v2 declara sus capacidades — ahora con su `value_domain` declarado y
-verificado (ADR-0020). (El huérfano `practice_exercises` lo retiró la migración `0008`.)
+`lesson_bodies`, `lesson_activities`) are the contract against which the `LearnpackV1`
+adapter v2 declares its capabilities — now with its `value_domain` declared and
+verified (ADR-0020). (The orphan `practice_exercises` was retired by migration `0008`.)
 
-**Runbook de la migración `0008`:** borra las filas de `data_requirements` sin
-`value_domain`, así que después de `alembic upgrade head` hay que volver a importar el
-instrumento (`import-instrument`) para re-crear el namespace; en local `seed-demo` ya lo
-hace. Los profiles ya persistidos no se re-verifican contra los value domains (un profile
-almacenado es un hecho pasado): para regenerarlos, `seed-demo --reset`.
+**Runbook for migration `0008`:** it deletes the `data_requirements` rows without a
+`value_domain`, so after `alembic upgrade head` the instrument must be imported again
+(`import-instrument`) to re-create the namespace; locally `seed-demo` already does it.
+Already-persisted profiles are not re-verified against the value domains (a stored profile
+is a past fact): to regenerate them, `seed-demo --reset`.
 
-**Segundo input pendiente del equipo (bloque 5):** revisar las muestras de profile
-(`/admin/profiles` o `app.cli profile-content`) y **aceptar la extracción** cuando el equipo
-confíe en ella (`python -m app.cli accept-extraction --package-format LearnpackV1 --email
-<admin>`). Hasta entonces el perfilado automático al registrar contenido queda desarmado —
-la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en modo local.
+**Second pending input from the team (block 5):** review the profile samples
+(`/admin/profiles` or `app.cli profile-content`) and **accept the extraction** when the team
+trusts it (`python -m app.cli accept-extraction --package-format LearnpackV1 --email
+<admin>`). Until then, automatic profiling on content registration stays disarmed —
+acceptance is a human act (ADR-0012); `seed-demo` auto-accepts it only in local mode.
 
-**Tercer input pendiente del equipo (bloque 6):** publicado el instrumento, **ratificarlo**
-para el primer assessor automatizado (`python -m app.cli ratify-assessor --name structural
---version 1 --instrument-version-id learnpack-course-qa-v1 --email <admin>` — ADR-0019; el
-registro inicial es la primera ratificación) y evaluar con
-`python -m app.cli evaluate --content-id <id> --instrument-version-id <id>`. Mientras el
-instrumento siga en draft, el loop de calibración es `evaluate --dry-run` (acepta drafts,
-no persiste nada). `structural:1` ejecuta 7 criteria y se abstiene de los 4 de juicio
-(ADR-0018) — sus `not_assessed` acumulados son el backlog visible del assessor con LLM.
+**Third pending input from the team (block 6):** once the instrument is published, **ratify it**
+for the first automated assessor (`python -m app.cli ratify-assessor --name structural
+--version 1 --instrument-version-id learnpack-course-qa-v1 --email <admin>` — ADR-0019; the
+initial registration is the first ratification) and evaluate with
+`python -m app.cli evaluate --content-id <id> --instrument-version-id <id>`. As long as the
+instrument stays in draft, the calibration loop is `evaluate --dry-run` (accepts drafts,
+persists nothing). `structural:1` executes 7 criteria and abstains from the 4 judgment ones
+(ADR-0018) — its accumulated `not_assessed` are the visible backlog of the LLM assessor.
 
-## Verificado
+## Verified
 
-- **Suite backend en verde: 372 tests** contra Postgres local (~13 s). Requiere
-  `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
-- **Camino automático probado end-to-end** (suite): registrar → perfilar → publicar copia
-  del instrumento → ratificar → evaluar → judgment + findings + eventos; el paquete
-  congelado `introduction-to-generative-ai` produce el finding real de numbering drift
-  (`05`/`06`) vía `cr-module-structure-well-formed`.
-- **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`
-  (ahora también importa el draft del instrumento, acepta la extracción `LearnpackV1` y
-  perfila los cursos demo desde sus paquetes reales congelados — registrados con artifacts,
-  así `/admin/profiles` muestra la extracción completa: inventario, cuerpos y actividades),
-  `/me` y `/dev/identities` respondiendo con `X-Dev-User`, y el frontend compilando **sin
-  ninguna clave de Clerk**.
-- **Typecheck del frontend** limpio (`npx tsc --noEmit`).
-- **Identidad Clerk end-to-end**: JWT template con `email`/`name`, invite-only, admin y evaluador
-  entrando con el rol correcto. El runbook de `backend/README.md` ya se corrió en el entorno de
-  desarrollo.
-- **iframe del contenido** (riesgo abierto en `docs/design/08-code.md` §8): probado con una
-  `consumable_url` real de LearnPack, **embebe bien**. El fallback "abrir en pestaña nueva" se
-  mantiene porque depende del sitio de cada curso.
+- **Backend suite green: 372 tests** against local Postgres (~13 s). Requires
+  `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+- **Automated path tested end-to-end** (suite): register → profile → publish a copy
+  of the instrument → ratify → evaluate → judgment + findings + events; the frozen package
+  `introduction-to-generative-ai` produces the real numbering-drift finding
+  (`05`/`06`) via `cr-module-structure-well-formed`.
+- **Local mode** (ADR-0008) tested end to end: `seed-demo` idempotent and with `--reset`
+  (now it also imports the instrument draft, accepts the `LearnpackV1` extraction and
+  profiles the demo courses from their real frozen packages — registered with artifacts,
+  so `/admin/profiles` shows the full extraction: inventory, bodies and activities),
+  `/me` and `/dev/identities` responding with `X-Dev-User`, and the frontend compiling
+  **without any Clerk key**.
+- **Frontend typecheck** clean (`npx tsc --noEmit`).
+- **Clerk identity end-to-end**: JWT template with `email`/`name`, invite-only, admin and
+  evaluator entering with the correct role. The `backend/README.md` runbook has already been run
+  in the development environment.
+- **Content iframe** (open risk in `docs/design/08-code.md` §8): tested with a real LearnPack
+  `consumable_url`, **it embeds fine**. The "open in a new tab" fallback stays because it
+  depends on each course's site.
 
-## Abierto
+## Open
 
-- **Deploy**: backend a Render, frontend a Netlify, `ALLOWED_ORIGINS` cruzado, y repetir el
-  runbook de Clerk en la instancia de producción. La DB ya es Neon.
-- **Cambio de contrato a tener presente**: el JSON canónico de `import-learnpack` ahora usa
-  `package_format` (antes `generating_system`); la API renombró `generating_system` →
-  `package_format` y `rubric_version_id` → `instrument_version_id`.
-- **Rubric v1**: revisión ligera (anchors, definiciones) pendiente antes de la primera campaña
-  de referencia (ADR-0015) — fuera del primer incremento del slice 2.
-- **Intake mecánico del `GenerationBrief` desde el paquete LearnpackV1: pendiente**
-  (PR chico de registry, antes o durante el bloque 7 — hoy todo contenido queda con
-  `brief_id = null` y no puede entrar a datasets pareados). Diseño acordado, ADR al
-  implementar: el pipeline real tiene dos etapas — (prompt del usuario + material
-  adjunto) → syllabus → lecciones — y el prompt original **no se persiste** (irrecuperable
-  para lo ya generado). El brief se registra parcial y con su completitud declarada:
-  `brief` = la description procesada de `.learn/initialSyllabus.json → courseInfo.description`
-  (la instrucción operativa durante la generación de lecciones); `fields` =
-  `{origin: ai_derived_syllabus, promptRecorded: false, materialsHash: <hash de
-  courseInfo.contentIndex>, materialsSource: ...}` (el material vive en el paquete, no se
-  duplica); identidad/dedup del brief = `hash(description + materialsHash)`. Consecuencia:
-  el pareo A/B vale para "misma instrucción efectiva" (etapa de lecciones), no para
-  atribuir diferencias a la formulación del prompt — `promptRecorded: false` es el dato
-  con el que los studies ponen ese caveat solos. Nota para LearnPack (forward-looking):
-  persistir el prompt original en el paquete (p.ej. `courseInfo.originalPrompt`) vuelve
-  completos los briefs del contenido nuevo. Relacionado: el preprocesador de prompts es
-  parte de la identidad del generador — versionarlo en `GeneratorVersion.metadata`.
-  (La contaminación por metadata tipeada a mano que motivó parte de esta discusión quedó
-  resuelta por construcción: **ADR-0017** retiró la content metadata del modelo — la
-  superficie declarada del evaluando es el paquete. Los criteria de objetivos/audiencia
-  derivan `not_applicable` en LearnpackV1 hasta que el generador declare esos datos en el
-  paquete y un adapter nuevo los lea; el matching/readiness del bloque 7 reportará esa
-  demanda insatisfecha.)
-- **Fuera del primer incremento** (nombrado en `13-code-qa.md` §9): bucle B operativo
-  (disputas/defectos), annotation queues, métricas de validez por claim, `CompareStudies`.
+- **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
+  Clerk runbook on the production instance. The DB is already Neon.
+- **Contract change to keep in mind**: the canonical `import-learnpack` JSON now uses
+  `package_format` (formerly `generating_system`); the API renamed `generating_system` →
+  `package_format` and `rubric_version_id` → `instrument_version_id`.
+- **Rubric v1**: light review (anchors, definitions) pending before the first reference
+  campaign (ADR-0015) — outside the first increment of slice 2.
+- **Mechanical intake of the `GenerationBrief` from the LearnpackV1 package: pending**
+  (small registry PR, before or during block 7 — today all content is left with
+  `brief_id = null` and cannot enter paired datasets). Design agreed, ADR when
+  implementing: the real pipeline has two stages — (user prompt + attached
+  material) → syllabus → lessons — and the original prompt **is not persisted**
+  (unrecoverable for what was already generated). The brief is registered partial and with its
+  completeness declared:
+  `brief` = the processed description from `.learn/initialSyllabus.json → courseInfo.description`
+  (the operative instruction during lesson generation); `fields` =
+  `{origin: ai_derived_syllabus, promptRecorded: false, materialsHash: <hash of
+  courseInfo.contentIndex>, materialsSource: ...}` (the material lives in the package, it is
+  not duplicated); brief identity/dedup = `hash(description + materialsHash)`. Consequence:
+  the A/B pairing holds for "same effective instruction" (lesson stage), not for
+  attributing differences to the prompt's wording — `promptRecorded: false` is the datum
+  with which studies place that caveat on their own. Note for LearnPack (forward-looking):
+  persisting the original prompt in the package (e.g. `courseInfo.originalPrompt`) makes the
+  briefs of new content complete. Related: the prompt preprocessor is part of the
+  generator's identity — version it in `GeneratorVersion.metadata`.
+  (The contamination by hand-typed metadata that motivated part of this discussion was
+  resolved by construction: **ADR-0017** removed content metadata from the model — the
+  declared surface of the evaluand is the package. The objectives/audience criteria derive
+  `not_applicable` in LearnpackV1 until the generator declares those data in the
+  package and a new adapter reads them; block 7's matching/readiness will report that
+  unmet demand.)
+- **Outside the first increment** (named in `13-code-qa.md` §9): loop B operational
+  (disputes/defects), annotation queues, per-claim validity metrics, `CompareStudies`.
 
-Fuera de alcance por decisión, no por falta de tiempo: calibración de assessors, proyecciones
-CQRS, integration events salientes y el ACL de LearnPack conectado — `[futuro]`, con el diseño
-del slice 2 preparando el terreno.
+Out of scope by decision, not for lack of time: assessor calibration, CQRS projections,
+outgoing integration events and the connected LearnPack ACL — `[future]`, with the slice 2
+design preparing the ground.
