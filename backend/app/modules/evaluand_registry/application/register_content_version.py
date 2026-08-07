@@ -10,11 +10,13 @@ from typing import Any
 from uuid import UUID
 
 from app.modules.evaluand_registry.application.ports import (
+    BriefIntakePort,
     BriefRepositoryPort,
     ContentRepositoryPort,
     GeneratorVersionRepositoryPort,
 )
 from app.modules.evaluand_registry.domain import events
+from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, EducationalContent
 from app.modules.evaluand_registry.domain.package import ContentPackage
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
@@ -54,12 +56,14 @@ class RegisterContentVersion:
         generators: GeneratorVersionRepositoryPort,
         publisher: EventPublisherPort,
         uow: UnitOfWorkPort,
+        brief_intake: BriefIntakePort | None = None,
     ) -> None:
         self._contents = contents
         self._briefs = briefs
         self._generators = generators
         self._publisher = publisher
         self._uow = uow
+        self._brief_intake = brief_intake
 
     def __call__(self, command: RegisterContentVersionCommand) -> EducationalContent:
         self._require_references(command)
@@ -77,7 +81,7 @@ class RegisterContentVersion:
             consumable_url=command.consumable_url,
             version=command.version,
             package=ContentPackage.validated(command.artifacts),
-            brief_id=command.brief_id,
+            brief_id=self._resolve_brief(command),
             generator_version_id=command.generator_version_id,
             edit_provenance=command.edit_provenance,
         )
@@ -87,6 +91,30 @@ class RegisterContentVersion:
         self._publisher.publish(events.content_version_registered(content))
         self._uow.commit()
         return content
+
+    def _resolve_brief(self, command: RegisterContentVersionCommand) -> UUID | None:
+        """An explicit brief wins; otherwise the intake ACL derives one from the package,
+        deduped by hash identity (ADR-0022). Same transaction as the registration."""
+        if command.brief_id is not None or self._brief_intake is None:
+            return command.brief_id
+
+        derived = self._brief_intake.derive(command.package_format, command.artifacts)
+        if derived is None:
+            return None  # registered absent — a first-class recorded state
+
+        existing = self._briefs.get_by_hash(derived.brief_hash)
+        if existing is not None:
+            return existing.id  # same effective instruction → same brief (pairing)
+
+        brief = GenerationBrief(
+            id=new_id(),
+            brief=derived.brief,
+            fields=derived.fields,
+            brief_hash=derived.brief_hash,
+        )
+        self._briefs.add(brief)
+        self._publisher.publish(events.brief_registered(brief))
+        return brief.id
 
     def _require_references(self, command: RegisterContentVersionCommand) -> None:
         # App-level referential validation (cross-aggregate; 13-code-qa §2 pattern).

@@ -303,7 +303,133 @@ export interface ProgressReport {
   by_content: ContentProgressRow[];
 }
 
+// --- Evaluation studies (13-code §3.6/§6) ----------------------------------
+
+export type StudyStatus = "declared" | "prepared" | "open" | "published";
+
+export interface StudyResponse {
+  study_id: Uuid;
+  purpose: string;
+  status: StudyStatus;
+  instrument_version_id: string | null;
+  brief_ids: Uuid[];
+  content_ids: Uuid[];
+  created_at: string | null;
+  opened_at: string | null;
+  published_at: string | null;
+}
+
+export interface StudyReportClaim {
+  claimId: string;
+  status: "supported" | "refuted" | "insufficient";
+  evidenceBasis: Record<string, number>;
+  insufficiencyCause?: string;
+}
+
+export interface StudyReportFinding {
+  findingId: string;
+  claimId: string;
+  criterionId: string;
+  failureMode: string;
+  quote: string | null;
+  quoteAbsentCause?: string; // ADR-0021: present when the quote is null
+  locator: unknown;
+}
+
+export interface StudyReportContent {
+  contentId: string;
+  externalId: string;
+  packageFormat: string;
+  briefId: string | null;
+  generatorVersionId: string | null;
+  judgmentId: string | null;
+  derivedAt?: string;
+  coverage?: unknown;
+  claims?: StudyReportClaim[];
+  findings?: StudyReportFinding[];
+}
+
+export interface StudyReportGeneratorClaim {
+  claimId: string;
+  statement: string;
+  distribution: Record<string, number>;
+  excludedNotApplicable: number;
+  notEvaluated: number;
+  coverage: { evaluated: number; of: number };
+}
+
+export interface StudyReportGenerator {
+  generatorVersionId: string;
+  name: string | null;
+  version: string | null;
+  contentsCounted: number;
+  perClaim: StudyReportGeneratorClaim[];
+}
+
+export interface StudyReportCaveats {
+  insufficientEvidence: { contentId: string; claimId: string; cause: string }[];
+  unresolvedDisagreements: unknown[];
+  unknownExclusions: { contentIds: string[]; note: string };
+  unacceptedAdapters: { packageFormat: string; adapterVersion: string | null }[];
+  briefCompleteness: { briefId: string; promptRecorded: boolean; origin: string | null }[];
+  contentsWithoutJudgment: string[];
+  taskVariablePatterns: { status: string; reason: string };
+}
+
+export interface StudyReport {
+  schemaVersion: number;
+  studyId: string;
+  purpose: string;
+  instrumentVersionId: string;
+  publishedAt: string;
+  publishedBy: string | null;
+  dataset: { size: number; briefIds: string[]; contentIds: string[] };
+  judgmentIdsUsed: Record<string, string>;
+  contents: StudyReportContent[];
+  generatorLevel: StudyReportGenerator[];
+  caveats: StudyReportCaveats;
+}
+
+export interface StudyReportResponse {
+  study_id: Uuid;
+  report: StudyReport;
+  published_at: string;
+}
+
+export interface StudyReadinessGap {
+  gap: string;
+  criterionId?: string;
+  packageFormat?: string;
+  missingData?: string[];
+  instrumentVersionId?: string;
+}
+
+export interface StudyReadiness {
+  studyId: string;
+  status: StudyStatus;
+  informative: boolean;
+  studyGaps: StudyReadinessGap[];
+  formats: {
+    packageFormat: string;
+    adapterVersion: string | null;
+    extractionAccepted: boolean | null;
+  }[];
+  claims: { claimId: string; gaps: StudyReadinessGap[] }[];
+}
+
 // --- Requests --------------------------------------------------------------
+
+export interface DeclareStudyRequest {
+  purpose: string;
+}
+
+export interface PinStudyInstrumentRequest {
+  instrument_version_id: string;
+}
+
+export interface ComposeStudyDatasetRequest {
+  brief_ids: Uuid[];
+}
 
 export interface RegisterContentRequest {
   package_format: string;

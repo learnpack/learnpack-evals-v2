@@ -1,0 +1,12 @@
+{
+  "courseInfo": {
+    "description": "Create an intermediate Python course on object representation: how __repr__ and __str__ shape what developers and users see, when to implement each, and how good representations make debugging and logging easier, with hands-on exercises around real classes.",
+    "contentIndex": [
+      "Why Object Representation Matters",
+      "__repr__: the Developer's View",
+      "__str__: the User's View",
+      "Choosing and Combining Representations",
+      "Representations in Debugging and Logging"
+    ]
+  }
+}

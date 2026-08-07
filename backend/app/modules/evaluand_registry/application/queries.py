@@ -69,6 +69,24 @@ def list_content_snapshots(contents: ContentRepositoryPort) -> list[ContentSnaps
     return [_to_snapshot(content) for content in contents.list_all()]
 
 
+def get_available_contents(
+    contents: ContentRepositoryPort,
+    package_format: str | None = None,
+    brief_ids: list[UUID] | None = None,
+    generator_known: bool = False,
+) -> list[ContentSnapshot]:
+    """What is registered, filtered for dataset composition (13-code §3.6):
+    by commission (`brief_ids`), by format, or excluding unknown-generator contents."""
+    return [
+        _to_snapshot(content)
+        for content in contents.list_filtered(
+            package_format=package_format,
+            brief_ids=brief_ids,
+            generator_known=generator_known,
+        )
+    ]
+
+
 def _to_generator_dto(generator: GeneratorVersion) -> GeneratorVersionDTO:
     return GeneratorVersionDTO(
         generator_version_id=generator.id,

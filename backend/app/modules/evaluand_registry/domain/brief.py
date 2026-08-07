@@ -21,6 +21,9 @@ class GenerationBrief:
     id: UUID
     brief: str
     fields: dict[str, Any] = field(default_factory=dict)
+    # Identity of the effective instruction (ADR-0022): mechanically derived briefs carry
+    # sha256(description + materialsHash); manually registered briefs carry none.
+    brief_hash: str | None = None
 
     def __post_init__(self) -> None:
         if not self.brief.strip():

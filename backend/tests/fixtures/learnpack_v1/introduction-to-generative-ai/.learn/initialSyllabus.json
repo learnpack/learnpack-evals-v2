@@ -1,0 +1,13 @@
+{
+  "courseInfo": {
+    "description": "Create a beginner-friendly course that demystifies generative AI for people with no prior AI or technical background: what generative AI is, how large language models work, why different AI models exist, and how to choose the right tool for a task, emphasizing autonomy, responsibility and critical evaluation of AI outputs.",
+    "contentIndex": [
+      "What is Generative AI?",
+      "How Large Language Models Work",
+      "Why Different AI Models Exist",
+      "Choosing the Right Tool for the Task",
+      "Evaluating AI Outputs Critically",
+      "Limits and Responsible Use of AI"
+    ]
+  }
+}

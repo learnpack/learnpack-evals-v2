@@ -88,8 +88,24 @@ class EvaluandRegistryQueries:
     def get_generator_version(self, generator_version_id: UUID) -> GeneratorVersionDTO | None:
         return _queries.get_generator_version(self._generators, generator_version_id)
 
+    def get_available_contents(
+        self,
+        package_format: str | None = None,
+        brief_ids: list[UUID] | None = None,
+        generator_known: bool = False,
+    ) -> list[ContentSnapshot]:
+        return _queries.get_available_contents(
+            self._contents,
+            package_format=package_format,
+            brief_ids=brief_ids,
+            generator_known=generator_known,
+        )
+
     def get_brief(self, brief_id: UUID) -> BriefDTO | None:
         return _queries.get_brief(self._briefs, brief_id)
+
+    def list_briefs(self) -> list[BriefDTO]:
+        return _queries.list_briefs(self._briefs)
 
 
 def get_evaluand_registry_queries(

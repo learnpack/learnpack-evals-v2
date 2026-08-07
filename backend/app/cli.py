@@ -1,6 +1,7 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
 import-instrument | publish-instrument | bump-instrument | profile-content |
-accept-extraction | reprofile | ratify-assessor | evaluate`.
+accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
+pin-study | compose-dataset | open-study | publish-study | show-report`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -55,6 +56,11 @@ from app.modules.evaluand_registry.application.register_content_version import (
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
+from app.modules.evaluand_registry.infrastructure.fetchers import (
+    FilesystemArtifactFetcher,
+    HttpArtifactFetcher,
+)
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
@@ -104,6 +110,53 @@ from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyDataRequirementRepository,
     SqlAlchemyInstrumentRepository,
     SqlAlchemyReferenceDataRepository,
+)
+from app.modules.evaluation_studies.application.compose_dataset import (
+    ComposeDataset,
+    ComposeDatasetCommand,
+    UnknownBrief,
+)
+from app.modules.evaluation_studies.application.declare_study import (
+    DeclareStudy,
+    DeclareStudyCommand,
+)
+from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
+from app.modules.evaluation_studies.application.pin_instrument import (
+    InstrumentNotPublished,
+    PinInstrument,
+    PinInstrumentCommand,
+    UnknownInstrument,
+)
+from app.modules.evaluation_studies.application.publish_study import (
+    PublishStudy,
+    PublishStudyCommand,
+)
+from app.modules.evaluation_studies.domain.model import (
+    DatasetEmpty,
+    DatasetLocked,
+    InstrumentAlreadyPinned,
+    InstrumentNotPinned,
+    InvalidStudy,
+    StudyAlreadyOpen,
+    StudyAlreadyPublished,
+    StudyNotFound,
+    StudyNotOpen,
+)
+from app.modules.evaluation_studies.infrastructure.gateways import (
+    DesignGateway as StudiesDesignGateway,
+)
+from app.modules.evaluation_studies.infrastructure.gateways import (
+    EvaluationGateway as StudiesEvaluationGateway,
+)
+from app.modules.evaluation_studies.infrastructure.gateways import (
+    ProfilingGateway as StudiesProfilingGateway,
+)
+from app.modules.evaluation_studies.infrastructure.gateways import (
+    RegistryGateway as StudiesRegistryGateway,
+)
+from app.modules.evaluation_studies.infrastructure.repository import (
+    SqlAlchemyStudyReportRepository,
+    SqlAlchemyStudyRepository,
 )
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Kind, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
@@ -924,18 +977,20 @@ def run_reprofile(
     return 0 if errors == 0 else 1
 
 
-def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
+def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None = None) -> int:
     """Bulk-register courses, reusing the `RegisterContentVersion` use case.
 
     `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
     shape); without it the file is expected in our canonical shape. Which one becomes the
-    default depends on the real LearnPack export.
+    default depends on the real LearnPack export. `--base-dir` resolves artifact locators on
+    the filesystem (local packages); without it the intake fetches over HTTP (ADR-0022).
     """
     raw_courses = json.loads(seed_file.read_text(encoding="utf-8"))
     if not isinstance(raw_courses, list):
         print("the file must contain a JSON list of courses", file=sys.stderr)
         return 1
 
+    fetcher = FilesystemArtifactFetcher(base_dir) if base_dir else HttpArtifactFetcher()
     created = duplicated = failed = 0
     for raw in raw_courses:
         with SessionLocal() as session:
@@ -946,6 +1001,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
+                brief_intake=PackageBriefIntake(fetcher),
             )
             try:
                 command = (
@@ -956,7 +1012,14 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                         external_id=raw["external_id"],
                         consumable_url=raw["consumable_url"],
                         version=str(raw.get("version", "1")),
-                        metadata=raw.get("metadata", {}),
+                        artifacts=raw.get("artifacts", []),
+                        brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
+                        generator_version_id=(
+                            UUID(raw["generator_version_id"])
+                            if raw.get("generator_version_id")
+                            else None
+                        ),
+                        edit_provenance=raw.get("edit_provenance", "unknown"),
                     )
                 )
                 content = use_case(command)
@@ -976,6 +1039,132 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
 
     print(f"\n{created} created, {duplicated} already present, {failed} invalid")
     return 1 if failed else 0
+
+
+# --------------------------------------------------------------------------- studies
+# The manual loop (13-code §3.6): declare → pin → compose → open → publish → show-report.
+# Studies never command Orchestration — the wiring between rounds is this actor's.
+
+_STUDY_ERRORS = (
+    StudyNotFound,
+    InvalidStudy,
+    InstrumentAlreadyPinned,
+    InstrumentNotPinned,
+    InstrumentNotPublished,
+    UnknownInstrument,
+    UnknownBrief,
+    DatasetLocked,
+    DatasetEmpty,
+    StudyAlreadyOpen,
+    StudyNotOpen,
+    StudyAlreadyPublished,
+)
+
+
+def run_declare_study(purpose: str) -> int:
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        try:
+            study = DeclareStudy(SqlAlchemyStudyRepository(session), uow.events, uow)(
+                DeclareStudyCommand(purpose=purpose)
+            )
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(f"declared study {study.id}")
+    return 0
+
+
+def run_pin_study(study_id: UUID, instrument_version_id: str) -> int:
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = PinInstrument(
+            studies=SqlAlchemyStudyRepository(session),
+            instruments=StudiesDesignGateway(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            study = use_case(
+                PinInstrumentCommand(study_id=study_id, instrument_version_id=instrument_version_id)
+            )
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(f"pinned {instrument_version_id} to study {study.id} ({study.status})")
+    return 0
+
+
+def run_compose_dataset(study_id: UUID, brief_ids: list[UUID]) -> int:
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = ComposeDataset(
+            studies=SqlAlchemyStudyRepository(session),
+            registry=StudiesRegistryGateway(session),
+            uow=uow,
+        )
+        try:
+            study = use_case(ComposeDatasetCommand(study_id=study_id, brief_ids=brief_ids))
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(
+        f"composed study {study.id}: {len(study.brief_ids)} briefs -> "
+        f"{len(study.content_ids)} contents ({study.status})"
+    )
+    return 0
+
+
+def run_open_study(study_id: UUID) -> int:
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = OpenStudy(
+            studies=SqlAlchemyStudyRepository(session), publisher=uow.events, uow=uow
+        )
+        try:
+            study = use_case(OpenStudyCommand(study_id=study_id))
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(f"opened study {study.id}: dataset fixed at {len(study.content_ids)} contents")
+    return 0
+
+
+def run_publish_study(study_id: UUID, email: str) -> int:
+    """The human act: compose the report from the current judgments and freeze it."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+        uow = UnitOfWork(session)
+        use_case = PublishStudy(
+            studies=SqlAlchemyStudyRepository(session),
+            reports=SqlAlchemyStudyReportRepository(session),
+            registry=StudiesRegistryGateway(session),
+            evaluation=StudiesEvaluationGateway(session),
+            design=StudiesDesignGateway(session),
+            profiling=StudiesProfilingGateway(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            study = use_case(PublishStudyCommand(study_id=study_id, published_by=assessor.id))
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(f"published study {study.id} (by {email}) — the report is now immutable")
+    return 0
+
+
+def run_show_report(study_id: UUID) -> int:
+    with SessionLocal() as session:
+        dto = SqlAlchemyStudyReportRepository(session).get(study_id)
+    if dto is None:
+        print(f"study {study_id} has no published report", file=sys.stderr)
+        return 1
+    print(json.dumps(dto.report, indent=2))
+    return 0
 
 
 # --------------------------------------------------------------------------- seed-demo
@@ -1090,6 +1279,13 @@ def _demo_artifacts(course_slug: str) -> list[dict[str, Any]]:
                 "locator": f"{course_slug}/.learn/package-manifest.json",
             }
         )
+    if (course_dir / ".learn" / "initialSyllabus.json").exists():
+        artifacts.append(
+            {
+                "kind": "syllabus",
+                "locator": f"{course_slug}/.learn/initialSyllabus.json",
+            }
+        )
     for path in sorted(course_dir.glob("exercises/*/*")):
         artifacts.append(
             {
@@ -1113,6 +1309,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
+                brief_intake=PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
             )
             try:
                 content = register(
@@ -1204,6 +1401,7 @@ def _reset_demo(session: Session) -> None:
     identity is never touched.
     """
     for statement in (
+        "DELETE FROM studies",  # recipe/dataset/report cascade; before contents (stale refs)
         "DELETE FROM criterion_scores",
         "DELETE FROM evaluations",
         "DELETE FROM content_evaluation_completions",
@@ -1217,7 +1415,11 @@ def _reset_demo(session: Session) -> None:
         # re-import can evolve a draft's definitions without tripping the ADR-0014 lint.
         "DELETE FROM data_requirements",
         "DELETE FROM contents",
+        # Intake-derived (ADR-0022), not seeded reference data; after contents (FK).
+        "DELETE FROM generation_briefs",
         "DELETE FROM events",
+        # Ratifications reference assessors on both sides (ADR-0019); before assessors.
+        "DELETE FROM assessor_ratifications",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
     ):
         session.execute(text(statement))
@@ -1323,6 +1525,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="treat the file as LearnPack's raw shape and translate it through the ACL",
     )
+    import_parser.add_argument(
+        "--base-dir",
+        type=Path,
+        default=None,
+        help="resolve artifact locators on the filesystem (local packages) instead of HTTP",
+    )
 
     demo_parser = subparsers.add_parser(
         "seed-demo", help="local-only: demo users, courses, campaign and assignments"
@@ -1422,6 +1630,43 @@ def main(argv: list[str] | None = None) -> int:
         help="calibration mode: accepts drafts, needs no ratification, persists nothing",
     )
 
+    declare_study_parser = subparsers.add_parser(
+        "declare-study", help="declare an evaluation study (the round with a purpose)"
+    )
+    declare_study_parser.add_argument("--purpose", required=True)
+
+    pin_study_parser = subparsers.add_parser(
+        "pin-study", help="pin a published instrument version to a study (once, before open)"
+    )
+    pin_study_parser.add_argument("--study-id", required=True)
+    pin_study_parser.add_argument("--instrument-version-id", required=True)
+
+    compose_dataset_parser = subparsers.add_parser(
+        "compose-dataset", help="compose the study dataset: briefs -> registered contents"
+    )
+    compose_dataset_parser.add_argument("--study-id", required=True)
+    compose_dataset_parser.add_argument(
+        "--brief-id", action="append", dest="brief_ids", default=[], help="repeatable"
+    )
+
+    open_study_parser = subparsers.add_parser(
+        "open-study", help="open the study — the dataset is fixed from here on"
+    )
+    open_study_parser.add_argument("--study-id", required=True)
+
+    publish_study_parser = subparsers.add_parser(
+        "publish-study", help="publish the study: compose and freeze the report (human act)"
+    )
+    publish_study_parser.add_argument("--study-id", required=True)
+    publish_study_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (published_by)"
+    )
+
+    show_report_parser = subparsers.add_parser(
+        "show-report", help="print a published study report as JSON"
+    )
+    show_report_parser.add_argument("--study-id", required=True)
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -1435,7 +1680,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
-        return run_import_learnpack(args.file, args.acl)
+        return run_import_learnpack(args.file, args.acl, args.base_dir)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
     elif args.command == "import-instrument":
@@ -1464,6 +1709,18 @@ def main(argv: list[str] | None = None) -> int:
         return run_evaluate(
             args.content_id, args.instrument_version_id, args.assessor, args.dry_run
         )
+    elif args.command == "declare-study":
+        return run_declare_study(args.purpose)
+    elif args.command == "pin-study":
+        return run_pin_study(UUID(args.study_id), args.instrument_version_id)
+    elif args.command == "compose-dataset":
+        return run_compose_dataset(UUID(args.study_id), [UUID(b) for b in args.brief_ids])
+    elif args.command == "open-study":
+        return run_open_study(UUID(args.study_id))
+    elif args.command == "publish-study":
+        return run_publish_study(UUID(args.study_id), args.email)
+    elif args.command == "show-report":
+        return run_show_report(UUID(args.study_id))
     return 0
 
 

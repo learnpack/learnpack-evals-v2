@@ -28,7 +28,12 @@ def brief_registered(brief: GenerationBrief) -> DomainEvent:
         event_type="BriefRegistered",
         aggregate_type=BRIEF_AGGREGATE,
         aggregate_id=str(brief.id),
-        payload={"briefId": str(brief.id), "fieldKeys": sorted(brief.fields)},
+        payload={
+            "briefId": str(brief.id),
+            "fieldKeys": sorted(brief.fields),
+            # Null for manually registered briefs (ADR-0022).
+            "briefHash": brief.brief_hash,
+        },
     )
 
 
