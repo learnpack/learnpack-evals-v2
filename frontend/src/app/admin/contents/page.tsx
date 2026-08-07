@@ -7,9 +7,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "sonner";
 import { ContentForm } from "@/components/admin/content-form";
-import { useBriefs, useContents, useGenerators } from "@/lib/api/hooks";
-import type { GeneratorVersionResponse } from "@/lib/api/types";
+import { Select } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/states";
+import { ApiError } from "@/lib/api/client";
+import {
+  useAttributeGenerator,
+  useBriefs,
+  useContents,
+  useGenerators,
+} from "@/lib/api/hooks";
+import type { ContentResponse, GeneratorVersionResponse } from "@/lib/api/types";
 
 const generatorName = (g?: GeneratorVersionResponse) => (g ? `${g.name} ${g.version}` : undefined);
 
@@ -84,17 +93,21 @@ export default function ContentsPage() {
                     </TableCell>
                     <TableCell className="text-xs">
                       {c.generator_version_id ? (
-                        <span title={c.generator_version_id}>
+                        <span
+                          title={
+                            c.generator_attributed_at
+                              ? `${c.generator_version_id} — attributed after registration on ${new Date(c.generator_attributed_at).toLocaleDateString()}`
+                              : c.generator_version_id
+                          }
+                        >
                           {generatorName(generatorById.get(c.generator_version_id)) ??
                             c.generator_version_id}
+                          {c.generator_attributed_at ? (
+                            <span className="ml-1 text-muted-foreground">(attributed later)</span>
+                          ) : null}
                         </span>
                       ) : (
-                        <span
-                          className="text-muted-foreground"
-                          title="Unknown generator: excluded from generator-level accumulation in study reports."
-                        >
-                          unknown
-                        </span>
+                        <AttributeGeneratorCell content={c} generators={generators ?? []} />
                       )}
                     </TableCell>
                     <TableCell>
@@ -124,5 +137,84 @@ export default function ContentsPage() {
         <ContentForm onDone={() => setCreating(false)} />
       </Dialog>
     </div>
+  );
+}
+
+/** An unknown generator is a declared void — and the one thing that can still be filled,
+ *  once (ADR-0024). Everything else about a registered content stays immutable. */
+function AttributeGeneratorCell({
+  content,
+  generators,
+}: {
+  content: ContentResponse;
+  generators: GeneratorVersionResponse[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState("");
+  const attribute = useAttributeGenerator();
+
+  function submit() {
+    attribute.mutate(
+      { contentId: content.content_id, body: { generator_version_id: selected } },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          toast.success("Generator attributed.");
+        },
+        onError: (err) => {
+          const e = err as ApiError;
+          setOpen(false);
+          if (e.status === 409) {
+            toast.error("This course already has a generator — attribution never replaces one.");
+          } else {
+            toast.error("Could not attribute.", { description: e.message });
+          }
+        },
+      },
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+        title="Declared unknown: excluded from generator-level accumulation. Attribute one if you learn it."
+      >
+        unknown
+      </button>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Attribute a generator to ${content.external_id}`}
+        description="Records a generator learnt after registration. It fills the declared unknown once and cannot be changed afterwards."
+      >
+        {generators.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No generator registered yet — register one first in /admin/generators.
+          </p>
+        ) : (
+          <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <option value="" disabled>
+              Choose…
+            </option>
+            {generators.map((g) => (
+              <option key={g.generator_version_id} value={g.generator_version_id}>
+                {g.name} {g.version}
+              </option>
+            ))}
+          </Select>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={attribute.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!selected || attribute.isPending}>
+            {attribute.isPending ? <Spinner /> : null} Attribute
+          </Button>
+        </div>
+      </Dialog>
+    </>
   );
 }
