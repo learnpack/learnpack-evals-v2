@@ -78,6 +78,9 @@ from app.modules.evaluation.infrastructure.gateways import (
     DesignInstrumentGateway,
     ProfilingGateway,
 )
+from app.modules.evaluation.infrastructure.policies import (
+    register_policies as register_evaluation_policies,
+)
 from app.modules.evaluation.infrastructure.repository import (
     SqlAlchemyAutomatedEvaluationRepository,
     SqlAlchemyJudgmentRepository,
@@ -116,6 +119,7 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyCampaignRepository,
 )
 from app.platform.db import SessionLocal
+from app.platform.events import dispatcher
 from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
@@ -1294,6 +1298,12 @@ def run_seed_demo(reset: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The CLI is its own process: the policies its commands rely on must be wired here
+    # too (main.py wires the API process). Evaluation only — judgment derivation is part
+    # of the `evaluate` flow; the other policies stay API-side (seed-demo profiles
+    # explicitly, so CLI registration never depended on them).
+    register_evaluation_policies(dispatcher)
+
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
