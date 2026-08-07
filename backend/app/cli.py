@@ -1,7 +1,8 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
 import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
-pin-study | compose-dataset | open-study | publish-study | show-report`.
+pin-study | compose-dataset | open-study | publish-study | show-report |
+attribute-generator`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -49,13 +50,24 @@ from app.modules.content_profiling.infrastructure.repository import (
     SqlAlchemyAcceptanceRepository,
     SqlAlchemyProfileRepository,
 )
+from app.modules.evaluand_registry.application.attribute_generator import (
+    AttributeGenerator,
+    AttributeGeneratorCommand,
+)
+from app.modules.evaluand_registry.application.attribute_generator import (
+    # Profiling has a same-named exception; both are imported here.
+    ContentNotFound as UnregisteredContent,
+)
 from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
 )
-from app.modules.evaluand_registry.domain.content import InvalidContent
+from app.modules.evaluand_registry.domain.content import (
+    GeneratorAlreadyAttributed,
+    InvalidContent,
+)
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import (
@@ -978,6 +990,36 @@ def run_reprofile(
     return 0 if errors == 0 else 1
 
 
+def run_attribute_generator(content_id: UUID, generator_version_id: UUID, email: str) -> int:
+    """The repair act (ADR-0024): record a generator learnt after registration."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+        uow = UnitOfWork(session)
+        use_case = AttributeGenerator(
+            contents=SqlAlchemyContentRepository(session),
+            generators=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            content = use_case(
+                AttributeGeneratorCommand(
+                    content_id=content_id,
+                    generator_version_id=generator_version_id,
+                    attributed_by=assessor.id,
+                )
+            )
+        except (UnregisteredContent, UnknownGeneratorVersion, GeneratorAlreadyAttributed) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"attributed {content.external_id} to generator {generator_version_id} (by {email})")
+    return 0
+
+
 def _generator_declaration(value: str) -> str:
     """`--generator` takes a generator version id or the literal `unknown` (ADR-0024).
     Validated at parse time so a typo fails before anything is registered."""
@@ -1716,6 +1758,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     show_report_parser.add_argument("--study-id", required=True)
 
+    attribute_parser = subparsers.add_parser(
+        "attribute-generator",
+        help="record a generator learnt after registration (once, one way — ADR-0024)",
+    )
+    attribute_parser.add_argument("--content-id", required=True)
+    attribute_parser.add_argument("--generator-version-id", required=True)
+    attribute_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (attributed_by)"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -1786,6 +1838,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_publish_study(UUID(args.study_id), args.email)
     elif args.command == "show-report":
         return run_show_report(UUID(args.study_id))
+    elif args.command == "attribute-generator":
+        return run_attribute_generator(
+            UUID(args.content_id), UUID(args.generator_version_id), args.email
+        )
     return 0
 
 

@@ -19,7 +19,13 @@ from test_automated_evaluation_flow import (
 from test_content_profiling_commands import profile_content_use_case
 
 import app.main  # noqa: F401 — wires the judgment policy into the global dispatcher
-from app.cli import DEMO_PACKAGES_DIR, _demo_artifacts, run_evaluate, run_ratify_assessor
+from app.cli import (
+    DEMO_PACKAGES_DIR,
+    _demo_artifacts,
+    run_attribute_generator,
+    run_evaluate,
+    run_ratify_assessor,
+)
 from app.modules.content_profiling.application.profile_content import ProfileContentCommand
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
@@ -269,3 +275,60 @@ def test_the_first_increment_closes_the_loop(
         publish()
     unchanged = SqlAlchemyStudyReportRepository(session).get(study.id).report
     assert unchanged == report
+
+
+def test_an_attributed_content_enters_generator_level_accumulation(
+    cleanup, unique, session, namespace, admin, patched_package
+):
+    """What the repair act is for (ADR-0024): a content registered with its generator
+    unknown is excluded from accumulation, and after attribution it counts."""
+    admin_id, email = admin
+    generator_id = _register_generator(cleanup, unique)
+    orphan = _register_course(cleanup, unique, "late")  # declared unknown at registration
+
+    version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
+    assert run_ratify_assessor(patched_package.name, "1", version_id, email, []) == 0
+    track_automated(cleanup, patched_package.name)
+    assert run_evaluate(str(orphan.id), version_id, f"{patched_package.name}:1", False) == 0
+
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        study = DeclareStudy(studies, uow.events, uow)(
+            DeclareStudyCommand(purpose=f"Attribution round ({unique})")
+        )
+    cleanup["studies"].append(study.id)
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        PinInstrument(studies, DesignGateway(s), uow.events, uow)(
+            PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
+        )
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        ComposeDataset(studies, RegistryGateway(s), uow)(
+            ComposeDatasetCommand(study_id=study.id, brief_ids=[orphan.brief_id])
+        )
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        OpenStudy(studies, uow.events, uow)(OpenStudyCommand(study_id=study.id))
+
+    # The discovery lands after the dataset was fixed — the report is composed at publish
+    # and reads the registry live, so it counts (ADR-0024, an accepted consequence).
+    assert run_attribute_generator(orphan.id, generator_id, email) == 0
+
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        PublishStudy(
+            studies=studies,
+            reports=SqlAlchemyStudyReportRepository(s),
+            registry=RegistryGateway(s),
+            evaluation=EvaluationGateway(s),
+            design=DesignGateway(s),
+            profiling=ProfilingGateway(s),
+            publisher=uow.events,
+            uow=uow,
+        )(PublishStudyCommand(study_id=study.id, published_by=admin_id))
+
+    report = SqlAlchemyStudyReportRepository(session).get(study.id).report
+    assert [g["generatorVersionId"] for g in report["generatorLevel"]] == [str(generator_id)]
+    assert report["generatorLevel"][0]["contentsCounted"] == 1
+    assert report["caveats"]["unknownExclusions"]["contentIds"] == []

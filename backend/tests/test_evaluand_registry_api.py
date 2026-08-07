@@ -285,6 +285,57 @@ def test_registration_without_the_generator_key_is_rejected(admin_client, unique
     assert "generator_version_id" in response.text
 
 
+def test_a_discovered_generator_can_be_attributed_through_the_api(
+    admin_client, cleanup, unique, session
+):
+    generator = admin_client.post(
+        "/admin/generators", json={"name": f"late-gen-{unique}", "version": "1.0.0"}
+    ).json()
+    cleanup["generators"].append(generator["generator_version_id"])
+    content = admin_client.post("/admin/contents", json=payload(unique)).json()
+    cleanup["contents"].append(content["content_id"])
+    assert content["generator_version_id"] is None
+
+    response = admin_client.post(
+        f"/admin/contents/{content['content_id']}/generator",
+        json={"generator_version_id": generator["generator_version_id"]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["generator_version_id"] == generator["generator_version_id"]
+    # The provenance of a discovery, so it stays distinguishable from a declaration.
+    assert body["generator_attributed_by"] is not None
+    assert body["generator_attributed_at"] is not None
+
+    # Attributing again is refused: the act fills a void, it does not revise.
+    again = admin_client.post(
+        f"/admin/contents/{content['content_id']}/generator",
+        json={"generator_version_id": generator["generator_version_id"]},
+    )
+    assert again.status_code == 409
+
+
+def test_attribution_rejects_a_ghost_generator_and_a_ghost_content(admin_client, cleanup, unique):
+    ghost = "00000000-0000-0000-0000-000000000000"
+    content = admin_client.post("/admin/contents", json=payload(unique)).json()
+    cleanup["contents"].append(content["content_id"])
+
+    assert (
+        admin_client.post(
+            f"/admin/contents/{content['content_id']}/generator",
+            json={"generator_version_id": ghost},
+        ).status_code
+        == 422
+    )
+    assert (
+        admin_client.post(
+            f"/admin/contents/{ghost}/generator", json={"generator_version_id": ghost}
+        ).status_code
+        == 404
+    )
+
+
 def test_the_command_cannot_be_built_without_a_declaration():
     """The second of the two gates ADR-0024 names — the application command, guarded
     independently of the request model above."""

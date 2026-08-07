@@ -11,6 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.modules.evaluand_registry.application import queries
+from app.modules.evaluand_registry.application.attribute_generator import (
+    AttributeGenerator,
+    AttributeGeneratorCommand,
+    ContentNotFound,
+)
 from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
@@ -40,7 +45,11 @@ from app.modules.evaluand_registry.application.register_generator_version import
     RegisterGeneratorVersionCommand,
 )
 from app.modules.evaluand_registry.domain.brief import InvalidBrief
-from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, InvalidContent
+from app.modules.evaluand_registry.domain.content import (
+    DEFAULT_VERSION,
+    GeneratorAlreadyAttributed,
+    InvalidContent,
+)
 from app.modules.evaluand_registry.domain.generator import (
     InvalidGeneratorArtifact,
     InvalidGeneratorVersion,
@@ -90,6 +99,9 @@ class ContentResponse(BaseModel):
     brief_id: UUID | None
     generator_version_id: UUID | None
     edit_provenance: str
+    # Null unless the generator was attributed after registration (ADR-0024).
+    generator_attributed_by: UUID | None = None
+    generator_attributed_at: str | None = None
 
     @classmethod
     def from_snapshot(cls, snapshot: ContentSnapshot) -> "ContentResponse":
@@ -102,7 +114,19 @@ class ContentResponse(BaseModel):
             brief_id=snapshot.brief_id,
             generator_version_id=snapshot.generator_version_id,
             edit_provenance=snapshot.edit_provenance,
+            generator_attributed_by=snapshot.generator_attributed_by,
+            generator_attributed_at=(
+                snapshot.generator_attributed_at.isoformat()
+                if snapshot.generator_attributed_at
+                else None
+            ),
         )
+
+
+class AttributeGeneratorRequest(BaseModel):
+    # Not nullable: attributing to `unknown` would be meaningless — the void is what the
+    # act fills (ADR-0024).
+    generator_version_id: UUID
 
 
 class PackageArtifactResponse(BaseModel):
@@ -175,6 +199,37 @@ def register_content_version(
         ) from exc
 
     return ContentResponse.from_snapshot(_snapshot_or_404(uow, content.id))
+
+
+@router.post("/{content_id}/generator", response_model=ContentResponse)
+def attribute_generator(
+    content_id: UUID, request: AttributeGeneratorRequest, admin: AdminAssessor, uow: Uow
+) -> ContentResponse:
+    """Record a generator discovered after registration — once, one way (ADR-0024)."""
+    use_case = AttributeGenerator(
+        contents=SqlAlchemyContentRepository(uow.session),
+        generators=SqlAlchemyGeneratorVersionRepository(uow.session),
+        publisher=uow.events,
+        uow=uow,
+    )
+    try:
+        use_case(
+            AttributeGeneratorCommand(
+                content_id=content_id,
+                generator_version_id=request.generator_version_id,
+                attributed_by=admin.assessor_id,
+            )
+        )
+    except ContentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except GeneratorAlreadyAttributed as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except UnknownGeneratorVersion as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    return ContentResponse.from_snapshot(_snapshot_or_404(uow, content_id))
 
 
 @router.get("/{content_id}/package", response_model=ContentPackageResponse)

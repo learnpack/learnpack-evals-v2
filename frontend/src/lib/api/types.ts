@@ -23,6 +23,13 @@ export interface ContentResponse {
   brief_id: Uuid | null;
   generator_version_id: Uuid | null;
   edit_provenance: EditProvenance;
+  /** Set only when the generator was attributed after registration (ADR-0024). */
+  generator_attributed_by?: Uuid | null;
+  generator_attributed_at?: string | null;
+}
+
+export interface AttributeGeneratorRequest {
+  generator_version_id: Uuid;
 }
 
 export interface PackageArtifact {
