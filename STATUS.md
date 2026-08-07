@@ -185,11 +185,11 @@ persists nothing). `structural:1` executes 7 criteria and abstains from the 4 ju
   bucket in prod — a stack decision) for packages not hosted anywhere. Priority rises
   when the GA experiment needs bulk registration.
 - **Generator registration is a prerequisite of generator-level analysis.**
-  `learnpack-generator v1.0` (major.minor scheme; prompt preprocessor not versioned yet
-  — noted in its metadata) is registered in the local dev DB; **repeat the act in
-  production before registering real content** (there is no command to link a generator
-  to an already-registered content: `unknown` is forever, and stays out of
-  generator-level accumulation).
+  `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
+  its metadata) is registered in the local dev DB; **repeat the act in production
+  before registering real content** (there is no command to link a generator to an
+  already-registered content: `unknown` is forever, and stays out of generator-level
+  accumulation).
 - **Outside the first increment** (named in `13-code-qa.md` §9): loop B operational
   (disputes/defects), annotation queues, per-claim validity metrics, `CompareStudies`.
 
