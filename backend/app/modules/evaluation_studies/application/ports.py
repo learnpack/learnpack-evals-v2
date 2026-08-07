@@ -9,6 +9,7 @@ from app.modules.evaluation_studies.application.dtos import (
     BriefInfo,
     CapabilityInfo,
     ContentInfo,
+    CriterionOutcomeInfo,
     FindingInfo,
     GeneratorInfo,
     InstrumentInfo,
@@ -55,6 +56,10 @@ class EvaluationGatewayPort(Protocol):
     def get_findings(
         self, content_ids: list[UUID], instrument_version_id: str
     ) -> list[FindingInfo]: ...
+
+    def get_criterion_outcomes(
+        self, content_ids: list[UUID], instrument_version_id: str
+    ) -> list[CriterionOutcomeInfo]: ...
 
     def list_ratifications(self, instrument_version_id: str) -> list[RatificationInfo]: ...
 

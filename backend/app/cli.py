@@ -15,6 +15,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -137,6 +138,7 @@ from app.modules.evaluation_studies.application.declare_study import (
     DeclareStudy,
     DeclareStudyCommand,
 )
+from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
 from app.modules.evaluation_studies.application.pin_instrument import (
     InstrumentNotPublished,
@@ -1249,6 +1251,58 @@ def run_show_report(study_id: UUID) -> int:
     return 0
 
 
+def run_show_fitness(study_id: UUID) -> int:
+    """The fitness projection over a study (ADR-0023) — the GA's read, composed on demand.
+
+    Deliberately not part of `show-report`: an optimization signal is not a judgment, and
+    the two use different denominators.
+    """
+    with SessionLocal() as session:
+        study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
+        if study is None:
+            print(f"study {study_id} not found", file=sys.stderr)
+            return 1
+        instrument_version_id = study.instrument_version_id
+        registry = StudiesRegistryGateway(session)
+        contents = registry.get_contents_by_ids(list(study.content_ids))
+        generators = {
+            content.generator_version_id: generator
+            for content in contents
+            if content.generator_version_id
+            and (generator := registry.get_generator(content.generator_version_id))
+        }
+        evaluation = StudiesEvaluationGateway(session)
+        content_ids = [content.content_id for content in contents]
+        projection = compute_fitness(
+            study=study,
+            instrument=(
+                StudiesDesignGateway(session).get_instrument(instrument_version_id)
+                if instrument_version_id
+                else None
+            ),
+            contents=contents,
+            generators=generators,
+            judgments=(
+                evaluation.get_judgments(content_ids, instrument_version_id)
+                if instrument_version_id
+                else []
+            ),
+            outcomes=(
+                evaluation.get_criterion_outcomes(content_ids, instrument_version_id)
+                if instrument_version_id
+                else []
+            ),
+            ratifications=(
+                evaluation.list_ratifications(instrument_version_id)
+                if instrument_version_id
+                else []
+            ),
+            computed_at=datetime.now(UTC),
+        )
+    print(json.dumps(projection, indent=2))
+    return 0
+
+
 # --------------------------------------------------------------------------- seed-demo
 # A ready-to-use local dataset (ADR-0008), for contributors who work on rubrics, metrics and
 # evaluations and should not need a Clerk account or a Neon database to run the app.
@@ -1797,6 +1851,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     show_report_parser.add_argument("--study-id", required=True)
 
+    show_fitness_parser = subparsers.add_parser(
+        "show-fitness",
+        help="print the fitness projection of a study (ADR-0023) — optimization, not a judgment",
+    )
+    show_fitness_parser.add_argument("--study-id", required=True)
+
     attribute_parser = subparsers.add_parser(
         "attribute-generator",
         help="record a generator learnt after registration (once, one way — ADR-0024)",
@@ -1877,6 +1937,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_publish_study(UUID(args.study_id), args.email)
     elif args.command == "show-report":
         return run_show_report(UUID(args.study_id))
+    elif args.command == "show-fitness":
+        return run_show_fitness(UUID(args.study_id))
     elif args.command == "attribute-generator":
         return run_attribute_generator(
             UUID(args.content_id), UUID(args.generator_version_id), args.email

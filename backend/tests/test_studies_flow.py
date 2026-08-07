@@ -8,6 +8,8 @@ generator level, name the other in the caveat, and surface the real numbering-dr
 finding ('05'/'06') with its quote.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import text
 from test_automated_evaluation_flow import (
@@ -50,6 +52,7 @@ from app.modules.evaluation_studies.application.declare_study import (
     DeclareStudy,
     DeclareStudyCommand,
 )
+from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
 from app.modules.evaluation_studies.application.pin_instrument import (
     PinInstrument,
@@ -145,6 +148,30 @@ def _register_generator(cleanup, unique):
 def _studies_wiring(session):
     uow = UnitOfWork(session)
     return uow, SqlAlchemyStudyRepository(session)
+
+
+def _project_fitness(session, study_id):
+    """The fitness read, composed from the same gateways the endpoint and the CLI use."""
+    study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
+    registry, evaluation = RegistryGateway(session), EvaluationGateway(session)
+    contents = registry.get_contents_by_ids(list(study.content_ids))
+    content_ids = [c.content_id for c in contents]
+    version_id = study.instrument_version_id
+    return compute_fitness(
+        study=study,
+        instrument=DesignGateway(session).get_instrument(version_id),
+        contents=contents,
+        generators={
+            c.generator_version_id: generator
+            for c in contents
+            if c.generator_version_id
+            and (generator := registry.get_generator(c.generator_version_id))
+        },
+        judgments=evaluation.get_judgments(content_ids, version_id),
+        outcomes=evaluation.get_criterion_outcomes(content_ids, version_id),
+        ratifications=evaluation.list_ratifications(version_id),
+        computed_at=datetime.now(UTC),
+    )
 
 
 def test_the_first_increment_closes_the_loop(
@@ -275,6 +302,49 @@ def test_the_first_increment_closes_the_loop(
         publish()
     unchanged = SqlAlchemyStudyReportRepository(session).get(study.id).report
     assert unchanged == report
+
+    # --- the fitness projection over the SAME study (ADR-0023)
+    projection = _project_fitness(session, study.id)
+
+    # It is not in the report, and it says so about itself.
+    assert "fitness" not in report
+    assert projection["signal"] == "optimization"
+    assert projection["formulaVersion"]
+
+    # The five qualities the instrument asserts about, and only those.
+    study_level = projection["study"]
+    assert set(study_level["qualities"]) == {
+        "objectives-observable",
+        "progression-starting-point",
+        "progression-cognitive-demand",
+        "instruction-application",
+        "coherence-focus-depth",
+    }
+
+    # The case the whole denominator rule exists for: LearnpackV1 supplies no objectives, so
+    # every criterion under that quality is `not_applicable` — undefined, NOT zero. A zero
+    # here would have the GA evolve against a gap in the format, not in the generator.
+    objectives = study_level["qualities"]["objectives-observable"]
+    assert objectives["fitness"] is None
+    assert objectives["coverage"]["denominator"] == 0
+    assert objectives["coverage"]["notApplicable"] > 0
+    assert study_level["dimensions"]["objectives-quality"] == {
+        "fitness": None,
+        "coverage": {"qualities": 1, "defined": 0},
+    }
+
+    # A quality drawing from an excluded claim AND a live one still has a denominator.
+    assert study_level["qualities"]["progression-starting-point"]["fitness"] is not None
+    assert study_level["dimensions"]["learning-progression"]["coverage"]["defined"] > 0
+
+    # structural:1's abstentions are counted and named, never charged to the generator.
+    assert projection["assessorCoverage"]["notAssessed"] > 0
+    assert projection["assessorCoverage"]["ratifiedAssessors"]
+
+    # Generator level accumulates the linked content only, like the report's does.
+    assert [g["generatorVersionId"] for g in projection["generators"]] == [str(generator_id)]
+    assert projection["generators"][0]["contents"] == 1
+    assert projection["unknownExclusions"] == [str(orphan.id)]
 
 
 def test_an_attributed_content_enters_generator_level_accumulation(

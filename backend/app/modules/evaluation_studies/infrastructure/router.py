@@ -5,13 +5,14 @@ boundary. The matching endpoint mounts under `/admin/instruments` (13-code §6 p
 URL with the instrument) while the code stays here, in the operational consumer.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.modules.evaluation_studies.application import queries
+from app.modules.evaluation_studies.application import fitness, queries
 from app.modules.evaluation_studies.application.compose_dataset import (
     ComposeDataset,
     ComposeDatasetCommand,
@@ -269,6 +270,57 @@ def get_readiness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, A
     )
     return queries.compute_readiness(
         study, instrument, capabilities, ratifications, dataset_formats
+    )
+
+
+@router.get("/{study_id}/fitness")
+def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any]:
+    """The fitness projection (ADR-0023) — an optimization signal, never a judgment.
+
+    Its own resource on purpose: it must not travel inside the study report, whose jsonb is
+    frozen at publish and whose coverage figures use a different denominator. Composed on
+    read like the report, and answering at any status — a study with nothing pinned gets the
+    same shape with its gaps named, the way readiness informs rather than blocks.
+    """
+    study = SqlAlchemyStudyRepository(uow.session).get_by_id(study_id)
+    if study is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="study not found")
+
+    instrument_version_id = study.instrument_version_id
+    design = DesignGateway(uow.session)
+    instrument = design.get_instrument(instrument_version_id) if instrument_version_id else None
+    registry = RegistryGateway(uow.session)
+    contents = registry.get_contents_by_ids(list(study.content_ids))
+    generators = {
+        content.generator_version_id: generator
+        for content in contents
+        if content.generator_version_id
+        and (generator := registry.get_generator(content.generator_version_id))
+    }
+    evaluation = EvaluationGateway(uow.session)
+    content_ids = [content.content_id for content in contents]
+    judgments = (
+        evaluation.get_judgments(content_ids, instrument_version_id)
+        if instrument_version_id
+        else []
+    )
+    outcomes = (
+        evaluation.get_criterion_outcomes(content_ids, instrument_version_id)
+        if instrument_version_id
+        else []
+    )
+    ratifications = (
+        evaluation.list_ratifications(instrument_version_id) if instrument_version_id else []
+    )
+    return fitness.compute_fitness(
+        study=study,
+        instrument=instrument,
+        contents=contents,
+        generators=generators,
+        judgments=judgments,
+        outcomes=outcomes,
+        ratifications=ratifications,
+        computed_at=datetime.now(UTC),
     )
 
 

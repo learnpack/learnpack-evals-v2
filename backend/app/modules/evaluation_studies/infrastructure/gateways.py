@@ -18,6 +18,7 @@ from app.modules.evaluation_studies.application.dtos import (
     CapabilityInfo,
     ClaimJudgment,
     ContentInfo,
+    CriterionOutcomeInfo,
     FindingInfo,
     GeneratorInfo,
     InstrumentClaim,
@@ -115,6 +116,20 @@ class EvaluationGateway:
             for dto in self._queries.get_findings(content_ids, instrument_version_id)
         ]
 
+    def get_criterion_outcomes(
+        self, content_ids: list[UUID], instrument_version_id: str
+    ) -> list[CriterionOutcomeInfo]:
+        return [
+            CriterionOutcomeInfo(
+                judgment_id=dto.judgment_id,
+                content_id=dto.content_id,
+                criterion_id=dto.criterion_id,
+                outcome=dto.outcome,
+                derived=dto.derived,
+            )
+            for dto in self._queries.get_criterion_outcomes(content_ids, instrument_version_id)
+        ]
+
     def list_ratifications(self, instrument_version_id: str) -> list[RatificationInfo]:
         return [
             RatificationInfo(
@@ -139,7 +154,12 @@ class DesignGateway:
             instrument_version_id=snapshot.instrument_version_id,
             status=snapshot.status,
             claims=tuple(
-                InstrumentClaim(claim_id=c.claim_id, statement=c.statement) for c in snapshot.claims
+                InstrumentClaim(
+                    claim_id=c.claim_id,
+                    statement=c.statement,
+                    quality_ids=tuple(c.quality_ids),
+                )
+                for c in snapshot.claims
             ),
             criteria=tuple(
                 InstrumentCriterion(
@@ -150,6 +170,7 @@ class DesignGateway:
                 )
                 for c in snapshot.criteria
             ),
+            quality_dimensions=dict(snapshot.quality_dimensions),
         )
 
 

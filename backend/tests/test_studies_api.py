@@ -4,6 +4,8 @@ Domain invariants are specified in test_studies_domain.py; here the HTTP mapping
 404/409/422 per act, the readiness/matching composed queries, and the report row.
 """
 
+from uuid import uuid4
+
 import pytest
 from test_instrument_authoring_api import import_spec, spec
 
@@ -186,6 +188,35 @@ def test_readiness_informs_and_never_blocks(admin_client, cleanup, unique):
     assert {c["claimId"] for c in pinned["claims"]} == {"cl-objectives"}
 
 
+def test_fitness_is_its_own_resource_and_informs_before_there_is_anything_to_measure(
+    admin_client, cleanup, unique
+):
+    """ADR-0023: an optimization signal, on its own endpoint — never inside the report,
+    whose jsonb is frozen and whose coverage uses a different denominator."""
+    study_id = declare(admin_client, cleanup)
+
+    fresh = admin_client.get(f"/admin/studies/{study_id}/fitness")
+    assert fresh.status_code == 200, fresh.text
+    body = fresh.json()
+    assert body["signal"] == "optimization"
+    assert body["formulaVersion"]
+    # It answers with its gaps instead of refusing, the way readiness informs.
+    assert {g["gap"] for g in body["gaps"]} == {"instrument_not_pinned", "dataset_not_composed"}
+    assert body["study"] == {}
+
+    instrument_id = published_instrument(admin_client, cleanup, unique)
+    admin_client.post(
+        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
+    )
+    pinned = admin_client.get(f"/admin/studies/{study_id}/fitness").json()
+    # The instrument's qualities are known even before a single content is judged, and each
+    # is undefined rather than zero — nothing was measurable yet.
+    assert pinned["study"]["qualities"]["objectives-observable"]["fitness"] is None
+    assert pinned["denominatorRule"]["excluded"] == ["not_applicable", "not_assessed"]
+
+    assert admin_client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 404
+
+
 def test_matching_reports_the_unmet_demand_per_format(admin_client, cleanup, unique):
     instrument_id = published_instrument(admin_client, cleanup, unique)
 
@@ -212,3 +243,4 @@ def test_studies_require_the_admin_role(as_user, cleanup, unique):
 
     assert client.get("/admin/studies").status_code == 403
     assert client.post("/admin/studies", json={"purpose": "nope"}).status_code == 403
+    assert client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 403

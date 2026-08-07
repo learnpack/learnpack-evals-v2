@@ -79,6 +79,17 @@ class JudgmentInfo:
 
 
 @dataclass(frozen=True)
+class CriterionOutcomeInfo:
+    """One criterion's state under a judgment — the un-aggregated form (ADR-0023 §1)."""
+
+    judgment_id: UUID
+    content_id: UUID
+    criterion_id: str
+    outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed
+    derived: bool  # the absence-derived fail (ADR-0021); counted as a fail all the same
+
+
+@dataclass(frozen=True)
 class FindingInfo:
     finding_id: UUID
     judgment_id: UUID
@@ -103,6 +114,8 @@ class RatificationInfo:
 class InstrumentClaim:
     claim_id: str
     statement: str
+    # Criteria never reference qualities; the claim is the only bridge (12-define).
+    quality_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -119,6 +132,9 @@ class InstrumentInfo:
     status: str
     claims: tuple[InstrumentClaim, ...] = ()
     criteria: tuple[InstrumentCriterion, ...] = ()
+    # Frozen in the version at publish (ADR-0023 §8) — never the live `qualities` table,
+    # whose `dimension_id` is mutable and would rewrite published studies retroactively.
+    quality_dimensions: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_published(self) -> bool:
