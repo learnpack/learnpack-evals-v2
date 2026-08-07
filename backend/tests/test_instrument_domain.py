@@ -14,7 +14,11 @@ from app.modules.evaluation_design.domain.instrument import (
 from app.modules.evaluation_design.domain.reference import DataRequirement, InvalidDataRequirement
 from app.shared.domain.ids import new_id
 
-QUALITIES = {"objectives-observable", "instruction-application"}
+# The vocabulary as publish() receives it: the known qualities ARE its keys (ADR-0023 §8).
+QUALITY_DIMENSIONS = {
+    "objectives-observable": "objectives-quality",
+    "instruction-application": "instructional-design",
+}
 FRAMEWORKS = {"Biggs", "Merrill"}
 NAMESPACE = {"learning_objectives", "practice_exercises"}
 
@@ -59,7 +63,7 @@ def publish(inst, **overrides):
     kwargs = {
         "published_by": new_id(),
         "known_data_requirements": NAMESPACE,
-        "known_qualities": QUALITIES,
+        "quality_dimensions": QUALITY_DIMENSIONS,
         "known_frameworks": FRAMEWORKS,
     } | overrides
     inst.publish(**kwargs)
@@ -182,6 +186,30 @@ def test_publish_rejects_unknown_qualities_and_frameworks():
         publish(instrument(claims=(claim(quality_ids=("ghost-quality",)),)))
     with pytest.raises(InvalidInstrument, match="unknown frameworks"):
         publish(instrument(claims=(claim(warrants=("Ghostism",)),)))
+
+
+def test_publish_freezes_the_dimension_of_the_qualities_it_references():
+    """ADR-0023 §8: `qualities.dimension_id` is global and mutable, so the version keeps its
+    own copy — and only of what it asserts about, not of the whole vocabulary."""
+    inst = instrument()
+    assert inst.quality_dimensions == {}  # a draft has frozen nothing yet
+
+    publish(inst)
+
+    assert inst.quality_dimensions == {"objectives-observable": "objectives-quality"}
+    assert "instruction-application" not in inst.quality_dimensions
+
+
+def test_a_quality_that_groups_nowhere_publishes_and_stays_out_of_the_map():
+    """`dimension_id` is nullable: such a quality is legal, it simply rolls up into no
+    dimension. Publishing must not start rejecting it because the map is now the source."""
+    inst = publish(
+        instrument(claims=(claim(quality_ids=("orphan-quality",)),)),
+        quality_dimensions=QUALITY_DIMENSIONS | {"orphan-quality": None},
+    )
+
+    assert inst.is_published
+    assert inst.quality_dimensions == {}
 
 
 def test_publish_reports_every_problem_at_once():

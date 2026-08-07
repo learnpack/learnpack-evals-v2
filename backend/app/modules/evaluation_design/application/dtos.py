@@ -8,7 +8,7 @@ Read-only module: the MVP seeds `LearnPack Pedagogical Rubric v1` straight to `p
 invariants — are `[futuro]`.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -68,6 +68,10 @@ class InstrumentSnapshot:
     claims: list[ClaimDTO]
     criteria: list[CriterionSpecDTO]
     bindings: list[BindingDTO]
+    # `{qualityId: dimensionId}` for the qualities the claims reference, frozen at publish
+    # (ADR-0023 §8). Empty while draft — consumers grouping by dimension read this, never
+    # the live `qualities` table, whose `dimension_id` is mutable and unversioned.
+    quality_dimensions: dict[str, str] = field(default_factory=dict)
 
     @property
     def criterion_ids(self) -> list[str]:

@@ -62,6 +62,7 @@ def _to_snapshot(instrument: InstrumentVersion) -> InstrumentSnapshot:
             BindingDTO(package_format=b.package_format, task_variables=b.task_variables)
             for b in instrument.bindings
         ],
+        quality_dimensions=dict(instrument.quality_dimensions),
     )
 
 

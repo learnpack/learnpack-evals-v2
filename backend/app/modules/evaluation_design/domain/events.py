@@ -51,6 +51,10 @@ def snapshot_payload(instrument: InstrumentVersion) -> dict[str, Any]:
             {"packageFormat": b.package_format, "taskVariables": b.task_variables}
             for b in instrument.bindings
         ],
+        # Part of the snapshot because the payload is meant to be self-contained: a
+        # subscriber grouping by dimension must not have to read the live, mutable
+        # `qualities` table to interpret it (ADR-0023 §8).
+        "qualityDimensions": dict(instrument.quality_dimensions),
     }
 
 

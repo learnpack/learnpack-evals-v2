@@ -245,6 +245,15 @@ def test_publish_emits_the_snapshot_and_locks_the_version(admin_client, cleanup,
     assert [c["claimId"] for c in payload["claims"]] == ["cl-objectives"]
     assert payload["criteria"][0]["passCondition"].startswith("At least 2")
 
+    # ADR-0023 §8: publishing froze the dimension of what this version asserts about, so a
+    # later edit of `qualities.dimension_id` cannot change how it is read.
+    assert payload["qualityDimensions"] == {"objectives-observable": "objectives-quality"}
+    frozen = session.execute(
+        text("SELECT quality_dimensions FROM instrument_versions WHERE id = :id"),
+        {"id": instrument_id},
+    ).scalar_one()
+    assert frozen == {"objectives-observable": "objectives-quality"}
+
     # Published means locked: publishing again and re-importing both fail.
     assert admin_client.post(f"/admin/instruments/{instrument_id}/publish").status_code == 409
     with pytest.raises(InstrumentImmutable, match="bump the version"):

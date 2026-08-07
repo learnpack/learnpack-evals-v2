@@ -52,7 +52,7 @@ class PublishInstrument:
         instrument.publish(
             published_by=command.published_by,
             known_data_requirements=set(self._data_requirements.get_all()),
-            known_qualities=self._reference.quality_ids(),
+            quality_dimensions=self._reference.quality_dimensions(),
             known_frameworks=self._reference.framework_ids(),
         )
 

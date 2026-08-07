@@ -96,7 +96,8 @@ class SqlAlchemyInstrumentRepository:
                 text(
                     """
                     SELECT id, instrument_id, version, name, purpose, status, published_at,
-                           published_by, revision_author, revision_reason, assisted_by
+                           published_by, revision_author, revision_reason, assisted_by,
+                           quality_dimensions
                       FROM instrument_versions
                      WHERE id = :id
                     """
@@ -116,7 +117,8 @@ class SqlAlchemyInstrumentRepository:
                 text(
                     """
                     SELECT id, instrument_id, version, name, purpose, status, published_at,
-                           published_by, revision_author, revision_reason, assisted_by
+                           published_by, revision_author, revision_reason, assisted_by,
+                           quality_dimensions
                       FROM instrument_versions
                      ORDER BY instrument_id, version
                     """
@@ -187,6 +189,7 @@ class SqlAlchemyInstrumentRepository:
             revision_author=head["revision_author"],
             revision_reason=head["revision_reason"],
             assisted_by=head["assisted_by"],
+            quality_dimensions=dict(head["quality_dimensions"] or {}),
             claims=tuple(
                 Claim(
                     claim_id=row["claim_id"],
@@ -332,7 +335,8 @@ class SqlAlchemyInstrumentRepository:
                 """
                 UPDATE instrument_versions
                    SET status = :status, published_at = :published_at,
-                       published_by = :published_by
+                       published_by = :published_by,
+                       quality_dimensions = cast(:quality_dimensions as jsonb)
                  WHERE id = :id
                 """
             ),
@@ -341,6 +345,9 @@ class SqlAlchemyInstrumentRepository:
                 "status": instrument.status,
                 "published_at": instrument.published_at,
                 "published_by": instrument.published_by,
+                # Frozen here and nowhere else: publish is the act that pins the vocabulary
+                # this version speaks (ADR-0023 §8).
+                "quality_dimensions": json.dumps(instrument.quality_dimensions),
             },
         )
 
@@ -401,9 +408,11 @@ class SqlAlchemyReferenceDataRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def quality_ids(self) -> set[str]:
-        rows = self._session.execute(text("SELECT id FROM qualities")).scalars().all()
-        return set(rows)
+    def quality_dimensions(self) -> dict[str, str | None]:
+        rows = (
+            self._session.execute(text("SELECT id, dimension_id FROM qualities")).mappings().all()
+        )
+        return {row["id"]: row["dimension_id"] for row in rows}
 
     def framework_ids(self) -> set[str]:
         rows = self._session.execute(text("SELECT id FROM pedagogical_frameworks")).scalars().all()

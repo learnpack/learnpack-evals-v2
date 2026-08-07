@@ -32,7 +32,10 @@ class DataRequirementRepositoryPort(Protocol):
 class ReferenceDataPort(Protocol):
     """The norm-side ids publish() validates against (qualities, frameworks)."""
 
-    def quality_ids(self) -> set[str]: ...
+    def quality_dimensions(self) -> dict[str, str | None]:
+        """`{qualityId: dimensionId}` — the known qualities *and* their grouping, which
+        publish freezes into the version (ADR-0023 §8). One source, not two."""
+        ...
 
     def framework_ids(self) -> set[str]: ...
 

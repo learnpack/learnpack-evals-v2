@@ -11,6 +11,7 @@ only `conjunctive`; `existential`/`m_of_n` are documented vocabulary, and anythi
 compensatory (weights, averages) is forbidden — ADR-0011 one level up.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -158,6 +159,10 @@ class InstrumentVersion:
     revision_author: UUID | None = None
     revision_reason: str | None = None
     assisted_by: dict[str, Any] | None = None
+    # Frozen at publish (ADR-0023 §8): `qualities.dimension_id` is global and mutable, so a
+    # published version carries its own map for the qualities its claims reference. Empty
+    # while draft — publish is what freezes it.
+    quality_dimensions: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for attr in ("instrument_id", "version", "name", "purpose"):
@@ -188,7 +193,7 @@ class InstrumentVersion:
         self,
         published_by: UUID,
         known_data_requirements: set[str],
-        known_qualities: set[str],
+        quality_dimensions: Mapping[str, str | None],
         known_frameworks: set[str],
         now: datetime | None = None,
     ) -> None:
@@ -196,8 +201,15 @@ class InstrumentVersion:
 
         Deliberately does NOT require extraction capability: design stays decoupled from
         adapters; readiness informs when a study pins this version (invariant 4).
+
+        `quality_dimensions` is the whole vocabulary, `{qualityId: dimensionId}`: its keys are
+        the known qualities (one source, not two) and the slice this instrument references is
+        frozen into the version (ADR-0023 §8). A quality whose dimension is null is a legal
+        quality that simply groups nowhere — it stays publishable and stays out of the frozen
+        map, so it never rolls up into a dimension.
         """
         self.require_editable()
+        known_qualities = set(quality_dimensions)
         problems: list[str] = []
 
         evidenced: dict[str, int] = {c.claim_id: 0 for c in self.claims}
@@ -244,3 +256,9 @@ class InstrumentVersion:
         self.status = "published"
         self.published_by = published_by
         self.published_at = now or datetime.now(UTC)
+        self.quality_dimensions = {
+            quality_id: dimension_id
+            for claim in self.claims
+            for quality_id in claim.quality_ids
+            if (dimension_id := quality_dimensions.get(quality_id)) is not None
+        }
