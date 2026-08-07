@@ -8,12 +8,17 @@ Guide for generating the code of this repository. **Read `docs/` before writing 
    **equivalences table with the evals industry**).
 3. `docs/design/09-align-discover-qa.md` … `13-code-qa.md` — **the current design** (internal
    QA of generators): strategic (09–11), tactical per context (12) and the code
-   plan (13).
-4. `docs/adr/` — immutable decisions: 0001–0008 (slice 1) · **0009–0021 (slice 2)**.
+   plan (13), the latter as it was written **before** implementing.
+4. `docs/adr/` — immutable decisions: 0001–0008 (slice 1) · **0009 onwards (slice 2)**.
 5. `STATUS.md` — where the development stands **today**.
 
 ⚠️ `docs/design/01-…-08` are **historical snapshots** of the design that produced slice 1 —
 they carry a banner and are **not used as a source for new code**.
+
+⚠️ The 09–13 series is **not** historical — it is the model the code realizes — but it is
+frozen at what was written before implementing, and several later ADRs amend it. **Never read
+one of those snapshots alone**: where a snapshot and an ADR disagree, the ADR wins, and each
+ADR names what it amends in its own references.
 
 ## Non-negotiables (summary of ARCHITECTURE.md)
 - **Dependency Rule:** dependencies point **inwards only**
