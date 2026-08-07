@@ -10,7 +10,8 @@ _Last updated: 2026-08-07._
 ## Where we are
 
 **Slice 1 (human MVP): complete and verified locally; the deploy is missing.
-Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 blocks.**
+Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 blocks,
+plus ADR-0024 (generator declaration + late attribution) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -41,9 +42,11 @@ the root `README.md`.
   realized before block 6, which is its first consumer), **ADR-0021** (the `fail`
   derived from absence: no quote, with its `derived` origin recorded — refines ADR-0018 §5;
   realized in block 6) and **ADR-0022** (mechanical intake of the `GenerationBrief` at
-  content registration, hash identity dedup — **realized in block 7**). GLOSSARY reflects
+  content registration, hash identity dedup — **realized in block 7**) and **ADR-0024**
+  (the generator link is declared, never defaulted; a discovered one is attributable later,
+  once — realized right after block 7). GLOSSARY reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
-  halves, and the quote demanded only of executed scored.
+  halves, the quote demanded only of executed scored, and `unknown` as a declaration.
 
 | Block (`13-code-qa.md` §9) | Status |
 |---|---|
@@ -54,6 +57,16 @@ the root `README.md`.
 | 5. Content Profiling (LearnpackV1 adapter + viewer) | ✔ |
 | 6. Automated Evaluation (first assessor) | ✔ |
 | 7. Evaluation Studies thin (+ brief intake, ADR-0022) | ✔ |
+
+**After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
+declaration** — a generator version or an explicit `unknown` — at every entry point (form,
+API, canonical bulk import, `--acl` import with `--generator`), so the accidental null that
+cost a content its place in generator-level accumulation cannot happen silently. And what is
+declared unknown is **repairable**: `attribute-generator` (CLI) and
+`POST /admin/contents/{id}/generator` record a generator learnt later, **once and one-way**
+(`unknown → known`, never `known → other known`), with who and when (migration 0012). A
+content attributed after its study opened counts when the report is composed at publish;
+reports already published keep their frozen caveat.
 
 **Block 7 delivered:** the `evaluation_studies` module (migration 0011: `studies`,
 `study_recipe`, `study_dataset`, `study_reports`) with the lifecycle
@@ -130,7 +143,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 432 tests** against local Postgres (~15 s). Requires
+- **Backend suite green: 455 tests** against local Postgres (~15 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -138,16 +151,24 @@ the data in the package).
   recorded, the real numbering-drift finding (`05`/`06`) with its quote, generator-level
   distributions with coverage, unknown-generator exclusions, brief completeness and
   abstention causes — and a second publish refused.
-- **Manual loop verified in local mode**: `seed-demo --reset` now registers the demo
-  courses **with intake-derived briefs** (syllabus fixtures in the frozen packages) →
-  publish + ratify + evaluate both → study declared/pinned/composed/opened/published via
-  CLI → `show-report` shows: 2 judgments, empty generator level with both contents in
-  `unknownExclusions` (true of the local dataset: demo courses carry no generator
-  version), `promptRecorded: false` per brief, `not_assessed` insufficiencies, the drift
-  finding. `/admin/studies` drives the same acts with a confirm dialog on Publish.
+- **Attribution proven to be worth something** (suite): a content registered with its
+  generator declared unknown is excluded from generator-level accumulation; attributed
+  after its study opened, it counts in the report composed at publish and disappears from
+  `unknownExclusions`. The one-way rule is tested through the use case and against the
+  repository alone (the guard that holds under concurrency).
+- **Manual loop verified in local mode**: `seed-demo --reset` registers the demo courses
+  **with intake-derived briefs** (syllabus fixtures in the frozen packages), one linked to
+  `learnpack-generator 1.0.0` and one declared unknown → publish + ratify + evaluate both →
+  study declared/pinned/composed/opened/published via CLI → `show-report` shows the judgments,
+  a populated generator level for the linked course and the other in `unknownExclusions`,
+  `promptRecorded: false` per brief, `not_assessed` insufficiencies, the drift finding.
+  `attribute-generator` then fills the unknown one and refuses the second attempt.
+  `/admin/studies` drives the study acts with a confirm dialog on Publish; `/admin/contents`
+  shows brief and generator, and offers the attribution on the unknown cell.
 - **Local mode** (ADR-0008) tested end to end: `seed-demo` idempotent and with `--reset`
-  (the reset now also wipes ratifications and studies), `/me` and `/dev/identities`
-  responding with `X-Dev-User`, and the frontend compiling **without any Clerk key**.
+  (the reset also wipes ratifications, studies and generator versions), `/me` and
+  `/dev/identities` responding with `X-Dev-User`, and the frontend compiling **without any
+  Clerk key**.
 - **Frontend typecheck** clean (`npx tsc --noEmit`).
 - **Clerk identity end-to-end**: JWT template with `email`/`name`, invite-only, admin and
   evaluator entering with the correct role. The `backend/README.md` runbook has already been run
@@ -161,9 +182,12 @@ the data in the package).
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
 - **Contract change to keep in mind**: the canonical `import-learnpack` JSON uses
-  `package_format` (formerly `generating_system`) and, since block 7, takes optional
-  `artifacts` / `brief_id` / `generator_version_id` / `edit_provenance` (the dead
-  `metadata` key was dropped — ADR-0017); `--base-dir` resolves artifact locators locally.
+  `package_format` (formerly `generating_system`) and takes optional `artifacts` /
+  `brief_id` / `edit_provenance` (the dead `metadata` key was dropped — ADR-0017);
+  `--base-dir` resolves artifact locators locally. Since ADR-0024 **`generator_version_id`
+  is required per entry** (null declares unknown), and the `--acl` path instead requires
+  `--generator <uuid|unknown>` for the whole file — anyone scripting either path must
+  adjust. `POST /admin/contents` likewise requires the key.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **Fitness projection for the genetic-algorithm experiment: decided, next.** A global
@@ -189,22 +213,11 @@ the data in the package).
   ADR): **zip upload + storage** (`PackageStoragePort`, filesystem in dev, S3-compatible
   bucket in prod — a stack decision) for packages not hosted anywhere. Priority rises
   when the GA experiment needs bulk registration.
-- **Content registration should require a generator link: decided, ADR when
-  implementing.** Today `generator_version_id` defaults silently to null (`unknown`,
-  excluded from generator-level accumulation) — an easy accidental loss, and the
-  system's purpose is generator QA. The ADR must choose the exact shape (hard-mandatory
-  vs. `unknown` as an **explicit act** — a conscious flag, never a silent default; the
-  latter matches the house rule that silence is never a declaration) and it supersedes
-  the current "unknown allowed" nuance (GLOSSARY, `GeneratorVersion`). Operational
-  impact to map: registration form, `import-learnpack` bulk path, `seed-demo` and test
-  fixtures. Block 7 makes the cost visible: every unknown content lands in the report's
-  `unknownExclusions` caveat and stays out of generator-level accumulation forever.
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
-  its metadata) is registered in the local dev DB; **repeat the act in production
-  before registering real content** (there is no command to link a generator to an
-  already-registered content: `unknown` is forever, and stays out of generator-level
-  accumulation).
+  its metadata) is registered in the local dev DB and by `seed-demo`; **repeat the act in
+  production before registering real content**, so the declaration ADR-0024 now demands can
+  name a real generator instead of falling back to `unknown`.
 - **Brief completeness (ADR-0022 consequence):** intake-derived briefs carry
   `promptRecorded: false` — pairing holds for "same effective instruction", not for
   attributing differences to prompt wording. Forward ask to LearnPack: persist the
