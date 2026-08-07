@@ -1,0 +1,294 @@
+"""Mechanical brief intake at registration (ADR-0022).
+
+The ACL derivation is specified pure (bytes → DerivedBrief); the use-case wiring is
+specified against the DB: hash dedup pairs registrations, misses register absent, and the
+intake never blocks a registration.
+"""
+
+import json
+from uuid import UUID
+
+import pytest
+from sqlalchemy import text
+
+from app.modules.evaluand_registry.application.register_content_version import (
+    RegisterContentVersion,
+    RegisterContentVersionCommand,
+)
+from app.modules.evaluand_registry.infrastructure.acl_learnpack import derive_brief
+from app.modules.evaluand_registry.infrastructure.brief_intake import LearnpackBriefIntake
+from app.modules.evaluand_registry.infrastructure.fetchers import (
+    BriefIntakeError,
+    FilesystemArtifactFetcher,
+)
+from app.modules.evaluand_registry.infrastructure.repository import (
+    SqlAlchemyBriefRepository,
+    SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorVersionRepository,
+)
+from app.platform.db import SessionLocal
+from app.platform.uow import UnitOfWork
+
+SYLLABUS = {
+    "courseInfo": {
+        "description": "Create an intermediate course on Python object representation.",
+        "contentIndex": ["Why repr matters", "repr vs str", "Debugging with repr"],
+    }
+}
+SYLLABUS_BYTES = json.dumps(SYLLABUS).encode("utf-8")
+
+
+# ------------------------------------------------------------------ pure ACL derivation
+
+
+def test_derive_brief_extracts_the_operative_instruction():
+    derived = derive_brief(SYLLABUS_BYTES)
+
+    assert derived is not None
+    assert derived.brief == SYLLABUS["courseInfo"]["description"]
+    assert derived.fields["origin"] == "ai_derived_syllabus"
+    assert derived.fields["promptRecorded"] is False
+    assert derived.fields["materialsHash"]
+    assert len(derived.brief_hash) == 64  # sha256 hex
+
+
+def test_derive_brief_hash_survives_key_reordering():
+    reordered = json.dumps(
+        {
+            "courseInfo": {
+                "contentIndex": SYLLABUS["courseInfo"]["contentIndex"],
+                "description": SYLLABUS["courseInfo"]["description"],
+            }
+        }
+    ).encode("utf-8")
+
+    assert derive_brief(SYLLABUS_BYTES).brief_hash == derive_brief(reordered).brief_hash
+
+
+def test_derive_brief_hash_changes_with_the_materials():
+    other = json.dumps(
+        {
+            "courseInfo": {
+                "description": SYLLABUS["courseInfo"]["description"],
+                "contentIndex": ["A different attachment"],
+            }
+        }
+    ).encode("utf-8")
+
+    assert derive_brief(SYLLABUS_BYTES).brief_hash != derive_brief(other).brief_hash
+
+
+def test_derive_brief_without_description_returns_none():
+    assert derive_brief(b'{"courseInfo": {"contentIndex": []}}') is None
+    assert derive_brief(b'{"courseInfo": {"description": "   "}}') is None
+    assert derive_brief(b"{}") is None
+
+
+def test_derive_brief_records_the_declared_materials_source():
+    with_source = json.dumps(
+        {
+            "courseInfo": {
+                "description": "A course.",
+                "contentIndex": [],
+                "materialsSource": "uploaded-pdf",
+            }
+        }
+    ).encode("utf-8")
+
+    assert derive_brief(with_source).fields["materialsSource"] == "uploaded-pdf"
+    assert "materialsSource" not in derive_brief(SYLLABUS_BYTES).fields
+
+
+# ------------------------------------------------------------------ intake adapter
+
+
+class StubFetcher:
+    def __init__(self, payload: bytes | None = None, error: Exception | None = None) -> None:
+        self._payload = payload
+        self._error = error
+        self.fetched: list[str] = []
+
+    def fetch(self, locator: str) -> bytes:
+        self.fetched.append(locator)
+        if self._error is not None:
+            raise self._error
+        assert self._payload is not None
+        return self._payload
+
+
+SYLLABUS_ARTIFACT = {"kind": "syllabus", "locator": "course/.learn/initialSyllabus.json"}
+
+
+def test_intake_ignores_other_package_formats():
+    intake = LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+
+    assert intake.derive("SomethingElseV1", [SYLLABUS_ARTIFACT]) is None
+
+
+def test_intake_finds_the_syllabus_by_locator_suffix():
+    fetcher = StubFetcher(SYLLABUS_BYTES)
+    intake = LearnpackBriefIntake(fetcher)
+
+    derived = intake.derive(
+        "LearnpackV1",
+        [
+            {"kind": "manifest", "locator": "course/learn.json"},
+            {"kind": "package_file", "locator": "course/.learn/initialSyllabus.json"},
+        ],
+    )
+
+    assert derived is not None
+    assert fetcher.fetched == ["course/.learn/initialSyllabus.json"]
+
+
+def test_intake_is_soft_on_fetch_failure():
+    intake = LearnpackBriefIntake(StubFetcher(error=BriefIntakeError("boom")))
+
+    assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
+
+
+def test_intake_is_soft_on_corrupt_syllabus():
+    intake = LearnpackBriefIntake(StubFetcher(b"not json at all"))
+
+    assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
+
+
+def test_fixture_syllabus_derives_through_the_filesystem_fetcher():
+    from app.cli import DEMO_PACKAGES_DIR
+
+    intake = LearnpackBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR))
+    derived = intake.derive(
+        "LearnpackV1",
+        [
+            {
+                "kind": "syllabus",
+                "locator": "introduction-to-generative-ai/.learn/initialSyllabus.json",
+            }
+        ],
+    )
+
+    assert derived is not None
+    assert derived.fields["promptRecorded"] is False
+
+
+# ------------------------------------------------------------------ registration wiring
+
+
+def _register(cleanup, unique, suffix, *, intake=None, artifacts=None, brief_id=None):
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        content = RegisterContentVersion(
+            contents=SqlAlchemyContentRepository(session),
+            briefs=SqlAlchemyBriefRepository(session),
+            generators=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+            brief_intake=intake,
+        )(
+            RegisterContentVersionCommand(
+                package_format="LearnpackV1",
+                external_id=f"intake-{suffix}-{unique}",
+                consumable_url=f"https://intake-{suffix}-{unique}.learn-pack.com/",
+                artifacts=artifacts if artifacts is not None else [SYLLABUS_ARTIFACT],
+                brief_id=brief_id,
+            )
+        )
+    cleanup["contents"].append(content.id)
+    if content.brief_id and content.brief_id not in cleanup["briefs"]:
+        cleanup["briefs"].append(content.brief_id)
+    return content
+
+
+def _brief_events(session, brief_id: UUID) -> int:
+    return session.execute(
+        text(
+            "SELECT count(*) FROM events "
+            "WHERE event_type = 'BriefRegistered' AND aggregate_id = :id"
+        ),
+        {"id": str(brief_id)},
+    ).scalar_one()
+
+
+def test_registration_with_syllabus_creates_the_brief(cleanup, unique):
+    content = _register(
+        cleanup, unique, "a", intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    )
+
+    assert content.brief_id is not None
+    with SessionLocal() as session:
+        brief = SqlAlchemyBriefRepository(session).get_by_id(content.brief_id)
+        assert brief is not None
+        assert brief.brief == SYLLABUS["courseInfo"]["description"]
+        assert brief.fields["promptRecorded"] is False
+        assert brief.brief_hash is not None
+        assert _brief_events(session, brief.id) == 1
+
+
+def test_registrations_with_the_same_syllabus_share_the_brief(cleanup, unique):
+    intake = LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+
+    first = _register(cleanup, unique, "b1", intake=intake)
+    second = _register(cleanup, unique, "b2", intake=intake)
+
+    assert first.brief_id == second.brief_id  # same effective instruction → paired
+    with SessionLocal() as session:
+        assert _brief_events(session, first.brief_id) == 1  # minted once
+
+
+def test_registration_without_syllabus_registers_absent(cleanup, unique):
+    content = _register(
+        cleanup,
+        unique,
+        "c",
+        intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES)),
+        artifacts=[{"kind": "manifest", "locator": "course/learn.json"}],
+    )
+
+    assert content.brief_id is None
+
+
+def test_registration_survives_a_failing_intake(cleanup, unique):
+    content = _register(
+        cleanup,
+        unique,
+        "d",
+        intake=LearnpackBriefIntake(StubFetcher(error=BriefIntakeError("network down"))),
+    )
+
+    assert content.brief_id is None  # soft failure: registered absent, never blocked
+
+
+def test_an_explicit_brief_wins_over_intake(cleanup, unique):
+    seeded = _register(
+        cleanup, unique, "e1", intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    )
+    other_syllabus = json.dumps(
+        {"courseInfo": {"description": "A different commission.", "contentIndex": []}}
+    ).encode("utf-8")
+
+    content = _register(
+        cleanup,
+        unique,
+        "e2",
+        intake=LearnpackBriefIntake(StubFetcher(other_syllabus)),
+        brief_id=seeded.brief_id,
+    )
+
+    assert content.brief_id == seeded.brief_id
+
+
+def test_registration_without_intake_keeps_the_old_contract(cleanup, unique):
+    content = _register(cleanup, unique, "f", intake=None)
+
+    assert content.brief_id is None
+
+
+@pytest.mark.parametrize("payload", [b"[]", b'"just a string"', b"3"])
+def test_derive_brief_returns_none_for_non_course_payloads(payload):
+    assert derive_brief(payload) is None
+
+
+def test_derive_brief_raises_on_unparseable_bytes():
+    # The intake adapter catches this and registers absent (soft failure).
+    with pytest.raises(json.JSONDecodeError):
+        derive_brief(b"")

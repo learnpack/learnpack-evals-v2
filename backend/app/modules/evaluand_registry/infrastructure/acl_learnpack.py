@@ -5,14 +5,19 @@ so the translation is thin — but the seam lives here, so when LearnPack's API 
 real, nothing outside this file changes.
 """
 
+import hashlib
+import json
 from typing import Any
 
+from app.modules.evaluand_registry.application.ports import DerivedBrief
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersionCommand,
 )
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION
 
 PACKAGE_FORMAT = "LearnpackV1"
+
+SYLLABUS_LOCATOR_SUFFIX = ".learn/initialSyllabus.json"
 
 
 def to_register_command(raw: dict[str, Any]) -> RegisterContentVersionCommand:
@@ -26,4 +31,42 @@ def to_register_command(raw: dict[str, Any]) -> RegisterContentVersionCommand:
         external_id=raw["slug"],
         consumable_url=raw["url"],
         version=str(raw.get("version") or DEFAULT_VERSION),
+    )
+
+
+def _sha256(payload: str) -> str:
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def derive_brief(syllabus_bytes: bytes) -> DerivedBrief | None:
+    """Translate `.learn/initialSyllabus.json` into the brief's identity (ADR-0022).
+
+    `courseInfo.description` is the operative instruction during lesson generation;
+    `courseInfo.contentIndex` identifies the attached material (hashed, not duplicated).
+    Returns None when the syllabus carries no usable description.
+    """
+    data = json.loads(syllabus_bytes.decode("utf-8"))
+    course_info = data.get("courseInfo") if isinstance(data, dict) else None
+    if not isinstance(course_info, dict):
+        return None
+    description = course_info.get("description")
+    if not isinstance(description, str) or not description.strip():
+        return None
+
+    # Canonical JSON so the hash survives key reordering between exports.
+    materials_hash = _sha256(
+        json.dumps(course_info.get("contentIndex"), sort_keys=True, separators=(",", ":"))
+    )
+    fields: dict[str, Any] = {
+        "origin": "ai_derived_syllabus",
+        "promptRecorded": False,  # the original prompt is not persisted by the pipeline
+        "materialsHash": materials_hash,
+    }
+    if course_info.get("materialsSource"):
+        fields["materialsSource"] = course_info["materialsSource"]
+
+    return DerivedBrief(
+        brief=description,
+        fields=fields,
+        brief_hash=_sha256(f"{description}\n{materials_hash}"),
     )

@@ -55,6 +55,11 @@ from app.modules.evaluand_registry.application.register_content_version import (
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.evaluand_registry.infrastructure.brief_intake import LearnpackBriefIntake
+from app.modules.evaluand_registry.infrastructure.fetchers import (
+    FilesystemArtifactFetcher,
+    HttpArtifactFetcher,
+)
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
@@ -924,18 +929,20 @@ def run_reprofile(
     return 0 if errors == 0 else 1
 
 
-def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
+def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None = None) -> int:
     """Bulk-register courses, reusing the `RegisterContentVersion` use case.
 
     `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
     shape); without it the file is expected in our canonical shape. Which one becomes the
-    default depends on the real LearnPack export.
+    default depends on the real LearnPack export. `--base-dir` resolves artifact locators on
+    the filesystem (local packages); without it the intake fetches over HTTP (ADR-0022).
     """
     raw_courses = json.loads(seed_file.read_text(encoding="utf-8"))
     if not isinstance(raw_courses, list):
         print("the file must contain a JSON list of courses", file=sys.stderr)
         return 1
 
+    fetcher = FilesystemArtifactFetcher(base_dir) if base_dir else HttpArtifactFetcher()
     created = duplicated = failed = 0
     for raw in raw_courses:
         with SessionLocal() as session:
@@ -946,6 +953,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
+                brief_intake=LearnpackBriefIntake(fetcher),
             )
             try:
                 command = (
@@ -956,7 +964,14 @@ def run_import_learnpack(seed_file: Path, use_acl: bool) -> int:
                         external_id=raw["external_id"],
                         consumable_url=raw["consumable_url"],
                         version=str(raw.get("version", "1")),
-                        metadata=raw.get("metadata", {}),
+                        artifacts=raw.get("artifacts", []),
+                        brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
+                        generator_version_id=(
+                            UUID(raw["generator_version_id"])
+                            if raw.get("generator_version_id")
+                            else None
+                        ),
+                        edit_provenance=raw.get("edit_provenance", "unknown"),
                     )
                 )
                 content = use_case(command)
@@ -1090,6 +1105,13 @@ def _demo_artifacts(course_slug: str) -> list[dict[str, Any]]:
                 "locator": f"{course_slug}/.learn/package-manifest.json",
             }
         )
+    if (course_dir / ".learn" / "initialSyllabus.json").exists():
+        artifacts.append(
+            {
+                "kind": "syllabus",
+                "locator": f"{course_slug}/.learn/initialSyllabus.json",
+            }
+        )
     for path in sorted(course_dir.glob("exercises/*/*")):
         artifacts.append(
             {
@@ -1113,6 +1135,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
+                brief_intake=LearnpackBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
             )
             try:
                 content = register(
@@ -1217,6 +1240,8 @@ def _reset_demo(session: Session) -> None:
         # re-import can evolve a draft's definitions without tripping the ADR-0014 lint.
         "DELETE FROM data_requirements",
         "DELETE FROM contents",
+        # Intake-derived (ADR-0022), not seeded reference data; after contents (FK).
+        "DELETE FROM generation_briefs",
         "DELETE FROM events",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
     ):
@@ -1322,6 +1347,12 @@ def main(argv: list[str] | None = None) -> int:
         "--acl",
         action="store_true",
         help="treat the file as LearnPack's raw shape and translate it through the ACL",
+    )
+    import_parser.add_argument(
+        "--base-dir",
+        type=Path,
+        default=None,
+        help="resolve artifact locators on the filesystem (local packages) instead of HTTP",
     )
 
     demo_parser = subparsers.add_parser(
@@ -1435,7 +1466,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
-        return run_import_learnpack(args.file, args.acl)
+        return run_import_learnpack(args.file, args.acl, args.base_dir)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
     elif args.command == "import-instrument":

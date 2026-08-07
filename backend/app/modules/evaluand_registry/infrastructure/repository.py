@@ -206,13 +206,32 @@ class SqlAlchemyBriefRepository:
 
     @staticmethod
     def _to_domain(row: RowMapping) -> GenerationBrief:
-        return GenerationBrief(id=row["id"], brief=row["brief"], fields=row["fields"] or {})
+        return GenerationBrief(
+            id=row["id"],
+            brief=row["brief"],
+            fields=row["fields"] or {},
+            brief_hash=row["brief_hash"],
+        )
 
     def get_by_id(self, brief_id: UUID) -> GenerationBrief | None:
         row = (
             self._session.execute(
-                text("SELECT id, brief, fields FROM generation_briefs WHERE id = :id"),
+                text("SELECT id, brief, fields, brief_hash FROM generation_briefs WHERE id = :id"),
                 {"id": brief_id},
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_domain(row)
+
+    def get_by_hash(self, brief_hash: str) -> GenerationBrief | None:
+        row = (
+            self._session.execute(
+                text(
+                    "SELECT id, brief, fields, brief_hash FROM generation_briefs "
+                    "WHERE brief_hash = :h"
+                ),
+                {"h": brief_hash},
             )
             .mappings()
             .first()
@@ -223,17 +242,25 @@ class SqlAlchemyBriefRepository:
         self._session.execute(
             text(
                 """
-                INSERT INTO generation_briefs (id, brief, fields)
-                VALUES (:id, :brief, cast(:fields as jsonb))
+                INSERT INTO generation_briefs (id, brief, fields, brief_hash)
+                VALUES (:id, :brief, cast(:fields as jsonb), :brief_hash)
                 """
             ),
-            {"id": brief.id, "brief": brief.brief, "fields": json.dumps(brief.fields)},
+            {
+                "id": brief.id,
+                "brief": brief.brief,
+                "fields": json.dumps(brief.fields),
+                "brief_hash": brief.brief_hash,
+            },
         )
 
     def list_all(self) -> list[GenerationBrief]:
         rows = (
             self._session.execute(
-                text("SELECT id, brief, fields FROM generation_briefs ORDER BY created_at")
+                text(
+                    "SELECT id, brief, fields, brief_hash FROM generation_briefs "
+                    "ORDER BY created_at"
+                )
             )
             .mappings()
             .all()
