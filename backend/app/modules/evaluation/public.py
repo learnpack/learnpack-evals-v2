@@ -1,8 +1,10 @@
 """Public surface of Evaluation (ARCHITECTURE.md §3).
 
-Two things cross this boundary: the **event** `EvaluationSubmitted` (which Orchestration's
-completion policy consumes) and the **read side** — Evaluation owns the `CriterionScore`s, so
-Reporting reads them from here instead of joining across modules (ADR-0006).
+What crosses this boundary: the human **event** `EvaluationSubmitted` (Orchestration's
+completion policy consumes it), the automated-path events `EvaluationCompleted`,
+`QualityJudgmentPublished` and `FindingRaised` (coordinates only — subscribers read via
+the queries), and the **read side** — scores for Reporting (ADR-0006) plus the batch
+judgment/finding queries Evaluation Studies will compose from (13-code §3.6).
 """
 
 from dataclasses import dataclass
@@ -13,18 +15,39 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.modules.evaluation.application import queries as _queries
-from app.modules.evaluation.application.dtos import CriterionScoreDTO, EvaluationDTO
-from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
+from app.modules.evaluation.application.dtos import (
+    CriterionScoreDTO,
+    EvaluationDTO,
+    FindingDTO,
+    JudgmentClaimDTO,
+    QualityJudgmentDTO,
+)
+from app.modules.evaluation.infrastructure.repository import (
+    SqlAlchemyEvaluationRepository,
+    SqlAlchemyJudgmentRepository,
+)
 from app.platform.uow import UnitOfWork, get_uow
 
 EVALUATION_SUBMITTED = "EvaluationSubmitted"
+EVALUATION_COMPLETED = "EvaluationCompleted"
+QUALITY_JUDGMENT_PUBLISHED = "QualityJudgmentPublished"
+FINDING_RAISED = "FindingRaised"
 
 __all__ = [
+    "EVALUATION_COMPLETED",
     "EVALUATION_SUBMITTED",
+    "FINDING_RAISED",
+    "QUALITY_JUDGMENT_PUBLISHED",
     "CriterionScoreDTO",
+    "EvaluationCompletedFact",
     "EvaluationDTO",
     "EvaluationQueries",
     "EvaluationSubmittedFact",
+    "FindingDTO",
+    "FindingRaisedFact",
+    "JudgmentClaimDTO",
+    "QualityJudgmentDTO",
+    "QualityJudgmentPublishedFact",
     "get_evaluation_queries",
 ]
 
@@ -51,15 +74,84 @@ class EvaluationSubmittedFact:
         )
 
 
+@dataclass(frozen=True)
+class EvaluationCompletedFact:
+    """Published Language of `EvaluationCompleted` — coordinates of one automated act."""
+
+    evaluation_id: UUID
+    assessor_id: UUID
+    content_id: UUID
+    instrument_version_id: str
+    profile_id: UUID
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "EvaluationCompletedFact":
+        return cls(
+            evaluation_id=UUID(payload["evaluationId"]),
+            assessor_id=UUID(payload["assessorId"]),
+            content_id=UUID(payload["contentId"]),
+            instrument_version_id=payload["instrumentVersionId"],
+            profile_id=UUID(payload["profileId"]),
+        )
+
+
+@dataclass(frozen=True)
+class QualityJudgmentPublishedFact:
+    judgment_id: UUID
+    evaluation_id: UUID
+    content_id: UUID
+    instrument_version_id: str
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "QualityJudgmentPublishedFact":
+        return cls(
+            judgment_id=UUID(payload["judgmentId"]),
+            evaluation_id=UUID(payload["evaluationId"]),
+            content_id=UUID(payload["contentId"]),
+            instrument_version_id=payload["instrumentVersionId"],
+        )
+
+
+@dataclass(frozen=True)
+class FindingRaisedFact:
+    finding_id: UUID
+    judgment_id: UUID
+    content_id: UUID
+    claim_id: str
+    criterion_id: str
+    failure_mode: str
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> "FindingRaisedFact":
+        return cls(
+            finding_id=UUID(payload["findingId"]),
+            judgment_id=UUID(payload["judgmentId"]),
+            content_id=UUID(payload["contentId"]),
+            claim_id=payload["claimId"],
+            criterion_id=payload["criterionId"],
+            failure_mode=payload["failureMode"],
+        )
+
+
 class EvaluationQueries:
     """Read-only contract of Evaluation."""
 
     def __init__(self, session: Session) -> None:
         self._evaluations = SqlAlchemyEvaluationRepository(session)
+        self._judgments = SqlAlchemyJudgmentRepository(session)
 
     def list_for_contents(self, content_ids: list[UUID]) -> list[EvaluationDTO]:
         """Every evaluation of those contents, scores included. Batch (ADR-0006)."""
         return _queries.list_evaluations_for_contents(self._evaluations, content_ids)
+
+    def get_judgments(
+        self, content_ids: list[UUID], instrument_version_id: str
+    ) -> list[QualityJudgmentDTO]:
+        """Append-only; the most recent per content is the current one. Batch."""
+        return self._judgments.list_for_contents(content_ids, instrument_version_id)
+
+    def get_findings(self, content_ids: list[UUID], instrument_version_id: str) -> list[FindingDTO]:
+        return self._judgments.list_findings_for_contents(content_ids, instrument_version_id)
 
 
 def get_evaluation_queries(uow: Annotated[UnitOfWork, Depends(get_uow)]) -> EvaluationQueries:

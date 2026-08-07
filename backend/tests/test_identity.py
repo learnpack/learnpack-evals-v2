@@ -78,3 +78,35 @@ def test_admin_can_reach_admin_endpoints(as_user, cleanup, promote, unique):
 
     promote(email)
     assert client.get("/admin/contents").status_code == 200
+
+
+def test_automated_assessor_round_trips_through_the_repository(cleanup, session, unique):
+    from app.modules.identity.domain.assessor import Assessor, Kind
+    from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+    from app.shared.domain.ids import new_id
+
+    repository = SqlAlchemyAssessorRepository(session)
+    name = f"structural-{unique}"
+    assessor = Assessor(
+        id=new_id(),
+        clerk_user_id=None,
+        display_name=f"{name} v1",
+        kind=Kind.AUTOMATED,
+        source_config={
+            "name": name,
+            "version": "1",
+            "instrumentId": "learnpack-course-qa",
+            "coverage": {"executes": ["cr-a"], "abstains": {"cr-b": "semantic judgment"}},
+        },
+    )
+    repository.add(assessor)
+    session.commit()
+    cleanup["assessors"].append(str(assessor.id))
+
+    found = repository.get_automated(name, "1")
+    assert found is not None
+    assert found.id == assessor.id
+    assert found.kind is Kind.AUTOMATED
+    assert found.clerk_user_id is None
+    assert found.source_config["coverage"]["executes"] == ["cr-a"]
+    assert repository.get_automated(name, "2") is None

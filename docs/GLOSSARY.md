@@ -193,8 +193,10 @@
   un assessor automatizado corrido N veces para medir dispersión). La anti-duplicación humana vive en el
   `Assignment`, no acá. Ver ADR-0005 — **intacto**. Los desenlaces
   `not_applicable`/`no_evidence`/`not_assessed` se **derivan mecánicamente** (matching +
-  profile + abstenciones registradas del assessor, ADR-0018), nunca los decide el assessor en
-  runtime; `scored` exige cita.
+  profile + abstenciones registradas del assessor, ADR-0018) — también el `fail` por ausencia
+  cuando `on_missing_evidence='fail'` (ADR-0021) —, nunca los decide el assessor en runtime;
+  `scored` **ejecutado** exige cita (el `fail` derivado no la tiene: su evidencia es la
+  entrada `absent` del profile).
 - **ComputedMetric** (aka `Signal`) — **medición cruda** producida por fuentes
   determinísticas/híbridas (p.ej. FK grade level, índice de cohesión, coseno de alineación,
   distribución de niveles de Bloom). **Admite valores estructurados** (distribuciones, listas),
@@ -208,7 +210,8 @@
   código del slice 1 puede referirla hasta su migración.
 - **CriterionScore** — el desenlace de un criterion sobre un contenido (+ `Comment` opcional).
   Forma ADR-0010 + ADR-0018: `scored (pass/fail) | not_applicable | no_evidence | not_assessed`,
-  **con la cita que lo sostiene** (solo `scored` la exige). Los tres estados no-scored son tres
+  **con la cita que lo sostiene** (la exige solo `scored` ejecutado; el `fail` **derivado** de
+  ausencia va sin cita, con su origen registrado — ADR-0021). Los tres estados no-scored son tres
   causas con tres remedios: sin capacidad/condicional (`not_applicable`) · dato ausente del
   contenido (`no_evidence`) · assessor sin ejecutor para el criterion (`not_assessed`). (El
   score 1–5 sobrevive en el flujo del **panel de referencia** — `Rubric v1`, ADR-0015.)
@@ -219,7 +222,8 @@
   `assessorCalibrationStatus`). Con ECD-lite
   (ADR-0013) se comunica como **claims con estatus evidencial** y findings bajo cada claim.
   Evento: `QualityJudgmentPublished`.
-- **Finding** — hallazgo derivado de un criterion no cumplido: qué falló, la **cita**, y la
+- **Finding** — hallazgo derivado de un criterion no cumplido: qué falló, la **cita** (ausente
+  solo en el fail derivado de ausencia, cuyo modo de falla es mecánico — ADR-0021), y la
   sugerencia que sale del modo de falla declarado (la falla *es* la sugerencia). **Inmutable y
   derivado** de la evaluación; las impugnaciones son hechos separados *sobre* un finding, que
   alimentan la mejora del instrumento — no el score.

@@ -49,6 +49,7 @@ files = [
     "app/modules/evaluand_registry",
     "app/modules/evaluation_design",
     "app/modules/content_profiling",
+    "app/modules/evaluation",
 ]
 
 [build-system]

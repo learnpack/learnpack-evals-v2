@@ -10,7 +10,7 @@ _Última actualización: 2026-08-06._
 ## Dónde estamos
 
 **Slice 1 (MVP humano): completo y verificado en local; falta el deploy.
-Slice 2 (motor de QA de generadores): en implementación por bloques — 5 de 7 hechos.**
+Slice 2 (motor de QA de generadores): en implementación por bloques — 6 de 7 hechos.**
 
 El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el quickstart del
 `README.md` de la raíz.
@@ -38,8 +38,11 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
   lo realiza), **ADR-0019** (cobertura por linaje de criteria + ratificación por versión del
   instrumento — refina ADR-0016 §3 y ADR-0018; el bloque 6 lo realiza) y **ADR-0020**
   (`value_domain` obligatorio y verificado en `ContentProfile.ok()` — completa ADR-0014;
-  realizado antes del bloque 6, que es su primer consumidor). GLOSSARY re-actualizado
-  (cinco estados; assessor automatizado por linaje; `DataRequirement` con sus dos mitades).
+  realizado antes del bloque 6, que es su primer consumidor) y **ADR-0021** (el `fail`
+  derivado de ausencia: sin cita, con origen `derived` registrado — refina ADR-0018 §5).
+  0018, 0019 y 0021 quedaron **realizados en el bloque 6**. GLOSSARY re-actualizado
+  (cinco estados; assessor automatizado por linaje; `DataRequirement` con sus dos mitades;
+  cita exigida solo a scored ejecutado).
 
 | Bloque (`13-code-qa.md` §9) | Estado |
 |---|---|
@@ -48,7 +51,7 @@ El repo se puede correr **sin cuentas ni nube** (modo local, ADR-0008): ver el q
 | 3. Evaluand Registry ensanchado | ✔ |
 | 4. Evaluation Design (instrumento + primer YAML real) | ✔ |
 | 5. Content Profiling (adapter LearnpackV1 + visor) | ✔ |
-| 6. Evaluation automático (primer assessor) | ✗ |
+| 6. Evaluation automático (primer assessor) | ✔ |
 | 7. Evaluation Studies thin | ✗ |
 
 **Modo de trabajo acordado:** rama + PR por bloque, con nombres de ramas y commits que
@@ -86,10 +89,23 @@ confíe en ella (`python -m app.cli accept-extraction --package-format Learnpack
 <admin>`). Hasta entonces el perfilado automático al registrar contenido queda desarmado —
 la aceptación es acto humano (ADR-0012); `seed-demo` la auto-acepta solo en modo local.
 
+**Tercer input pendiente del equipo (bloque 6):** publicado el instrumento, **ratificarlo**
+para el primer assessor automatizado (`python -m app.cli ratify-assessor --name structural
+--version 1 --instrument-version-id learnpack-course-qa-v1 --email <admin>` — ADR-0019; el
+registro inicial es la primera ratificación) y evaluar con
+`python -m app.cli evaluate --content-id <id> --instrument-version-id <id>`. Mientras el
+instrumento siga en draft, el loop de calibración es `evaluate --dry-run` (acepta drafts,
+no persiste nada). `structural:1` ejecuta 7 criteria y se abstiene de los 4 de juicio
+(ADR-0018) — sus `not_assessed` acumulados son el backlog visible del assessor con LLM.
+
 ## Verificado
 
-- **Suite backend en verde: 314 tests** contra Postgres local (~10 s). Requiere
+- **Suite backend en verde: 372 tests** contra Postgres local (~13 s). Requiere
   `docker compose up -d` en `backend/`; sin la DB levantada la suite da error, no skip.
+- **Camino automático probado end-to-end** (suite): registrar → perfilar → publicar copia
+  del instrumento → ratificar → evaluar → judgment + findings + eventos; el paquete
+  congelado `introduction-to-generative-ai` produce el finding real de numbering drift
+  (`05`/`06`) vía `cr-module-structure-well-formed`.
 - **Modo local** (ADR-0008) probado de punta a punta: `seed-demo` idempotente y con `--reset`
   (ahora también importa el draft del instrumento, acepta la extracción `LearnpackV1` y
   perfila los cursos demo desde sus paquetes reales congelados — registrados con artifacts,

@@ -45,8 +45,7 @@ def validate_spec(domain: Any, path: str = "") -> list[str]:
     unknown_keys = sorted(set(domain) - set(SPEC_KEYS))
     if unknown_keys:
         problems.append(
-            f"{where}: unknown keys {', '.join(unknown_keys)} "
-            f"(allowed: {', '.join(SPEC_KEYS)})"
+            f"{where}: unknown keys {', '.join(unknown_keys)} (allowed: {', '.join(SPEC_KEYS)})"
         )
     if "nullable" in domain and not isinstance(domain["nullable"], bool):
         problems.append(f"{where}: nullable must be true or false")

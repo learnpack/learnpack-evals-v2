@@ -5,8 +5,9 @@ Names follow GLOSSARY.md: an `Evaluation` is the act (with its coordinates), and
 an `EvaluationResult` — the set of `CriterionScore`.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 
@@ -32,3 +33,36 @@ class EvaluationDTO:
             if score.criterion_id == criterion_id:
                 return score.score
         return None
+
+
+@dataclass(frozen=True)
+class JudgmentClaimDTO:
+    claim_id: str
+    status: str  # supported | refuted | insufficient
+    evidence_basis: dict[str, int]  # {pass, fail, noEvidence, notApplicable, notAssessed}
+
+
+@dataclass(frozen=True)
+class QualityJudgmentDTO:
+    """Append-only; the most recent per (content, instrument) is the current one."""
+
+    judgment_id: UUID
+    evaluation_id: UUID
+    content_id: UUID
+    instrument_version_id: str
+    derived_at: datetime
+    coverage: dict[str, Any]
+    claims: list[JudgmentClaimDTO] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FindingDTO:
+    finding_id: UUID
+    judgment_id: UUID
+    content_id: UUID
+    claim_id: str
+    criterion_id: str
+    failure_mode: str
+    quote: str | None = None  # null only on absence-derived fails (ADR-0021)
+    locator: dict[str, Any] | None = None
+    raised_at: datetime | None = None
