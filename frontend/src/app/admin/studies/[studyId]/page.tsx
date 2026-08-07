@@ -1,0 +1,337 @@
+"use client";
+
+import { use } from "react";
+import Link from "next/link";
+import { ArrowLeft, Info } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { useStudy, useStudyReadiness, useStudyReport } from "@/lib/api/hooks";
+import type {
+  StudyReadiness,
+  StudyReport,
+  StudyReportContent,
+  StudyReportGenerator,
+  Uuid,
+} from "@/lib/api/types";
+
+export default function StudyDetailPage({
+  params,
+}: {
+  params: Promise<{ studyId: Uuid }>;
+}) {
+  const { studyId } = use(params);
+  const { data: study, isLoading, error } = useStudy(studyId);
+  const readiness = useStudyReadiness(studyId);
+  const report = useStudyReport(studyId, study?.status === "published");
+
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={(error as Error).message} />;
+  if (!study) return <EmptyState title="Study not found" />;
+
+  return (
+    <div className="max-w-5xl space-y-6">
+      <div>
+        <Link
+          href="/admin/studies"
+          className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Studies
+        </Link>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">{study.purpose}</h1>
+          <Badge>{study.status}</Badge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {study.instrument_version_id ?? "no instrument pinned"} · {study.brief_ids.length}{" "}
+          briefs → {study.content_ids.length} contents
+        </p>
+      </div>
+
+      {readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
+
+      {study.status === "published" ? (
+        report.isLoading ? (
+          <LoadingState label="Loading the report…" />
+        ) : report.data ? (
+          <ReportView report={report.data.report} />
+        ) : null
+      ) : (
+        <EmptyState
+          title="No report yet"
+          hint="The report is composed at publish and immutable afterwards."
+        />
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------- readiness
+
+function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
+  const claimGaps = readiness.claims.filter((c) => c.gaps.length > 0);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Info className="h-4 w-4 text-muted-foreground" /> Readiness
+          <span className="text-xs font-normal text-muted-foreground">
+            informs, never blocks
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {readiness.studyGaps.length === 0 && claimGaps.length === 0 ? (
+          <p className="text-muted-foreground">No gaps: the study can run end to end.</p>
+        ) : null}
+        {readiness.studyGaps.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {readiness.studyGaps.map((gap) => (
+              <Badge key={gap.gap} variant="outline">
+                {gap.gap.replaceAll("_", " ")}
+                {gap.instrumentVersionId ? ` (${gap.instrumentVersionId})` : ""}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+        {readiness.formats.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {readiness.formats.map((f) => (
+              <span key={f.packageFormat} className="mr-3">
+                {f.packageFormat}: adapter {f.adapterVersion ?? "—"} ·{" "}
+                {f.extractionAccepted === null
+                  ? "no adapter"
+                  : f.extractionAccepted
+                    ? "extraction accepted"
+                    : "extraction NOT accepted"}
+              </span>
+            ))}
+          </p>
+        ) : null}
+        {claimGaps.map((claim) => (
+          <div key={claim.claimId} className="rounded bg-muted/40 p-2">
+            <span className="font-medium">{claim.claimId}</span>
+            <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
+              {claim.gaps.map((gap, i) => (
+                <li key={i}>
+                  {gap.gap.replaceAll("_", " ")}
+                  {gap.criterionId ? ` — ${gap.criterionId}` : ""}
+                  {gap.missingData ? ` (missing: ${gap.missingData.join(", ")})` : ""}
+                  {gap.packageFormat ? ` [${gap.packageFormat}]` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------- report
+
+const STATUS_COLOR: Record<string, "default" | "destructive" | "secondary"> = {
+  supported: "default",
+  refuted: "destructive",
+  insufficient: "secondary",
+};
+
+function ReportView({ report }: { report: StudyReport }) {
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Published {new Date(report.publishedAt).toLocaleString()} · instrument{" "}
+        {report.instrumentVersionId} · dataset of {report.dataset.size} ·{" "}
+        {Object.keys(report.judgmentIdsUsed).length} judgments recorded
+      </p>
+
+      {report.generatorLevel.length > 0 ? (
+        report.generatorLevel.map((generator) => (
+          <GeneratorSection key={generator.generatorVersionId} generator={generator} />
+        ))
+      ) : (
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            No generator-level accumulation: no content in the dataset carries a known
+            generator version (see the caveats below).
+          </CardContent>
+        </Card>
+      )}
+
+      {report.contents.map((content) => (
+        <ContentSection key={content.contentId} content={content} />
+      ))}
+
+      <CaveatsSection report={report} />
+    </div>
+  );
+}
+
+function GeneratorSection({ generator }: { generator: StudyReportGenerator }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          Generator level — {generator.name ?? generator.generatorVersionId}{" "}
+          {generator.version ?? ""}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {generator.contentsCounted} contents counted
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Claim</TableHead>
+              <TableHead>Supported</TableHead>
+              <TableHead>Refuted</TableHead>
+              <TableHead>Insufficient</TableHead>
+              <TableHead>Coverage</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {generator.perClaim.map((claim) => (
+              <TableRow key={claim.claimId}>
+                <TableCell title={claim.claimId}>{claim.statement}</TableCell>
+                <TableCell>{claim.distribution.supported ?? 0}</TableCell>
+                <TableCell>{claim.distribution.refuted ?? 0}</TableCell>
+                <TableCell>{claim.distribution.insufficient ?? 0}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {claim.coverage.evaluated}/{claim.coverage.of}
+                  {claim.excludedNotApplicable
+                    ? ` · ${claim.excludedNotApplicable} n/a`
+                    : ""}
+                  {claim.notEvaluated ? ` · ${claim.notEvaluated} not evaluated` : ""}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ContentSection({ content }: { content: StudyReportContent }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          {content.externalId}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {content.packageFormat} ·{" "}
+            {content.generatorVersionId ? "generator known" : "generator unknown"}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!content.judgmentId ? (
+          <p className="text-sm text-muted-foreground">Not judged when published.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {(content.claims ?? []).map((claim) => (
+                <Badge key={claim.claimId} variant={STATUS_COLOR[claim.status] ?? "secondary"}>
+                  {claim.claimId}: {claim.status}
+                  {claim.insufficiencyCause ? ` (${claim.insufficiencyCause})` : ""}
+                </Badge>
+              ))}
+            </div>
+            {(content.findings ?? []).length > 0 ? (
+              <ul className="space-y-2 text-sm">
+                {(content.findings ?? []).map((finding) => (
+                  <li key={finding.findingId} className="rounded bg-muted/40 p-2">
+                    <span className="font-medium">{finding.criterionId}</span> —{" "}
+                    {finding.failureMode}
+                    {finding.quote ? (
+                      <blockquote className="mt-1 border-l-2 pl-2 text-xs text-muted-foreground">
+                        “{finding.quote}”
+                      </blockquote>
+                    ) : (
+                      <span className="mt-1 block text-xs italic text-muted-foreground">
+                        no quote — {finding.quoteAbsentCause}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CaveatsSection({ report }: { report: StudyReport }) {
+  const caveats = report.caveats;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Caveats</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Always published with the report — publishing silently is impossible.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <CaveatRow label="Insufficient evidence">
+          {caveats.insufficientEvidence.length === 0
+            ? "none"
+            : caveats.insufficientEvidence
+                .map((c) => `${c.claimId} (${c.cause})`)
+                .join(" · ")}
+        </CaveatRow>
+        <CaveatRow label="Unresolved disagreements">
+          {caveats.unresolvedDisagreements.length === 0
+            ? "none (single automated assessor)"
+            : `${caveats.unresolvedDisagreements.length}`}
+        </CaveatRow>
+        <CaveatRow label="Unknown-generator exclusions">
+          {caveats.unknownExclusions.contentIds.length === 0
+            ? "none"
+            : `${caveats.unknownExclusions.contentIds.length} contents — ${caveats.unknownExclusions.note}`}
+        </CaveatRow>
+        <CaveatRow label="Unaccepted adapters">
+          {caveats.unacceptedAdapters.length === 0
+            ? "none"
+            : caveats.unacceptedAdapters
+                .map((a) => `${a.packageFormat} (${a.adapterVersion ?? "no adapter"})`)
+                .join(" · ")}
+        </CaveatRow>
+        <CaveatRow label="Brief completeness">
+          {caveats.briefCompleteness.length === 0
+            ? "all briefs complete"
+            : caveats.briefCompleteness
+                .map((b) => `${b.origin ?? "manual"}: prompt not recorded`)
+                .join(" · ")}
+        </CaveatRow>
+        <CaveatRow label="Contents without judgment">
+          {caveats.contentsWithoutJudgment.length === 0
+            ? "none"
+            : `${caveats.contentsWithoutJudgment.length}`}
+        </CaveatRow>
+        <CaveatRow label="Task-variable patterns">
+          {caveats.taskVariablePatterns.status}: {caveats.taskVariablePatterns.reason}
+        </CaveatRow>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CaveatRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <p>
+      <span className="font-medium">{label}:</span>{" "}
+      <span className="text-muted-foreground">{children}</span>
+    </p>
+  );
+}

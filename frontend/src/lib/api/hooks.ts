@@ -17,7 +17,9 @@ import type {
   BriefResponse,
   CampaignProgress,
   CampaignResponse,
+  ComposeStudyDatasetRequest,
   ContentResponse,
+  DeclareStudyRequest,
   EvaluationResponse,
   GeneratorArtifactResponse,
   GeneratorVersionResponse,
@@ -25,6 +27,7 @@ import type {
   InstrumentResponse,
   Me,
   OpenCampaignRequest,
+  PinStudyInstrumentRequest,
   ProfileCapabilitiesResponse,
   ProfileResponse,
   ProgressReport,
@@ -33,6 +36,9 @@ import type {
   RegisterGeneratorArtifactRequest,
   RegisterGeneratorRequest,
   ScoresReport,
+  StudyReadiness,
+  StudyReportResponse,
+  StudyResponse,
   SubmitEvaluationRequest,
   Uuid,
 } from "./types";
@@ -66,6 +72,10 @@ export const queryKeys = {
   assessors: ["admin", "assessors"] as const,
   scores: ["admin", "reports", "scores"] as const,
   progress: ["admin", "progress"] as const,
+  studies: ["admin", "studies"] as const,
+  study: (id: Uuid) => ["admin", "studies", id] as const,
+  studyReport: (id: Uuid) => ["admin", "studies", id, "report"] as const,
+  studyReadiness: (id: Uuid) => ["admin", "studies", id, "readiness"] as const,
 };
 
 // --------------------------------------------------------------------- identity
@@ -325,6 +335,81 @@ export function useCloseCampaign() {
     mutationFn: (id: Uuid) =>
       api<CampaignResponse>(`/admin/campaigns/${id}/close`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.campaigns }),
+  });
+}
+
+// ---------------------------------------------------- evaluation studies (block 7)
+
+export function useStudies() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studies,
+    queryFn: () => api<StudyResponse[]>("/admin/studies"),
+  });
+}
+
+export function useStudy(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.study(id),
+    queryFn: () => api<StudyResponse>(`/admin/studies/${id}`),
+  });
+}
+
+export function useDeclareStudy() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DeclareStudyRequest) =>
+      api<StudyResponse>("/admin/studies", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.studies }),
+  });
+}
+
+function useStudyAct<TBody = void>(path: (id: Uuid) => string) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ studyId, body }: { studyId: Uuid; body?: TBody }) =>
+      api<StudyResponse>(path(studyId), { method: "POST", body: body ?? undefined }),
+    onSuccess: (_data, { studyId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.studies });
+      qc.invalidateQueries({ queryKey: queryKeys.study(studyId) });
+      qc.invalidateQueries({ queryKey: queryKeys.studyReadiness(studyId) });
+    },
+  });
+}
+
+export function usePinStudyInstrument() {
+  return useStudyAct<PinStudyInstrumentRequest>((id) => `/admin/studies/${id}/pin`);
+}
+
+export function useComposeStudyDataset() {
+  return useStudyAct<ComposeStudyDatasetRequest>((id) => `/admin/studies/${id}/dataset`);
+}
+
+export function useOpenStudy() {
+  return useStudyAct((id) => `/admin/studies/${id}/open`);
+}
+
+export function usePublishStudy() {
+  return useStudyAct((id) => `/admin/studies/${id}/publish`);
+}
+
+export function useStudyReport(id: Uuid, enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyReport(id),
+    queryFn: () => api<StudyReportResponse>(`/admin/studies/${id}/report`),
+    enabled,
+  });
+}
+
+export function useStudyReadiness(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyReadiness(id),
+    queryFn: () => api<StudyReadiness>(`/admin/studies/${id}/readiness`),
   });
 }
 

@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, Bot, ClipboardList, BarChart3, FileText, Ruler } from "lucide-react";
+import {
+  BookOpen,
+  Bot,
+  ClipboardList,
+  BarChart3,
+  FileText,
+  FlaskConical,
+  Ruler,
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const CARDS = [
@@ -28,6 +36,12 @@ const CARDS = [
     icon: Ruler,
     title: "Instruments",
     description: "Evidential arguments: claims, verifiable criteria and bindings.",
+  },
+  {
+    href: "/admin/studies",
+    icon: FlaskConical,
+    title: "Studies",
+    description: "Pinned instrument + brief-paired dataset → an immutable report with caveats.",
   },
   {
     href: "/admin/campaigns",
