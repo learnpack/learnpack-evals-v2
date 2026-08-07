@@ -53,6 +53,7 @@ from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
     RegisterContentVersionCommand,
+    UnknownGeneratorVersion,
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
@@ -977,18 +978,51 @@ def run_reprofile(
     return 0 if errors == 0 else 1
 
 
-def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None = None) -> int:
+def _generator_declaration(value: str) -> str:
+    """`--generator` takes a generator version id or the literal `unknown` (ADR-0024).
+    Validated at parse time so a typo fails before anything is registered."""
+    if value == "unknown":
+        return value
+    try:
+        return str(UUID(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected a generator version id or 'unknown', got {value!r}"
+        ) from None
+
+
+def run_import_learnpack(
+    seed_file: Path,
+    use_acl: bool,
+    base_dir: Path | None = None,
+    generator: str | None = None,
+) -> int:
     """Bulk-register courses, reusing the `RegisterContentVersion` use case.
 
     `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
     shape); without it the file is expected in our canonical shape. Which one becomes the
     default depends on the real LearnPack export. `--base-dir` resolves artifact locators on
     the filesystem (local packages); without it the intake fetches over HTTP (ADR-0022).
+
+    The generator declaration (ADR-0024) comes from whoever owns the payload's shape: the
+    canonical file carries it per entry, LearnPack's does not, so `--generator` declares it
+    for the whole file. Deliberately no fallback between the two — a rule of precedence is
+    where silence hides again.
     """
     raw_courses = json.loads(seed_file.read_text(encoding="utf-8"))
     if not isinstance(raw_courses, list):
         print("the file must contain a JSON list of courses", file=sys.stderr)
         return 1
+
+    # A file-wide declaration deserves a file-wide check: resolved once, before the loop,
+    # so an unregistered generator fails as one error instead of once per course.
+    acl_generator: UUID | None = None
+    if use_acl and generator != "unknown":
+        acl_generator = UUID(str(generator))
+        with SessionLocal() as session:
+            if SqlAlchemyGeneratorVersionRepository(session).get_by_id(acl_generator) is None:
+                print(f"generator version {acl_generator} is not registered", file=sys.stderr)
+                return 1
 
     fetcher = FilesystemArtifactFetcher(base_dir) if base_dir else HttpArtifactFetcher()
     created = duplicated = failed = 0
@@ -1005,7 +1039,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
             )
             try:
                 command = (
-                    to_register_command(raw, None)
+                    to_register_command(raw, acl_generator)
                     if use_acl
                     else RegisterContentVersionCommand(
                         package_format=raw["package_format"],
@@ -1014,9 +1048,11 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
                         version=str(raw.get("version", "1")),
                         artifacts=raw.get("artifacts", []),
                         brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
+                        # Required key (ADR-0024): a missing one is a KeyError, caught
+                        # below as a counted INVALID row — declared per entry or not at all.
                         generator_version_id=(
                             UUID(raw["generator_version_id"])
-                            if raw.get("generator_version_id")
+                            if raw["generator_version_id"]
                             else None
                         ),
                         edit_provenance=raw.get("edit_provenance", "unknown"),
@@ -1030,7 +1066,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
                 print(
                     f"  skipped  {raw.get('external_id') or raw.get('slug')} (already registered)"
                 )
-            except (InvalidContent, KeyError) as exc:
+            except (InvalidContent, KeyError, UnknownGeneratorVersion, ValueError) as exc:
                 failed += 1
                 print(
                     f"  INVALID  {raw.get('external_id') or raw.get('slug')}: {exc}",
@@ -1537,6 +1573,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="resolve artifact locators on the filesystem (local packages) instead of HTTP",
     )
+    import_parser.add_argument(
+        "--generator",
+        type=_generator_declaration,
+        default=None,
+        help="required with --acl: the generator version id for the whole file, or the "
+        "literal 'unknown' (ADR-0024). The canonical shape declares it per entry instead",
+    )
 
     demo_parser = subparsers.add_parser(
         "seed-demo", help="local-only: demo users, courses, campaign and assignments"
@@ -1686,7 +1729,23 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
-        return run_import_learnpack(args.file, args.acl, args.base_dir)
+        # argparse cannot express "required with --acl"; the declaration belongs to
+        # whoever owns the payload's shape (ADR-0024), so each path refuses the other's.
+        if args.acl and args.generator is None:
+            print(
+                "--acl needs --generator <uuid|unknown>: LearnPack's shape carries no "
+                "generator, so the declaration comes from the command line",
+                file=sys.stderr,
+            )
+            return 1
+        if not args.acl and args.generator is not None:
+            print(
+                "--generator applies to --acl only: the canonical shape declares the "
+                "generator per entry",
+                file=sys.stderr,
+            )
+            return 1
+        return run_import_learnpack(args.file, args.acl, args.base_dir, args.generator)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
     elif args.command == "import-instrument":
