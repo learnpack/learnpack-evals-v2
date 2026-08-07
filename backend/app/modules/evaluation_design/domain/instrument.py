@@ -54,6 +54,9 @@ class Claim:
 
     claim_id: str
     statement: str
+    # Exactly one, checked at publish (ADR-0026). The list shape survives so already-stored
+    # versions stay readable and a future widening needs no migration; the rule lives in
+    # `publish()`, which is where an instrument stops being a sketch.
     quality_ids: tuple[str, ...]
     warrants: tuple[str, ...]  # framework ids that license the inference
     alternative_explanations: tuple[str, ...]
@@ -234,6 +237,16 @@ class InstrumentVersion:
         for claim in self.claims:
             if evidenced.get(claim.claim_id) == 0:
                 problems.append(f"claim {claim.claim_id} has no evidencing criterion")
+            if len(claim.quality_ids) != 1:
+                # ADR-0026: the claim is the only path from a criterion to a quality, so a
+                # claim about two qualities makes every one of its criteria count in both —
+                # the model holds nothing finer. A criterion that truly bears on two
+                # qualities says so by evidencing two claims.
+                problems.append(
+                    f"claim {claim.claim_id} must assert about exactly one quality, "
+                    f"it asserts about {len(claim.quality_ids)}: "
+                    f"{', '.join(claim.quality_ids) or '(none)'}"
+                )
             unknown_qualities = set(claim.quality_ids) - known_qualities
             if unknown_qualities:
                 problems.append(

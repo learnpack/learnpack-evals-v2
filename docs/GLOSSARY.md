@@ -106,8 +106,12 @@
   claims + criteria + sufficiency + bindings, the old "rubric preset" needs no name of its
   own (DP28). Relationship to `Rubric`: a slice 1 term that the Instrument supersedes;
   `Rubric v1` survives as the reference instrument (ADR-0015).
-- **Claim** — an assessable, **one-sentence** assertion about quality, with: required evidence,
-  warrant (framework) and alternative explanations. **Two grains:** about a content and about the
+- **Claim** — an assessable, **one-sentence** assertion about **exactly one `Quality`**
+  (ADR-0026, checked at publish), with: required evidence,
+  warrant (framework) and alternative explanations. Being the only path from a `Criterion` to a
+  `Quality`, one claim per quality is what makes that path an attribution rather than a guess; a
+  criterion bearing on two qualities evidences **two claims**, and one quality may be asserted by
+  several claims. **Two grains:** about a content and about the
   **generator** (accumulated across contents — the central product of internal QA). Evidential
   status: `supported | refuted | insufficient evidence`. Findings are organized **under the
   claim they compromise**. Design runs backwards: claims → evidence → observables →

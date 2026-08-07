@@ -47,8 +47,10 @@ the root `README.md`.
   (the generator link is declared, never defaulted; a discovered one is attributable later,
   once — realized right after block 7), **ADR-0023** (the fitness projection: optimization
   signal per quality, with the denominator that diverges from ADR-0018 §4 — realized after
-  block 7) and **ADR-0025** (pedagogical frames: the vocabulary is a swappable, disjoint
-  namespace — **decided, deliberately not built**). GLOSSARY reflects
+  block 7), **ADR-0025** (pedagogical frames: the vocabulary is a swappable, disjoint
+  namespace — **decided, deliberately not built**) and **ADR-0026** (a claim asserts about
+  exactly one quality — realized with ADR-0023, which made the cost visible). GLOSSARY
+  reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
 
@@ -121,8 +123,9 @@ the first study the team publishes over real content, which pins its version. (L
 studies published while verifying do not count — the local DB is disposable by design.)
 
 **Pending input from the team:** review and edit the draft of the first instrument
-(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, written as
-assistance) and **publish it** when the team makes it its own
+(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 6 claims / 11 criteria, written as
+assistance; the arc claim is now two, one per quality, since ADR-0026) and **publish it**
+when the team makes it its own
 (`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`,
 `POST /admin/instruments/{id}/publish`, or the **Publish** button in `/admin/instruments`, which
 confirms before executing). Until then it stays in `draft` — publication is a
@@ -166,7 +169,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 470 tests** against local Postgres (~16 s). Requires
+- **Backend suite green: 471 tests** against local Postgres (~17 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →

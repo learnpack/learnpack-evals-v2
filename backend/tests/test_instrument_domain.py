@@ -188,6 +188,19 @@ def test_publish_rejects_unknown_qualities_and_frameworks():
         publish(instrument(claims=(claim(warrants=("Ghostism",)),)))
 
 
+def test_a_claim_must_assert_about_exactly_one_quality():
+    """ADR-0026: the claim is the only path from a criterion to a quality, so two qualities
+    on one claim make every one of its criteria count in both — the model holds nothing
+    finer. A criterion that truly bears on two says so by evidencing two claims."""
+    two = claim(quality_ids=("objectives-observable", "instruction-application"))
+    with pytest.raises(InvalidInstrument, match="exactly one quality, it asserts about 2"):
+        publish(instrument(claims=(two,)))
+
+    # A draft may hold it: the rule binds when the instrument is locked, not while it is
+    # being written — and reconstituting a stored version must never fail.
+    assert instrument(claims=(two,)).status == "draft"
+
+
 def test_publish_freezes_the_dimension_of_the_qualities_it_references():
     """ADR-0023 §8: `qualities.dimension_id` is global and mutable, so the version keeps its
     own copy — and only of what it asserts about, not of the whole vocabulary."""
