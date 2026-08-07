@@ -62,3 +62,10 @@ class ContentRepositoryPort(Protocol):
     def add(self, content: EducationalContent) -> None: ...
 
     def list_all(self) -> list[EducationalContent]: ...
+
+    def list_filtered(
+        self,
+        package_format: str | None = None,
+        brief_ids: list[UUID] | None = None,
+        generator_known: bool = False,
+    ) -> list[EducationalContent]: ...

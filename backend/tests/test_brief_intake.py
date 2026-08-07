@@ -174,7 +174,17 @@ def test_fixture_syllabus_derives_through_the_filesystem_fetcher():
 # ------------------------------------------------------------------ registration wiring
 
 
-def _register(cleanup, unique, suffix, *, intake=None, artifacts=None, brief_id=None):
+def _register(
+    cleanup,
+    unique,
+    suffix,
+    *,
+    intake=None,
+    artifacts=None,
+    brief_id=None,
+    generator_version_id=None,
+    package_format="LearnpackV1",
+):
     with SessionLocal() as session:
         uow = UnitOfWork(session)
         content = RegisterContentVersion(
@@ -186,11 +196,12 @@ def _register(cleanup, unique, suffix, *, intake=None, artifacts=None, brief_id=
             brief_intake=intake,
         )(
             RegisterContentVersionCommand(
-                package_format="LearnpackV1",
+                package_format=package_format,
                 external_id=f"intake-{suffix}-{unique}",
                 consumable_url=f"https://intake-{suffix}-{unique}.learn-pack.com/",
                 artifacts=artifacts if artifacts is not None else [SYLLABUS_ARTIFACT],
                 brief_id=brief_id,
+                generator_version_id=generator_version_id,
             )
         )
     cleanup["contents"].append(content.id)
@@ -286,6 +297,65 @@ def test_registration_without_intake_keeps_the_old_contract(cleanup, unique):
 @pytest.mark.parametrize("payload", [b"[]", b'"just a string"', b"3"])
 def test_derive_brief_returns_none_for_non_course_payloads(payload):
     assert derive_brief(payload) is None
+
+
+# ------------------------------------------- public read surface for dataset composition
+
+
+def _register_generator(cleanup, unique):
+    from app.modules.evaluand_registry.application.register_generator_version import (
+        RegisterGeneratorVersion,
+        RegisterGeneratorVersionCommand,
+    )
+
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        generator = RegisterGeneratorVersion(
+            generators=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )(RegisterGeneratorVersionCommand(name=f"intake-gen-{unique}", version="1.0.0"))
+    cleanup["generators"].append(generator.id)
+    return generator.id
+
+
+def test_get_available_contents_filters_for_dataset_composition(cleanup, unique):
+    from app.modules.evaluand_registry.public import EvaluandRegistryQueries
+
+    intake = LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    generator_id = _register_generator(cleanup, unique)
+    with_brief = _register(cleanup, unique, "g1", intake=intake)
+    linked = _register(cleanup, unique, "g2", intake=intake, generator_version_id=generator_id)
+    plain = _register(cleanup, unique, "g3", intake=None, artifacts=[])
+
+    with SessionLocal() as session:
+        registry = EvaluandRegistryQueries(session)
+
+        by_brief = registry.get_available_contents(brief_ids=[with_brief.brief_id])
+        assert {c.content_id for c in by_brief} == {with_brief.id, linked.id}
+
+        known = registry.get_available_contents(generator_known=True)
+        known_ids = {c.content_id for c in known}
+        assert linked.id in known_ids
+        assert with_brief.id not in known_ids  # unknown generator excluded
+        assert plain.id not in known_ids
+
+        by_format = registry.get_available_contents(package_format="LearnpackV1")
+        assert {with_brief.id, linked.id, plain.id} <= {c.content_id for c in by_format}
+
+        assert registry.get_available_contents(brief_ids=[]) == []
+
+
+def test_list_briefs_is_on_the_public_surface(cleanup, unique):
+    from app.modules.evaluand_registry.public import EvaluandRegistryQueries
+
+    content = _register(
+        cleanup, unique, "h", intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    )
+
+    with SessionLocal() as session:
+        briefs = EvaluandRegistryQueries(session).list_briefs()
+    assert content.brief_id in {b.brief_id for b in briefs}
 
 
 def test_derive_brief_raises_on_unparseable_bytes():
