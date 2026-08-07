@@ -204,6 +204,17 @@ the data in the package).
   mapping: individual = `GeneratorVersion` · generation = `Study` (pinned instrument +
   brief-paired dataset) · fitness = projection over the study's judgments — the studies
   substrate it needs exists as of block 7.
+- **Pedagogical frames: decided, not built (ADR-0025).** The pedagogical vocabulary becomes an
+  explicit entity — a frame owning its dimensions and qualities, declared by each
+  `InstrumentVersion` and validated against at publish — and **frames are disjoint namespaces**
+  (a quality belongs to one frame; two frames declare similar qualities twice). It is not a
+  port: the content axis translates something foreign, the vocabulary only needs scoping. The
+  mechanism is built **when a second pedagogical approach actually exists**; until then the
+  current 5 dimensions / 21 qualities are the implicit first frame and nothing changes. What
+  keeps the door open meanwhile is the `quality → dimension` map frozen in the instrument at
+  publish (ADR-0023's need, ADR-0025 clause 4). Cost accepted: no comparability across frames at
+  any grain, and ADR-0015 reference data bought per frame.
+
 - **Package intake in the registration form: decided, two stages.** Today the UI has no
   reasonable way to load a package's artifacts. Stage 1 (first): **register by link** —
   the form takes the package's base URL (prod) or local folder (dev) and the system
