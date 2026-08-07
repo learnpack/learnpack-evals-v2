@@ -1411,8 +1411,11 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM campaigns",
         "DELETE FROM content_profiles",  # entries/extras cascade; before contents (FK)
         "DELETE FROM extraction_acceptances",
-        # App-minted (instrument import), not seeded reference data — wiped so a demo
-        # re-import can evolve a draft's definitions without tripping the ADR-0014 lint.
+        # App-minted (instrument import), not seeded reference data — wiped so the demo
+        # re-import can recreate the draft without tripping the ADR-0014 lint or, if the
+        # local version was published while testing, the immutability rule (locally,
+        # instrument versions are disposable — the experimental-phase convention).
+        "DELETE FROM instrument_versions",  # claims/criteria/ratifications cascade
         "DELETE FROM data_requirements",
         "DELETE FROM contents",
         # Intake-derived (ADR-0022), not seeded reference data; after contents (FK).
