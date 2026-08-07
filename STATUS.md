@@ -123,8 +123,8 @@ the first study the team publishes over real content, which pins its version. (L
 studies published while verifying do not count — the local DB is disposable by design.)
 
 **Pending input from the team:** review and edit the draft of the first instrument
-(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 6 claims / 11 criteria, written as
-assistance; the arc claim is now two, one per quality, since ADR-0026) and **publish it**
+(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, written as
+assistance; each claim asserts about exactly one quality, ADR-0026) and **publish it**
 when the team makes it its own
 (`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`,
 `POST /admin/instruments/{id}/publish`, or the **Publish** button in `/admin/instruments`, which
@@ -186,9 +186,11 @@ the data in the package).
   `objectives-quality` comes back **`undefined`** — LearnpackV1 supplies no objectives, so
   every criterion under it is `not_applicable` and the denominator is 0. A zero there would
   have the GA evolve against a gap in the *package format*, not in the generator.
-  `progression-starting-point` shows the mixed case working (its criteria come from an
-  excluded claim **and** a live one, so it keeps a denominator), the numbering-drift `fail`
-  puts `inter-lesson-coherence` at 0.5 across the study, and the unknown-generator course is
+  `learning-progression` is undefined for the same reason — its only claim is the audience
+  one, and the format declares no audience or prerequisites either — so **two of the five
+  dimensions are blind under LearnpackV1**, stated rather than averaged away.
+  `inter-lesson-coherence` is the one measured from two independent claims (0.75, the
+  numbering-drift `fail` pulling one of them to 0.5), and the unknown-generator course is
   counted at study level while excluded from generator level.
 - **Manual loop verified in local mode**: `seed-demo --reset` registers the demo courses
   **with intake-derived briefs** (syllabus fixtures in the frozen packages), one linked to
