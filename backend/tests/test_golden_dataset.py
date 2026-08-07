@@ -73,6 +73,7 @@ def make_content(admin, cleanup, unique):
                 "package_format": "LearnpackV1",
                 "external_id": f"{label}-{unique}",
                 "consumable_url": COURSE_URL,
+                "generator_version_id": None,
                 "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
             },
         ).json()

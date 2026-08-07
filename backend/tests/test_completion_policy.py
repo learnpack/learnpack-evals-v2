@@ -41,6 +41,7 @@ def test_replaying_the_event_is_idempotent(admin, as_user, cleanup, unique, sess
             "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
+            "generator_version_id": None,
             "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
         },
     ).json()["content_id"]

@@ -50,6 +50,7 @@ def content(admin, cleanup, unique):
             "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
+            "generator_version_id": None,
             "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
         },
     ).json()
@@ -242,6 +243,7 @@ def test_an_evaluator_counts_on_every_course_they_evaluated(
             "package_format": "LearnpackV1",
             "external_id": f"second-{unique}",
             "consumable_url": COURSE_URL,
+            "generator_version_id": None,
             "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
         },
     ).json()["content_id"]

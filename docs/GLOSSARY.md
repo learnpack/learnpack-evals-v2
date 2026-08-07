@@ -12,8 +12,9 @@
 - **Course** — a concrete type of `EducationalContent` (e.g. a LearnPack course).
 - **ContentVersion** — version of a logical content. Allows evaluating the same course at `v1`,
   `v2`… (improvement/regression). Logical uniqueness: `(PackageFormat, externalId, version)`. MVP:
-  default `"1"`. It references `generatorVersionId` (nullable → `unknown`) and `briefId`, and
-  carries **edit provenance**: `pure | human_edited | unknown`.
+  default `"1"`. It references `generatorVersionId` (nullable → `unknown`, but **declared**:
+  registration demands a generator version or an explicit `unknown`, ADR-0024) and `briefId`,
+  and carries **edit provenance**: `pure | human_edited | unknown`.
 - **PackageFormat** *(formerly `GeneratingSystem`; slice 1 code keeps
   `generating_system` until its migration)* — the **package convention** that an extraction
   adapter knows how to read (e.g. `LearnpackV1`). The *format* axis: it selects the adapter and
@@ -28,9 +29,10 @@
   (ADR-0013) — a symmetry of *role* with `SourceConfiguration`, not of mechanism: here the
   identity is **declarative and unverifiable** (the generator lives outside the system), which is
   why there are no mandatory config fields (they are promoted from the blob to typed fields only
-  when something consumes them). `unknown` allowed: content valid for per-content judgments,
-  **excluded** from generator-level accumulation. Silent drift is undetectable from the inside —
-  process discipline, and a registered cause in loop B's diagnostic taxonomy.
+  when something consumes them). `unknown` allowed **but never by default** (ADR-0024): content
+  valid for per-content judgments, **excluded** from generator-level accumulation. Silent drift is
+  undetectable from the inside — process discipline, and a registered cause in loop B's
+  diagnostic taxonomy.
 - **ContentPackage** — the **complete** work product the generator delivers for a content:
   a VO of artifacts `{kind, locator, format}` with an **open** `kind` vocabulary (consumable,
   manifest, knowledge-graph, item-bank, … — no enum in the domain). Registration captures the

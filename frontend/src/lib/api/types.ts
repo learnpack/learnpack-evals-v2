@@ -438,7 +438,8 @@ export interface RegisterContentRequest {
   version?: string;
   artifacts?: { kind: string; locator: string; format?: string | null }[];
   brief_id?: Uuid | null;
-  generator_version_id?: Uuid | null;
+  /** Required, null declares `unknown` (ADR-0024): silence is not a declaration. */
+  generator_version_id: Uuid | null;
   edit_provenance?: EditProvenance;
 }
 

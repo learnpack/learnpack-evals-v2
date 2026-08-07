@@ -75,7 +75,9 @@ class RegisterContentRequest(BaseModel):
     version: str = DEFAULT_VERSION
     artifacts: list[PackageArtifactInput] = Field(default_factory=list)
     brief_id: UUID | None = None
-    generator_version_id: UUID | None = None
+    # Required, and null is a legal value: the key must be present (ADR-0024, applying
+    # ADR-0020's "nullable is not optionality"). Null declares `unknown`.
+    generator_version_id: UUID | None = Field(...)
     edit_provenance: str = "unknown"
 
 

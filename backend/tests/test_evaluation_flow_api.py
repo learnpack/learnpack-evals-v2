@@ -52,6 +52,7 @@ def content(admin, cleanup, unique):
             "package_format": "LearnpackV1",
             "external_id": f"course-{unique}",
             "consumable_url": COURSE_URL,
+            "generator_version_id": None,
         },
     ).json()
     cleanup["contents"].append(body["content_id"])
@@ -351,6 +352,7 @@ def test_cannot_assign_content_outside_the_campaign_scope(
             "package_format": "LearnpackV1",
             "external_id": f"other-{unique}",
             "consumable_url": COURSE_URL,
+            "generator_version_id": None,
         },
     ).json()
     cleanup["contents"].append(other["content_id"])
