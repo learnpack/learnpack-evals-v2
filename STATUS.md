@@ -184,6 +184,15 @@ persists nothing). `structural:1` executes 7 criteria and abstains from the 4 ju
   ADR): **zip upload + storage** (`PackageStoragePort`, filesystem in dev, S3-compatible
   bucket in prod — a stack decision) for packages not hosted anywhere. Priority rises
   when the GA experiment needs bulk registration.
+- **Content registration should require a generator link: decided, ADR when
+  implementing.** Today `generator_version_id` defaults silently to null (`unknown`,
+  excluded from generator-level accumulation) — an easy accidental loss, and the
+  system's purpose is generator QA. The ADR must choose the exact shape (hard-mandatory
+  vs. `unknown` as an **explicit act** — a conscious flag, never a silent default; the
+  latter matches the house rule that silence is never a declaration) and it supersedes
+  the current "unknown allowed" nuance (GLOSSARY, `GeneratorVersion`). Operational
+  impact to map: registration form, `import-learnpack` bulk path, `seed-demo` and test
+  fixtures.
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
   its metadata) is registered in the local dev DB; **repeat the act in production
