@@ -131,12 +131,19 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         "instruments": [],
         "data_requirements": [],
         "acceptances": [],
+        "studies": [],
     }
     yield created
 
     from app.platform.db import SessionLocal
 
     with SessionLocal() as s:
+        # Studies first: they reference contents and instruments (no FK, but the rows
+        # would go stale). Recipe/dataset/report cascade with the study row.
+        for study_id in created["studies"]:
+            s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(study_id)})
+            s.execute(text("DELETE FROM studies WHERE id = :id"), {"id": study_id})
+
         for content_id in created["contents"]:
             s.execute(
                 text(
