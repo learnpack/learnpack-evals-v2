@@ -11,7 +11,8 @@ _Last updated: 2026-08-07._
 
 **Slice 1 (human MVP): complete and verified locally; the deploy is missing.
 Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 blocks,
-plus ADR-0024 (generator declaration + late attribution) on top of it.**
+plus ADR-0024 (generator declaration + late attribution) and ADR-0023 (the fitness
+projection the genetic-algorithm experiment reads) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -44,7 +45,10 @@ the root `README.md`.
   realized in block 6) and **ADR-0022** (mechanical intake of the `GenerationBrief` at
   content registration, hash identity dedup — **realized in block 7**) and **ADR-0024**
   (the generator link is declared, never defaulted; a discovered one is attributable later,
-  once — realized right after block 7). GLOSSARY reflects
+  once — realized right after block 7), **ADR-0023** (the fitness projection: optimization
+  signal per quality, with the denominator that diverges from ADR-0018 §4 — realized after
+  block 7) and **ADR-0025** (pedagogical frames: the vocabulary is a swappable, disjoint
+  namespace — **decided, deliberately not built**). GLOSSARY reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
 
@@ -57,6 +61,25 @@ the root `README.md`.
 | 5. Content Profiling (LearnpackV1 adapter + viewer) | ✔ |
 | 6. Automated Evaluation (first assessor) | ✔ |
 | 7. Evaluation Studies thin (+ brief intake, ADR-0022) | ✔ |
+
+**After block 7 — the fitness projection (ADR-0023).** A read-side signal for optimization,
+never a judgment: `GET /admin/studies/{id}/fitness` and `show-fitness` (CLI) compute, on read,
+`pass / (pass + fail + no_evidence)` **per `Quality`**, rolled up to each
+`PedagogicalDimension` as the unweighted mean of its **defined** qualities, at three grains —
+per content, per generator version (counts pooled across its contents, unknown generators
+excluded and named) and per study. `not_assessed` and `not_applicable` stay **outside** the
+denominator, which diverges from ADR-0018 §4 on purpose and is stated in the ADR. An empty
+denominator answers **`undefined`, never `0`**. Coverage, the formula version and the ratified
+assessors travel with every value: dropping `not_assessed` means two assessor sets compute over
+different populations, so the GA may only compare within equal coverage. It stays **out of
+`study_reports.report`** (ADR-0011 untouched); the console shows it in a separate panel beside
+the report, labelled as an optimization signal. Two enabling changes came with it: the
+published `InstrumentVersion` now **freezes its `quality → dimension` map**
+(`instrument_versions.quality_dimensions`, migration 0013 with backfill) because
+`qualities.dimension_id` is global and mutable and would rewrite published studies
+retroactively; and `evaluation.public` publishes `get_criterion_outcomes` — the un-aggregated
+five states per criterion, which `judgment_claims.evidence_basis` cannot supply (it is counted
+per claim, and claims excluded from the denominator have no row at all).
 
 **After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
 declaration** — a generator version or an explicit `unknown` — at every entry point (form,
@@ -143,7 +166,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 455 tests** against local Postgres (~15 s). Requires
+- **Backend suite green: 470 tests** against local Postgres (~16 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -156,6 +179,14 @@ the data in the package).
   after its study opened, it counts in the report composed at publish and disappears from
   `unknownExclusions`. The one-way rule is tested through the use case and against the
   repository alone (the guard that holds under concurrency).
+- **The fitness rules proven on real data** (suite and by hand): over the demo study,
+  `objectives-quality` comes back **`undefined`** — LearnpackV1 supplies no objectives, so
+  every criterion under it is `not_applicable` and the denominator is 0. A zero there would
+  have the GA evolve against a gap in the *package format*, not in the generator.
+  `progression-starting-point` shows the mixed case working (its criteria come from an
+  excluded claim **and** a live one, so it keeps a denominator), the numbering-drift `fail`
+  puts `inter-lesson-coherence` at 0.5 across the study, and the unknown-generator course is
+  counted at study level while excluded from generator level.
 - **Manual loop verified in local mode**: `seed-demo --reset` registers the demo courses
   **with intake-derived briefs** (syllabus fixtures in the frozen packages), one linked to
   `learnpack-generator 1.0.0` and one declared unknown → publish + ratify + evaluate both →
@@ -190,20 +221,12 @@ the data in the package).
   adjust. `POST /admin/contents` likewise requires the key.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
-- **Fitness projection for the genetic-algorithm experiment: decided, next.** A global
-  numeric value per evaluation — and per pedagogical dimension — as the fitness function
-  for evolving the generator. Decision taken, **ADR-0023 when implementing** (0022 was
-  taken by the brief intake): the fitness is a **read-side projection for optimization,
-  never a judgment** — it does not touch ADR-0011 (no aggregate score in QA reports;
-  claims/findings remain the product). Computed from `judgment_claims` + the qualities →
-  dimension mapping (no schema change); the **formula is versioned and pinned** like the
-  instrument (comparability across GA generations). State semantics are the anti-gaming
-  core the ADR must fix: `not_assessed` out of the denominator (assessor limitation),
-  `no_evidence` and the derived fail penalize (the generator's omission — otherwise
-  evolution learns to produce unevaluable content), `not_applicable` out. Experiment
-  mapping: individual = `GeneratorVersion` · generation = `Study` (pinned instrument +
-  brief-paired dataset) · fitness = projection over the study's judgments — the studies
-  substrate it needs exists as of block 7.
+- **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);
+  what does not exist is the loop around it — generating a population, registering and
+  evaluating it in bulk, and selecting on the signal. Bulk registration is the first
+  bottleneck, which is why the package-intake decision below is the one whose priority rises
+  with it. Also unbuilt on purpose: comparing fitness **across** studies, which needs
+  ADR-0023 §7's equal-coverage rule enforced rather than merely published (`CompareStudies`).
 - **Pedagogical frames: decided, not built (ADR-0025).** The pedagogical vocabulary becomes an
   explicit entity — a frame owning its dimensions and qualities, declared by each
   `InstrumentVersion` and validated against at publish — and **frames are disjoint namespaces**
