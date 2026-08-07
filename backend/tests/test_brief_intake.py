@@ -16,7 +16,7 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersionCommand,
 )
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import derive_brief
-from app.modules.evaluand_registry.infrastructure.brief_intake import LearnpackBriefIntake
+from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import (
     BriefIntakeError,
     FilesystemArtifactFetcher,
@@ -120,14 +120,14 @@ SYLLABUS_ARTIFACT = {"kind": "syllabus", "locator": "course/.learn/initialSyllab
 
 
 def test_intake_ignores_other_package_formats():
-    intake = LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    intake = PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
 
     assert intake.derive("SomethingElseV1", [SYLLABUS_ARTIFACT]) is None
 
 
 def test_intake_finds_the_syllabus_by_locator_suffix():
     fetcher = StubFetcher(SYLLABUS_BYTES)
-    intake = LearnpackBriefIntake(fetcher)
+    intake = PackageBriefIntake(fetcher)
 
     derived = intake.derive(
         "LearnpackV1",
@@ -142,21 +142,88 @@ def test_intake_finds_the_syllabus_by_locator_suffix():
 
 
 def test_intake_is_soft_on_fetch_failure():
-    intake = LearnpackBriefIntake(StubFetcher(error=BriefIntakeError("boom")))
+    intake = PackageBriefIntake(StubFetcher(error=BriefIntakeError("boom")))
 
     assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
 
 
 def test_intake_is_soft_on_corrupt_syllabus():
-    intake = LearnpackBriefIntake(StubFetcher(b"not json at all"))
+    intake = PackageBriefIntake(StubFetcher(b"not json at all"))
 
     assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
+
+
+class FakeV2Intake:
+    """What a future format contributes: locate + derive. One dict entry, nothing else."""
+
+    package_format = "LearnpackV2"
+
+    def locate(self, artifacts):
+        return next((a["locator"] for a in artifacts if a.get("kind") == "native-brief"), None)
+
+    def derive(self, payload: bytes):
+        from app.modules.evaluand_registry.application.ports import DerivedBrief
+
+        data = json.loads(payload.decode("utf-8"))
+        return DerivedBrief(
+            brief=data["brief"],
+            fields={"origin": "native", "promptRecorded": True},
+            brief_hash=data["hash"],
+        )
+
+
+def test_a_new_format_is_one_registry_entry():
+    from app.modules.evaluand_registry.infrastructure.brief_intake import (
+        BRIEF_INTAKES_BY_FORMAT,
+    )
+
+    payload = json.dumps({"brief": "Native commission.", "hash": "a" * 64}).encode("utf-8")
+    intake = PackageBriefIntake(
+        StubFetcher(payload),
+        intakes={**BRIEF_INTAKES_BY_FORMAT, "LearnpackV2": FakeV2Intake()},
+    )
+
+    derived = intake.derive(
+        "LearnpackV2", [{"kind": "native-brief", "locator": "course/.learn/brief.json"}]
+    )
+    assert derived is not None
+    assert derived.fields["promptRecorded"] is True  # V2's better completeness
+
+    # The V1 entry is untouched by the new one, and unknown formats still miss softly.
+    assert "LearnpackV1" in BRIEF_INTAKES_BY_FORMAT
+    assert intake.derive("SomethingElseV1", [SYLLABUS_ARTIFACT]) is None
+
+
+def test_registration_dispatches_by_format_end_to_end(cleanup, unique):
+    from app.modules.evaluand_registry.infrastructure.brief_intake import (
+        BRIEF_INTAKES_BY_FORMAT,
+    )
+
+    payload = json.dumps({"brief": "Native commission.", "hash": f"v2-{unique}"}).encode("utf-8")
+    intake = PackageBriefIntake(
+        StubFetcher(payload),
+        intakes={**BRIEF_INTAKES_BY_FORMAT, "LearnpackV2": FakeV2Intake()},
+    )
+
+    content = _register(
+        cleanup,
+        unique,
+        "v2",
+        intake=intake,
+        package_format="LearnpackV2",
+        artifacts=[{"kind": "native-brief", "locator": "course/.learn/brief.json"}],
+    )
+
+    assert content.brief_id is not None
+    with SessionLocal() as session:
+        brief = SqlAlchemyBriefRepository(session).get_by_id(content.brief_id)
+        assert brief.fields == {"origin": "native", "promptRecorded": True}
 
 
 def test_fixture_syllabus_derives_through_the_filesystem_fetcher():
     from app.cli import DEMO_PACKAGES_DIR
 
-    intake = LearnpackBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR))
+    intake = PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR))
     derived = intake.derive(
         "LearnpackV1",
         [
@@ -222,7 +289,7 @@ def _brief_events(session, brief_id: UUID) -> int:
 
 def test_registration_with_syllabus_creates_the_brief(cleanup, unique):
     content = _register(
-        cleanup, unique, "a", intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+        cleanup, unique, "a", intake=PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
     )
 
     assert content.brief_id is not None
@@ -236,7 +303,7 @@ def test_registration_with_syllabus_creates_the_brief(cleanup, unique):
 
 
 def test_registrations_with_the_same_syllabus_share_the_brief(cleanup, unique):
-    intake = LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    intake = PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
 
     first = _register(cleanup, unique, "b1", intake=intake)
     second = _register(cleanup, unique, "b2", intake=intake)
@@ -251,7 +318,7 @@ def test_registration_without_syllabus_registers_absent(cleanup, unique):
         cleanup,
         unique,
         "c",
-        intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES)),
+        intake=PackageBriefIntake(StubFetcher(SYLLABUS_BYTES)),
         artifacts=[{"kind": "manifest", "locator": "course/learn.json"}],
     )
 
@@ -263,7 +330,7 @@ def test_registration_survives_a_failing_intake(cleanup, unique):
         cleanup,
         unique,
         "d",
-        intake=LearnpackBriefIntake(StubFetcher(error=BriefIntakeError("network down"))),
+        intake=PackageBriefIntake(StubFetcher(error=BriefIntakeError("network down"))),
     )
 
     assert content.brief_id is None  # soft failure: registered absent, never blocked
@@ -271,7 +338,7 @@ def test_registration_survives_a_failing_intake(cleanup, unique):
 
 def test_an_explicit_brief_wins_over_intake(cleanup, unique):
     seeded = _register(
-        cleanup, unique, "e1", intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+        cleanup, unique, "e1", intake=PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
     )
     other_syllabus = json.dumps(
         {"courseInfo": {"description": "A different commission.", "contentIndex": []}}
@@ -281,7 +348,7 @@ def test_an_explicit_brief_wins_over_intake(cleanup, unique):
         cleanup,
         unique,
         "e2",
-        intake=LearnpackBriefIntake(StubFetcher(other_syllabus)),
+        intake=PackageBriefIntake(StubFetcher(other_syllabus)),
         brief_id=seeded.brief_id,
     )
 
@@ -322,7 +389,7 @@ def _register_generator(cleanup, unique):
 def test_get_available_contents_filters_for_dataset_composition(cleanup, unique):
     from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 
-    intake = LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+    intake = PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
     generator_id = _register_generator(cleanup, unique)
     with_brief = _register(cleanup, unique, "g1", intake=intake)
     linked = _register(cleanup, unique, "g2", intake=intake, generator_version_id=generator_id)
@@ -350,7 +417,7 @@ def test_list_briefs_is_on_the_public_surface(cleanup, unique):
     from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 
     content = _register(
-        cleanup, unique, "h", intake=LearnpackBriefIntake(StubFetcher(SYLLABUS_BYTES))
+        cleanup, unique, "h", intake=PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
     )
 
     with SessionLocal() as session:

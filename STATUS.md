@@ -65,9 +65,12 @@ style; caveats always, never a cross-claim aggregate), the composed queries **ma
 (`declare-study | pin-study | compose-dataset | open-study | publish-study | show-report`),
 and the `/admin/studies` console. The brief intake (ADR-0022) landed in the same PR:
 registration derives the brief from `.learn/initialSyllabus.json`, hash identity pairs
-registrations automatically, and `import-learnpack` gained `--base-dir` (its canonical
-path also carried a latent ADR-0017 `TypeError`, now fixed: the canonical JSON takes
-`artifacts`/`brief_id`/`generator_version_id`/`edit_provenance`, no `metadata`).
+registrations automatically, and the intake dispatches through a **per-format adapter
+registry** (`BRIEF_INTAKES_BY_FORMAT`, the profiling pattern) — LearnpackV2's native
+briefs will be one new entry, no registry or wiring change. `import-learnpack` gained
+`--base-dir` (its canonical path also carried a latent ADR-0017 `TypeError`, now fixed:
+the canonical JSON takes `artifacts`/`brief_id`/`generator_version_id`/`edit_provenance`,
+no `metadata`).
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -127,7 +130,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 430 tests** against local Postgres (~15 s). Requires
+- **Backend suite green: 432 tests** against local Postgres (~15 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →

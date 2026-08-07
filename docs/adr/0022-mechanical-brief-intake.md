@@ -29,8 +29,12 @@ Two forces shape the mechanism:
 **The registry's intake ACL derives the brief mechanically at registration, and hash
 identity dedupes.**
 
-1. **Where:** the LearnPack ACL of the Evaluand Registry (`acl_learnpack` + a
-   `BriefIntakePort` injected into `RegisterContentVersion`). Never a profiling concern.
+1. **Where:** the intake ACL of the Evaluand Registry — a `BriefIntakePort` injected into
+   `RegisterContentVersion`, realized by a **per-format adapter registry** (the profiling
+   `ADAPTERS_BY_FORMAT` pattern, design 13 §3.4): each format contributes "where its
+   commission lives and how to read it"; a dispatcher routes by `package_format`, and a
+   format without an intake registers absent. Supporting a new format is one registry
+   entry, never a change to the registry's model or wiring. Never a profiling concern.
 2. **What:** for `LearnpackV1`, `brief` = `courseInfo.description` of
    `.learn/initialSyllabus.json`; `fields` = `{origin: "ai_derived_syllabus",
    promptRecorded: false, materialsHash: sha256(canonical courseInfo.contentIndex),
@@ -56,7 +60,8 @@ identity dedupes.**
 - (+) `ComposeDataset` by briefs has real briefs to select; A/B pairing across generator
   versions is automatic, with no coordination protocol.
 - (+) LearnpackV2 (native briefs, expected) arrives through the same intake channel with
-  better completeness — the mechanism is built once, against V1's partial brief.
+  better completeness — the mechanism is built once, against V1's partial brief; V2 is a
+  new entry in the per-format registry.
 - (−) The pairing guarantee is scoped: differences between paired contents cannot be
   attributed to prompt wording while `promptRecorded: false`. Forward note to LearnPack:
   persisting the original prompt in the package (e.g. `courseInfo.originalPrompt`) makes the

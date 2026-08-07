@@ -46,7 +46,7 @@ from app.modules.evaluand_registry.domain.generator import (
     InvalidGeneratorVersion,
 )
 from app.modules.evaluand_registry.domain.package import InvalidPackage
-from app.modules.evaluand_registry.infrastructure.brief_intake import LearnpackBriefIntake
+from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import HttpArtifactFetcher
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
@@ -145,7 +145,7 @@ def register_content_version(
         generators=SqlAlchemyGeneratorVersionRepository(uow.session),
         publisher=uow.events,
         uow=uow,
-        brief_intake=LearnpackBriefIntake(HttpArtifactFetcher()),
+        brief_intake=PackageBriefIntake(HttpArtifactFetcher()),
     )
     try:
         content = use_case(

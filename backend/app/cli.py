@@ -56,7 +56,7 @@ from app.modules.evaluand_registry.application.register_content_version import (
 )
 from app.modules.evaluand_registry.domain.content import InvalidContent
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
-from app.modules.evaluand_registry.infrastructure.brief_intake import LearnpackBriefIntake
+from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import (
     FilesystemArtifactFetcher,
     HttpArtifactFetcher,
@@ -1001,7 +1001,7 @@ def run_import_learnpack(seed_file: Path, use_acl: bool, base_dir: Path | None =
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
-                brief_intake=LearnpackBriefIntake(fetcher),
+                brief_intake=PackageBriefIntake(fetcher),
             )
             try:
                 command = (
@@ -1309,7 +1309,7 @@ def _seed_demo_contents() -> dict[str, UUID]:
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
-                brief_intake=LearnpackBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
+                brief_intake=PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
             )
             try:
                 content = register(
