@@ -155,9 +155,13 @@ function InstrumentCard({ instrument }: { instrument: InstrumentResponse }) {
               <p className="font-medium" title={claim.claim_id}>
                 {claim.statement}
               </p>
+              {/* Singular by rule (ADR-0026), plural only while a draft still breaks it —
+                  seeing "qualities: a, b" here is the author's warning that publish will
+                  refuse this claim. */}
               <p className="mt-1 text-xs text-muted-foreground">
-                qualities: {claim.quality_ids.join(", ")} · warrants:{" "}
-                {claim.warrants.join(", ")} · sufficiency: {claim.sufficiency_rule}
+                {claim.quality_ids.length === 1 ? "quality" : "qualities"}:{" "}
+                {claim.quality_ids.join(", ")} · warrants: {claim.warrants.join(", ")} ·
+                sufficiency: {claim.sufficiency_rule}
               </p>
               <ul className="mt-3 space-y-2">
                 {criteriaByClaim(claim.claim_id).map((criterion) => (
