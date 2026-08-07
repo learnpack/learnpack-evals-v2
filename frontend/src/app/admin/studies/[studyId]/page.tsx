@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { ArrowLeft, Info } from "lucide-react";
+import { ArrowLeft, Info, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,8 +14,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { useStudy, useStudyReadiness, useStudyReport } from "@/lib/api/hooks";
+import {
+  useStudy,
+  useStudyFitness,
+  useStudyReadiness,
+  useStudyReport,
+} from "@/lib/api/hooks";
 import type {
+  FitnessLevel,
+  StudyFitness,
   StudyReadiness,
   StudyReport,
   StudyReportContent,
@@ -32,6 +39,7 @@ export default function StudyDetailPage({
   const { data: study, isLoading, error } = useStudy(studyId);
   const readiness = useStudyReadiness(studyId);
   const report = useStudyReport(studyId, study?.status === "published");
+  const fitness = useStudyFitness(studyId);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={(error as Error).message} />;
@@ -70,7 +78,153 @@ export default function StudyDetailPage({
           hint="The report is composed at publish and immutable afterwards."
         />
       )}
+
+      {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
+          conflation is not — the report publishes no aggregate score, and this denominator
+          is not the report's. */}
+      {fitness.data ? <FitnessPanel fitness={fitness.data} /> : null}
     </div>
+  );
+}
+
+// --------------------------------------------------------------------- fitness
+
+/** Undefined is shown as such. A zero here would say "everything measurable failed"
+ *  when nothing was measurable — the lie the denominator rules exist to prevent. */
+function FitnessValue({ value }: { value: number | null }) {
+  if (value === null) {
+    return <span className="text-muted-foreground italic">undefined</span>;
+  }
+  return <span className="font-medium tabular-nums">{(value * 100).toFixed(0)}%</span>;
+}
+
+function FitnessLevelTable({ level }: { level: FitnessLevel }) {
+  const dimensions = Object.entries(level.dimensions);
+  const qualities = Object.entries(level.qualities);
+  return (
+    <div className="space-y-3">
+      {dimensions.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {dimensions.map(([id, dimension]) => (
+            <span key={id} className="rounded bg-muted/60 px-2 py-1 text-xs">
+              {id} <FitnessValue value={dimension.fitness} />
+              <span className="ml-1 text-muted-foreground">
+                ({dimension.coverage.defined}/{dimension.coverage.qualities} qualities)
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Quality</TableHead>
+              <TableHead>Fitness</TableHead>
+              <TableHead className="text-right">Denominator</TableHead>
+              <TableHead className="text-right">Excluded</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {qualities.map(([id, quality]) => (
+              <TableRow key={id}>
+                <TableCell>
+                  {id}
+                  {quality.dimensionId ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {quality.dimensionId}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  <FitnessValue value={quality.fitness} />
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {quality.coverage.pass}/{quality.coverage.denominator}
+                </TableCell>
+                <TableCell className="text-right text-xs text-muted-foreground">
+                  {quality.coverage.notAssessed} not assessed ·{" "}
+                  {quality.coverage.notApplicable} n/a
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
+  const hasStudyLevel = Boolean(fitness.study.qualities);
+  return (
+    <Card className="border-dashed">
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+          <TrendingUp className="h-4 w-4 text-muted-foreground" /> Fitness
+          <span className="text-xs font-normal text-muted-foreground">
+            optimization signal — not a judgment, and not part of the report
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <p className="text-xs text-muted-foreground">
+          Formula v{fitness.formulaVersion} · passed over (passed + failed + no evidence).
+          Not assessed and not applicable stay out of the denominator, so values computed
+          under different assessor coverage are not comparable.
+        </p>
+
+        {fitness.gaps.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {fitness.gaps.map((gap) => (
+              <Badge key={gap.gap} variant="outline">
+                {gap.gap.replaceAll("_", " ")}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+
+        {hasStudyLevel ? (
+          <>
+            {fitness.generators.map((generator) => (
+              <div key={generator.generatorVersionId} className="space-y-2">
+                <p className="font-medium">
+                  {generator.name ?? generator.generatorVersionId}
+                  {generator.version ? ` ${generator.version}` : ""}
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {generator.contents} content{generator.contents === 1 ? "" : "s"} pooled
+                  </span>
+                </p>
+                <FitnessLevelTable level={generator} />
+              </div>
+            ))}
+
+            <div className="space-y-2">
+              <p className="font-medium">
+                Whole study
+                {fitness.unknownExclusions && fitness.unknownExclusions.length > 0 ? (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {fitness.unknownExclusions.length} content
+                    {fitness.unknownExclusions.length === 1 ? "" : "s"} with an unknown
+                    generator: counted here, excluded from generator level
+                  </span>
+                ) : null}
+              </p>
+              <FitnessLevelTable level={fitness.study as FitnessLevel} />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              {fitness.assessorCoverage.ratifiedAssessors?.length ?? 0} ratified assessor(s)
+              · {fitness.assessorCoverage.notAssessed ?? 0} criteria left unassessed
+            </p>
+          </>
+        ) : (
+          <p className="text-muted-foreground">
+            Nothing to measure yet: the study needs a pinned instrument and a dataset.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -37,6 +37,7 @@ import type {
   RegisterGeneratorArtifactRequest,
   RegisterGeneratorRequest,
   ScoresReport,
+  StudyFitness,
   StudyReadiness,
   StudyReportResponse,
   StudyResponse,
@@ -77,6 +78,7 @@ export const queryKeys = {
   study: (id: Uuid) => ["admin", "studies", id] as const,
   studyReport: (id: Uuid) => ["admin", "studies", id, "report"] as const,
   studyReadiness: (id: Uuid) => ["admin", "studies", id, "readiness"] as const,
+  studyFitness: (id: Uuid) => ["admin", "studies", id, "fitness"] as const,
 };
 
 // --------------------------------------------------------------------- identity
@@ -422,6 +424,14 @@ export function useStudyReadiness(id: Uuid) {
   return useQuery({
     queryKey: queryKeys.studyReadiness(id),
     queryFn: () => api<StudyReadiness>(`/admin/studies/${id}/readiness`),
+  });
+}
+
+export function useStudyFitness(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyFitness(id),
+    queryFn: () => api<StudyFitness>(`/admin/studies/${id}/fitness`),
   });
 }
 

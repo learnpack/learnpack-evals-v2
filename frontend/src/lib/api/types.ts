@@ -424,6 +424,72 @@ export interface StudyReadiness {
   claims: { claimId: string; gaps: StudyReadinessGap[] }[];
 }
 
+// --- Fitness projection (ADR-0023) ------------------------------------------
+// An optimization signal, never a judgment: it lives on its own endpoint and is shown
+// apart from the report, which by ADR-0011 publishes no aggregate score.
+
+export interface FitnessCoverage {
+  criteria: number;
+  denominator: number;
+  pass: number;
+  fail: number;
+  noEvidence: number;
+  notApplicable: number;
+  notAssessed: number;
+}
+
+export interface FitnessQuality {
+  /** null means UNDEFINED — nothing was measurable. It is never rendered as a zero. */
+  fitness: number | null;
+  dimensionId: string | null;
+  coverage: FitnessCoverage;
+}
+
+export interface FitnessDimension {
+  fitness: number | null;
+  coverage: { qualities: number; defined: number };
+}
+
+export interface FitnessLevel {
+  qualities: Record<string, FitnessQuality>;
+  dimensions: Record<string, FitnessDimension>;
+}
+
+export interface StudyFitness {
+  studyId: string;
+  status: StudyStatus;
+  instrumentVersionId: string | null;
+  formulaVersion: string;
+  computedAt: string;
+  signal: "optimization";
+  denominatorRule: {
+    numerator: string[];
+    penalizing: string[];
+    excluded: string[];
+    note: string;
+  };
+  gaps: { gap: string }[];
+  assessorCoverage: {
+    ratifiedAssessors?: string[];
+    notAssessed?: number;
+    note?: string;
+  };
+  contents: (FitnessLevel & {
+    contentId: string;
+    externalId: string;
+    generatorVersionId: string | null;
+    judged: boolean;
+  })[];
+  generators: (FitnessLevel & {
+    generatorVersionId: string;
+    name: string | null;
+    version: string | null;
+    contents: number;
+  })[];
+  unknownExclusions?: string[];
+  study: Partial<FitnessLevel>;
+}
+
 // --- Requests --------------------------------------------------------------
 
 export interface DeclareStudyRequest {
