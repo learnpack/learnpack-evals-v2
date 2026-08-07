@@ -169,31 +169,15 @@ claims:
         The brief asked for a very short single-topic course, which legitimately yields
         one module — degenerate modularity by scope, not dispersion.
 
-  # The arc was one claim about two qualities until ADR-0026. It is two assertions: where the
-  # course lets a learner in, and how it ramps once they are in. Splitting them is what makes
-  # each criterion attributable to the quality it actually bears on.
-  - id: cl-course-opens-for-the-learner
-    statement: "The course opens with a general introduction rather than dropping the learner into topic content."
-    qualities: [progression-starting-point]
-    warrants: ["Learning Progressions", "Merrill"]
+  - id: cl-course-arc
+    statement: "The course follows the intended arc: a general introduction, thematic development and a closing."
+    qualities: [coherence-logical-sequence]
+    warrants: ["Schmidt"]
     sufficiency: { rule: conjunctive }
     alternative_explanations:
       - >
-        The package is a partial export (opening lessons missing) — an intake artifact gap,
-        not a generation defect (verify the package is complete first).
-      - >
-        The brief requested a fragment of a larger course (a single module), where the
-        course-level opening conventions do not apply — check the brief.
-
-  - id: cl-course-ramps-and-closes
-    statement: "The course develops beyond its opening and closes what it opened, ramping from introduction to application."
-    qualities: [progression-cognitive-demand]
-    warrants: ["Learning Progressions", "Merrill"]
-    sufficiency: { rule: conjunctive }
-    alternative_explanations:
-      - >
-        The package is a partial export (lessons missing at the end) — an intake artifact
-        gap, not a generation defect (verify the package is complete first).
+        The package is a partial export (lessons missing at either end) — an intake
+        artifact gap, not a generation defect (verify the package is complete first).
       - >
         The brief requested a fragment of a larger course (a single module), where the
         course-level arc conventions do not apply — check the brief.
@@ -300,7 +284,7 @@ criteria:
       than one lesson in it.
     failure_modes:
       - "The course starts mid-content with no course-level introduction slot."
-    claims: [cl-course-opens-for-the-learner]
+    claims: [cl-course-arc]
     requires: [lesson_inventory]
     on_missing_evidence: fail
     eligible_sources: [human, automated]
@@ -313,7 +297,7 @@ criteria:
       a stub, not a course.
     failure_modes:
       - "A stub course: an introduction and little or nothing to develop it."
-    claims: [cl-course-ramps-and-closes]
+    claims: [cl-course-arc]
     requires: [lesson_inventory]
     on_missing_evidence: fail
     eligible_sources: [human, automated]
@@ -328,9 +312,7 @@ criteria:
     failure_modes:
       - "No course-level framing: the learner lands in content with no orientation."
       - "No closure: nothing integrates what was learned before the course ends."
-    # Both ends in one condition, so it evidences both claims — stated, not inferred
-    # (ADR-0026 §2).
-    claims: [cl-course-opens-for-the-learner, cl-course-ramps-and-closes]
+    claims: [cl-course-arc]
     requires: [lesson_inventory, lesson_bodies]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
@@ -345,7 +327,7 @@ criteria:
     failure_modes:
       - "Modules with no internal ramp: exposition piled on exposition."
       - "Modules that start at full depth with no entry point."
-    claims: [cl-course-ramps-and-closes]
+    claims: [cl-course-arc]
     requires: [lesson_inventory, lesson_bodies, lesson_activities]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]

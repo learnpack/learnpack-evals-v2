@@ -243,8 +243,8 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
             {"id": judgment["id"]},
         ).all()
     )
-    # 6 claims, minus the 2 whose criteria are all not_applicable (excluded above).
-    assert len(claims) == 4
+    # 5 claims, minus the 2 whose criteria are all not_applicable (excluded above).
+    assert len(claims) == 3
     assert claims["cl-course-modular"] == "refuted"  # the cited counterexample
     findings = (
         session.execute(

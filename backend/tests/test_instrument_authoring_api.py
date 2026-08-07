@@ -296,15 +296,14 @@ def test_the_real_draft_imports_clean_and_would_publish(admin_client, cleanup, u
     real_id = import_spec(cleanup, real_spec)
     body = admin_client.get(f"/admin/instruments/{real_id}").json()
     assert body["status"] == "draft"
-    assert len(body["claims"]) == 6
+    assert len(body["claims"]) == 5
     assert len(body["criteria"]) == 11
     assert {c["claim_id"] for c in body["claims"]} == {
         "cl-objectives-declared",
         "cl-audience-declared",
         "cl-lessons-offer-application",
         "cl-course-modular",
-        "cl-course-opens-for-the-learner",
-        "cl-course-ramps-and-closes",
+        "cl-course-arc",
     }
     # ADR-0026: every claim asserts about exactly one quality, so the criterion → claim edge
     # is the criterion → quality edge.

@@ -316,9 +316,9 @@ def test_the_first_increment_closes_the_loop(
     assert set(study_level["qualities"]) == {
         "objectives-observable",
         "progression-starting-point",
-        "progression-cognitive-demand",
         "instruction-application",
         "coherence-focus-depth",
+        "coherence-logical-sequence",
     }
 
     # The case the whole denominator rule exists for: LearnpackV1 supplies no objectives, so
@@ -333,9 +333,18 @@ def test_the_first_increment_closes_the_loop(
         "coverage": {"qualities": 1, "defined": 0},
     }
 
-    # A quality drawing from an excluded claim AND a live one still has a denominator.
-    assert study_level["qualities"]["progression-starting-point"]["fitness"] is not None
-    assert study_level["dimensions"]["learning-progression"]["coverage"]["defined"] > 0
+    # Same for learning-progression: its only claim is the audience one, and LearnpackV1
+    # declares no audience or prerequisites either. Two of the five dimensions are therefore
+    # undefined under this format — the instrument's blind spots, stated rather than averaged
+    # away into a number.
+    assert study_level["qualities"]["progression-starting-point"]["fitness"] is None
+    assert study_level["dimensions"]["learning-progression"]["coverage"]["defined"] == 0
+
+    # What the format DOES supply is measured: the lesson inventory and bodies feed both
+    # coherence qualities, so that dimension is defined from two independent claims.
+    coherence = study_level["dimensions"]["inter-lesson-coherence"]
+    assert coherence["coverage"] == {"qualities": 2, "defined": 2}
+    assert coherence["fitness"] is not None
 
     # structural:1's abstentions are counted and named, never charged to the generator.
     assert projection["assessorCoverage"]["notAssessed"] > 0
