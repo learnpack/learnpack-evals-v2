@@ -186,13 +186,25 @@ Already-persisted profiles are not re-verified against the value domains (a stor
 is a past fact): to regenerate them, `seed-demo --reset`.
 
 **Runbook for the renamed quality:** `instruction-authentic-tasks` became
-`instruction-authentic-problems` in `docs/seed/pedagogical-reference.yaml`, and reference
-data is **not** touched by `seed-demo --reset` — run **`seed`** or publishing the instrument
-fails on an id that does not exist. Seeding is upsert-by-id and never deletes, so the old
-row **survives as an orphan** (22 rows where the file declares 21) until someone removes it
-by hand. That is deliberate: a quality can be referenced by a published instrument's frozen
-`quality → dimension` map, so an automatic prune would eat history to tidy a list. Any
-future rename carries the same two steps.
+`instruction-authentic-problems` in `docs/seed/pedagogical-reference.yaml`. Two steps, and
+any future rename carries the same two.
+
+1. **Run `seed`.** Reference data is **not** touched by `seed-demo --reset`; without this,
+   publishing the instrument fails on a quality id that does not exist.
+2. **Delete the old row by hand.** Seeding is upsert-by-id and never deletes, so the rename
+   leaves the old id behind. Nothing prunes it automatically **on purpose**: a quality can
+   be named by a published instrument's frozen `quality → dimension` map, and an automatic
+   prune would eat history to tidy a list. Before deleting, check the three things that
+   make it safe — no foreign key targets `qualities`, no `instrument_claims.quality_ids`
+   names it, and it is absent from every `instrument_versions.quality_dimensions`. On the
+   local database all three held and the row is gone; the same check has to be repeated
+   wherever else the rename lands.
+
+Rubric v1 keeps the **old wording** in `criteria.qualities` ("Anchoring in authentic
+problems or tasks"), and that is correct: it is the frozen human reference (ADR-0015), a
+separate artifact that stores display names as free text and references no quality id. The
+cost is that the two vocabularies no longer read identically for this one quality —
+relevant only to anyone matching them by name.
 
 **Second pending input from the team (block 5):** review the profile samples
 (`/admin/profiles` or `app.cli profile-content`) and **accept the extraction** when the team
