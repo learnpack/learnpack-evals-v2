@@ -197,8 +197,13 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
         set(patched_package.coverage.abstains) - not_applicable
     )
     scored = by_outcome.get("pass", []) + by_outcome.get("fail", [])
-    assert len(scored) == 4
+    assert len(scored) == 6
     assert all(not r["derived"] and r["quote"] for r in scored)
+    # This course declares no CODE lesson and ships no exercise file: the correspondence
+    # holds, so the criterion passes on a real fact rather than on an empty set.
+    passed = {r["criterion_id"] for r in by_outcome["pass"]}
+    assert "cr-lesson-type-matches-delivery" in passed
+    assert "cr-no-lesson-spikes-in-lexical-load" in passed
     # The frozen package's real numbering drift ('05', '06') fails structurally.
     drift = next(r for r in rows if r["criterion_id"] == "cr-module-structure-well-formed")
     assert drift["outcome"] == "fail"
@@ -248,9 +253,11 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
     # 17 claims, minus the 2 whose criteria are all not_applicable (excluded above).
     assert len(claims) == 15
     assert claims["cl-course-modular"] == "refuted"  # the cited counterexample
+    # Its one criterion is executed and passes, so the claim is supported outright.
+    assert claims["cl-no-lesson-outruns-the-course"] == "supported"
     # Everything the assessor cannot reach reads "insufficient" — the honest answer, and the
     # visible backlog an LLM-carrying assessor is measured against (ADR-0018).
-    assert claims["cl-no-lesson-outruns-the-course"] == "insufficient"
+    assert claims["cl-transitions-are-stated"] == "insufficient"
     findings = (
         session.execute(
             text("SELECT criterion_id, quote, failure_mode FROM findings WHERE judgment_id = :id"),

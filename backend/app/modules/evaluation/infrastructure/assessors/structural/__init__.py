@@ -1,11 +1,15 @@
 """`structural` v1 — the first automated assessor (ADR-0016/0018/0019).
 
-Owes itself to the `learnpack-course-qa` instrument lineage. Executes the seven
+Owes itself to the `learnpack-course-qa` instrument lineage. Executes the nine
 mechanically-verifiable criteria (three declaration counts — inert on LearnpackV1 until
-the package declares those data — plus four structural checks over the lesson index and
-activities) and abstains from the four pedagogical-judgment criteria ADR-0018 names:
-judging them honestly needs semantics no pure-code executor has (an LLM-carrying
-assessor may cover them later — a different artifact, a different identity).
+the package declares those data — plus six checks over the lesson index, the activities
+and the lesson bodies) and abstains from the rest: judging them honestly needs semantics
+no pure-code executor has (an LLM-carrying assessor may cover them later — a different
+artifact, a different identity).
+
+One of the nine reads a measure rather than a structure: `lexical_load`, in `measures.py`.
+Its algorithm is part of THIS assessor's identity, so changing it is a new version even
+though no criterion's wording moves.
 
 Any change here — an executor, the mapping, an abstention — is a NEW VERSION and a new
 identity (ADR-0016 clause 2); ratifying new instrument versions is not a change
@@ -27,6 +31,8 @@ EXECUTORS = {
     "cr-module-structure-well-formed": executors.module_structure_well_formed,
     "cr-course-opens-with-general-intro": executors.course_opens_with_general_intro,
     "cr-course-has-development": executors.course_has_development,
+    "cr-lesson-type-matches-delivery": executors.lesson_type_matches_delivery,
+    "cr-no-lesson-spikes-in-lexical-load": executors.no_lesson_spikes_in_lexical_load,
 }
 
 ABSTENTIONS = {
@@ -76,11 +82,6 @@ ABSTENTIONS = {
     "cr-concepts-introduced-before-use": (
         "requires semantic extraction of where each concept is introduced and where it is used"
     ),
-    # Mechanical, but no executor in this version of the assessor.
-    "cr-lesson-type-matches-delivery": (
-        "no executor for the declared-type/delivered-files correspondence"
-    ),
-    "cr-no-lesson-spikes-in-lexical-load": "no executor for the lexical-load measure",
 }
 
 # Derived from the executor dict itself — no parallel list to drift (plan review note).

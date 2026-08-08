@@ -110,6 +110,26 @@ An absolute band would therefore mostly measure subject matter: writing about ne
 longer words than writing about HTML tags, and that is not a defect. Comparing a lesson to its own
 course cancels the domain out.
 
+### How it is computed
+
+In `backend/app/modules/evaluation/infrastructure/assessors/structural/measures.py`, and
+therefore versioned with that assessor: changing any of the following is a **new assessor**,
+even when no criterion's wording moves.
+
+1. **What counts as prose.** Fenced code blocks and image alt text are removed before
+   anything is counted — a code block is not prose, and LearnPack's generated illustrations
+   carry their entire image-generation prompt as alt text, hundreds of words of it. Inline
+   code is dropped, link text is kept and its target discarded, headings are skipped (a
+   heading is a label), and list markers and emphasis are stripped without touching words.
+2. **Syllables per word**, counted by the usual heuristic: vowel groups, silent final `-e`,
+   never fewer than one. Approximate by construction — no counter agrees with every
+   dictionary. What the criterion needs is that every lesson of a course is treated the same
+   way and that the threshold is far larger than the disagreement between counters.
+3. **A lesson under 100 words is skipped**, neither setting the course median nor being
+   accused of exceeding it: below that the mean is decided by whichever few words the lesson
+   happened to use. No lesson in the calibration corpus falls under the guard, so the numbers
+   below come from every lesson of every package.
+
 ### What `lexical_load` does not tell you
 
 - It measures **vocabulary density, not cognitive demand**. A text can be conceptually hard in
@@ -144,7 +164,18 @@ course cancels the domain out.
 |---|---|---|---|
 | `lexical_load` | `cr-no-lesson-spikes-in-lexical-load` | course median + **0.20** | Corpus: all five packages agree under two modelling variants, max divergence 0.03; separates the corpus 3/2 |
 
+What each package of the corpus produces:
+
+| Package | median | worst lesson, above the median | at 0.20 |
+|---|---|---|---|
+| `ai-concepts-an-exploration-inside-ai` | 1.716 | +0.318 (`05.1-hallucinations-in-ai`) | **fail** |
+| `html-fundamentals` | 1.575 | +0.095 | pass |
+| `introduction-to-generative-ai` | 1.788 | +0.137 | pass |
+| `object-representation-in-python` | 1.656 | +0.243 (`02.1-dot-notation`) | **fail** |
+| `orchestrating-…-langgraph` | 1.725 | +0.221 | **fail** |
+
 Every threshold here is set against the frozen calibration corpus in
-`backend/tests/fixtures/learnpack_v1/`, and a test pins the verdict each package produces.
-**Changing that set changes what these numbers mean** — recalibrate rather than assume they carry
-over.
+`backend/tests/fixtures/learnpack_v1/`, and `backend/tests/test_calibration.py` pins the verdict
+each package produces. **Changing that set changes what these numbers mean** — recalibrate rather
+than assume they carry over. The last package sits 0.02 above the line, so a careless change to
+the measure flips it; that test exists to make the flip loud.

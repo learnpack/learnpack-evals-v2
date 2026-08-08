@@ -214,3 +214,126 @@ def test_course_has_development():
         profile(lesson_inventory=[lesson("01.0", 0), lesson("01.1", 1), lesson("02.0", 2)]),
     )
     assert no_intro.passed
+
+
+# --- type/delivery correspondence and the lexical-load measure ------------------------
+
+
+def coded(lesson_id: str, position: int, slug: str | None = None) -> dict:
+    """A lesson the manifest declares as practice."""
+    return {**lesson(lesson_id, position, slug), "type": "CODE"}
+
+
+def test_lesson_type_matches_delivery_reads_both_directions():
+    spec = _REAL_CRITERIA["cr-lesson-type-matches-delivery"]
+    run = structural.EXECUTORS["cr-lesson-type-matches-delivery"]
+
+    # Declared and delivered agree.
+    ok = run(
+        spec,
+        profile(
+            lesson_inventory=[lesson("01.0", 0), coded("01.1", 1)],
+            lesson_activities=[
+                activities("lesson-01.0"),
+                activities("lesson-01.1", exercises=["index.html"]),
+            ],
+        ),
+    )
+    assert ok.passed
+
+    # Declared practice that ships nothing: the learner meets an empty editor.
+    promised = run(
+        spec,
+        profile(
+            lesson_inventory=[lesson("01.0", 0), coded("01.1", 1)],
+            lesson_activities=[activities("lesson-01.0"), activities("lesson-01.1")],
+        ),
+    )
+    assert not promised.passed
+    assert "empty editor" in promised.failure_mode
+
+    # The inverse the corpus also holds: an exercise in a lesson not declared as practice.
+    undeclared = run(
+        spec,
+        profile(
+            lesson_inventory=[lesson("01.0", 0), lesson("01.1", 1)],
+            lesson_activities=[
+                activities("lesson-01.0"),
+                activities("lesson-01.1", exercises=["app.py"]),
+            ],
+        ),
+    )
+    assert not undeclared.passed
+    assert "not declared as practice" in undeclared.failure_mode
+
+    # A course that neither declares nor ships code practice satisfies the correspondence.
+    silent = run(
+        spec,
+        profile(
+            lesson_inventory=[lesson("01.0", 0), lesson("01.1", 1)],
+            lesson_activities=[activities("lesson-01.0"), activities("lesson-01.1")],
+        ),
+    )
+    assert silent.passed
+
+
+def body(slug: str, text: str) -> dict:
+    return {"lessonSlug": slug, "lessonId": None, "body": text}
+
+
+def test_no_lesson_spikes_in_lexical_load():
+    spec = _REAL_CRITERIA["cr-no-lesson-spikes-in-lexical-load"]
+    run = structural.EXECUTORS["cr-no-lesson-spikes-in-lexical-load"]
+
+    plain = " ".join(["the cat sat on a mat and the dog ran to the big red bus"] * 12)
+    dense = " ".join(
+        ["extraordinarily sophisticated methodological considerations demonstrate"] * 22
+    )
+
+    even = run(spec, profile(lesson_bodies=[body("a", plain), body("b", plain), body("c", plain)]))
+    assert even.passed
+
+    spiked = run(
+        spec, profile(lesson_bodies=[body("a", plain), body("b", plain), body("c", dense)])
+    )
+    assert not spiked.passed
+    metrics = {m.metric_id: m.value for m in spiked.metrics}
+    assert metrics["lexical_load_spikes"] == ["c"]
+    assert metrics["lessons_measured"] == 3
+
+
+def test_short_lessons_neither_set_nor_break_the_median():
+    """Below the guard the mean is dominated by whichever few words a lesson used."""
+    spec = _REAL_CRITERIA["cr-no-lesson-spikes-in-lexical-load"]
+    run = structural.EXECUTORS["cr-no-lesson-spikes-in-lexical-load"]
+
+    plain = " ".join(["the cat sat on a mat and the dog ran to the big red bus"] * 12)
+    result = run(
+        spec,
+        profile(lesson_bodies=[body("a", plain), body("tiny", "Extraordinarily sophisticated.")]),
+    )
+    assert result.passed
+    assert {m.metric_id: m.value for m in result.metrics}["lessons_measured"] == 1
+
+
+def test_a_course_of_only_short_lessons_has_nothing_to_compare():
+    spec = _REAL_CRITERIA["cr-no-lesson-spikes-in-lexical-load"]
+    run = structural.EXECUTORS["cr-no-lesson-spikes-in-lexical-load"]
+
+    result = run(spec, profile(lesson_bodies=[body("a", "Too short."), body("b", "Also short.")]))
+    assert result.passed
+    assert {m.metric_id: m.value for m in result.metrics}["lessons_measured"] == 0
+
+
+def test_code_fences_and_image_alt_text_are_not_prose():
+    """A code block is not prose, and LearnPack's generated illustrations carry their whole
+    image-generation prompt as alt text — counting either would measure the wrong thing."""
+    from app.modules.evaluation.infrastructure.assessors.structural import measures
+
+    prose = " ".join(["the cat sat on a mat and the dog ran to the big red bus"] * 12)
+    noisy = (
+        prose
+        + "\n\n```python\nextraordinarily_sophisticated_methodological_consideration = 1\n```\n"
+        + "\n![GENERATING: extraordinarily sophisticated methodological illustration](/x.png)\n"
+    )
+    assert measures.lexical_load(noisy) == measures.lexical_load(prose)

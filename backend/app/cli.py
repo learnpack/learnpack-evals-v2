@@ -1595,6 +1595,13 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM events",
         # Ratifications reference assessors on both sides (ADR-0019); before assessors.
         "DELETE FROM assessor_ratifications",
+        # Automated assessors are app-minted too — registered at their first ratification,
+        # never seeded. Leaving one behind strands its stored `source_config`, and the next
+        # ratification refuses with "the artifact changed without a version bump"
+        # (ADR-0016): a correct guard, firing on a database the operator was told had been
+        # reset. They carry no clerk_user_id, so the human predicate below never reaches
+        # them.
+        "DELETE FROM assessors WHERE kind = 'automated'",
         "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
     ):
         session.execute(text(statement))

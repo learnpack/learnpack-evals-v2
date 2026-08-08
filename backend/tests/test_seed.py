@@ -2,6 +2,8 @@
 updates in place instead of duplicating (08-code.md §9).
 """
 
+import json
+
 from sqlalchemy import text
 
 from app.cli import DEFAULT_SEED_FILE, _reset_demo, run_seed
@@ -114,3 +116,35 @@ def test_reset_demo_clears_local_identities_and_spares_the_rest(requires_db, cle
 
         assert repository.get_by_clerk_user_id(local_user.clerk_user_id) is None
         assert repository.get_by_clerk_user_id(clerk_user.clerk_user_id) is not None
+
+
+def test_reset_demo_clears_the_automated_assessor_registration(requires_db, cleanup, unique):
+    """An automated assessor is app-minted, not seeded reference data, so the reset must
+    reach it.
+
+    Leaving one behind strands its stored `source_config`. The next `ratify-assessor`
+    then refuses with "the artifact changed without a version bump" (ADR-0016) — a correct
+    guard, fired on a database the operator was just told had been reset, and pointing at
+    the code rather than at the stale row.
+    """
+    with SessionLocal() as session:
+        session.execute(
+            text(
+                "INSERT INTO assessors (id, kind, source_config, role, created_at) "
+                "VALUES (:id, 'automated', :config, 'evaluator', now())"
+            ),
+            {
+                "id": str(new_id()),
+                "config": json.dumps({"name": f"stale-{unique}", "version": "1"}),
+            },
+        )
+        session.commit()
+
+        _reset_demo(session)
+
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM assessors WHERE kind = 'automated'")
+            ).scalar_one()
+            == 0
+        )

@@ -330,12 +330,16 @@ def test_the_first_increment_closes_the_loop(
         "coverage": {"qualities": 3, "defined": 0},
     }
 
-    # Same for learning-progression: nothing under it can be reached by a pure-code assessor,
-    # and the one quality with declared-data criteria (the audience one) has no supply either.
-    # Two of the four dimensions the instrument does cover are therefore undefined — the blind
-    # spots, stated rather than averaged away into a number.
+    # `objectives-quality` is the only dimension left blind. `learning-progression` is not:
+    # the audience quality under it still has no supply, but `progression-cognitive-demand`
+    # is measured from the lesson bodies, and ONE defined quality is enough for a dimension
+    # to have a value. That is the point of the unweighted mean over DEFINED qualities —
+    # what cannot be measured is dropped, not scored zero.
     assert study_level["qualities"]["progression-starting-point"]["fitness"] is None
-    assert study_level["dimensions"]["learning-progression"]["coverage"]["defined"] == 0
+    progression = study_level["dimensions"]["learning-progression"]
+    assert progression["coverage"] == {"qualities": 4, "defined": 1}
+    assert progression["fitness"] is not None
+    assert study_level["qualities"]["progression-cognitive-demand"]["fitness"] is not None
 
     # What the format DOES supply is measured: the lesson inventory and bodies feed two of the
     # four coherence qualities. The other two wait on an assessor that can read semantics —
