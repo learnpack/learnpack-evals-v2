@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-08T14:22:14.165Z",
+  "publishedAt": null,
+  "slug": "html-fundamentals",
+  "title": {
+    "en": "HTML Fundamentals: Building Web Structure",
+    "es": "Fundamentos de HTML: Construyendo la Estructura Web"
+  },
+  "description": {
+    "en": "This course introduces complete beginners to HTML, the foundation of every website. Learn how browsers interpret HTML to create web pages, master essential tags and elements to structure content, and understand semantic markup for accessibility and maintainability. By the end, you'll build well-structured HTML documents from scratch using headings, paragraphs, lists, links, images, and semantic elements. The course also covers working with AI to generate and refine HTML code responsibly. Emphasizing the 4Geeks philosophy of learning by doing, it includes hands-on exercises to develop foundational skills for progressing to CSS and JavaScript in future courses.",
+    "es": "Este curso introduce a los principiantes completos a HTML, la base de cada sitio web. Aprende cómo los navegadores interpretan HTML para crear páginas web, domina las etiquetas y elementos esenciales para estructurar contenido, y comprende la marcación semántica para la accesibilidad y el mantenimiento. Al final, construirás documentos HTML bien estructurados desde cero utilizando encabezados, párrafos, listas, enlaces, imágenes y elementos semánticos. El curso también cubre el trabajo con IA para generar y refinar código HTML de manera responsable. Enfatizando la filosofía de 4Geeks de aprender haciendo, incluye ejercicios prácticos para desarrollar habilidades fundamentales para avanzar a CSS y JavaScript en cursos futuros."
+  },
+  "preview": "https://html-fundamentals-building-web-structure.learn-pack.com/preview.png",
+  "technologies": [
+    "html-css",
+    "front-end-development",
+    "vibe-coding"
+  ],
+  "difficulty": "beginner",
+  "lessons": [
+    {
+      "id": "00.0",
+      "slug": "00.0-welcome-to-html",
+      "position": 0,
+      "type": "READ",
+      "title": {
+        "es": "Bienvenido a HTML",
+        "en": "Welcome to HTML"
+      },
+      "description": {
+        "es": "Aprende qué es HTML y cómo los navegadores lo interpretan para estructurar el contenido web. Descubre su rol fundamental en la creación de páginas.",
+        "en": "Learn what HTML is and how browsers read it to structure web content. Understand its role as the blueprint of every webpage."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.0",
+      "slug": "01.0-what-html-is-and-how-browsers-read-it",
+      "position": 1,
+      "type": "READ",
+      "title": {
+        "es": "Qué es HTML y cómo lo leen los navegadores",
+        "en": "What HTML Is and How Browsers Read It"
+      },
+      "description": {
+        "es": "Learn what HTML is and how it structures web content, then explore how browsers parse HTML into the Document Object Model tree.",
+        "en": "Learn what HTML is and how it structures web content, then explore how browsers parse HTML into the Document Object Model tree."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.1",
+      "slug": "01.1-the-html-skeleton-tags-and-attributes",
+      "position": 2,
+      "type": "READ",
+      "title": {
+        "es": "El esqueleto HTML, las etiquetas y los atributos",
+        "en": "The HTML Skeleton, Tags, and Attributes"
+      },
+      "description": {
+        "es": "Aprende la estructura básica de HTML, incluyendo etiquetas, elementos y atributos. Comprende el propósito de DOCTYPE, head, body y errores comunes.",
+        "en": "Learn the basic HTML skeleton, including tags, elements, and attributes. Understand the purpose of DOCTYPE, head, body, and common mistakes."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.2",
+      "slug": "01.2-your-first-html-page",
+      "position": 3,
+      "type": "READ",
+      "title": {
+        "es": "Tu primera página HTML",
+        "en": "Your First HTML Page"
+      },
+      "description": {
+        "es": "Crea desde cero una página HTML 'Sobre mí' con la estructura adecuada, título, encabezado y párrafos sobre ti.",
+        "en": "Build a complete 'About Me' HTML page from scratch, including a proper document skeleton, title, heading, and paragraphs about yourself."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.0",
+      "slug": "02.0-headings-paragraphs-and-lists",
+      "position": 4,
+      "type": "READ",
+      "title": {
+        "es": "Encabezados, párrafos y listas",
+        "en": "Headings, Paragraphs, and Lists"
+      },
+      "description": {
+        "es": "Aprende a estructurar contenido web usando encabezados, párrafos y listas, comprendiendo su jerarquía y significado semántico.",
+        "en": "Learn to structure web content using headings, paragraphs, and lists, understanding their hierarchy and semantic meaning."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.1",
+      "slug": "02.1-links-and-navigation",
+      "position": 5,
+      "type": "READ",
+      "title": {
+        "es": "Enlaces y navegación",
+        "en": "Links and Navigation"
+      },
+      "description": {
+        "es": "Aprende a crear enlaces con URLs absolutas y relativas, abrirlos en nuevas pestañas y construir un menú de navegación semántico con el elemento <nav>.",
+        "en": "Learn how to create links with absolute and relative URLs, open them in new tabs, and build a semantic navigation menu using the <nav> element."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.2",
+      "slug": "02.2-build-a-navigation-menu",
+      "position": 6,
+      "type": "READ",
+      "title": {
+        "es": "Construye un menú de navegación",
+        "en": "Build a Navigation Menu"
+      },
+      "description": {
+        "es": "Practica la creación de un menú de navegación semántico añadiendo un elemento nav con cuatro enlaces, luego completa la página con un encabezado y un párrafo de bienvenida.",
+        "en": "Practice building a semantic navigation menu by adding a nav element with four links, then finish the page with a heading and welcome paragraph."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.0",
+      "slug": "03.0-images-and-meaningful-alt-text",
+      "position": 7,
+      "type": "READ",
+      "title": {
+        "es": "Imágenes y texto alternativo con significado",
+        "en": "Images and Meaningful Alt Text"
+      },
+      "description": {
+        "es": "Aprende a insertar imágenes con la etiqueta `<img>`, elegir formatos adecuados y escribir texto alt que sea descriptivo y significativo para la accesibilidad.",
+        "en": "Learn how to add images with the `<img>` tag, choose file formats, and write descriptive, meaningful alt text that improves accessibility for all users."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.1",
+      "slug": "03.1-audio-and-video",
+      "position": 8,
+      "type": "READ",
+      "title": {
+        "es": "Audio y video",
+        "en": "Audio and Video"
+      },
+      "description": {
+        "es": "Incrusta audio y video con las etiquetas <audio> y <video>, añade controles, reproducción automática y bucle, y proporciona contenido alternativo para navegadores incompatibles.",
+        "en": "Embed audio and video with the <audio> and <video> tags, add controls, autoplay, and loop, and provide fallback content for unsupported browsers."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.2",
+      "slug": "03.2-add-images-audio-and-video",
+      "position": 9,
+      "type": "READ",
+      "title": {
+        "es": "Añade imágenes, audio y video",
+        "en": "Add Images, Audio, and Video"
+      },
+      "description": {
+        "es": "Construye una página multimedia añadiendo tres imágenes con texto alternativo, un reproductor de audio y otro de video con controles.",
+        "en": "Build a media page by adding three images with alt text, an audio player, and a video player, each with working controls."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.0",
+      "slug": "04.0-semantic-html",
+      "position": 10,
+      "type": "READ",
+      "title": {
+        "es": "HTML semántico",
+        "en": "Semantic HTML"
+      },
+      "description": {
+        "es": "Aprende a elegir etiquetas semánticas como header, nav, main, article, section y aside para describir el significado de tu contenido, mejorando accesibilidad, SEO y mantenibilidad.",
+        "en": "Learn to choose semantic tags like header, nav, main, article, section, and aside to describe your content's meaning, improving accessibility, SEO, and maintainability."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.1",
+      "slug": "04.1-refactor-a-page-into-semantic-html",
+      "position": 11,
+      "type": "READ",
+      "title": {
+        "es": "Refactoriza una página a HTML semántico",
+        "en": "Refactor a Page into Semantic HTML"
+      },
+      "description": {
+        "es": "Reemplaza los divs genéricos por elementos semánticos como header, nav, main y footer, manteniendo el contenido y la apariencia visual intactos.",
+        "en": "Refactor a page by replacing generic divs with semantic elements like header, nav, main, and footer, keeping all content and visual appearance unchanged."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.2",
+      "slug": "04.2-build-a-semantic-blog-post",
+      "position": 12,
+      "type": "READ",
+      "title": {
+        "es": "Construye una entrada de blog semántica",
+        "en": "Build a Semantic Blog Post"
+      },
+      "description": {
+        "es": "Practice using semantic HTML to structure a blog post with article, section, and aside elements.",
+        "en": "Practice using semantic HTML to structure a blog post with article, section, and aside elements."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.0",
+      "slug": "05.0-writing-clean-and-valid-html",
+      "position": 13,
+      "type": "READ",
+      "title": {
+        "es": "Escribir HTML limpio y válido",
+        "en": "Writing Clean and Valid HTML"
+      },
+      "description": {
+        "es": "Aprende a escribir HTML limpio y válido usando sangría consistente, validando con el validador W3C y evitando malas prácticas como tablas para diseño.",
+        "en": "Learn to write clean, valid HTML by using consistent indentation, validating with the W3C Validator, and avoiding common anti-patterns like tables for layout."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.1",
+      "slug": "05.1-find-and-fix-html-mistakes",
+      "position": 14,
+      "type": "READ",
+      "title": {
+        "es": "Encuentra y corrige errores de HTML",
+        "en": "Find and Fix HTML Mistakes"
+      },
+      "description": {
+        "es": "Practica corregir errores comunes de HTML limpiando una página desordenada: añade texto alternativo, arregla la jerarquía de encabezados, usa elementos semánticos y elimina br de maquetación.",
+        "en": "Practice fixing common HTML errors by cleaning up a messy page: add alt text, fix heading hierarchy, use semantic elements, and remove layout br tags."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "06.0",
+      "slug": "06.0-using-ai-to-generate-html",
+      "position": 15,
+      "type": "READ",
+      "title": {
+        "es": "Usar IA para generar HTML",
+        "en": "Using AI to Generate HTML"
+      },
+      "description": {
+        "es": "Aprende a usar la IA para generar HTML de forma eficiente, redactar indicaciones efectivas y revisar el resultado para garantizar semántica y accesibilidad.",
+        "en": "Learn how to use AI to generate HTML efficiently, write effective prompts, and review the output for semantic correctness and accessibility."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "06.1",
+      "slug": "06.1-generate-an-about-me-page-with-ai",
+      "position": 16,
+      "type": "READ",
+      "title": {
+        "es": "Genera una página Sobre Mí con IA",
+        "en": "Generate an About Me Page with AI"
+      },
+      "description": {
+        "es": "Practica pedir a una herramienta de IA una página \"Acerca de mí\" semántica, revisa el código HTML y personalízala con tu contenido real en about_me.html.",
+        "en": "Practice prompting an AI tool for a semantic \"About Me\" page, review the generated HTML, and personalize it with your real content in about_me.html."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "07.0",
+      "slug": "07.0-html-structure-and-semantics-assessment",
+      "position": 17,
+      "type": "QUIZ",
+      "title": {
+        "es": "Evaluación de estructura y semántica de HTML",
+        "en": "HTML Structure and Semantics Assessment"
+      },
+      "description": {
+        "es": "Evalúa tu comprensión del HTML semántico, el elemento article, imágenes accesibles, jerarquía de encabezados, navegación y atributos alt con estas preguntas de opción múltiple.",
+        "en": "Test your understanding of semantic HTML, the article element, accessible images, heading hierarchy, navigation, and alt attributes with these multiple-choice questions."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "08.0",
+      "slug": "08.0-your-html-journey-continues",
+      "position": 18,
+      "type": "READ",
+      "title": {
+        "es": "Tu viaje con HTML continúa",
+        "en": "Your HTML Journey Continues"
+      },
+      "description": {
+        "es": "Revisa lo que has aprendido sobre HTML semántico y accesible, y descubre los próximos pasos hacia CSS, JavaScript y proyectos prácticos.",
+        "en": "Review the semantic and accessible HTML skills you have built, and discover what comes next with CSS, JavaScript, and hands-on projects."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    }
+  ]
+}

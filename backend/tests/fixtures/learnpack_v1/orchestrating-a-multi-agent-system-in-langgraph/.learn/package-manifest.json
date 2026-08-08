@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-08T14:21:47.594Z",
+  "publishedAt": null,
+  "slug": "orchestrating-a-multi-agent-system-in-langgraph",
+  "title": {
+    "en": "Orchestrating a Multi-Agent System in LangGraph",
+    "es": "Orquestando un Sistema Multi-Agente en LangGraph"
+  },
+  "description": {
+    "en": "You can already build a single agent that calls tools in a loop. But some problems are too big for one agent: a customer-support request that needs billing, technical, and returns expertise; a report that must be researched, drafted, then edited. This course is the entry point to multi-agent systems. You will learn to reason about when to split work across specialized agents versus keeping one well-equipped agent, name the flow patterns that structure multi-agent workflows, and take the concrete first implementation step: replacing hand-written tool-dispatch loops with a ToolNode, and letting tools read from and write to shared graph state. All code targets LangGraph 1.2.8 using the exact pinned imports.",
+    "es": "Ya puedes construir un solo agente que llama a herramientas en un bucle. Pero algunos problemas son demasiado grandes para un solo agente: una solicitud de soporte al cliente que necesita experiencia en facturación, técnica y devoluciones; un informe que debe ser investigado, redactado y luego editado. Este curso es el punto de entrada a los sistemas multi-agente. Aprenderás a razonar sobre cuándo dividir el trabajo entre agentes especializados frente a mantener un agente bien equipado, nombrar los patrones de flujo que estructuran los flujos de trabajo multi-agente y dar el primer paso concreto de implementación: reemplazar los bucles de despacho de herramientas escritos a mano con un ToolNode, y permitir que las herramientas lean y escriban en el estado del gráfico compartido. Todo el código está dirigido a LangGraph 1.2.8 utilizando las importaciones exactas fijadas."
+  },
+  "preview": "https://orchestrating-a-multi-agent-system-in-langgraph.learn-pack.com/preview.png",
+  "technologies": [
+    "LangGraph",
+    "LangChain",
+    "Python"
+  ],
+  "difficulty": "beginner",
+  "lessons": [
+    {
+      "id": "00.0",
+      "slug": "00.0-welcome-to-multi-agent-systems",
+      "position": 0,
+      "type": "READ",
+      "title": {
+        "es": "Bienvenido a los Sistemas Multi-Agente",
+        "en": "Welcome to Multi-Agent Systems"
+      },
+      "description": {
+        "es": "Descubre el desafío de un sistema de un solo agente y obtén una vista previa de cómo los flujos multiagente resuelven problemas complejos con colaboración.",
+        "en": "Discover the challenge of single-agent systems and get an overview of how multi-agent workflows use collaboration to tackle complex problems."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.0",
+      "slug": "01.0-what-is-an-agent-workflow",
+      "position": 1,
+      "type": "READ",
+      "title": {
+        "es": "Qué es un flujo de trabajo de agentes",
+        "en": "What Is an Agent Workflow"
+      },
+      "description": {
+        "es": "Aprende cómo los flujos de trabajo de agentes definen el control, cuándo dividir responsabilidades entre agentes especializados y las reglas de diseño clave.",
+        "en": "Learn how agent workflows define control flow, when to split responsibilities across specialized agents, and key design rules for multi-agent systems."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.1",
+      "slug": "01.1-flow-patterns",
+      "position": 2,
+      "type": "READ",
+      "title": {
+        "es": "Patrones de Flujo",
+        "en": "Flow Patterns"
+      },
+      "description": {
+        "es": "Aprende a identificar y aplicar los cinco patrones de flujo estándar en sistemas multiagente: encadenamiento, paralelización, enrutamiento, orquestador-trabajador y evaluador-optimizador.",
+        "en": "Learn the five standard flow patterns for multi-agent workflows: prompt chaining, parallelization, routing, orchestrator-worker, and evaluator-optimizer."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.0",
+      "slug": "02.0-from-tool-loops-to-toolnode",
+      "position": 3,
+      "type": "READ",
+      "title": {
+        "es": "De Bucles de Herramientas a ToolNode",
+        "en": "From Tool Loops to ToolNode"
+      },
+      "description": {
+        "es": "Aprende a reemplazar el envío manual de herramientas con ToolNode de LangGraph, comprende el patrón de estado compartido y cómo simplifica crear flujos multiagente.",
+        "en": "Learn how to replace manual tool dispatch with LangGraph's ToolNode, understand the shared graph state pattern, and see how these simplify building reliable multi-agent workflows."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.1",
+      "slug": "02.1-building-a-toolnode-graph",
+      "position": 4,
+      "type": "CODE",
+      "title": {
+        "es": "Construyendo un Grafo ToolNode",
+        "en": "Building a ToolNode Graph"
+      },
+      "description": {
+        "es": "Construye un StateGraph con ToolNode, conecta el modelo y las herramientas, y prueba el agente preguntando por el clima en París.",
+        "en": "Build a StateGraph with a ToolNode, wire the model and tool loop, and test it by asking for the weather in Paris."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.0",
+      "slug": "03.0-tools-and-graph-state",
+      "position": 5,
+      "type": "READ",
+      "title": {
+        "es": "Herramientas y Estado del Grafo",
+        "en": "Tools and Graph State"
+      },
+      "description": {
+        "es": "Aprende a usar ToolRuntime para leer el estado del grafo y Command para actualizarlo, limitando las herramientas al estado mínimo necesario.",
+        "en": "Learn how to use ToolRuntime to read graph state and Command to update it, scoping tools to minimal state for maintainable multi-agent workflows."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.1",
+      "slug": "03.1-reading-state-from-a-tool",
+      "position": 6,
+      "type": "CODE",
+      "title": {
+        "es": "Leer el Estado desde una Herramienta",
+        "en": "Reading State From a Tool"
+      },
+      "description": {
+        "es": "Implementa una herramienta que lea el nivel de cuenta del estado del grafo usando ToolRuntime para devolver un estimado de envío, manteniendo la herramienta autocontenida.",
+        "en": "Implement a tool that reads the account tier from graph state using ToolRuntime to return a shipping estimate, keeping the tool self-contained."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.0",
+      "slug": "04.0-multi-agent-systems-assessment",
+      "position": 7,
+      "type": "QUIZ",
+      "title": {
+        "es": "Evaluación de Sistemas Multi-Agente",
+        "en": "Multi-Agent Systems Assessment"
+      },
+      "description": {
+        "es": "Responde un cuestionario para evaluar tu comprensión sobre el diseño de sistemas multi-agente, flujos de trabajo y herramientas en LangGraph.",
+        "en": "Test your understanding of multi-agent system design, workflow patterns, and tool usage in LangGraph with this assessment quiz."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.0",
+      "slug": "05.0-what-s-next",
+      "position": 8,
+      "type": "READ",
+      "title": {
+        "es": "Qué Sigue",
+        "en": "What's Next"
+      },
+      "description": {
+        "es": "Revisa lo aprendido sobre sistemas multiagente y descubre los próximos patrones y técnicas avanzadas que explorarás.",
+        "en": "Review what you have learned and preview the next patterns and advanced techniques for multi-agent systems."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    }
+  ]
+}
