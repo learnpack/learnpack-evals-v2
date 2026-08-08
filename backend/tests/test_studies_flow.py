@@ -311,15 +311,12 @@ def test_the_first_increment_closes_the_loop(
     assert projection["signal"] == "optimization"
     assert projection["formulaVersion"]
 
-    # The five qualities the instrument asserts about, and only those.
+    # The qualities the instrument asserts about, and only those: 16 of the frame's 21.
+    # `constructive-alignment`'s four are absent by design (no declared objectives to align
+    # against under LearnpackV1), so that dimension does not appear at all.
     study_level = projection["study"]
-    assert set(study_level["qualities"]) == {
-        "objectives-observable",
-        "progression-starting-point",
-        "instruction-application",
-        "coherence-focus-depth",
-        "coherence-logical-sequence",
-    }
+    assert len(study_level["qualities"]) == 16
+    assert "constructive-alignment" not in study_level["dimensions"]
 
     # The case the whole denominator rule exists for: LearnpackV1 supplies no objectives, so
     # every criterion under that quality is `not_applicable` — undefined, NOT zero. A zero
@@ -330,20 +327,21 @@ def test_the_first_increment_closes_the_loop(
     assert objectives["coverage"]["notApplicable"] > 0
     assert study_level["dimensions"]["objectives-quality"] == {
         "fitness": None,
-        "coverage": {"qualities": 1, "defined": 0},
+        "coverage": {"qualities": 3, "defined": 0},
     }
 
-    # Same for learning-progression: its only claim is the audience one, and LearnpackV1
-    # declares no audience or prerequisites either. Two of the five dimensions are therefore
-    # undefined under this format — the instrument's blind spots, stated rather than averaged
-    # away into a number.
+    # Same for learning-progression: nothing under it can be reached by a pure-code assessor,
+    # and the one quality with declared-data criteria (the audience one) has no supply either.
+    # Two of the four dimensions the instrument does cover are therefore undefined — the blind
+    # spots, stated rather than averaged away into a number.
     assert study_level["qualities"]["progression-starting-point"]["fitness"] is None
     assert study_level["dimensions"]["learning-progression"]["coverage"]["defined"] == 0
 
-    # What the format DOES supply is measured: the lesson inventory and bodies feed both
-    # coherence qualities, so that dimension is defined from two independent claims.
+    # What the format DOES supply is measured: the lesson inventory and bodies feed two of the
+    # four coherence qualities. The other two wait on an assessor that can read semantics —
+    # `not_assessed` keeps them out of the denominator rather than scoring them zero.
     coherence = study_level["dimensions"]["inter-lesson-coherence"]
-    assert coherence["coverage"] == {"qualities": 2, "defined": 2}
+    assert coherence["coverage"] == {"qualities": 4, "defined": 2}
     assert coherence["fitness"] is not None
 
     # structural:1's abstentions are counted and named, never charged to the generator.

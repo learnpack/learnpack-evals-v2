@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-07._
+_Last updated: 2026-08-08._
 
 ## Where we are
 
@@ -122,8 +122,28 @@ compatibility commitment between versions. The full reproducibility commitment s
 the first study the team publishes over real content, which pins its version. (Local demo
 studies published while verifying do not count — the local DB is disposable by design.)
 
+**In progress — widening the instrument (3 PRs, this is the first).** The draft now asserts
+about **16 of the 21 qualities** (17 claims / 27 criteria) instead of 5, so that the
+instrument is ready for the day an LLM-carrying assessor exists. Of the 16 new criteria,
+**none is executable by `structural:1`** — they all derive `not_assessed`, which ADR-0023
+keeps out of the fitness denominator, so **the fitness does not move because of them yet**.
+They are written to document the demand and to make the backlog visible (ADR-0018).
+Landed in this first PR: the calibration corpus (5 frozen packages instead of 2), the new
+reference doc `docs/MEASUREMENT.md`, the quality rename
+`instruction-authentic-tasks` → `instruction-authentic-problems`, and two data requirements
+the instrument mints but no adapter supplies yet (`course_descriptor`,
+`lesson_assessment_items` — their criteria read `not_applicable` until the adapter PR).
+**Still to come:** the `LearnpackV1` adapter supplying those two data (plus the
+`codeExercises` detection fixes and the `ADAPTER_VERSION` reset), and the `structural`
+assessor gaining the `lexical_load` measure and two mechanical executors.
+
+`constructive-alignment` is **deliberately left with no claim at all**: it compares declared
+objectives against content, and LearnpackV1 declares no learning objectives at course or
+lesson level. The dimension answers `undefined`, which is the correct answer rather than a
+zero. Same for `objectives-specificity`.
+
 **Pending input from the team:** review and edit the draft of the first instrument
-(`docs/seed/instruments/learnpack-course-qa-v1.yaml` — 5 claims / 11 criteria, written as
+(`docs/seed/instruments/learnpack-course-qa-v1.yaml`, written as
 assistance; each claim asserts about exactly one quality, ADR-0026) and **publish it**
 when the team makes it its own
 (`python -m app.cli publish-instrument --id learnpack-course-qa-v1 --email <admin>`,
@@ -153,8 +173,11 @@ for the first automated assessor (`python -m app.cli ratify-assessor --name stru
 initial registration is the first ratification) and evaluate with
 `python -m app.cli evaluate --content-id <id> --instrument-version-id <id>`. As long as the
 instrument stays in draft, the calibration loop is `evaluate --dry-run` (accepts drafts,
-persists nothing). `structural:1` executes 7 criteria and abstains from the 4 judgment ones
-(ADR-0018) — its accumulated `not_assessed` are the visible backlog of the LLM assessor.
+persists nothing). `structural:1` executes 7 criteria and abstains from the other 20
+(ADR-0018) — its accumulated `not_assessed` are the visible backlog of the LLM assessor, and
+each abstention reason names which capability it needs: the **judgment** itself, or only
+**extraction/classification**, after which the pass condition is a count or an order check.
+The second kind is the cheaper one to build first.
 
 **Fourth pending input from the team (block 7): publish the first real study.** The loop is
 live end to end: register real contents (the brief arrives mechanically when the package
@@ -186,12 +209,13 @@ the data in the package).
   `objectives-quality` comes back **`undefined`** — LearnpackV1 supplies no objectives, so
   every criterion under it is `not_applicable` and the denominator is 0. A zero there would
   have the GA evolve against a gap in the *package format*, not in the generator.
-  `learning-progression` is undefined for the same reason — its only claim is the audience
-  one, and the format declares no audience or prerequisites either — so **two of the five
-  dimensions are blind under LearnpackV1**, stated rather than averaged away.
-  `inter-lesson-coherence` is the one measured from two independent claims (0.75, the
-  numbering-drift `fail` pulling one of them to 0.5), and the unknown-generator course is
-  counted at study level while excluded from generator level.
+  `learning-progression` is undefined for the same reason — the format declares no audience
+  or prerequisites, and every other quality under it needs semantics `structural:1` does not
+  have. `constructive-alignment` does not appear at all: the instrument deliberately asserts
+  nothing about it. So **only two of the four dimensions the instrument covers are measured
+  today**, stated rather than averaged away. `inter-lesson-coherence` is measured from two of
+  its four qualities (the numbering-drift `fail` pulling one of them down), and the
+  unknown-generator course is counted at study level while excluded from generator level.
 - **Manual loop verified in local mode**: `seed-demo --reset` registers the demo courses
   **with intake-derived briefs** (syllabus fixtures in the frozen packages), one linked to
   `learnpack-generator 1.0.0` and one declared unknown → publish + ratify + evaluate both →

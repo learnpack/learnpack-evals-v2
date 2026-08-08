@@ -84,10 +84,10 @@ qualities:
     grounded_in: ["Biggs"]
 
   # --- instructional-design -----------------------------------------------
-  - id: instruction-authentic-tasks
+  - id: instruction-authentic-problems
     dimension: instructional-design
-    name: "Anchoring in authentic problems or tasks"
-    definition: "Lessons start from real problems or tasks rather than abstract exposition."
+    name: "Anchoring in authentic problems"
+    definition: "New instructional material is motivated by a real problem or task rather than introduced as abstract exposition."
     grounded_in: ["Merrill"]
   - id: instruction-prior-knowledge
     dimension: instructional-design
