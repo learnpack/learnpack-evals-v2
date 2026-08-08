@@ -26,6 +26,10 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# The frozen packages are third-party DATA, not our source: they specify the extraction
+# adapter by being exactly what LearnPack emits. Linting or formatting them would edit the
+# thing under test — see tests/fixtures/learnpack_v1/README.md.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

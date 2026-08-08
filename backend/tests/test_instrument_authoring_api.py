@@ -296,18 +296,34 @@ def test_the_real_draft_imports_clean_and_would_publish(admin_client, cleanup, u
     real_id = import_spec(cleanup, real_spec)
     body = admin_client.get(f"/admin/instruments/{real_id}").json()
     assert body["status"] == "draft"
-    assert len(body["claims"]) == 5
-    assert len(body["criteria"]) == 11
-    assert {c["claim_id"] for c in body["claims"]} == {
-        "cl-objectives-declared",
-        "cl-audience-declared",
-        "cl-lessons-offer-application",
-        "cl-course-modular",
-        "cl-course-arc",
-    }
+    assert len(body["claims"]) == 17
+    assert len(body["criteria"]) == 27
     # ADR-0026: every claim asserts about exactly one quality, so the criterion → claim edge
     # is the criterion → quality edge.
     assert all(len(c["quality_ids"]) == 1 for c in body["claims"])
+
+    # 16 of the 21 qualities are asserted about. The five left out are deliberate, and the
+    # four of `constructive-alignment` are the load-bearing ones: that dimension compares
+    # DECLARED OBJECTIVES against content, and LearnpackV1 declares none — so any criterion
+    # here would measure a substitute and call it alignment. Pinned because a later author
+    # adding one back should have to argue with this line first.
+    covered = {q for c in body["claims"] for q in c["quality_ids"]}
+    assert len(covered) == 16
+    assert covered.isdisjoint(
+        {
+            "alignment-coverage",
+            "alignment-no-orphans",
+            "alignment-cognitive-consistency",
+            "alignment-assessment",
+        }
+    )
+    assert "objectives-specificity" not in covered
+    # One quality carries two claims: what a package DECLARES as objectives and what a course
+    # STATES to its learner as outcomes are different assertions about the same quality.
+    about_observable = [
+        c["claim_id"] for c in body["claims"] if c["quality_ids"] == ["objectives-observable"]
+    ]
+    assert sorted(about_observable) == ["cl-objectives-declared", "cl-outcomes-stated-to-learner"]
 
     # A copy under a throwaway id proves the content satisfies the publish invariants.
     copy = dict(real_spec)

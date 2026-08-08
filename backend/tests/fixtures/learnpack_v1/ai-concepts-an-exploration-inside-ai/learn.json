@@ -1,0 +1,22 @@
+{
+    "slug": "ai-concepts-an-exploration-inside-ai",
+    "title": {
+        "en": "AI Concepts: An Exploration Inside AI",
+        "es": "Conceptos de IA: Una exploración dentro de la IA"
+    },
+    "technologies": [
+        "Artificial Intelligence",
+        "Machine Learning",
+        "Ethics in AI"
+    ],
+    "difficulty": "beginner",
+    "description": {
+        "en": "Embark on a beginner-friendly journey into the world of Artificial Intelligence with this comprehensive course. Designed for those new to AI, this 30-minute exploration covers the fundamental concepts, including what AI is, its core principles, and how it’s applied across various industries. You’ll learn about AI models, their types, and real-world benefits in everyday life. Discover key players shaping the AI landscape, future trends, and the ethical challenges that come with this technology. Through engaging lessons and quizzes, build a solid foundation in AI concepts and understand its transformative impact on society and technology.",
+        "es": "Emprende un viaje amigable para principiantes al mundo de la Inteligencia Artificial con este curso integral. Diseñado para aquellos que son nuevos en la IA, esta exploración de 30 minutos cubre los conceptos fundamentales, incluyendo qué es la IA, sus principios básicos y cómo se aplica en diversas industrias. Aprenderás sobre los modelos de IA, sus tipos y los beneficios en la vida cotidiana. Descubre a los actores clave que están dando forma al panorama de la IA, las tendencias futuras y los desafíos éticos que conlleva esta tecnología. A través de lecciones y cuestionarios atractivos, construye una base sólida en los conceptos de IA y comprende su impacto transformador en la sociedad y la tecnología."
+    },
+    "grading": "isolated",
+    "telemetry": {
+        "batch": "https://breathecode.herokuapp.com/v1/assignment/me/telemetry"
+    },
+    "preview": "https://ai-concepts-an-exploration-inside-ai.learn-pack.com/preview.png"
+}

@@ -1,0 +1,5 @@
+# The frozen LearnPack packages specify the extraction adapter by being exactly what
+# LearnPack emits, and the adapter quotes their bytes verbatim as evidence (ADR-0009).
+# Without this, git rewrites their line endings per platform and a Windows checkout and a
+# CI checkout stop being the same package — the one thing a frozen fixture may not be.
+backend/tests/fixtures/** -text

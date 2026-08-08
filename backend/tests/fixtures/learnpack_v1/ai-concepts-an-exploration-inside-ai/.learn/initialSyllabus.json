@@ -1,0 +1,336 @@
+{
+    "lessons": [
+        {
+            "id": "00.0",
+            "uid": "lbz009r7mc",
+            "title": "Welcome to AI Concepts",
+            "type": "READ",
+            "description": "A warm introduction to the course, outlining what learners will achieve, including a basic understanding of AI, its applications, and ethical considerations in a beginner-friendly way.",
+            "duration": 2,
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557043,
+                    "description": "Obtén una visión general de este curso y descubre lo que aprenderás sobre la IA, sus aplicaciones y desafíos éticos.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "d513eb8d6b399b3c0f84e5a6f1eab7e156deb2bae79bad549f847be4c31d91c0",
+                    "sourceSimHash": "49029fbc92d0741a"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557044,
+                    "description": "Get an overview of this course and discover what you will learn about AI, its applications, and ethical challenges.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "5860ea48e85cb0d7d472e3c7bb3692b935a72c355cf19a60c11ed9a8199bbe41",
+                    "sourceSimHash": "8b842f2d4430f4f9"
+                }
+            }
+        },
+        {
+            "id": "01.0",
+            "title": "What is Artificial Intelligence",
+            "type": "READ",
+            "description": "Explore the definition of AI, its history, and core principles. Understand how AI mimics human intelligence and its significance in today’s world through simple examples.",
+            "duration": 2,
+            "uid": "pcpihhwrt37",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557045,
+                    "description": "Explora la definición de inteligencia artificial, su historia, principios clave y ejemplos cotidianos para comprender cómo imita la inteligencia humana.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "2a1ea7d45fedcdca60714a74acd5e9f02e41c9b929385d5d05c87115b3ee3fd2",
+                    "sourceSimHash": "dd02f7b892d0f478"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557047,
+                    "description": "Learn the definition of artificial intelligence, its history, core principles, and everyday examples to understand how it mimics human intelligence.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "5630ae0138ae51a860c2d2120fb2bcf4f1dd93511cc037bcabf85f8b8c432bc1",
+                    "sourceSimHash": "8bf0ef6b4db054d9"
+                }
+            }
+        },
+        {
+            "id": "01.1",
+            "title": "Usages of AI",
+            "type": "READ",
+            "description": "Learn how AI is used in various sectors like healthcare, education, and entertainment. Discover practical examples of AI tools and systems that impact daily routines and industries.",
+            "duration": 2,
+            "uid": "ubr7t6pc11",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557049,
+                    "description": "Explora cómo la IA transforma la salud, la educación, el entretenimiento y la vida diaria con ejemplos prácticos y herramientas reales.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "b01468f4f93b17ae349d6417339e461cced15cfc3772c0247d69c8bdb95df4e8",
+                    "sourceSimHash": "cd02beb892d0f018"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557050,
+                    "description": "Explore how AI is used in healthcare, education, entertainment, and everyday life through practical examples and real-world tools.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "d016151ecacaf481cba1b2b0fc15c486c7b59afc7f80ab42c8c5f6bcd372f436",
+                    "sourceSimHash": "0bf5ed6f4c2a15b9"
+                }
+            }
+        },
+        {
+            "id": "02.0",
+            "title": "What are AI Models",
+            "type": "READ",
+            "description": "Understand the concept of AI models, how they are trained, and their role in AI systems. Explore different types of models and their purposes in solving problems.",
+            "duration": 2,
+            "uid": "h1juv7c4ueo",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785720585586,
+                    "description": "Aprende qué son los modelos de IA, cómo se entrenan con datos y los distintos tipos que existen para resolver problemas reales.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "0c52ec4915cc9d5cf8070aa63cc397c639033078baabf4f6eb6efabd10e489d1",
+                    "sourceSimHash": "5d02feac9600f75a"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785720585587,
+                    "description": "Learn what AI models are, how they are trained from data, and explore the different types used to solve real-world problems.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "5bf833431001e702426960d95a7f502bda76000f7a4c5c02d8d2df48efe535c7",
+                    "sourceSimHash": "09c46d6b48b204a9"
+                }
+            }
+        },
+        {
+            "id": "02.1",
+            "title": "Applications of AI in Industries",
+            "type": "READ",
+            "description": "Dive into specific applications of AI across industries such as automotive, finance, and retail. See how AI drives innovation, efficiency, and decision-making in real-world business scenarios.",
+            "duration": 2,
+            "uid": "v4xil55bpfk",
+            "generated": true
+        },
+        {
+            "id": "03.0",
+            "title": "Benefits of AI in Everyday Life",
+            "type": "READ",
+            "description": "Discover how AI improves daily life through tools like virtual assistants, recommendation systems, and smart devices. Learn about AI’s role in enhancing convenience and productivity.",
+            "duration": 2,
+            "uid": "0wt633wgpwd",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557053,
+                    "description": "Descubre cómo los asistentes virtuales, los sistemas de recomendación y los dispositivos inteligentes facilitan tu día a día.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "299da16e3a2bb137ff0f31edfa7b3c79d34ddab77acdebb06c4395623766d15d",
+                    "sourceSimHash": "dd52f73892d0f4ba"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557054,
+                    "description": "Explore how virtual assistants, recommendation systems, and smart devices make your daily tasks easier and more efficient.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "11450b0302dc6ee93098723f0133b5dbfc6af4d8f91d6090b886a29c91b500eb",
+                    "sourceSimHash": "0b90a92b4c2a55b9"
+                }
+            }
+        },
+        {
+            "id": "03.1",
+            "title": "Early Concepts Quiz",
+            "type": "QUIZ",
+            "description": "Test your understanding of basic AI concepts, models, and applications covered so far. This quiz includes questions on definitions, usages, and industry examples to reinforce learning.",
+            "duration": 2,
+            "uid": "2eglqnvjp4a",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557056,
+                    "description": "Responde preguntas sobre los conceptos básicos de inteligencia artificial para reforzar lo aprendido en las lecciones anteriores.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "5ef8f8aa8c468c7592bd3a74c0d27efb939939313f2c199c34156701f109d8ff",
+                    "sourceSimHash": "5921d6bc9315f2dc"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557057,
+                    "description": "Test your understanding of core AI concepts by answering a series of review questions covering definitions, uses, models, and applications.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "4e1f79cf2b1d87259e61b2a45046fc541168299d971e31f64b07b4e17e0548eb",
+                    "sourceSimHash": "0bed0e2f55b353d4"
+                }
+            }
+        },
+        {
+            "id": "04.0",
+            "title": "Key Players in the AI Industry",
+            "type": "READ",
+            "description": "Identify major companies and organizations shaping the AI landscape. Learn about their contributions, innovations, and how they influence the development and adoption of AI technologies globally.",
+            "duration": 2,
+            "uid": "c9spu6kb8df",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557059,
+                    "description": "Explora las principales empresas y organizaciones que impulsan la IA, como Google, Microsoft, Amazon, Apple, Meta y otras.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "9e85e4a9c8754c7c246bb3326f09c257d41fae7aa2153a1d92590a83e3af2ef9",
+                    "sourceSimHash": "dd52f6b89294d51a"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557060,
+                    "description": "Explore the major companies and organizations shaping AI, including Google, Microsoft, Amazon, Apple, Meta, and others.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "7f4f3d3f5f4527775b6e0f6860b1c8afb73cd2ae1a84db222ff620ea1ce81390",
+                    "sourceSimHash": "8b45ef29543f57cd"
+                }
+            }
+        },
+        {
+            "id": "04.1",
+            "title": "Future Trends in AI",
+            "type": "READ",
+            "description": "Explore emerging trends in AI, such as advancements in automation, personalized AI, and sustainability. Understand how these trends might shape the future of technology and society over time.",
+            "duration": 2,
+            "uid": "scuiiioyw9m",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557061,
+                    "description": "Explora tres tendencias clave en IA: automatización, personalización y sostenibilidad. Descubre cómo transformarán el trabajo, la vida y el planeta.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "acfde4a9dafe0485303950de33fef5588c82c297e31369005810240fc2230dfe",
+                    "sourceSimHash": "dd62febc9290d01a"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557062,
+                    "description": "Explore three key AI trends: automation, personalization, and sustainability. Learn how they will reshape work, life, and the planet.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "a5f4da8a68c278ac555b004ac9a71b1179f9bf245d1a92f3d9388e807496103b",
+                    "sourceSimHash": "0b45df2d443a559f"
+                }
+            }
+        },
+        {
+            "id": "05.0",
+            "title": "Challenges in AI",
+            "type": "READ",
+            "description": "Examine the technical and societal challenges of AI, including data privacy, bias in algorithms, and job displacement. Understand the complexities and risks associated with AI deployment in various contexts.",
+            "duration": 2,
+            "uid": "ywvtwixq1gd",
+            "generated": true
+        },
+        {
+            "id": "05.1",
+            "title": "Ethical Considerations of AI",
+            "type": "READ",
+            "description": "Delve into the ethical dilemmas of AI, such as fairness, accountability, and transparency. Learn about the importance of responsible AI development and the impact on trust and societal values.",
+            "duration": 2,
+            "uid": "euwwkg40c7k",
+            "generated": true
+        },
+        {
+            "id": "06.0",
+            "title": "Final Knowledge Check",
+            "type": "QUIZ",
+            "description": "Assess your grasp of intermediate AI topics like key players, future trends, and challenges. This quiz ensures retention of concepts before moving to final reflections and takeaways.",
+            "duration": 2,
+            "uid": "l84t5t44t",
+            "generated": true,
+            "translations": {
+                "es": {
+                    "completionId": 0,
+                    "startedAt": 1785719557064,
+                    "description": "Pon a prueba tu comprensión de los conceptos clave de IA con este cuestionario final que cubre modelos, aplicaciones, desafíos y ética.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "91703130523f1ffad0c6cb02033305961a4271158c0d40606e40e067a22ef765",
+                    "sourceSimHash": "196456bcd214f65a"
+                },
+                "en": {
+                    "completionId": 0,
+                    "startedAt": 1785719557065,
+                    "description": "Test your knowledge of AI concepts with this final quiz covering models, applications, challenges, and ethical considerations.",
+                    "descriptionStatus": "generated",
+                    "descriptionSource": "auto",
+                    "descriptionPromptVersion": 1,
+                    "sourceContentHash": "fbb77e8218d71876461bbbe6ce1b8e03755e2793382dfaaafd7335ba377a2c53",
+                    "sourceSimHash": "036557aa553652cc"
+                }
+            }
+        }
+    ],
+    "courseInfo": {
+        "description": "Embark on a beginner-friendly journey into the world of Artificial Intelligence with this comprehensive course. Designed for those new to AI, this 30-minute exploration covers the fundamental concepts, including what AI is, its core principles, and how it’s applied across various industries. You’ll learn about AI models, their types, and real-world benefits in everyday life. Discover key players shaping the AI landscape, future trends, and the ethical challenges that come with this technology. Through engaging lessons and quizzes, build a solid foundation in AI concepts and understand its transformative impact on society and technology.",
+        "duration": 30,
+        "slug": "ai-concepts-an-exploration-inside-ai",
+        "difficulty": "beginner",
+        "language": "en",
+        "technologies": [
+            "Artificial Intelligence",
+            "Machine Learning",
+            "Ethics in AI"
+        ],
+        "hasContentIndex": true,
+        "contentIndex": "What is AI  \nUsages of AI  \nWhat are AI models  \nApplications of AI in various industries  \nBenefits of AI in everyday life  \nKey players in the AI industry  \nFuture trends in AI  \nChallenges and ethical considerations of AI  ",
+        "purpose": "skill-building-facilitator",
+        "isCompleted": true,
+        "variables": [
+            "description",
+            "duration",
+            "purpose",
+            "hasContentIndex",
+            "verifyHuman",
+            "contentIndex"
+        ],
+        "currentStep": "contentIndex",
+        "title": "AI Concepts: An Exploration Inside AI"
+    }
+}

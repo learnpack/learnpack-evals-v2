@@ -176,25 +176,28 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
         run_evaluate(str(profiled_course), instrument_id, f"{patched_package.name}:1", False) == 0
     )
 
-    # --- outcomes: exact five-state coverage over the 11 criteria ---
+    # --- outcomes: exact five-state coverage over every criterion of the version ---
     rows = outcome_rows(session, profiled_course)
-    assert len(rows) == 11
+    assert len(rows) == 27
     by_outcome: dict[str, list] = {}
     for row in rows:
         by_outcome.setdefault(row["outcome"], []).append(row)
-    # Demand without supply on LearnpackV1: the four criteria over undeclared data.
-    assert {r["criterion_id"] for r in by_outcome["not_applicable"]} == {
+    # Demand without supply on LearnpackV1: the criteria over data no adapter declares.
+    not_applicable = {r["criterion_id"] for r in by_outcome["not_applicable"]}
+    assert not_applicable == {
         "cr-objectives-min-count",
         "cr-objectives-observable-verbs",
         "cr-audience-declared",
         "cr-prerequisites-declared",
+        "cr-objectives-verb-level-band",  # needs course_descriptor
+        "cr-assessment-retrieves-earlier-taught-material",  # needs lesson_assessment_items
     }
-    # The three judgment criteria the assessor abstains from (data present).
-    assert {r["criterion_id"] for r in by_outcome["not_assessed"]} == {
-        "cr-module-single-topic",
-        "cr-arc-character",
-        "cr-modules-intro-then-apply",
-    }
+    # Everything the assessor abstains from, MINUS what was already not_applicable: the
+    # derivation asks applicability and capability before it asks the assessor (ADR-0018),
+    # so a criterion with no supply never reaches the abstention.
+    assert {r["criterion_id"] for r in by_outcome["not_assessed"]} == (
+        set(patched_package.coverage.abstains) - not_applicable
+    )
     scored = by_outcome.get("pass", []) + by_outcome.get("fail", [])
     assert len(scored) == 4
     assert all(not r["derived"] and r["quote"] for r in scored)
@@ -232,10 +235,13 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
         .one()
     )
     assert judgment["evaluation_id"] == evaluation["id"]
-    # Claims whose criteria are ALL not_applicable stay out of the denominator.
+    # Claims whose criteria are ALL not_applicable stay out of the denominator. Note
+    # `cl-course-revisits-what-it-taught` is NOT among them: one of its two criteria has no
+    # supply, the other is merely abstained, so the claim still has a population to speak of.
     assert set(judgment["coverage"]["excludedClaims"]) == {
         "cl-objectives-declared",
         "cl-audience-declared",
+        "cl-objectives-level-matches-difficulty",
     }
     claims = dict(
         session.execute(
@@ -243,9 +249,12 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
             {"id": judgment["id"]},
         ).all()
     )
-    # 5 claims, minus the 2 whose criteria are all not_applicable (excluded above).
-    assert len(claims) == 3
+    # 17 claims, minus the 3 whose criteria are all not_applicable (excluded above).
+    assert len(claims) == 14
     assert claims["cl-course-modular"] == "refuted"  # the cited counterexample
+    # Everything the assessor cannot reach reads "insufficient" — the honest answer, and the
+    # visible backlog an LLM-carrying assessor is measured against (ADR-0018).
+    assert claims["cl-no-lesson-outruns-the-course"] == "insufficient"
     findings = (
         session.execute(
             text("SELECT criterion_id, quote, failure_mode FROM findings WHERE judgment_id = :id"),

@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-08T14:21:29.072Z",
+  "publishedAt": null,
+  "slug": "ai-concepts-an-exploration-inside-ai",
+  "title": {
+    "en": "AI Concepts: An Exploration Inside AI",
+    "es": "Conceptos de IA: Una exploración dentro de la IA"
+  },
+  "description": {
+    "en": "Embark on a beginner-friendly journey into the world of Artificial Intelligence with this comprehensive course. Designed for those new to AI, this 30-minute exploration covers the fundamental concepts, including what AI is, its core principles, and how it’s applied across various industries. You’ll learn about AI models, their types, and real-world benefits in everyday life. Discover key players shaping the AI landscape, future trends, and the ethical challenges that come with this technology. Through engaging lessons and quizzes, build a solid foundation in AI concepts and understand its transformative impact on society and technology.",
+    "es": "Emprende un viaje amigable para principiantes al mundo de la Inteligencia Artificial con este curso integral. Diseñado para aquellos que son nuevos en la IA, esta exploración de 30 minutos cubre los conceptos fundamentales, incluyendo qué es la IA, sus principios básicos y cómo se aplica en diversas industrias. Aprenderás sobre los modelos de IA, sus tipos y los beneficios en la vida cotidiana. Descubre a los actores clave que están dando forma al panorama de la IA, las tendencias futuras y los desafíos éticos que conlleva esta tecnología. A través de lecciones y cuestionarios atractivos, construye una base sólida en los conceptos de IA y comprende su impacto transformador en la sociedad y la tecnología."
+  },
+  "preview": "https://ai-concepts-an-exploration-inside-ai.learn-pack.com/preview.png",
+  "technologies": [
+    "Artificial Intelligence",
+    "Machine Learning",
+    "Ethics in AI"
+  ],
+  "difficulty": "beginner",
+  "lessons": [
+    {
+      "id": "00.0",
+      "slug": "00.0-welcome-to-ai-concepts",
+      "position": 0,
+      "type": "READ",
+      "title": {
+        "es": "`00.0` - Bienvenido a Conceptos de IA",
+        "en": "`00.0` - Welcome to AI Concepts"
+      },
+      "description": {
+        "es": "Obtén una visión general de este curso y descubre lo que aprenderás sobre la IA, sus aplicaciones y desafíos éticos.",
+        "en": "Get an overview of this course and discover what you will learn about AI, its applications, and ethical challenges."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.0",
+      "slug": "01.0-what-is-artificial-intelligence",
+      "position": 1,
+      "type": "READ",
+      "title": {
+        "es": "`01.0` - ¿Qué es la Inteligencia Artificial?",
+        "en": "`01.0` - What is Artificial Intelligence"
+      },
+      "description": {
+        "es": "Explora la definición de inteligencia artificial, su historia, principios clave y ejemplos cotidianos para comprender cómo imita la inteligencia humana.",
+        "en": "Learn the definition of artificial intelligence, its history, core principles, and everyday examples to understand how it mimics human intelligence."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "01.1",
+      "slug": "01.1-usages-of-ai",
+      "position": 2,
+      "type": "READ",
+      "title": {
+        "es": "`01.1` - Usos de la IA",
+        "en": "`01.1` - Usages of AI"
+      },
+      "description": {
+        "es": "Explora cómo la IA transforma la salud, la educación, el entretenimiento y la vida diaria con ejemplos prácticos y herramientas reales.",
+        "en": "Explore how AI is used in healthcare, education, entertainment, and everyday life through practical examples and real-world tools."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "02.0",
+      "slug": "02.0-what-are-ai-models",
+      "position": 3,
+      "type": "READ",
+      "title": {
+        "es": "`02.0` - Qué son los Modelos de IA",
+        "en": "`02.0` - What are AI Models"
+      },
+      "description": {
+        "es": "Aprende qué son los modelos de IA, cómo se entrenan con datos y los distintos tipos que existen para resolver problemas reales.",
+        "en": "Learn what AI models are, how they are trained from data, and explore the different types used to solve real-world problems."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.0",
+      "slug": "03.0-benefits-of-ai-in-everyday-life",
+      "position": 4,
+      "type": "READ",
+      "title": {
+        "es": "`03.0` - Beneficios de la IA en la vida cotidiana",
+        "en": "`03.0` - Benefits of AI in Everyday Life"
+      },
+      "description": {
+        "es": "Descubre cómo los asistentes virtuales, los sistemas de recomendación y los dispositivos inteligentes facilitan tu día a día.",
+        "en": "Explore how virtual assistants, recommendation systems, and smart devices make your daily tasks easier and more efficient."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "03.1",
+      "slug": "03.1-early-concepts-quiz",
+      "position": 5,
+      "type": "QUIZ",
+      "title": {
+        "es": "`03.1` - Quiz de Conceptos Iniciales",
+        "en": "`03.1` - Early Concepts Quiz"
+      },
+      "description": {
+        "es": "Responde preguntas sobre los conceptos básicos de inteligencia artificial para reforzar lo aprendido en las lecciones anteriores.",
+        "en": "Test your understanding of core AI concepts by answering a series of review questions covering definitions, uses, models, and applications."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.0",
+      "slug": "04.0-key-players-in-the-ai-industry",
+      "position": 6,
+      "type": "READ",
+      "title": {
+        "es": "`04.0` - Actores Clave en la Industria de la IA",
+        "en": "`04.0` - Key Players in the AI Industry"
+      },
+      "description": {
+        "es": "Explora las principales empresas y organizaciones que impulsan la IA, como Google, Microsoft, Amazon, Apple, Meta y otras.",
+        "en": "Explore the major companies and organizations shaping AI, including Google, Microsoft, Amazon, Apple, Meta, and others."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "04.1",
+      "slug": "04.1-future-trends-in-ai",
+      "position": 7,
+      "type": "READ",
+      "title": {
+        "es": "`04.1` - Tendencias Futuras en IA",
+        "en": "`04.1` - Future Trends in AI"
+      },
+      "description": {
+        "es": "Explora tres tendencias clave en IA: automatización, personalización y sostenibilidad. Descubre cómo transformarán el trabajo, la vida y el planeta.",
+        "en": "Explore three key AI trends: automation, personalization, and sustainability. Learn how they will reshape work, life, and the planet."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.0",
+      "slug": "05.0-challenges-related-to-ai",
+      "position": 8,
+      "type": "READ",
+      "title": {
+        "es": "Desafíos Relacionados con la IA",
+        "en": "Challenges Related to AI"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "05.1",
+      "slug": "05.1-hallucinations-in-ai",
+      "position": 9,
+      "type": "READ",
+      "title": {
+        "es": "Alucinaciones en la IA",
+        "en": "Hallucinations in AI"
+      },
+      "description": {
+        "es": null,
+        "en": null
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    },
+    {
+      "id": "06.0",
+      "slug": "06.0-final-knowledge-check",
+      "position": 10,
+      "type": "QUIZ",
+      "title": {
+        "es": "`06.0` - Evaluación Final de Conocimientos",
+        "en": "`06.0` - Final Knowledge Check"
+      },
+      "description": {
+        "es": "Pon a prueba tu comprensión de los conceptos clave de IA con este cuestionario final que cubre modelos, aplicaciones, desafíos y ética.",
+        "en": "Test your knowledge of AI concepts with this final quiz covering models, applications, challenges, and ethical considerations."
+      },
+      "video": {
+        "es": null,
+        "en": null
+      }
+    }
+  ]
+}
