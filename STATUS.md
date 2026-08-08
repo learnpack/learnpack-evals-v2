@@ -128,14 +128,24 @@ instrument is ready for the day an LLM-carrying assessor exists. Of the 16 new c
 **none is executable by `structural:1`** — they all derive `not_assessed`, which ADR-0023
 keeps out of the fitness denominator, so **the fitness does not move because of them yet**.
 They are written to document the demand and to make the backlog visible (ADR-0018).
-Landed in this first PR: the calibration corpus (5 frozen packages instead of 2), the new
-reference doc `docs/MEASUREMENT.md`, the quality rename
-`instruction-authentic-tasks` → `instruction-authentic-problems`, and two data requirements
-the instrument mints but no adapter supplies yet (`course_descriptor`,
-`lesson_assessment_items` — their criteria read `not_applicable` until the adapter PR).
-**Still to come:** the `LearnpackV1` adapter supplying those two data (plus the
-`codeExercises` detection fixes and the `ADAPTER_VERSION` reset), and the `structural`
-assessor gaining the `lexical_load` measure and two mechanical executors.
+Landed in the first PR: the calibration corpus (5 frozen packages instead of 2), the new
+reference doc `docs/MEASUREMENT.md`, and the quality rename
+`instruction-authentic-tasks` → `instruction-authentic-problems`.
+
+Landed in the second: the `LearnpackV1` adapter supplies **5 capabilities instead of 3** —
+`course_descriptor` (what `learn.json` declares about the course; `difficulty` is the
+closest this format has to a declared level, and it stopped being a workbench-only extra)
+and `lesson_assessment_items` (the same components `lesson_activities` counts, kept
+verbatim instead of tallied; a course with no items reports `absent`, so a claim about
+assessment cannot pass on nothing). Exercise-file detection was hardened: nothing keys on
+a filename (one course names its exercises `index.html`/`about_me.html`), images and
+internal `solution.hide` companions are excluded by what they are, and a lesson artifact is
+now recognised **structurally** — it must sit directly under `exercises/<slug>/`, so a
+misclassified package asset can no longer invent a lesson named after its directory.
+`ADAPTER_VERSION` went back to `"1"`; that `"1"` is not the original one.
+
+**Still to come:** the `structural` assessor gaining the `lexical_load` measure and two
+mechanical executors, plus its own re-registration and ratification.
 
 `constructive-alignment` is **deliberately left with no claim at all**: it compares declared
 objectives against content, and LearnpackV1 declares no learning objectives at course or
@@ -166,6 +176,9 @@ is a past fact): to regenerate them, `seed-demo --reset`.
 trusts it (`python -m app.cli accept-extraction --package-format LearnpackV1 --email
 <admin>`). Until then, automatic profiling on content registration stays disarmed —
 acceptance is a human act (ADR-0012); `seed-demo` auto-accepts it only in local mode.
+**Acceptance is per adapter version**, and the version changed with the two new
+capabilities, so this act has to be repeated against the current one — an extraction
+accepted for the old version says nothing about what the adapter reads now.
 
 **Third pending input from the team (block 6):** once the instrument is published, **ratify it**
 for the first automated assessor (`python -m app.cli ratify-assessor --name structural
@@ -192,7 +205,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 471 tests** against local Postgres (~17 s). Requires
+- **Backend suite green: 480 tests** against local Postgres (~17 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →

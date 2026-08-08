@@ -13,6 +13,9 @@ from app.modules.content_profiling.infrastructure.adapters import (
     ADAPTERS_BY_FORMAT,
     learnpack_v1,
 )
+from app.modules.content_profiling.infrastructure.adapters.learnpack_v1 import (
+    CAPABILITIES as adapter_capabilities,
+)
 from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
 from app.modules.content_profiling.infrastructure.gateways import (
     DesignNamespaceGateway,
@@ -27,9 +30,9 @@ from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
-# The namespace the instrument mints comes from the `namespace` fixture (conftest); the
-# adapter supplies only the lesson ids (ADR-0017).
-CAPABILITY_IDS = {"lesson_inventory", "lesson_bodies", "lesson_activities"}
+# The namespace the instrument mints comes from the `namespace` fixture (conftest); what
+# the adapter supplies is read from the adapter, not copied, so the two cannot drift.
+CAPABILITY_IDS = set(adapter_capabilities)
 
 
 @pytest.fixture
