@@ -211,7 +211,9 @@
   Bloom level distribution). **It admits structured values** (distributions, lists),
   not just scalars; concrete shape demand-driven. *It is not an outcome*: it is mapped to a
   `CriterionScore` via the **criterion's pass condition** (ADR-0010 — thresholds are
-  part of the evidence rule).
+  part of the evidence rule). Computed by the **assessor**, never by the extraction adapter —
+  see `MEASUREMENT.md` for why, for what each measure means, and for the evidence behind each
+  threshold.
 - **ScoringPolicy** — **dissolved** (Define slice 2): its "map `ComputedMetric` →
   outcome" half now lives in the **criterion's pass condition** (thresholds are part of the
   evidence rule, ADR-0010); its "aggregate/compose" half lives in the per-claim
