@@ -144,8 +144,22 @@ now recognised **structurally** — it must sit directly under `exercises/<slug>
 misclassified package asset can no longer invent a lesson named after its directory.
 `ADAPTER_VERSION` went back to `"1"`; that `"1"` is not the original one.
 
-**Still to come:** the `structural` assessor gaining the `lexical_load` measure and two
-mechanical executors, plus its own re-registration and ratification.
+Landed in the third: `structural` executes **9 criteria instead of 7** and abstains from
+the other 18. `cr-lesson-type-matches-delivery` checks the declared lesson type against the
+exercise files actually shipped, **in both directions** — the corpus holds one package that
+declares practice and ships none, and another that ships exercises in lessons declared as
+reading. `cr-no-lesson-spikes-in-lexical-load` is the first criterion decided by a measure:
+`lexical_load` (mean syllables per word over prose), compared against the course's own
+median, in `structural/measures.py` — its algorithm is part of the assessor's identity, so
+changing it is a new assessor even if no criterion's wording moves.
+`backend/tests/test_calibration.py` pins what each of the five packages produces, so the
+empirical thresholds cannot drift in silence.
+
+**The immediate effect on the fitness:** `learning-progression` stops being blind. Its
+audience quality still has no supply, but `progression-cognitive-demand` is now measured
+from the lesson bodies, and one defined quality is enough for a dimension to have a value.
+**`objectives-quality` is the only dimension left undefined** among those the instrument
+covers (`constructive-alignment` has no claims by design).
 
 `constructive-alignment` is **deliberately left with no claim at all**: it compares declared
 objectives against content, and LearnpackV1 declares no learning objectives at course or
@@ -171,6 +185,15 @@ verified (ADR-0020). (The orphan `practice_exercises` was retired by migration `
 Already-persisted profiles are not re-verified against the value domains (a stored profile
 is a past fact): to regenerate them, `seed-demo --reset`.
 
+**Runbook for the renamed quality:** `instruction-authentic-tasks` became
+`instruction-authentic-problems` in `docs/seed/pedagogical-reference.yaml`, and reference
+data is **not** touched by `seed-demo --reset` — run **`seed`** or publishing the instrument
+fails on an id that does not exist. Seeding is upsert-by-id and never deletes, so the old
+row **survives as an orphan** (22 rows where the file declares 21) until someone removes it
+by hand. That is deliberate: a quality can be referenced by a published instrument's frozen
+`quality → dimension` map, so an automatic prune would eat history to tidy a list. Any
+future rename carries the same two steps.
+
 **Second pending input from the team (block 5):** review the profile samples
 (`/admin/profiles` or `app.cli profile-content`) and **accept the extraction** when the team
 trusts it (`python -m app.cli accept-extraction --package-format LearnpackV1 --email
@@ -186,7 +209,7 @@ for the first automated assessor (`python -m app.cli ratify-assessor --name stru
 initial registration is the first ratification) and evaluate with
 `python -m app.cli evaluate --content-id <id> --instrument-version-id <id>`. As long as the
 instrument stays in draft, the calibration loop is `evaluate --dry-run` (accepts drafts,
-persists nothing). `structural:1` executes 7 criteria and abstains from the other 20
+persists nothing). `structural:1` executes 9 criteria and abstains from the other 18
 (ADR-0018) — its accumulated `not_assessed` are the visible backlog of the LLM assessor, and
 each abstention reason names which capability it needs: the **judgment** itself, or only
 **extraction/classification**, after which the pass condition is a count or an order check.
@@ -205,7 +228,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 480 tests** against local Postgres (~17 s). Requires
+- **Backend suite green: 498 tests** against local Postgres (~17 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -222,12 +245,14 @@ the data in the package).
   `objectives-quality` comes back **`undefined`** — LearnpackV1 supplies no objectives, so
   every criterion under it is `not_applicable` and the denominator is 0. A zero there would
   have the GA evolve against a gap in the *package format*, not in the generator.
-  `learning-progression` is undefined for the same reason — the format declares no audience
-  or prerequisites, and every other quality under it needs semantics `structural:1` does not
-  have. `constructive-alignment` does not appear at all: the instrument deliberately asserts
-  nothing about it. So **only two of the four dimensions the instrument covers are measured
-  today**, stated rather than averaged away. `inter-lesson-coherence` is measured from two of
-  its four qualities (the numbering-drift `fail` pulling one of them down), and the
+  It is now the **only** undefined one: `learning-progression` still has no audience supply,
+  but `progression-cognitive-demand` is measured from the lesson bodies, and one defined
+  quality is enough to give a dimension a value — the point of averaging over *defined*
+  qualities rather than scoring the rest zero. `constructive-alignment` does not appear at
+  all: the instrument deliberately asserts nothing about it. So **three of the four
+  dimensions the instrument covers carry a value**, and the fourth says `undefined` rather
+  than being averaged away. `inter-lesson-coherence` is measured from two of its four
+  qualities (the numbering-drift `fail` pulling one of them down), and the
   unknown-generator course is counted at study level while excluded from generator level.
 - **Manual loop verified in local mode**: `seed-demo --reset` registers the demo courses
   **with intake-derived briefs** (syllabus fixtures in the frozen packages), one linked to

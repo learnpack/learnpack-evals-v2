@@ -18,6 +18,7 @@ slot; core lessons = everything except those two.
 """
 
 import re
+import statistics
 from typing import Any
 
 from app.modules.evaluation.domain.model import (
@@ -27,9 +28,18 @@ from app.modules.evaluation.domain.model import (
     ProfileData,
     ProfileEntryData,
 )
+from app.modules.evaluation.infrastructure.assessors.structural import measures
 
 _LESSON_ID = re.compile(r"^(\d{2})\.(\d+)$")
 _AUDIENCE_BOILERPLATE = frozenset({"everyone", "anyone", "anyone interested"})
+_CODE_LESSON = "CODE"
+
+# How far above its own course's median a lesson's lexical load may sit. Empirical, set
+# against the frozen corpus, and larger than the disagreement between reasonable
+# implementations of the measure — otherwise the verdict would be decided by the
+# implementation rather than by the text. The evidence is in docs/MEASUREMENT.md; do not
+# move it without redoing that work.
+LEXICAL_LOAD_SPIKE = 0.20
 
 
 def _entry(profile: ProfileData, data_requirement_id: str) -> ProfileEntryData:
@@ -163,6 +173,72 @@ def course_opens_with_general_intro(spec: CriterionSpec, profile: ProfileData) -
     entry = _entry(profile, "lesson_inventory")
     intro = [lesson for lesson in entry.value if _module(str(lesson["lessonId"])) == "00"]
     return _result(entry, len(intro) == 1, spec, 0)
+
+
+def lesson_type_matches_delivery(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """Declared type and delivered files correspond, in BOTH directions.
+
+    Checking only "a CODE lesson ships an exercise" would let a course satisfy the
+    criterion by declaring no CODE lesson at all, and the corpus shows the opposite
+    mismatch is just as real: a package ships exercises in lessons it declares as reading,
+    where the editor may never be surfaced to the learner. A course that declares no code
+    practice and ships none passes — the correspondence holds; it is a different criterion
+    that asks whether practice exists."""
+    inventory_entry = _entry(profile, "lesson_inventory")
+    activities = _entry(profile, "lesson_activities")
+
+    exercises_by_slug = {
+        record["lessonSlug"]: record["codeExercises"] for record in activities.value
+    }
+    declared_without_exercise, delivered_without_declaration = [], []
+    for lesson in inventory_entry.value:
+        declares_code = str(lesson.get("type") or "").upper() == _CODE_LESSON
+        delivers = bool(exercises_by_slug.get(lesson["slug"]))
+        if declares_code and not delivers:
+            declared_without_exercise.append(str(lesson["lessonId"]))
+        elif delivers and not declares_code:
+            delivered_without_declaration.append(str(lesson["lessonId"]))
+
+    metrics = (
+        ComputedMetric(
+            "lessons_declaring_code_practice",
+            sum(
+                1
+                for lesson in inventory_entry.value
+                if str(lesson.get("type") or "").upper() == _CODE_LESSON
+            ),
+        ),
+        ComputedMetric("declared_code_without_exercise", declared_without_exercise),
+        ComputedMetric("exercise_without_declared_code", delivered_without_declaration),
+    )
+    if not declared_without_exercise and not delivered_without_declaration:
+        return _result(inventory_entry, True, spec, metrics=metrics)
+    # A promised exercise that never arrives is the worse of the two: the learner is sent
+    # to an editor with nothing in it.
+    return _result(inventory_entry, False, spec, 0 if declared_without_exercise else 1, metrics)
+
+
+def no_lesson_spikes_in_lexical_load(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """No lesson's vocabulary sits more than LEXICAL_LOAD_SPIKE above the course's median.
+
+    Relative to the course on purpose: the absolute level of the measure tracks subject
+    matter (neural networks use longer words than HTML tags) and not pedagogy, so an
+    absolute band would mostly report the topic. See docs/MEASUREMENT.md."""
+    bodies = _entry(profile, "lesson_bodies")
+    by_slug = measures.lexical_load_by_lesson(list(bodies.value))
+    if not by_slug:
+        # Every lesson too short to carry a stable mean: nothing to compare, nothing broken.
+        return _result(bodies, True, spec, metrics=(ComputedMetric("lessons_measured", 0),))
+
+    median = statistics.median(by_slug.values())
+    spikes = sorted(slug for slug, load in by_slug.items() if load - median > LEXICAL_LOAD_SPIKE)
+    metrics = (
+        ComputedMetric("lessons_measured", len(by_slug)),
+        ComputedMetric("lexical_load_median", round(median, 4)),
+        ComputedMetric("lexical_load_max", round(max(by_slug.values()), 4)),
+        ComputedMetric("lexical_load_spikes", spikes),
+    )
+    return _result(bodies, not spikes, spec, 0, metrics)
 
 
 def course_has_development(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
