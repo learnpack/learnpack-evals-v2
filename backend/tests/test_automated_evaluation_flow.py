@@ -189,8 +189,6 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
         "cr-objectives-observable-verbs",
         "cr-audience-declared",
         "cr-prerequisites-declared",
-        "cr-objectives-verb-level-band",  # needs course_descriptor
-        "cr-assessment-retrieves-earlier-taught-material",  # needs lesson_assessment_items
     }
     # Everything the assessor abstains from, MINUS what was already not_applicable: the
     # derivation asks applicability and capability before it asks the assessor (ADR-0018),
@@ -235,13 +233,11 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
         .one()
     )
     assert judgment["evaluation_id"] == evaluation["id"]
-    # Claims whose criteria are ALL not_applicable stay out of the denominator. Note
-    # `cl-course-revisits-what-it-taught` is NOT among them: one of its two criteria has no
-    # supply, the other is merely abstained, so the claim still has a population to speak of.
+    # Claims whose criteria are ALL not_applicable stay out of the denominator: exactly the
+    # two whose data LearnpackV1 does not declare at all (objectives, audience/prerequisites).
     assert set(judgment["coverage"]["excludedClaims"]) == {
         "cl-objectives-declared",
         "cl-audience-declared",
-        "cl-objectives-level-matches-difficulty",
     }
     claims = dict(
         session.execute(
@@ -249,8 +245,8 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
             {"id": judgment["id"]},
         ).all()
     )
-    # 17 claims, minus the 3 whose criteria are all not_applicable (excluded above).
-    assert len(claims) == 14
+    # 17 claims, minus the 2 whose criteria are all not_applicable (excluded above).
+    assert len(claims) == 15
     assert claims["cl-course-modular"] == "refuted"  # the cited counterexample
     # Everything the assessor cannot reach reads "insufficient" — the honest answer, and the
     # visible backlog an LLM-carrying assessor is measured against (ADR-0018).

@@ -97,7 +97,19 @@ def test_full_package_yields_cited_entries(adapter, fetcher):
     }
     assert inventory.locator["path"] == "$.lessons"
 
-    assert {x.name for x in extras} == {"difficulty", "technologies"}
+    # Nothing travels as a workbench-only extra any more: difficulty and technologies are
+    # fields of `course_descriptor`, where a criterion can actually consume them.
+    assert extras == ()
+    descriptor = entry["course_descriptor"]
+    assert descriptor.provenance == "declared_structured"
+    assert descriptor.value == {
+        "slug": "object-representation-in-python",
+        "title": "Object Representation in Python",
+        "description": descriptor.value["description"],  # long prose, asserted below
+        "technologies": ["Python", "Object-Oriented Programming", "Programming Basics"],
+        "difficulty": "beginner",
+    }
+    assert descriptor.value["description"].startswith("This course takes you")
 
 
 def test_lesson_bodies_carry_the_content_verbatim(adapter, fetcher):
@@ -166,9 +178,8 @@ def test_package_without_artifacts_yields_absent_lesson_data(adapter, fetcher):
         consumable_url="https://no-artifacts.learn-pack.com/",
     )
     entries, extras = adapter.extract(package, fetcher)
-    assert by_id(entries)["lesson_inventory"].provenance == "absent"
-    assert by_id(entries)["lesson_bodies"].provenance == "absent"
-    assert by_id(entries)["lesson_activities"].provenance == "absent"
+    assert {e.data_requirement_id for e in entries} == set(CAPABILITIES)
+    assert all(e.provenance == "absent" for e in entries)
     assert extras == ()
 
 
@@ -193,6 +204,132 @@ def test_every_component_type_is_counted_and_decoys_are_not(adapter, fetcher):
     no_readme = lessons["01-no-readme"]
     assert no_readme["lessonId"] == "01.0"
     assert no_readme["codeExercises"] == ["app.py"]
+
+
+def test_assessment_items_are_kept_whole_not_tallied(adapter, fetcher):
+    """The quiz's items, verbatim — what a claim about assessment needs to read."""
+    package = fixture_package("object-representation-in-python")
+    entries, _ = adapter.extract(package, fetcher)
+    items = by_id(entries)["lesson_assessment_items"]
+
+    quiz = [i for i in items.value if i["lessonSlug"] == "03.0-what-you-know-now"]
+    assert len(quiz) == 8
+    first = quiz[0]
+    assert first["kind"] == "multipleChoice"
+    assert first["lessonId"] == "03.0"
+    assert first["prompt"] == "Where should instance attributes always be defined?"
+    assert first["options"] == [
+        "Outside the class, as global variables",
+        "In the __init__ method",
+        "In whichever method first uses them",
+        "In a separate setup() method",
+    ]
+    assert first["correctCount"] == 1
+
+    # A fenced component's question is the prose introducing it: the fence body holds the
+    # author's expected answers, which are not what the learner is asked.
+    outro = next(i for i in items.value if i["lessonSlug"] == "04.0-course-outro")
+    assert outro["kind"] == "openQuestion"
+    assert outro["prompt"].endswith("as Python classes?")
+    assert outro["options"] == []
+
+
+def test_assessment_items_agree_with_the_counts_of_the_same_components(adapter, fetcher):
+    """Two readings of one syntax must not drift apart: whatever `lesson_activities`
+    tallies for a lesson, `lesson_assessment_items` must produce that many items."""
+    for course in ("object-representation-in-python", "introduction-to-generative-ai"):
+        entries = by_id(adapter.extract(fixture_package(course), fetcher)[0])
+        counted = {
+            lesson["lessonSlug"]: sum(lesson["activities"].values())
+            for lesson in entries["lesson_activities"].value
+        }
+        listed: dict[str, int] = {}
+        for item in entries["lesson_assessment_items"].value:
+            listed[item["lessonSlug"]] = listed.get(item["lessonSlug"], 0) + 1
+        assert listed == {slug: n for slug, n in counted.items() if n}, course
+
+
+def test_a_course_without_assessment_reports_absent_not_empty(adapter, fetcher):
+    """`absent` is "looked, nothing there"; an empty list would read as "assessment exists
+    and is empty" and let a claim about assessment pass on nothing.
+
+    All five real packages carry a quiz, so the case is built: a package whose only lesson
+    is the activity-free one."""
+    package = fixture_package("bare-course")
+    lesson_only = tuple(a for a in package.artifacts if "01-activity-sampler" not in a.locator)
+    entries, _ = adapter.extract(
+        PackageDTO(
+            content_id=package.content_id,
+            package_format=package.package_format,
+            consumable_url=package.consumable_url,
+            artifacts=lesson_only,
+        ),
+        fetcher,
+    )
+    assert by_id(entries)["lesson_bodies"].provenance == "declared_in_content"  # content is there
+    assert by_id(entries)["lesson_assessment_items"].provenance == "absent"
+
+
+def test_exercise_files_are_found_whatever_they_are_named(adapter, fetcher):
+    """No rule here keys on a filename: this course names its exercises index.html,
+    app.html and about_me.html, and an adapter that assumed `app.py` would report a
+    course with no practice at all."""
+    package = fixture_package("html-fundamentals")
+    entries, _ = adapter.extract(package, fetcher)
+    lessons = by_slug(by_id(entries)["lesson_activities"])
+
+    assert lessons["01.2-your-first-html-page"]["codeExercises"] == ["index.html"]
+    assert lessons["04.1-refactor-a-page-into-semantic-html"]["codeExercises"] == ["app.html"]
+    assert lessons["06.1-generate-an-about-me-page-with-ai"]["codeExercises"] == ["about_me.html"]
+
+
+def test_artifacts_outside_a_lesson_directory_invent_no_lesson(adapter, fetcher):
+    """An artifact's `kind` is assigned at registration and can be wrong. Believing it
+    would let a package asset become a lesson named after its directory, with a code
+    exercise attached — a defect reported against content that does not exist."""
+    course = "object-representation-in-python"
+    package = fixture_package(course)
+    strays = (
+        ArtifactDTO(kind="lesson_file", locator=f"{course}/.learn/assets/cover.png"),
+        ArtifactDTO(kind="lesson_file", locator=f"{course}/.learn/assets/diagram"),
+        ArtifactDTO(kind="lesson_content", locator=f"{course}/README.md"),
+    )
+    entries, _ = adapter.extract(
+        PackageDTO(
+            content_id=package.content_id,
+            package_format=package.package_format,
+            consumable_url=package.consumable_url,
+            artifacts=package.artifacts + strays,
+        ),
+        fetcher,
+    )
+    slugs = {lesson["lessonSlug"] for lesson in by_id(entries)["lesson_activities"].value}
+    assert "assets" not in slugs
+    assert len(slugs) == 11
+
+
+def test_images_and_solutions_are_not_exercises(adapter, fetcher):
+    """What cannot be practice, excluded by what it IS rather than by its name."""
+    course = "object-representation-in-python"
+    lesson = f"{course}/exercises/01.3-define-a-python-class"
+    package = fixture_package(course)
+    noise = (
+        ArtifactDTO(kind="lesson_file", locator=f"{lesson}/diagram.PNG"),
+        ArtifactDTO(kind="lesson_file", locator=f"{lesson}/solution.hide.py"),
+        ArtifactDTO(kind="lesson_file", locator=f"{lesson}/README.notes.md"),
+        ArtifactDTO(kind="lesson_file", locator=f"{lesson}/starter.py"),
+    )
+    entries, _ = adapter.extract(
+        PackageDTO(
+            content_id=package.content_id,
+            package_format=package.package_format,
+            consumable_url=package.consumable_url,
+            artifacts=package.artifacts + noise,
+        ),
+        fetcher,
+    )
+    lessons = by_slug(by_id(entries)["lesson_activities"])
+    assert lessons["01.3-define-a-python-class"]["codeExercises"] == ["starter.py"]
 
 
 def test_lessons_with_spanish_only_declarations_fall_back_verbatim(adapter, fetcher):
@@ -233,7 +370,14 @@ def test_extraction_satisfies_the_profile_aggregate(adapter, fetcher):
 
 @pytest.mark.parametrize(
     "course",
-    ["object-representation-in-python", "introduction-to-generative-ai", "bare-course"],
+    [
+        "object-representation-in-python",
+        "introduction-to-generative-ai",
+        "ai-concepts-an-exploration-inside-ai",
+        "html-fundamentals",
+        "orchestrating-a-multi-agent-system-in-langgraph",
+        "bare-course",
+    ],
 )
 def test_every_extracted_value_matches_the_declared_value_domain(adapter, fetcher, course):
     """Supply meets demand on SHAPE, over real packages (ADR-0020).

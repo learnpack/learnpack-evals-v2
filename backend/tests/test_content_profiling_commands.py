@@ -16,6 +16,9 @@ from app.modules.content_profiling.application.profile_content import (
 )
 from app.modules.content_profiling.domain.profile import InvalidProfile
 from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
+from app.modules.content_profiling.infrastructure.adapters.learnpack_v1 import (
+    CAPABILITIES as adapter_capabilities,
+)
 from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
 from app.modules.content_profiling.infrastructure.gateways import (
     DesignNamespaceGateway,
@@ -40,9 +43,10 @@ from app.shared.domain.ids import new_id
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 # The namespace the instrument mints (demand) comes from the `namespace` fixture
-# (conftest); the adapter supplies only the lesson ids — the metadata-sourced ones have no
-# supplier since ADR-0017 (unmet demand, not_applicable).
-CAPABILITY_IDS = {"lesson_inventory", "lesson_bodies", "lesson_activities"}
+# (conftest); what the adapter supplies is its own declaration — read from the adapter
+# rather than copied, so the two cannot drift. The demand it does NOT supply (objectives,
+# audience, prerequisites) has had no supplier since ADR-0017: unmet demand, not_applicable.
+CAPABILITY_IDS = set(adapter_capabilities)
 
 
 @pytest.fixture
