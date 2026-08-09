@@ -20,7 +20,7 @@ from test_content_profiling_commands import profile_content_use_case
 from test_instrument_authoring_api import import_spec
 
 import app.main  # noqa: F401 — wires the judgment policy into the global dispatcher
-from app.cli import _demo_artifacts, run_evaluate, run_ratify_assessor
+from app.cli import run_evaluate, run_ratify_assessor
 from app.modules.content_profiling.application.profile_content import ProfileContentCommand
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
@@ -48,7 +48,7 @@ from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRep
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.domain.events import DomainEvent
-from tests.conftest import INSTRUMENT_SPEC_FILE
+from tests.conftest import INSTRUMENT_SPEC_FILE, fixture_artifact_rows
 
 REAL_SPEC = yaml.safe_load(INSTRUMENT_SPEC_FILE.read_text(encoding="utf-8"))
 COURSE = "introduction-to-generative-ai"
@@ -129,7 +129,7 @@ def profiled_course(cleanup, unique, namespace):
                 package_format="LearnpackV1",
                 external_id=f"e2e-course-{unique}",
                 consumable_url=f"https://e2e-{unique}.learn-pack.com/",
-                artifacts=_demo_artifacts(COURSE),
+                artifacts=fixture_artifact_rows(COURSE),
                 # This flow is about the automated path, not attribution (ADR-0024).
                 generator_version_id=None,
             )

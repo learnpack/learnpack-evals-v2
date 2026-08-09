@@ -37,20 +37,20 @@
   a VO of artifacts `{kind, locator, format}` with an **open** `kind` vocabulary (consumable,
   manifest, knowledge-graph, item-bank, … — no enum in the domain). Registration captures the
   package, not just a `consumable_url`; the internal artifacts are usually the best evidence
-  (`declared_structured`, ADR-0009). There may be **generator-level** artifacts (shared
+  (`declared_structured`, ADR-0009). The artifact list is **discovered mechanically** from
+  the package source by the registry's intake ACL, which is the sole writer of the `kind`
+  labels a format uses (ADR-0027). There may be **generator-level** artifacts (shared
   across contents; they are registered now, profiled when a claim needs them).
 - **GenerationBrief** — the generation commission: **its own aggregate, immutable, with identity**
   (`briefId`) that `ContentVersion`s reference — the key to the **paired design** across
   `GeneratorVersion`s (same briefs, new products). Lean content: free text + only the typed
   fields that task variables consume (demand-driven). Absent brief = absent registration (it
   limits paired comparison and leaves alternative explanations unruled-out).
-- **ContentMetadata** — an **open, typed** collection of `MetadataEntry` used as an evaluation
-  *reference*; validated against a `MetadataSchema` bound to the `PackageFormat`/type. The
-  domain references no concrete keys. MVP: schema `learnpack-v1` =
-  `{learningObjectives, targetAudience, prerequisites}`. See `adr/0001-open-content-metadata.md`.
-- **MetadataEntry** — `{key, value, valueType}`.
-- **MetadataSchema** — declares allowed/required keys + types per `PackageFormat`/type
-  (reference data).
+- **ContentMetadata / MetadataEntry / MetadataSchema** — **retired** (ADR-0017 superseded
+  ADR-0001; migration 0007 deleted the tables). The declared surface of the evaluand is the
+  `ContentPackage`: whatever the platform or generator declares travels as package
+  artifacts, never as a side metadata channel. Kept here only so the retired channel is not
+  rebuilt.
 - **ContentProfile** — the **canonical** representation of what a `ContentPackage` contains
   pedagogically, produced by an extraction adapter per `PackageFormat`. Data keyed by the
   data ids of ADR-0014, each with its `EvidenceProvenance` and **with the shape its

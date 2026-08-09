@@ -16,7 +16,7 @@ from app.modules.evaluand_registry.domain.package import ContentPackage, Package
 
 _COLUMNS = (
     "id, package_format, external_id, version, consumable_url, "
-    "brief_id, generator_version_id, edit_provenance, "
+    "brief_id, generator_version_id, edit_provenance, content_hash, "
     "generator_attributed_by, generator_attributed_at"
 )
 
@@ -37,6 +37,7 @@ class SqlAlchemyContentRepository:
             brief_id=row["brief_id"],
             generator_version_id=row["generator_version_id"],
             edit_provenance=row["edit_provenance"],
+            content_hash=row["content_hash"],
             generator_attributed_by=row["generator_attributed_by"],
             generator_attributed_at=row["generator_attributed_at"],
         )
@@ -92,15 +93,62 @@ class SqlAlchemyContentRepository:
         ).first()
         return found is not None
 
+    def get_by_identity(
+        self, package_format: str, external_id: str, version: str
+    ) -> EducationalContent | None:
+        row = (
+            self._session.execute(
+                text(
+                    f"""
+                    SELECT {_COLUMNS} FROM contents
+                     WHERE package_format = :gs AND external_id = :eid AND version = :v
+                    """
+                ),
+                {"gs": package_format, "eid": external_id, "v": version},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            return None
+        packages = self._packages_for([row["id"]])
+        return self._to_domain(row, packages.get(row["id"], ContentPackage()))
+
+    def find_by_logical_and_hash(
+        self, package_format: str, external_id: str, content_hash: str
+    ) -> EducationalContent | None:
+        """The dedupe lookup (ADR-0027): any registered version of this logical content
+        whose bytes hashed identically — re-importing it is a no-op, not a duplicate."""
+        row = (
+            self._session.execute(
+                text(
+                    f"""
+                    SELECT {_COLUMNS} FROM contents
+                     WHERE package_format = :gs AND external_id = :eid
+                       AND content_hash = :h
+                     ORDER BY created_at
+                     LIMIT 1
+                    """
+                ),
+                {"gs": package_format, "eid": external_id, "h": content_hash},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            return None
+        packages = self._packages_for([row["id"]])
+        return self._to_domain(row, packages.get(row["id"], ContentPackage()))
+
     def add(self, content: EducationalContent) -> None:
         self._session.execute(
             text(
                 """
                 INSERT INTO contents
                     (id, package_format, external_id, version, consumable_url,
-                     brief_id, generator_version_id, edit_provenance)
+                     brief_id, generator_version_id, edit_provenance, content_hash)
                 VALUES (:id, :gs, :eid, :v, :url,
-                        :brief_id, :gvid, :provenance)
+                        :brief_id, :gvid, :provenance, :content_hash)
                 """
             ),
             {
@@ -112,6 +160,7 @@ class SqlAlchemyContentRepository:
                 "brief_id": content.brief_id,
                 "gvid": content.generator_version_id,
                 "provenance": content.edit_provenance,
+                "content_hash": content.content_hash,
             },
         )
         for ord_, artifact in enumerate(content.package.artifacts):

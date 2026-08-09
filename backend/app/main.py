@@ -4,11 +4,13 @@ Nothing inner imports this module. Routers and policy subscriptions are register
 as the modules land (blocks 2–4).
 """
 
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -114,6 +116,13 @@ app.include_router(evaluation_router)
 app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local
+
+# The gitignored local courses tree, served over http(s) so locally registered packages get
+# honest locators and consumable URLs (ADR-0027). Local-only by the ADR-0008 gate; the
+# `is_dir()` check keeps a course-less checkout booting.
+COURSES_DIR = Path(__file__).resolve().parents[2] / "courses"
+if settings.is_local_auth and COURSES_DIR.is_dir():
+    app.mount("/packages", StaticFiles(directory=COURSES_DIR), name="local-packages")
 
 # Policies subscribe here, at wiring time. The MVP's chain (08-code.md §5):
 #   EvaluationSubmitted → (orchestration) ContentEvaluationCompleted

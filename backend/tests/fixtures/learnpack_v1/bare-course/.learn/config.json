@@ -1,0 +1,26 @@
+{
+  "config": { "slug": "bare-course" },
+  "exercises": [
+    {
+      "title": "00-frontmatter-only",
+      "slug": "00-frontmatter-only",
+      "files": [],
+      "translations": { "en": "README.md" },
+      "position": 0
+    },
+    {
+      "title": "01-activity-sampler",
+      "slug": "01-activity-sampler",
+      "files": [],
+      "translations": { "en": "README.md" },
+      "position": 1
+    },
+    {
+      "title": "01-no-readme",
+      "slug": "01-no-readme",
+      "files": [{ "name": "app.py", "slug": "app.py", "hidden": false }],
+      "translations": {},
+      "position": 2
+    }
+  ]
+}

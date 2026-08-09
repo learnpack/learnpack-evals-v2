@@ -49,6 +49,10 @@ class Settings(BaseSettings):
 
     environment: str = "development"
 
+    # Where the dev static mount serves the repo's `courses/` tree (ADR-0027). Only
+    # meaningful under AUTH_MODE=local; the CLI mints local package locators from it.
+    local_packages_base_url: str = "http://localhost:8000/packages"
+
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":
         """The rules that keep the dev bypass out of any real environment (ADR-0008).

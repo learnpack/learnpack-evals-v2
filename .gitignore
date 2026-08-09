@@ -4,6 +4,11 @@
 notes/*
 !notes/README.md
 
+# Cursos locales a evaluar (ADR-0027) — contenido descargado, nunca versionado.
+# Estructura: courses/<generador>@<version>/<curso>/ · ver courses/README.md.
+courses/*
+!courses/README.md
+
 # OS
 .DS_Store
 Thumbs.db

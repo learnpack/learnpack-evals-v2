@@ -284,12 +284,29 @@ Two aggregation rules not to confuse:
   `--confirm <criterion-id>`. Then `evaluate` without `--dry-run` persists the evaluation
   (outcomes + raw metrics) and the judgment policy derives claims, coverage and findings.
 
-## Bulk course import
+## Registering courses
+
+The canonical intake is **discovery** (ADR-0027): declare a package source and the system
+reads the artifact list, the descriptor and a content hash from the package itself.
 
 ```bash
-uv run python -m app.cli import-learnpack --file courses.json        # canonical shape
-uv run python -m app.cli import-learnpack --file courses.json --acl  # LearnPack's raw shape
+# one course, by URL or by a local directory under the repo's courses/ tree
+uv run python -m app.cli register-package --source https://my-course.learn-pack.com --generator <uuid|unknown>
+uv run python -m app.cli register-package --source ../courses/unknown/my-course --generator unknown
+
+# every course under courses/<name>@<version>/ and courses/unknown/ (batch)
+uv run python -m app.cli register-package --all
 ```
+
+Local sources need the dev API running (`AUTH_MODE=local`): it serves the repo's
+gitignored `courses/` tree at `/packages` (base URL: `LOCAL_PACKAGES_BASE_URL`, default
+`http://localhost:8000/packages`), so registered locators and `consumable_url` are honest
+http URLs — brief intake and profiling then work exactly as with remote packages.
+Re-importing an unchanged course is a no-op (content hash); the same declared version with
+changed content is refused. See `../courses/README.md` for the folder convention.
+
+`import-learnpack --file courses.json` remains for hand-composed batches that already
+carry their artifact lists (canonical JSON shape only).
 
 ## Modules
 

@@ -27,6 +27,19 @@ class DuplicateContent(Exception):
     """A content version with the same (packageFormat, externalId, version) exists."""
 
 
+class UnchangedContent(Exception):
+    """The same logical content with an identical content hash is already registered
+    (ADR-0027): re-importing it is a no-op, not a duplicate. Carries the existing version
+    so callers can report it."""
+
+    def __init__(self, existing: EducationalContent) -> None:
+        super().__init__(
+            f"{existing.package_format}/{existing.external_id} is already registered "
+            f"as version {existing.version} with identical content"
+        )
+        self.existing = existing
+
+
 class BriefNotFound(Exception):
     """The referenced generation brief is not registered."""
 
@@ -50,6 +63,9 @@ class RegisterContentVersionCommand:
     # by passing None. Silence is not a declaration.
     generator_version_id: UUID | None
     edit_provenance: str = "unknown"
+    # Set by mechanical discovery (ADR-0027); None on the hand-registered path, which then
+    # dedupes by declared identity only.
+    content_hash: str | None = None
 
 
 class RegisterContentVersion:
@@ -72,11 +88,31 @@ class RegisterContentVersion:
     def __call__(self, command: RegisterContentVersionCommand) -> EducationalContent:
         self._require_references(command)
 
-        if self._contents.exists(command.package_format, command.external_id, command.version):
-            raise DuplicateContent(
+        if command.content_hash is not None:
+            same = self._contents.find_by_logical_and_hash(
+                command.package_format, command.external_id, command.content_hash
+            )
+            if same is not None:
+                raise UnchangedContent(same)
+
+        existing = self._contents.get_by_identity(
+            command.package_format, command.external_id, command.version
+        )
+        if existing is not None:
+            message = (
                 f"{command.package_format}/{command.external_id} "
                 f"version {command.version} is already registered"
             )
+            if (
+                command.content_hash is not None
+                and existing.content_hash is not None
+                and existing.content_hash != command.content_hash
+            ):
+                message += (
+                    " and the package content differs from what that version registered"
+                    " — declare a new version"
+                )
+            raise DuplicateContent(message)
 
         content = EducationalContent(
             id=new_id(),
@@ -88,6 +124,7 @@ class RegisterContentVersion:
             brief_id=self._resolve_brief(command),
             generator_version_id=command.generator_version_id,
             edit_provenance=command.edit_provenance,
+            content_hash=command.content_hash,
         )
 
         self._contents.add(content)
