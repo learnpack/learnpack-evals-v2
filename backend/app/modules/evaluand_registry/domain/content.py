@@ -46,6 +46,9 @@ class EducationalContent:
     brief_id: UUID | None = None
     generator_version_id: UUID | None = None
     edit_provenance: str = "unknown"
+    # Hash of the discovered artifact bytes (ADR-0027) — the content's identity by content.
+    # None when the version was registered by hand, without mechanical discovery.
+    content_hash: str | None = None
     # Set only when the link was filled after registration (ADR-0024): null on both means
     # the generator was declared when the content was registered.
     generator_attributed_by: UUID | None = None

@@ -23,7 +23,6 @@ from test_content_profiling_commands import profile_content_use_case
 import app.main  # noqa: F401 — wires the judgment policy into the global dispatcher
 from app.cli import (
     DEMO_PACKAGES_DIR,
-    _demo_artifacts,
     run_attribute_generator,
     run_evaluate,
     run_ratify_assessor,
@@ -75,6 +74,7 @@ from app.modules.evaluation_studies.infrastructure.repository import (
 )
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
+from tests.conftest import fixture_artifact_rows
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def _register_course(cleanup, unique, suffix, generator_version_id=None):
                 package_format="LearnpackV1",
                 external_id=f"study-flow-{suffix}-{unique}",
                 consumable_url=f"https://study-flow-{suffix}-{unique}.learn-pack.com/",
-                artifacts=_demo_artifacts(COURSE),
+                artifacts=fixture_artifact_rows(COURSE),
                 generator_version_id=generator_version_id,
             )
         )

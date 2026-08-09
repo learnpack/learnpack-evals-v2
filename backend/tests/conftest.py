@@ -28,6 +28,26 @@ def declared_value_domains() -> dict[str, dict]:
     return {r["id"]: r["value_domain"] for r in spec["data_requirements"]}
 
 
+LEARNPACK_FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "learnpack_v1"
+
+
+def fixture_artifact_rows(course: str) -> list[dict]:
+    """A frozen package's declared surface, discovered mechanically (ADR-0027), with
+    locators relative to the fixtures dir — what registration-needing tests pass as
+    `artifacts` and the filesystem fetchers then resolve."""
+    from app.modules.evaluand_registry.infrastructure.package_discovery import (
+        FilesystemPackageRoot,
+        LearnpackV1Discovery,
+    )
+
+    discovered = LearnpackV1Discovery().discover(
+        FilesystemPackageRoot(LEARNPACK_FIXTURES / course, locator_base=course)
+    )
+    return [
+        {"kind": a.kind, "locator": a.locator, "format": a.format} for a in discovered.artifacts
+    ]
+
+
 @pytest.fixture
 def namespace(cleanup):
     """Mint the canonical demand-side namespace extraction adapters conform to.

@@ -1,5 +1,5 @@
-"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | seed-demo |
-import-instrument | publish-instrument | bump-instrument | profile-content |
+"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | register-package |
+seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
 pin-study | compose-dataset | open-study | publish-study | show-report |
 attribute-generator`.
@@ -15,6 +15,7 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,7 @@ from app.modules.evaluand_registry.application.attribute_generator import (
     # Profiling has a same-named exception; both are imported here.
     ContentNotFound as UnregisteredContent,
 )
+from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
 from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
@@ -69,15 +71,31 @@ from app.modules.evaluand_registry.application.register_generator_version import
     RegisterGeneratorVersion,
     RegisterGeneratorVersionCommand,
 )
+from app.modules.evaluand_registry.application.register_package_from_source import (
+    RegisterPackageFromSource,
+    RegisterPackageFromSourceCommand,
+)
 from app.modules.evaluand_registry.domain.content import (
+    DEFAULT_VERSION,
+    EDIT_PROVENANCES,
     GeneratorAlreadyAttributed,
     InvalidContent,
 )
-from app.modules.evaluand_registry.infrastructure.acl_learnpack import to_register_command
+from app.modules.evaluand_registry.infrastructure.acl_learnpack import (
+    PACKAGE_FORMAT as LEARNPACK_FORMAT,
+)
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import (
+    BriefIntakeError,
     FilesystemArtifactFetcher,
     HttpArtifactFetcher,
+)
+from app.modules.evaluand_registry.infrastructure.package_discovery import (
+    MANIFEST_PATH,
+    FilesystemPackageRoot,
+    HttpPackageRoot,
+    PackageDiscovery,
+    PackageRoot,
 )
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
@@ -1039,38 +1057,18 @@ def _generator_declaration(value: str) -> str:
         ) from None
 
 
-def run_import_learnpack(
-    seed_file: Path,
-    use_acl: bool,
-    base_dir: Path | None = None,
-    generator: str | None = None,
-) -> int:
-    """Bulk-register courses, reusing the `RegisterContentVersion` use case.
+def run_import_learnpack(seed_file: Path, base_dir: Path | None = None) -> int:
+    """Bulk-register courses from a canonical JSON list, reusing `RegisterContentVersion`.
 
-    `--acl` routes the payload through `acl_learnpack.to_register_command` (LearnPack's raw
-    shape); without it the file is expected in our canonical shape. Which one becomes the
-    default depends on the real LearnPack export. `--base-dir` resolves artifact locators on
-    the filesystem (local packages); without it the intake fetches over HTTP (ADR-0022).
-
-    The generator declaration (ADR-0024) comes from whoever owns the payload's shape: the
-    canonical file carries it per entry, LearnPack's does not, so `--generator` declares it
-    for the whole file. Deliberately no fallback between the two — a rule of precedence is
-    where silence hides again.
+    For registering from a package source (a URL or a local course directory) use
+    `register-package` instead — this command is for hand-composed batches that already
+    carry their artifact lists. `--base-dir` resolves artifact locators on the filesystem
+    (local packages); without it the intake fetches over HTTP (ADR-0022).
     """
     raw_courses = json.loads(seed_file.read_text(encoding="utf-8"))
     if not isinstance(raw_courses, list):
         print("the file must contain a JSON list of courses", file=sys.stderr)
         return 1
-
-    # A file-wide declaration deserves a file-wide check: resolved once, before the loop,
-    # so an unregistered generator fails as one error instead of once per course.
-    acl_generator: UUID | None = None
-    if use_acl and generator != "unknown":
-        acl_generator = UUID(str(generator))
-        with SessionLocal() as session:
-            if SqlAlchemyGeneratorVersionRepository(session).get_by_id(acl_generator) is None:
-                print(f"generator version {acl_generator} is not registered", file=sys.stderr)
-                return 1
 
     fetcher = FilesystemArtifactFetcher(base_dir) if base_dir else HttpArtifactFetcher()
     created = duplicated = failed = 0
@@ -1086,25 +1084,19 @@ def run_import_learnpack(
                 brief_intake=PackageBriefIntake(fetcher),
             )
             try:
-                command = (
-                    to_register_command(raw, acl_generator)
-                    if use_acl
-                    else RegisterContentVersionCommand(
-                        package_format=raw["package_format"],
-                        external_id=raw["external_id"],
-                        consumable_url=raw["consumable_url"],
-                        version=str(raw.get("version", "1")),
-                        artifacts=raw.get("artifacts", []),
-                        brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
-                        # Required key (ADR-0024): a missing one is a KeyError, caught
-                        # below as a counted INVALID row — declared per entry or not at all.
-                        generator_version_id=(
-                            UUID(raw["generator_version_id"])
-                            if raw["generator_version_id"]
-                            else None
-                        ),
-                        edit_provenance=raw.get("edit_provenance", "unknown"),
-                    )
+                command = RegisterContentVersionCommand(
+                    package_format=raw["package_format"],
+                    external_id=raw["external_id"],
+                    consumable_url=raw["consumable_url"],
+                    version=str(raw.get("version", "1")),
+                    artifacts=raw.get("artifacts", []),
+                    brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
+                    # Required key (ADR-0024): a missing one is a KeyError, caught
+                    # below as a counted INVALID row — declared per entry or not at all.
+                    generator_version_id=(
+                        UUID(raw["generator_version_id"]) if raw["generator_version_id"] else None
+                    ),
+                    edit_provenance=raw.get("edit_provenance", "unknown"),
                 )
                 content = use_case(command)
                 created += 1
@@ -1123,6 +1115,242 @@ def run_import_learnpack(
 
     print(f"\n{created} created, {duplicated} already present, {failed} invalid")
     return 1 if failed else 0
+
+
+# ------------------------------------------------------------------- register-package
+# Discovery-based intake (ADR-0027): humans declare a source, never an artifact list.
+
+COURSES_DIR = REPO_ROOT / "courses"
+
+
+def _course_root(course_dir: Path) -> FilesystemPackageRoot:
+    """A local course's root: locators are minted into the dev mount, so the registered
+    package behaves exactly like an http-served one (brief intake, profiling, console).
+    The course must live under `courses/` — that is the tree the mount serves."""
+    try:
+        relative = course_dir.resolve().relative_to(COURSES_DIR.resolve())
+    except ValueError:
+        raise PackageDiscoveryError(
+            f"'{course_dir}' is not under {COURSES_DIR.as_posix()}: local sources live in "
+            "courses/ (the dev mount serves that tree — see courses/README.md)"
+        ) from None
+    base = get_settings().local_packages_base_url.rstrip("/")
+    return FilesystemPackageRoot(course_dir, locator_base=f"{base}/{relative.as_posix()}")
+
+
+def _mount_preflight(root: FilesystemPackageRoot) -> bool:
+    """One GET through the mount before registering. Registered locators and
+    `consumable_url` point into it, so registering with the API down would not fail — it
+    would degrade into absent briefs and failing profiles. Loud refusal instead."""
+    locator = root.locator_for(MANIFEST_PATH)
+    try:
+        HttpArtifactFetcher().fetch(locator)
+        return True
+    except BriefIntakeError as exc:
+        print(
+            f"the dev mount does not serve this course ({exc}).\n"
+            "Start the API with AUTH_MODE=local: registered locators and consumable_url "
+            f"point into {get_settings().local_packages_base_url}, so without it the brief "
+            "intake and profiling would fail silently later.",
+            file=sys.stderr,
+        )
+        return False
+
+
+def _fixed_root(root: PackageRoot) -> Callable[[str], PackageRoot]:
+    def factory(_: str) -> PackageRoot:
+        return root
+
+    return factory
+
+
+def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
+    """Resolve a courses/ generator folder to its declaration. Provisional convention
+    (ADR-0027), isolated here so a richer one replaces one function: `<name>@<version>`
+    names a **registered** GeneratorVersion, `unknown` declares none (ADR-0024). Anything
+    else refuses — mechanical intake never mints generator identities."""
+    if folder_name == "unknown":
+        return None
+    name, sep, version = folder_name.rpartition("@")
+    if not sep or not name or not version:
+        raise UnknownGeneratorVersion(
+            f"folder '{folder_name}' is not '<name>@<version>' or 'unknown' (see courses/README.md)"
+        )
+    generators = SqlAlchemyGeneratorVersionRepository(session)
+    match = next((g for g in generators.list_all() if (g.name, g.version) == (name, version)), None)
+    if match is None:
+        raise UnknownGeneratorVersion(
+            f"folder '{folder_name}' names no registered generator version — register it "
+            "first (POST /admin/generators)"
+        )
+    return match.id
+
+
+def _register_package(
+    source_locator: str,
+    root_factory: Callable[[str], PackageRoot],
+    generator_version_id: UUID | None,
+    package_format: str,
+    edit_provenance: str,
+    version: str,
+    consumable_url: str | None = None,
+) -> tuple[str, str]:
+    """Register one source through the canonical path; (status, detail) for the console."""
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        register = RegisterContentVersion(
+            contents=SqlAlchemyContentRepository(session),
+            briefs=SqlAlchemyBriefRepository(session),
+            generators=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+            # Locators are URLs in both modes (http sources and the dev mount).
+            brief_intake=PackageBriefIntake(HttpArtifactFetcher()),
+        )
+        use_case = RegisterPackageFromSource(PackageDiscovery(root_factory), register)
+        registration = use_case(
+            RegisterPackageFromSourceCommand(
+                package_format=package_format,
+                source_locator=source_locator,
+                generator_version_id=generator_version_id,
+                edit_provenance=edit_provenance,
+                version=version,
+                consumable_url=consumable_url,
+            )
+        )
+    content = registration.content
+    if registration.created:
+        return (
+            "created",
+            f"{content.external_id} v{content.version} "
+            f"({registration.artifact_count} artifacts, id {content.id})",
+        )
+    return (
+        "unchanged",
+        f"{content.external_id} already registered as v{content.version} with identical content",
+    )
+
+
+def run_register_package(
+    source: str,
+    generator: str,
+    package_format: str,
+    edit_provenance: str,
+    version: str,
+    consumable_url: str | None,
+) -> int:
+    generator_version_id = None if generator == "unknown" else UUID(generator)
+    if generator_version_id is not None:
+        with SessionLocal() as session:
+            if (
+                SqlAlchemyGeneratorVersionRepository(session).get_by_id(generator_version_id)
+                is None
+            ):
+                print(
+                    f"generator version {generator_version_id} is not registered",
+                    file=sys.stderr,
+                )
+                return 1
+
+    try:
+        if source.startswith(("http://", "https://")):
+            root_factory: Callable[[str], PackageRoot] = HttpPackageRoot
+        else:
+            course_dir = Path(source)
+            if not course_dir.is_dir():
+                print(f"'{source}' is neither an http(s) URL nor a directory", file=sys.stderr)
+                return 1
+            root = _course_root(course_dir)
+            if not _mount_preflight(root):
+                return 1
+            root_factory = _fixed_root(root)
+        status, detail = _register_package(
+            source,
+            root_factory,
+            generator_version_id,
+            package_format,
+            edit_provenance,
+            version,
+            consumable_url,
+        )
+    except DuplicateContent as exc:
+        print(f"CONFLICT: {exc}", file=sys.stderr)
+        return 1
+    except (PackageDiscoveryError, InvalidContent, UnknownGeneratorVersion) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(f"{status}  {detail}")
+    return 0
+
+
+def run_register_package_all(courses_dir: Path, package_format: str, edit_provenance: str) -> int:
+    """Batch local intake: every `courses/<generator-folder>/<course>/` registers through
+    the same use case — batch is a loop, not another path (ADR-0027)."""
+    if not courses_dir.is_dir():
+        print(
+            f"'{courses_dir.as_posix()}' does not exist — create "
+            "courses/<name>@<version>/<course>/ first (see courses/README.md)",
+            file=sys.stderr,
+        )
+        return 1
+
+    generator_dirs = sorted(d for d in courses_dir.iterdir() if d.is_dir())
+    course_dirs = [
+        (folder, course)
+        for folder in generator_dirs
+        for course in sorted(d for d in folder.iterdir() if d.is_dir())
+    ]
+    if not course_dirs:
+        print(f"no courses found under {courses_dir.as_posix()}")
+        return 0
+
+    # A tree-wide declaration deserves a tree-wide check (the ADR-0024 pattern): every
+    # generator folder resolves before anything registers, so a typo is one clean abort.
+    generators_by_folder: dict[str, UUID | None] = {}
+    problems: list[str] = []
+    with SessionLocal() as session:
+        for folder in generator_dirs:
+            try:
+                generators_by_folder[folder.name] = _generator_for_folder(session, folder.name)
+            except UnknownGeneratorVersion as exc:
+                problems.append(str(exc))
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        print("nothing was registered", file=sys.stderr)
+        return 1
+
+    if not _mount_preflight(_course_root(course_dirs[0][1])):
+        return 1
+
+    created = unchanged = conflicts = invalid = 0
+    for folder, course_dir in course_dirs:
+        label = f"{folder.name}/{course_dir.name}"
+        try:
+            root = _course_root(course_dir)
+            status, detail = _register_package(
+                str(course_dir),
+                _fixed_root(root),
+                generators_by_folder[folder.name],
+                package_format,
+                edit_provenance,
+                DEFAULT_VERSION,
+            )
+        except DuplicateContent as exc:
+            conflicts += 1
+            print(f"  CONFLICT  {label}: {exc}", file=sys.stderr)
+            continue
+        except (PackageDiscoveryError, InvalidContent, UnknownGeneratorVersion) as exc:
+            invalid += 1
+            print(f"  INVALID  {label}: {exc}", file=sys.stderr)
+            continue
+        created += status == "created"
+        unchanged += status == "unchanged"
+        print(f"  {status}  {detail}")
+
+    print(f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid")
+    return 1 if conflicts or invalid else 0
 
 
 # --------------------------------------------------------------------------- studies
@@ -1405,35 +1633,11 @@ def _seed_demo_assessors(session: Session) -> dict[str, UUID]:
 DEMO_PACKAGES_DIR = REPO_ROOT / "backend" / "tests" / "fixtures" / "learnpack_v1"
 
 
-def _demo_artifacts(course_slug: str) -> list[dict[str, Any]]:
-    """The frozen package's files as registry artifacts — locators relative to
-    DEMO_PACKAGES_DIR, resolved at profiling time by the filesystem fetcher."""
-    course_dir = DEMO_PACKAGES_DIR / course_slug
-    artifacts: list[dict[str, Any]] = []
-    if (course_dir / "learn.json").exists():
-        artifacts.append({"kind": "manifest", "locator": f"{course_slug}/learn.json"})
-    if (course_dir / ".learn" / "package-manifest.json").exists():
-        artifacts.append(
-            {
-                "kind": "package_manifest",
-                "locator": f"{course_slug}/.learn/package-manifest.json",
-            }
-        )
-    if (course_dir / ".learn" / "initialSyllabus.json").exists():
-        artifacts.append(
-            {
-                "kind": "syllabus",
-                "locator": f"{course_slug}/.learn/initialSyllabus.json",
-            }
-        )
-    for path in sorted(course_dir.glob("exercises/*/*")):
-        artifacts.append(
-            {
-                "kind": "lesson_content" if path.name == "README.md" else "lesson_file",
-                "locator": path.relative_to(DEMO_PACKAGES_DIR).as_posix(),
-            }
-        )
-    return artifacts
+def _demo_root(course_slug: str) -> FilesystemPackageRoot:
+    """The frozen package's root: locators stay `<slug>/…`, relative to DEMO_PACKAGES_DIR,
+    resolved at profiling time by the filesystem fetcher — exactly what the hand-rolled
+    artifact list produced before discovery took over (ADR-0027)."""
+    return FilesystemPackageRoot(DEMO_PACKAGES_DIR / course_slug, locator_base=course_slug)
 
 
 DEMO_GENERATOR = ("learnpack-generator", "1.0.0")
@@ -1464,13 +1668,14 @@ def _seed_demo_generator() -> UUID:
 
 
 def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
-    """Register the demo courses through `RegisterContentVersion`; reuse them if already there."""
+    """Register the demo courses through the discovery intake (ADR-0027); reuse them if
+    already there — by content hash when the row has one, by declared identity otherwise
+    (rows seeded before the hash existed)."""
     ids: dict[str, UUID] = {}
 
     for raw in DEMO_CONTENTS:
-        declared = {**raw, "generator_version_id": None}
-        if raw["generator_version_id"] == "demo":
-            declared["generator_version_id"] = generator_id
+        slug = raw["external_id"]
+        declared = generator_id if raw["generator_version_id"] == "demo" else None
         with SessionLocal() as session:
             uow = UnitOfWork(session)
             register = RegisterContentVersion(
@@ -1481,22 +1686,27 @@ def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
                 uow=uow,
                 brief_intake=PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
             )
+            use_case = RegisterPackageFromSource(PackageDiscovery(_demo_root), register)
             try:
-                content = register(
-                    RegisterContentVersionCommand(
-                        **declared, artifacts=_demo_artifacts(raw["external_id"])
+                registration = use_case(
+                    RegisterPackageFromSourceCommand(
+                        package_format=raw["package_format"],
+                        source_locator=slug,
+                        generator_version_id=declared,
+                        version=raw["version"],
+                        consumable_url=raw["consumable_url"],
                     )
                 )
-                ids[raw["external_id"]] = content.id
+                ids[slug] = registration.content.id
             except DuplicateContent:
                 snapshot = next(
                     s
                     for s in EvaluandRegistryQueries(session).list_content_snapshots()
                     if s.package_format == raw["package_format"]
-                    and s.external_id == raw["external_id"]
+                    and s.external_id == slug
                     and s.version == raw["version"]
                 )
-                ids[raw["external_id"]] = snapshot.content_id
+                ids[slug] = snapshot.content_id
 
     return ids
 
@@ -1701,27 +1911,55 @@ def main(argv: list[str] | None = None) -> int:
     role_parser.add_argument("--role", required=True, choices=[r.value for r in Role])
 
     import_parser = subparsers.add_parser(
-        "import-learnpack", help="bulk register courses from a JSON list"
+        "import-learnpack", help="bulk register courses from a canonical JSON list"
     )
     import_parser.add_argument("--file", type=Path, required=True)
-    import_parser.add_argument(
-        "--acl",
-        action="store_true",
-        help="treat the file as LearnPack's raw shape and translate it through the ACL",
-    )
     import_parser.add_argument(
         "--base-dir",
         type=Path,
         default=None,
         help="resolve artifact locators on the filesystem (local packages) instead of HTTP",
     )
-    import_parser.add_argument(
+
+    register_parser = subparsers.add_parser(
+        "register-package",
+        help="register a content version by mechanically discovering a package source (ADR-0027)",
+    )
+    register_parser.add_argument(
+        "--source", help="package base URL, or a course directory under courses/"
+    )
+    register_parser.add_argument(
         "--generator",
         type=_generator_declaration,
         default=None,
-        help="required with --acl: the generator version id for the whole file, or the "
-        "literal 'unknown' (ADR-0024). The canonical shape declares it per entry instead",
+        help="the generator version id for this course, or the literal 'unknown' (ADR-0024)",
     )
+    register_parser.add_argument(
+        "--format",
+        dest="package_format",
+        default=LEARNPACK_FORMAT,
+        help=f"the source's PackageFormat (default: {LEARNPACK_FORMAT})",
+    )
+    register_parser.add_argument(
+        "--edit-provenance",
+        dest="edit_provenance",
+        choices=list(EDIT_PROVENANCES),
+        default="unknown",
+    )
+    register_parser.add_argument("--version", default=DEFAULT_VERSION)
+    register_parser.add_argument(
+        "--consumable-url",
+        dest="consumable_url",
+        default=None,
+        help="override the discovered consumable URL",
+    )
+    register_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="register every course under --courses-dir; each course's generator comes "
+        "from its parent folder (<name>@<version> | unknown)",
+    )
+    register_parser.add_argument("--courses-dir", type=Path, default=COURSES_DIR)
 
     demo_parser = subparsers.add_parser(
         "seed-demo", help="local-only: demo users, courses, campaign and assignments"
@@ -1887,23 +2125,42 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
             return 1
-        # argparse cannot express "required with --acl"; the declaration belongs to
-        # whoever owns the payload's shape (ADR-0024), so each path refuses the other's.
-        if args.acl and args.generator is None:
+        return run_import_learnpack(args.file, args.base_dir)
+    elif args.command == "register-package":
+        if args.all:
+            if (
+                args.source
+                or args.generator is not None
+                or args.consumable_url
+                or args.version != DEFAULT_VERSION
+            ):
+                print(
+                    "--all takes each course's source and generator from the courses/ "
+                    "tree; --source/--generator/--version/--consumable-url are for single "
+                    "registration",
+                    file=sys.stderr,
+                )
+                return 1
+            return run_register_package_all(
+                args.courses_dir, args.package_format, args.edit_provenance
+            )
+        if not args.source or args.generator is None:
+            # argparse cannot express "required unless --all"; the generator declaration
+            # is never defaulted (ADR-0024).
             print(
-                "--acl needs --generator <uuid|unknown>: LearnPack's shape carries no "
-                "generator, so the declaration comes from the command line",
+                "register-package needs --source and --generator <uuid|unknown>, "
+                "or --all for the courses/ tree",
                 file=sys.stderr,
             )
             return 1
-        if not args.acl and args.generator is not None:
-            print(
-                "--generator applies to --acl only: the canonical shape declares the "
-                "generator per entry",
-                file=sys.stderr,
-            )
-            return 1
-        return run_import_learnpack(args.file, args.acl, args.base_dir, args.generator)
+        return run_register_package(
+            args.source,
+            args.generator,
+            args.package_format,
+            args.edit_provenance,
+            args.version,
+            args.consumable_url,
+        )
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
     elif args.command == "import-instrument":

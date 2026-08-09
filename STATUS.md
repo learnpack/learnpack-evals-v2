@@ -11,8 +11,9 @@ _Last updated: 2026-08-08._
 
 **Slice 1 (human MVP): complete and verified locally; the deploy is missing.
 Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 blocks,
-plus ADR-0024 (generator declaration + late attribution) and ADR-0023 (the fitness
-projection the genetic-algorithm experiment reads) on top of it.**
+plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
+projection the genetic-algorithm experiment reads) and ADR-0027 (package intake by
+mechanical discovery — in progress, see below) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -85,7 +86,7 @@ per claim, and claims excluded from the denominator have no row at all).
 
 **After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
 declaration** — a generator version or an explicit `unknown` — at every entry point (form,
-API, canonical bulk import, `--acl` import with `--generator`), so the accidental null that
+API, canonical bulk import, `register-package`), so the accidental null that
 cost a content its place in generator-level accumulation cannot happen silently. And what is
 declared unknown is **repairable**: `attribute-generator` (CLI) and
 `POST /admin/contents/{id}/generator` record a generator learnt later, **once and one-way**
@@ -240,7 +241,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 498 tests** against local Postgres (~17 s). Requires
+- **Backend suite green: 519 tests** against local Postgres (~20 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -295,17 +296,18 @@ the data in the package).
   `package_format` (formerly `generating_system`) and takes optional `artifacts` /
   `brief_id` / `edit_provenance` (the dead `metadata` key was dropped — ADR-0017);
   `--base-dir` resolves artifact locators locally. Since ADR-0024 **`generator_version_id`
-  is required per entry** (null declares unknown), and the `--acl` path instead requires
-  `--generator <uuid|unknown>` for the whole file — anyone scripting either path must
-  adjust. `POST /admin/contents` likewise requires the key.
+  is required per entry** (null declares unknown). The slice-1 `--acl` path and
+  `to_register_command` **retired with ADR-0027** — anyone scripting it must move to
+  `register-package`. `POST /admin/contents` likewise requires the key.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);
   what does not exist is the loop around it — generating a population, registering and
-  evaluating it in bulk, and selecting on the signal. Bulk registration is the first
-  bottleneck, which is why the package-intake decision below is the one whose priority rises
-  with it. Also unbuilt on purpose: comparing fitness **across** studies, which needs
-  ADR-0023 §7's equal-coverage rule enforced rather than merely published (`CompareStudies`).
+  evaluating it in bulk, and selecting on the signal. Bulk registration — its first
+  bottleneck — is now reduced to dropping course folders under `courses/` and running
+  `register-package --all` (ADR-0027, below). Also unbuilt on purpose: comparing fitness
+  **across** studies, which needs ADR-0023 §7's equal-coverage rule enforced rather than
+  merely published (`CompareStudies`).
 - **Pedagogical frames: decided, not built (ADR-0025).** The pedagogical vocabulary becomes an
   explicit entity — a frame owning its dimensions and qualities, declared by each
   `InstrumentVersion` and validated against at publish — and **frames are disjoint namespaces**
@@ -317,15 +319,21 @@ the data in the package).
   publish (ADR-0023's need, ADR-0025 clause 4). Cost accepted: no comparability across frames at
   any grain, and ADR-0015 reference data bought per frame.
 
-- **Package intake in the registration form: decided, two stages.** Today the UI has no
-  reasonable way to load a package's artifacts. Stage 1 (first): **register by link** —
-  the form takes the package's base URL (prod) or local folder (dev) and the system
-  **discovers the artifacts mechanically** (fetch `learn.json` +
-  `.learn/package-manifest.json` → build the locator list, as the adapter/demo already
-  do); no storage needed, covers packages LearnPack already serves. Stage 2 (later, own
-  ADR): **zip upload + storage** (`PackageStoragePort`, filesystem in dev, S3-compatible
-  bucket in prod — a stack decision) for packages not hosted anywhere. Priority rises
-  when the GA experiment needs bulk registration.
+- **Package intake (ADR-0027): stage 1 built on the CLI/local side; the form side is the
+  next PR.** Registration by discovery is live: `PackageDiscoveryPort` + the per-format
+  discovery ACL read `learn.json` + `.learn/config.json` + `.learn/package-manifest.json`,
+  mint the artifact list (the discovery ACL is now the **sole writer** of the `kind`
+  vocabulary) and hash the fetched bytes into `contents.content_hash` (migration 0014) —
+  re-importing an unchanged package is a no-op, changed content under the same declared
+  version is refused. Local courses live in the gitignored `courses/<name>@<version>/`
+  tree, served by a dev-only static mount at `/packages`;
+  `register-package --source <url|dir>` registers one, `register-package --all` the whole
+  tree; the seeder registers the demo courses through the same path. **Pending in the next
+  PR:** `POST /admin/contents/register-by-source` and the form rework (drop the hand-typed
+  artifact rows; register by link + generator + provenance), plus a formats endpoint so the
+  frontend stops hardcoding `LearnpackV1`. Stage 2 stays deferred (own ADR): **zip upload +
+  storage** (`PackageStoragePort`, filesystem in dev, S3-compatible bucket in prod) for
+  packages not hosted anywhere.
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
   its metadata) is registered in the local dev DB and by `seed-demo`; **repeat the act in

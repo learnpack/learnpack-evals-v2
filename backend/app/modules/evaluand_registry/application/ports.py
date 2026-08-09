@@ -48,6 +48,43 @@ class BriefIntakePort(Protocol):
     ) -> DerivedBrief | None: ...
 
 
+@dataclass(frozen=True)
+class DiscoveredArtifact:
+    """One artifact of the declared surface, as discovery found it (ADR-0027)."""
+
+    kind: str
+    locator: str
+    format: str | None = None
+
+
+@dataclass(frozen=True)
+class DiscoveredPackage:
+    """What mechanical discovery read from a package source (ADR-0027): the identity and
+    descriptor the package declares, the full artifact list, and the hash of the bytes the
+    discovery actually fetched — the content's identity by content."""
+
+    package_format: str
+    external_id: str
+    title: str | None
+    consumable_url: str | None
+    artifacts: tuple[DiscoveredArtifact, ...]
+    content_hash: str
+
+
+class PackageDiscoveryError(Exception):
+    """The package could not be mechanically discovered — registration must not proceed.
+
+    Hard-failing on purpose (ADR-0027, contrast with ADR-0022's soft brief intake): a
+    mis-discovered package would *be* the evaluand, wrong."""
+
+
+class PackageDiscoveryPort(Protocol):
+    """Mechanical discovery of a package's declared surface from a source locator
+    (ADR-0027). Realized per format by the intake ACL; transport is the adapter's axis."""
+
+    def discover(self, package_format: str, source_locator: str) -> DiscoveredPackage: ...
+
+
 class GeneratorArtifactRepositoryPort(Protocol):
     def add(self, artifact: GeneratorArtifact) -> None: ...
 
@@ -58,6 +95,14 @@ class ContentRepositoryPort(Protocol):
     def get_by_id(self, content_id: UUID) -> EducationalContent | None: ...
 
     def exists(self, package_format: str, external_id: str, version: str) -> bool: ...
+
+    def get_by_identity(
+        self, package_format: str, external_id: str, version: str
+    ) -> EducationalContent | None: ...
+
+    def find_by_logical_and_hash(
+        self, package_format: str, external_id: str, content_hash: str
+    ) -> EducationalContent | None: ...
 
     def add(self, content: EducationalContent) -> None: ...
 
