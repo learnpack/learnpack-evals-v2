@@ -1,0 +1,104 @@
+version: '3'
+
+tasks:
+  setup:env:
+    desc: Copy local env templates when missing
+    cmds:
+      - task: setup:env:backend
+      - task: setup:env:frontend
+
+  setup:env:backend:
+    internal: true
+    dir: backend
+    cmds:
+      - test -f .env || cp .env.example .env
+
+  setup:env:frontend:
+    internal: true
+    dir: frontend
+    cmds:
+      - test -f .env.local || cp .env.local.example .env.local
+
+  setup:deps:
+    desc: Install backend and frontend dependencies
+    cmds:
+      - task: setup:deps:backend
+      - task: setup:deps:frontend
+
+  setup:deps:backend:
+    internal: true
+    dir: backend
+    cmds:
+      - uv sync
+
+  setup:deps:frontend:
+    internal: true
+    dir: frontend
+    cmds:
+      - npm install
+
+  setup:migrate:
+    desc: Run Alembic migrations
+    dir: backend
+    cmds:
+      - uv run alembic upgrade head
+
+  setup:seed:
+    desc: Load rubric, reference data and demo dataset
+    dir: backend
+    cmds:
+      - uv run python -m app.cli seed
+      - uv run python -m app.cli seed-demo
+
+  setup:
+    desc: One-time local setup (env, deps, DB, migrate, seed)
+    cmds:
+      - task: setup:env
+      - task: setup:deps
+      - task: db
+      - task: db:wait
+      - task: setup:migrate
+      - task: setup:seed
+
+  db:
+    desc: Start local Postgres containers (test + dev)
+    dir: backend
+    cmds:
+      - docker compose up -d
+
+  db:wait:
+    desc: Wait until Postgres healthchecks pass
+    dir: backend
+    cmds:
+      - docker compose up -d --wait
+
+  db:down:
+    desc: Stop local Postgres containers (keeps db-dev volume)
+    dir: backend
+    cmds:
+      - docker compose down
+
+  backend:
+    desc: Run FastAPI dev server (http://localhost:8000)
+    dir: backend
+    cmds:
+      - uv run uvicorn app.main:app --reload
+
+  frontend:
+    desc: Run Next.js dev server (http://localhost:3000)
+    dir: frontend
+    cmds:
+      - npm run dev
+
+  servers:
+    desc: Run backend and frontend in parallel (blocks until stopped)
+    deps:
+      - backend
+      - frontend
+
+  dev:
+    desc: Start DB and dev servers (daily workflow)
+    cmds:
+      - task: db
+      - task: db:wait
+      - task: servers

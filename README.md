@@ -21,7 +21,29 @@ Where development stands today: **`STATUS.md`**.
 ## Run it locally, no accounts and no cloud
 
 Local mode: database in Docker, **no authentication**, demo users and data pre-loaded.
-Requires Docker, [uv](https://docs.astral.sh/uv/) and Node 20+.
+Requires Docker (Compose with `--wait`; the daemon must be running — e.g. Docker Desktop
+started), [Task](https://taskfile.dev/installation/), [uv](https://docs.astral.sh/uv/) and
+Node 20+.
+
+```bash
+# One-time setup, then daily dev
+task setup
+task dev
+```
+
+`task dev` starts Postgres, the API at http://localhost:8000 and the frontend at
+http://localhost:3000 (both servers share one terminal). Ctrl+C stops the API and frontend;
+Postgres keeps running until `task db:down`.
+
+To run each server in its own terminal:
+
+```bash
+task db        # terminal 1 (or once; leaves Postgres in the background)
+task backend   # terminal 2 — http://localhost:8000
+task frontend  # terminal 3 — http://localhost:3000
+```
+
+### Manual setup (without Task)
 
 ```bash
 # 1. Database
