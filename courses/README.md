@@ -23,15 +23,20 @@ generator identities. The special folder `unknown` registers its courses with no
 
 ## Usage
 
-The dev API must be running (`AUTH_MODE=local`): it serves this tree at `/packages`, so the
-registered locators and `consumable_url` are honest http URLs.
+Prerequisites (from `backend/`): local DB up, `.env` with `AUTH_MODE=local`, and the
+dev API running — it serves this tree at `/packages`, so registered locators and
+`consumable_url` are honest http URLs.
 
 ```bash
-# one course
-python -m app.cli register-package --source courses/unknown/my-course --generator unknown
+cd backend
 
-# everything under courses/
-python -m app.cli register-package --all
+# one course (path relative to backend/; parent folder must be unknown or <name>@<version>)
+uv run python -m app.cli register-package \
+  --source ../courses/unknown/my-course \
+  --generator unknown
+
+# everything under courses/<name>@<version>/ and courses/unknown/
+uv run python -m app.cli register-package --all
 ```
 
 Re-importing an unchanged course is a no-op (content hash); a changed course under the same
