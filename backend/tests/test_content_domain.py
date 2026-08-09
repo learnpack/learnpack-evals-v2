@@ -32,7 +32,7 @@ def test_logical_id_is_system_plus_external_id():
 
 @pytest.mark.parametrize(
     "field",
-    ["package_format", "external_id", "consumable_url", "version"],
+    ["package_format", "external_id", "version"],
 )
 def test_required_fields_reject_blanks(field):
     with pytest.raises(InvalidContent):
@@ -42,6 +42,18 @@ def test_required_fields_reject_blanks(field):
 def test_consumable_url_must_be_http():
     with pytest.raises(InvalidContent, match="http"):
         make_content(consumable_url="ftp://example.com/course")
+
+
+def test_a_content_may_declare_no_consumable_url():
+    """ADR-0028: the URL declares a deployed instance, and a package nobody hosts has none.
+    The version is still a complete evaluand — what a null closes is the human path."""
+    assert make_content(consumable_url=None).consumable_url is None
+
+
+def test_a_declared_consumable_url_may_not_be_blank():
+    """A blank is never coerced into a null: a caller that means "none" passes None."""
+    with pytest.raises(InvalidContent, match="http"):
+        make_content(consumable_url="   ")
 
 
 def test_edit_provenance_defaults_to_unknown():

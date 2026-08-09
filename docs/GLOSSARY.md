@@ -14,7 +14,8 @@
   `v2`… (improvement/regression). Logical uniqueness: `(PackageFormat, externalId, version)`. MVP:
   default `"1"`. It references `generatorVersionId` (nullable → `unknown`, but **declared**:
   registration demands a generator version or an explicit `unknown`, ADR-0024) and `briefId`,
-  and carries **edit provenance**: `pure | human_edited | unknown`.
+  carries **edit provenance** (`pure | human_edited | unknown`) and an optional
+  `consumableUrl` (below).
 - **PackageFormat** *(formerly `GeneratingSystem`; slice 1 code keeps
   `generating_system` until its migration)* — the **package convention** that an extraction
   adapter knows how to read (e.g. `LearnpackV1`). The *format* axis: it selects the adapter and
@@ -41,6 +42,11 @@
   the package source by the registry's intake ACL, which is the sole writer of the `kind`
   labels a format uses (ADR-0027). There may be **generator-level** artifacts (shared
   across contents; they are registered now, profiled when a claim needs them).
+- **consumableUrl** — not part of the package: an **optional declaration that a deployed,
+  human-consumable instance of a `ContentVersion` exists** (ADR-0028). http(s) when declared,
+  `null` when none is. The package's bytes are reached through the artifact locators — a
+  serving root is transport, not a deployment — so a content that declares no URL is a
+  complete evaluand for automated evaluation and simply cannot be handed to a human evaluator.
 - **GenerationBrief** — the generation commission: **its own aggregate, immutable, with identity**
   (`briefId`) that `ContentVersion`s reference — the key to the **paired design** across
   `GeneratorVersion`s (same briefs, new products). Lean content: free text + only the typed

@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-08._
+_Last updated: 2026-08-09._
 
 ## Where we are
 
@@ -52,7 +52,10 @@ the root `README.md`.
   namespace — **decided, deliberately not built**) and **ADR-0026** (a claim asserts about
   exactly one quality — realized with ADR-0023, which made the cost visible) and
   **ADR-0027** (package intake by mechanical discovery behind a port; content identity by
-  content hash — realized after the increment, see the intake bullet under Open). GLOSSARY
+  content hash — realized after the increment, see the intake bullet under Open) and
+  **ADR-0028** (a consumable URL declares a deployment, not a way to reach the bytes: the
+  field becomes optional and a filesystem root never yields one — amends ADR-0027 §5 in
+  part, does not supersede it). GLOSSARY
   reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
@@ -243,7 +246,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 526 tests** against local Postgres (~35 s). Requires
+- **Backend suite green: 534 tests** against local Postgres (~40 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -288,7 +291,16 @@ the data in the package).
   in the development environment.
 - **Content iframe** (open risk in `docs/design/08-code.md` §8): tested with a real LearnPack
   `consumable_url`, **it embeds fine**. The "open in a new tab" fallback stays because it
-  depends on each course's site.
+  depends on each course's site. A content that declares **no** URL (ADR-0028) renders a
+  stated empty state instead of an iframe pointed at nothing — it cannot fall through, since
+  an empty `src` resolves to the evaluation page itself and would show a blank recursive
+  frame with no explanation.
+- **Migration 0015's backfill** run against the local dev store: the two courses registered
+  from `courses/` lost their minted `/packages/` URLs (now null), while the `seed-demo`
+  `learn-pack.com` declarations and a course registered from a real http source kept theirs.
+  Re-running the migration changes nothing. The predicate itself is pinned by the suite over
+  five cases, including the two that look like the mount and are not (a deployed host serving
+  a `/packages/` path, and a loopback host that is not the mount).
 
 ## Open
 
@@ -301,6 +313,11 @@ the data in the package).
   is required per entry** (null declares unknown). The slice-1 `--acl` path and
   `to_register_command` **retired with ADR-0027** — anyone scripting it must move to
   `register-package`. `POST /admin/contents` likewise requires the key.
+  Since **ADR-0028** `consumable_url` is **optional** on `POST /admin/contents` and in the
+  canonical JSON (absent = no deployed instance declared), and `ContentResponse`,
+  `ContentPackageResponse` and the evaluator's assignment detail can all return it **null** —
+  a client that renders it must handle null. `register-package --consumable-url` is now a
+  *declaration*, not an override of a discovered value.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);
@@ -328,14 +345,22 @@ the data in the package).
   fetched bytes into `contents.content_hash` (migration 0014) — re-importing an unchanged
   package is a reported no-op, changed content under the same declared version is refused.
   Local courses live in the gitignored `courses/<name>@<version>/` tree, served by a
-  dev-only static mount at `/packages`; `register-package --source <url|dir>` registers
+  dev-only static mount at `/packages`; that mount is what makes their **artifact locators**
+  fetchable, which is all it was ever able to give them. Since **ADR-0028** a local course
+  registers with **no consumable URL**: the field declares that a deployed, human-consumable
+  instance exists, and dropping a folder into `courses/` deploys nothing (migration 0015
+  nulled the minted `/packages/` URLs the earlier rows carried; real declarations, including
+  the seeder's `learn-pack.com` courses, are untouched). Automated evaluation does not
+  notice — profiles are built from locators, never from this URL; human evaluation is what a
+  missing declaration blocks, and the console says so instead of framing a 404.
+  `register-package --source <url|dir>` registers
   one, `register-package --all` the whole tree; the seeder registers the demo courses
-  through the same path. The API side:
+  through the same path, declaring their real URLs. The API side:
   `POST /admin/contents/register-by-source` (http(s) sources; 201 created / 200 unchanged /
   409 content-changed) and `GET /admin/contents/formats`; the admin form registers by
   package URL + generator + provenance — the hand-typed artifact rows are gone, and the
-  frontend no longer hardcodes `LearnpackV1`. **What ADR-0027 leaves deferred, doors
-  open:** stage 2 — **zip upload + storage** (`PackageStoragePort`, filesystem in dev,
+  frontend no longer hardcodes `LearnpackV1`. **What ADR-0027 and ADR-0028 leave deferred,
+  doors open:** stage 2 — **zip upload + storage** (`PackageStoragePort`, filesystem in dev,
   S3-compatible bucket in prod; its own ADR) for packages not hosted anywhere;
   **pull-based batch registration from the LearnPack API** (the `[future]` connected ACL —
   a new root/source for the same `PackageDiscoveryPort` and the same loop, nothing else
@@ -344,6 +369,28 @@ the data in the package).
   version automatically is a decision not yet taken). The `courses/<name>@<version>/`
   folder convention is provisional and isolated in one CLI function
   (`_generator_for_folder`).
+
+  **The enforced consumable guard (ADR-0028 §5)** is `[future]`. The admin console *marks* a
+  content that declares no consumable URL when composing a campaign, *disables* it with its
+  reason in the assign picker, and the evaluator screen states the absence instead of framing
+  nothing — but **nothing on the server refuses the assignment**. Enforcing it means
+  Orchestration reading the registry inside the assignment path (a port + gateway, the
+  ADR-0006 shape), where today `AssignContent` does not consult the registry at all — not
+  even to check the content exists. The failure it prevents is visible, reversible and rare:
+  the evaluator reads "no deployed instance" and the admin unassigns. Cost accepted: anyone
+  bypassing the console — curl, a seeder, a future bulk assigner — can still put a human in
+  front of a course that is not deployed anywhere. The door stays open: the field is nullable
+  and the port is purely additive.
+
+  **Declaring a consumable URL after registration** — the repair act — is `[future]`. A
+  course deployed *after* its version was registered has no way back: the URL is written at
+  registration and `RegisterContentVersion` remains the only writer of `contents`. The act
+  has a shape already, `attribute-generator`'s (ADR-0024): one-way, actor and time recorded,
+  refusing what is already declared, offered at the two gates (CLI + admin endpoint), plus a
+  `WHERE consumable_url IS NULL` update. It is not built because the demand is not here — the
+  courses the GA loop registers are not deployed at all, and the ones that are (`seed-demo`,
+  register-by-source over http) declare their URL at registration. Cost accepted: deploying
+  an already-registered course means declaring a new version or a hand-written UPDATE.
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
   its metadata) is registered in the local dev DB and by `seed-demo`; **repeat the act in

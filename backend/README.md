@@ -300,8 +300,12 @@ uv run python -m app.cli register-package --all
 
 Local sources need the dev API running (`AUTH_MODE=local`): it serves the repo's
 gitignored `courses/` tree at `/packages` (base URL: `LOCAL_PACKAGES_BASE_URL`, default
-`http://localhost:8000/packages`), so registered locators and `consumable_url` are honest
-http URLs — brief intake and profiling then work exactly as with remote packages.
+`http://localhost:8000/packages`), so registered **locators** are fetchable http URLs —
+brief intake and profiling then work exactly as with remote packages. That is all the mount
+gives them: a local course registers with **no `consumable_url`**, because serving a
+package's bytes is not deploying a course (ADR-0028). Pass `--consumable-url` only if the
+course really is deployed somewhere a human can open it; without one it can be evaluated
+automatically but not assigned for human scoring.
 Re-importing an unchanged course is a no-op (content hash); the same declared version with
 changed content is refused. See `../courses/README.md` for the folder convention.
 

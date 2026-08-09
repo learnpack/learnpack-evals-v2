@@ -364,6 +364,39 @@ def test_cannot_assign_content_outside_the_campaign_scope(
     assert response.status_code == 422
 
 
+def test_an_assignment_for_a_content_with_no_deployed_instance_carries_null(
+    admin, evaluator, unique, cleanup
+):
+    """The end of the read path (ADR-0028): registry snapshot → assignment detail. The
+    assignment is *not* refused — the guard is advisory, the console prevents it and the
+    evaluator screen states the absence (STATUS names the enforced guard as deferred)."""
+    undeployed = admin.post(
+        "/admin/contents",
+        json={
+            "package_format": "LearnpackV1",
+            "external_id": f"undeployed-{unique}",
+            "generator_version_id": None,
+        },
+    ).json()
+    cleanup["contents"].append(undeployed["content_id"])
+
+    campaign = admin.post(
+        "/admin/campaigns",
+        json={
+            "instrument_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "content_ids": [undeployed["content_id"]],
+        },
+    ).json()
+    cleanup["campaigns"].append(campaign["campaign_id"])
+    client, assessor_id = evaluator("ada")
+    assignment_id = assign(admin, campaign["campaign_id"], undeployed["content_id"], assessor_id)
+
+    detail = client.get(f"/assignments/{assignment_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["consumable_url"] is None
+
+
 def test_closed_campaign_rejects_new_assignments(admin, evaluator, content, make_campaign):
     campaign_id = make_campaign(required=1)
     _, ada_id = evaluator("ada")

@@ -118,8 +118,9 @@ app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local
 
 # The gitignored local courses tree, served over http(s) so locally registered packages get
-# honest locators and consumable URLs (ADR-0027). Local-only by the ADR-0008 gate; the
-# `is_dir()` check keeps a course-less checkout booting.
+# fetchable locators (ADR-0027) — that is all it gives them: serving a package's bytes is not
+# deploying a course, so a local course declares no consumable URL (ADR-0028). Local-only by
+# the ADR-0008 gate; the `is_dir()` check keeps a course-less checkout booting.
 COURSES_DIR = Path(__file__).resolve().parents[2] / "courses"
 if settings.is_local_auth and COURSES_DIR.is_dir():
     app.mount("/packages", StaticFiles(directory=COURSES_DIR), name="local-packages")

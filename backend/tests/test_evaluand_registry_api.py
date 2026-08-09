@@ -70,6 +70,32 @@ def test_non_http_url_is_rejected(admin_client, unique):
     assert response.status_code == 422
 
 
+def test_a_content_may_register_without_a_consumable_url(admin_client, cleanup, session, unique):
+    """ADR-0028: the key may be absent — no deployed instance is declared. The whole read
+    path must carry that null rather than break on it."""
+    body = payload(unique)
+    del body["consumable_url"]
+    response = admin_client.post("/admin/contents", json=body)
+    assert response.status_code == 201, response.text
+
+    created = response.json()
+    cleanup["contents"].append(created["content_id"])
+    assert created["consumable_url"] is None
+
+    listed = admin_client.get("/admin/contents").json()
+    row = next(c for c in listed if c["content_id"] == created["content_id"])
+    assert row["consumable_url"] is None
+
+    package = admin_client.get(f"/admin/contents/{created['content_id']}/package")
+    assert package.status_code == 200, package.text
+    assert package.json()["consumable_url"] is None
+
+    stored = session.execute(
+        text("SELECT consumable_url FROM contents WHERE id = :id"), {"id": created["content_id"]}
+    ).scalar()
+    assert stored is None
+
+
 def test_package_format_is_an_open_vocabulary(admin_client, cleanup, unique):
     # No schema gate anymore (ADR-0017): a new format is data; extraction support for it
     # is an adapter's business, not a registration precondition.

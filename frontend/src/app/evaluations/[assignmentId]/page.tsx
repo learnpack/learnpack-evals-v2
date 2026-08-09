@@ -96,11 +96,14 @@ export default function AssignmentPage({
                 <ArrowLeft className="h-4 w-4" /> Back to your evaluations
               </Link>
               <div className="flex items-center gap-2">
-                <a href={assignment.consumable_url} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="sm" type="button">
-                    Open in new tab <ExternalLink className="h-4 w-4" />
-                  </Button>
-                </a>
+                {/* No URL, no button: an anchor with no href would navigate to this page. */}
+                {assignment.consumable_url ? (
+                  <a href={assignment.consumable_url} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="sm" type="button">
+                      Open in new tab <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  </a>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"

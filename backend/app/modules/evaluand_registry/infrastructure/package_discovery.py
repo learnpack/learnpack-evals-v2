@@ -53,7 +53,9 @@ class PackageRoot(Protocol):
     def locator_for(self, relative_path: str) -> str: ...
 
     @property
-    def consumable_url(self) -> str | None: ...
+    def consumable_url(self) -> str | None:
+        """None unless the root IS a deployed instance of the course (ADR-0028)."""
+        ...
 
 
 class HttpPackageRoot:
@@ -73,13 +75,15 @@ class HttpPackageRoot:
 
     @property
     def consumable_url(self) -> str | None:
+        # The one case where transport and deployment coincide (ADR-0028): for a LearnPack
+        # package the served root is the running course.
         return self._base_url
 
 
 class FilesystemPackageRoot:
     """A package directory. `locator_base` prefixes the registered locators — a mount URL
     (local intake), a plain prefix like the course slug (seeder), or None for locators that
-    are the relative paths themselves (fixtures)."""
+    are the relative paths themselves (fixtures). It is a locator prefix and nothing else."""
 
     def __init__(self, base_dir: Path, locator_base: str | None = None) -> None:
         self._fetcher = FilesystemFetcher(base_dir)
@@ -97,8 +101,9 @@ class FilesystemPackageRoot:
 
     @property
     def consumable_url(self) -> str | None:
-        if self._locator_base and self._locator_base.startswith(("http://", "https://")):
-            return self._locator_base
+        """None, always: serving a package's bytes — over the dev mount or anything else — is
+        a transport arrangement, not a deployment (ADR-0028). The mount is what makes the
+        locators fetchable; it never made the course consumable."""
         return None
 
 

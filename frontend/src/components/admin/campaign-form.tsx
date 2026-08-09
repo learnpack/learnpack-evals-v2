@@ -70,11 +70,15 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
         ) : (
           <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border p-2">
             {contents.map((c) => (
+              // Marked, never hidden (ADR-0028): a campaign is a set of evaluands, and a
+              // course with no deployed instance is still one for the automated path. What
+              // it cannot take is a human assignment — that refusal lives in AssignForm.
               <CheckRow
                 key={c.content_id}
                 checked={contentIds.includes(c.content_id)}
                 onChange={() => toggle(contentIds, setContentIds, c.content_id)}
                 label={`${c.external_id} · v${c.version}`}
+                hint={c.consumable_url ? undefined : "not deployed"}
               />
             ))}
           </div>
@@ -98,10 +102,12 @@ function CheckRow({
   checked,
   onChange,
   label,
+  hint,
 }: {
   checked: boolean;
   onChange: () => void;
   label: string;
+  hint?: string;
 }) {
   return (
     <label
@@ -111,6 +117,7 @@ function CheckRow({
     >
       <input type="checkbox" checked={checked} onChange={onChange} className="h-4 w-4" />
       {label}
+      {hint ? <span className="text-xs text-muted-foreground">· {hint}</span> : null}
     </label>
   );
 }

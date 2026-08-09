@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
 from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
@@ -128,15 +127,27 @@ def test_changed_content_under_the_same_version_is_refused(cleanup, session, tmp
             )
 
 
-def test_a_source_without_a_consumable_url_is_refused(cleanup, session):
-    with SessionLocal() as s, pytest.raises(PackageDiscoveryError, match="consumable"):
-        use_case(s)(
+def test_a_filesystem_source_registers_without_a_consumable_url(cleanup, session):
+    """ADR-0028: a filesystem root declares no deployment, and that no longer refuses the
+    registration — the package is a complete evaluand for the automated path."""
+    with SessionLocal() as s:
+        registration = use_case(s)(
             RegisterPackageFromSourceCommand(
                 package_format="LearnpackV1",
                 source_locator="bare-course",
-                generator_version_id=None,  # plain-prefixed root + no override → no URL
+                generator_version_id=None,  # and no declaration either
             )
         )
+    content = registration.content
+    cleanup["contents"].append(content.id)
+
+    assert registration.created
+    assert content.consumable_url is None
+    assert registration.artifact_count == 5  # the package is whole; only the URL is absent
+    stored = session.execute(
+        text("SELECT consumable_url FROM contents WHERE id = :id"), {"id": content.id}
+    ).scalar()
+    assert stored is None
 
 
 def test_the_brief_derives_from_the_discovered_syllabus(cleanup, session):

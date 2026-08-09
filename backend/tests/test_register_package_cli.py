@@ -77,6 +77,13 @@ def generator_of(session, external_id):
     ).scalar()
 
 
+def consumable_url_of(session, external_id):
+    return session.execute(
+        text("SELECT consumable_url FROM contents WHERE external_id = :e"),
+        {"e": external_id},
+    ).scalar()
+
+
 def test_the_tree_registers_with_folder_generators(
     courses_tree, cleanup, unique, session, generator
 ):
@@ -91,6 +98,10 @@ def test_the_tree_registers_with_folder_generators(
     assert track(cleanup, session, unknown)
     assert generator_of(session, linked) == generator.id
     assert generator_of(session, unknown) is None
+    # This is the batch that used to mint mount URLs (ADR-0028): the mount makes the
+    # locators fetchable and declares no deployment.
+    assert consumable_url_of(session, linked) is None
+    assert consumable_url_of(session, unknown) is None
 
 
 def test_rerunning_the_tree_is_a_noop(courses_tree, cleanup, unique, session, capsys):
@@ -151,6 +162,22 @@ def test_single_source_registration(courses_tree, cleanup, unique, session):
     )
     assert track(cleanup, session, slug)
     assert generator_of(session, slug) is None
+    # `--consumable-url` declares a deployment (ADR-0028); it is the only way a local
+    # course gets one, and it is stored verbatim.
+    assert consumable_url_of(session, slug) == f"https://{slug}.learn-pack.com/"
+
+
+def test_a_local_course_registers_without_a_consumable_url(courses_tree, cleanup, unique, session):
+    """No declaration, no URL (ADR-0028) — and registration succeeds anyway: the package is
+    a complete evaluand for the automated path."""
+    slug = f"cli-undeclared-{unique}"
+    course_dir = put_course(courses_tree, "unknown", slug)
+
+    assert (
+        run_register_package(str(course_dir), "unknown", "LearnpackV1", "unknown", "1", None) == 0
+    )
+    assert track(cleanup, session, slug)
+    assert consumable_url_of(session, slug) is None
 
 
 def test_a_source_outside_the_tree_is_refused(courses_tree, tmp_path, capsys):

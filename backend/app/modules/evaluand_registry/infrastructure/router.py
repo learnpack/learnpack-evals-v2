@@ -90,7 +90,9 @@ class PackageArtifactInput(BaseModel):
 class RegisterContentRequest(BaseModel):
     package_format: str = Field(examples=["LearnpackV1"])
     external_id: str
-    consumable_url: str
+    # Optional, unlike the generator key below (ADR-0028): an absent URL declares that no
+    # deployed instance exists, which is the honest default for a package nobody hosts.
+    consumable_url: str | None = None
     version: str = DEFAULT_VERSION
     artifacts: list[PackageArtifactInput] = Field(default_factory=list)
     brief_id: UUID | None = None
@@ -105,7 +107,8 @@ class ContentResponse(BaseModel):
     package_format: str
     external_id: str
     version: str
-    consumable_url: str
+    # Always present in the JSON, null when no deployed instance is declared (ADR-0028).
+    consumable_url: str | None
     brief_id: UUID | None
     generator_version_id: UUID | None
     edit_provenance: str
@@ -165,7 +168,8 @@ class PackageArtifactResponse(BaseModel):
 class ContentPackageResponse(BaseModel):
     content_id: UUID
     package_format: str
-    consumable_url: str
+    # Null when no deployed instance is declared (ADR-0028) — the artifacts stand alone.
+    consumable_url: str | None
     artifacts: list[PackageArtifactResponse]
 
     @classmethod
