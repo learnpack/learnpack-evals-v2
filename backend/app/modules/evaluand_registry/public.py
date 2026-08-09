@@ -31,12 +31,10 @@ from app.platform.uow import UnitOfWork, get_uow
 CONTENT_VERSION_REGISTERED = "ContentVersionRegistered"
 GENERATOR_VERSION_REGISTERED = "GeneratorVersionRegistered"
 BRIEF_REGISTERED = "BriefRegistered"
-GENERATOR_ARTIFACT_REGISTERED = "GeneratorArtifactRegistered"
 
 __all__ = [
     "BRIEF_REGISTERED",
     "CONTENT_VERSION_REGISTERED",
-    "GENERATOR_ARTIFACT_REGISTERED",
     "GENERATOR_VERSION_REGISTERED",
     "BriefDTO",
     "ContentPackageDTO",

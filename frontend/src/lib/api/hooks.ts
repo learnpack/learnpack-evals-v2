@@ -22,7 +22,6 @@ import type {
   ContentResponse,
   DeclareStudyRequest,
   EvaluationResponse,
-  GeneratorArtifactResponse,
   GeneratorVersionResponse,
   GoldenStatus,
   InstrumentResponse,
@@ -35,7 +34,6 @@ import type {
   RegisterBriefRequest,
   RegisterBySourceRequest,
   RegisterBySourceResponse,
-  RegisterGeneratorArtifactRequest,
   RegisterGeneratorRequest,
   ScoresReport,
   StudyFitness,
@@ -64,7 +62,6 @@ export const queryKeys = {
   contents: ["admin", "contents"] as const,
   packageFormats: ["admin", "contents", "formats"] as const,
   generators: ["admin", "generators"] as const,
-  generatorArtifacts: (id: Uuid) => ["admin", "generators", id, "artifacts"] as const,
   briefs: ["admin", "briefs"] as const,
   instruments: ["admin", "instruments"] as const,
   profiles: ["admin", "profiles"] as const,
@@ -195,29 +192,6 @@ export function useCreateGenerator() {
     mutationFn: (body: RegisterGeneratorRequest) =>
       api<GeneratorVersionResponse>("/admin/generators", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.generators }),
-  });
-}
-
-export function useGeneratorArtifacts(generatorId: Uuid) {
-  const api = useApi();
-  return useQuery({
-    queryKey: queryKeys.generatorArtifacts(generatorId),
-    queryFn: () =>
-      api<GeneratorArtifactResponse[]>(`/admin/generators/${generatorId}/artifacts`),
-  });
-}
-
-export function useCreateGeneratorArtifact(generatorId: Uuid) {
-  const api = useApi();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: RegisterGeneratorArtifactRequest) =>
-      api<GeneratorArtifactResponse>(`/admin/generators/${generatorId}/artifacts`, {
-        method: "POST",
-        body,
-      }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: queryKeys.generatorArtifacts(generatorId) }),
   });
 }
 

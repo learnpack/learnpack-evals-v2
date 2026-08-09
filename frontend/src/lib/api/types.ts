@@ -59,20 +59,6 @@ export interface RegisterGeneratorRequest {
   metadata?: Record<string, unknown>;
 }
 
-export interface GeneratorArtifactResponse {
-  artifact_id: Uuid;
-  generator_version_id: Uuid;
-  kind: string;
-  locator: string;
-  format: string | null;
-}
-
-export interface RegisterGeneratorArtifactRequest {
-  kind: string;
-  locator: string;
-  format?: string | null;
-}
-
 export interface BriefResponse {
   brief_id: Uuid;
   brief: string;

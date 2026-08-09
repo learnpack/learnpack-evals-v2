@@ -26,15 +26,6 @@ class BriefDTO:
 
 
 @dataclass(frozen=True)
-class GeneratorArtifactDTO:
-    artifact_id: UUID
-    generator_version_id: UUID
-    kind: str
-    locator: str
-    format: str | None
-
-
-@dataclass(frozen=True)
 class PackageArtifactDTO:
     kind: str
     locator: str

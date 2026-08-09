@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-10._
+_Last updated: 2026-08-09._
 
 ## Where we are
 
@@ -56,7 +56,9 @@ the root `README.md`.
   **ADR-0028** (a consumable URL declares a deployment, not a way to reach the bytes: the
   field becomes optional and a filesystem root never yields one — amends ADR-0027 §5 in
   part, does not supersede it) and **ADR-0029** (automatic profiling assumes http(s)
-  transport; one policy subscription list for every process). GLOSSARY
+  transport; one policy subscription list for every process) and **ADR-0030** (the generator
+  declares reference data about itself, not artifacts — `GeneratorArtifact` retired, see the
+  bullet under Open). GLOSSARY
   reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
@@ -192,6 +194,15 @@ verified (ADR-0020). (The orphan `practice_exercises` was retired by migration `
 Already-persisted profiles are not re-verified against the value domains (a stored profile
 is a past fact): to regenerate them, `seed-demo --reset`.
 
+**Runbook for the retired `promptPreprocessor` note (ADR-0030 §4).** `seed-demo` now gives the
+demo generator a `changelog` instead, but `_seed_demo_generator` **returns early when the
+generator already exists** — seeding never rewrites it. So a dev database seeded before this
+change keeps `{"promptPreprocessor": "not versioned yet"}` in `learnpack-generator 1.0.0`, and
+the console's Details dialog will show it under *Other metadata*. Two ways out, both fine on a
+database that is disposable by design: `seed-demo --reset`, or a hand `UPDATE` of that one row.
+Nothing does it automatically, and nothing should: the field is write-once (ADR-0030 §3), so an
+automatic rewrite would be the very act the decision withholds.
+
 **Runbook for the renamed quality:** `instruction-authentic-tasks` became
 `instruction-authentic-problems` in `docs/seed/pedagogical-reference.yaml`. Two steps, and
 any future rename carries the same two.
@@ -249,7 +260,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 540 tests** against local Postgres (~35 s). Requires
+- **Backend suite green: 537 tests** against local Postgres (~35 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -320,7 +331,23 @@ the data in the package).
   canonical JSON (absent = no deployed instance declared), and `ContentResponse`,
   `ContentPackageResponse` and the evaluator's assignment detail can all return it **null** —
   a client that renders it must handle null. `register-package --consumable-url` is now a
-  *declaration*, not an override of a discovered value.
+  *declaration*, not an override of a discovered value. Since **ADR-0030**
+  `POST|GET /admin/generators/{id}/artifacts` **no longer exist** (404) and the
+  `GeneratorArtifactRegistered` event is no longer published — anyone scripting either has
+  nothing to move to, by decision.
+- **`GeneratorArtifact` retired (ADR-0030).** The entity, the `generator_artifacts` table
+  (migration 0016), the event, both endpoints and the console form are gone. It was built
+  under the "register yes, extract no" mark and never read by anything: no policy subscribed,
+  and its only reader was the list endpoint feeding the form that wrote it. Two reasons beyond
+  the unused code — the generator's internals are unverifiable from inside this system and
+  belong to the generator team's own versioning, and hand-typed `{kind, locator}` rows are the
+  anti-pattern ADR-0027 already removed from the content axis. What replaces it is smaller: the
+  admin form now writes an optional **changelog** into the `generator_versions.metadata` blob
+  that already existed end to end, and the row's action opens a read-only **Details** dialog
+  showing it. The form writes only `changelog`; the endpoint still accepts arbitrary metadata
+  and the dialog renders whatever is stored. Rows were dropped, not migrated (no production DB
+  yet); historical `events` rows stay, being past facts. `docs/design/09`, `12` and `13` still
+  describe the entity — frozen snapshots, superseded by the ADR, not corrected.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);
@@ -416,16 +443,25 @@ the data in the package).
   register-by-source over http) declare their URL at registration. Cost accepted: deploying
   an already-registered course means declaring a new version or a hand-written UPDATE.
 - **Generator registration is a prerequisite of generator-level analysis.**
-  `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
-  its metadata) is registered in the local dev DB and by `seed-demo`; **repeat the act in
-  production before registering real content**, so the declaration ADR-0024 now demands can
-  name a real generator instead of falling back to `unknown`.
+  `learnpack-generator 1.0.0` (SemVer) is registered in the local dev DB and by `seed-demo`;
+  **repeat the act in production before registering real content**, so the declaration
+  ADR-0024 now demands can name a real generator instead of falling back to `unknown`.
+  Registering it is also the moment to write its **changelog** (ADR-0030): the field is
+  write-once, so a version registered without one keeps none.
+- **Correcting a generator's declared metadata is `[future]` (ADR-0030 §3).**
+  `GeneratorVersion` is immutable and `RegisterGeneratorVersion` is its only writer, so a typo
+  in a changelog can only be fixed by registering another version. The repair act has a shape
+  already — `attribute-generator`'s (ADR-0024): one-way, actor and time recorded, refusing
+  what is already declared, offered at the two gates. It is not built because nobody has
+  needed it yet; the door is open, since the column exists and the port would be purely
+  additive.
 - **Brief completeness (ADR-0022 consequence):** intake-derived briefs carry
   `promptRecorded: false` — pairing holds for "same effective instruction", not for
   attributing differences to prompt wording. Forward ask to LearnPack: persist the
   original prompt in the package (e.g. `courseInfo.originalPrompt`); the intake will pick
-  it up through the same channel. The prompt preprocessor is part of the generator's
-  identity — version it in `GeneratorVersion.metadata`.
+  it up through the same channel. Note what that ask is and is not: shipping the prompt is a
+  **package format** change (a future `LearnpackV2`), so it says nothing about the courses
+  being evaluated today — those keep `promptRecorded: false` forever.
 - **Outside the first increment** (named in `13-code-qa.md` §9): loop B operational
   (disputes/defects), annotation queues, per-claim validity metrics, `CompareStudies`.
 

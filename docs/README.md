@@ -50,7 +50,9 @@ two layers · `0016` uniform automated assessors · `0017` the declared surface 
 lineage + per-version ratification · `0020` mandatory, checked value domains · `0021` the
 absence-derived `fail`: no quote, origin recorded · `0022` mechanical brief intake · `0023` the
 fitness projection · `0024` explicit generator attribution · `0025` pedagogical frames (decided,
-not built) · `0026` a claim asserts about exactly one quality.
+not built) · `0026` a claim asserts about exactly one quality · `0027` package intake by
+mechanical discovery · `0028` a consumable URL declares a deployment · `0029` automatic profiling
+assumes http(s) transport · `0030` the generator declares reference data, not artifacts.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:

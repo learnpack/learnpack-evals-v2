@@ -258,10 +258,6 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         # Generators and briefs go after contents, which reference them.
         for generator_id in created["generators"]:
             s.execute(
-                text("DELETE FROM generator_artifacts WHERE generator_version_id = :id"),
-                {"id": generator_id},
-            )
-            s.execute(
                 text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(generator_id)}
             )
             s.execute(text("DELETE FROM generator_versions WHERE id = :id"), {"id": generator_id})

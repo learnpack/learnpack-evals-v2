@@ -20,7 +20,6 @@ from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
     ContentSnapshot,
-    GeneratorArtifactDTO,
     GeneratorVersionDTO,
 )
 from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
@@ -34,11 +33,6 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
-)
-from app.modules.evaluand_registry.application.register_generator_artifact import (
-    GeneratorVersionNotFound,
-    RegisterGeneratorArtifact,
-    RegisterGeneratorArtifactCommand,
 )
 from app.modules.evaluand_registry.application.register_generator_version import (
     DuplicateGeneratorVersion,
@@ -55,10 +49,7 @@ from app.modules.evaluand_registry.domain.content import (
     GeneratorAlreadyAttributed,
     InvalidContent,
 )
-from app.modules.evaluand_registry.domain.generator import (
-    InvalidGeneratorArtifact,
-    InvalidGeneratorVersion,
-)
+from app.modules.evaluand_registry.domain.generator import InvalidGeneratorVersion
 from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
@@ -69,7 +60,6 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
-    SqlAlchemyGeneratorArtifactRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.platform.security import AdminAssessor
@@ -392,30 +382,6 @@ class BriefResponse(BaseModel):
         return cls(brief_id=dto.brief_id, brief=dto.brief, fields=dto.fields)
 
 
-class RegisterGeneratorArtifactRequest(BaseModel):
-    kind: str = Field(examples=["prompt-template"])
-    locator: str
-    format: str | None = None
-
-
-class GeneratorArtifactResponse(BaseModel):
-    artifact_id: UUID
-    generator_version_id: UUID
-    kind: str
-    locator: str
-    format: str | None
-
-    @classmethod
-    def from_dto(cls, dto: GeneratorArtifactDTO) -> "GeneratorArtifactResponse":
-        return cls(
-            artifact_id=dto.artifact_id,
-            generator_version_id=dto.generator_version_id,
-            kind=dto.kind,
-            locator=dto.locator,
-            format=dto.format,
-        )
-
-
 @evaluand_router.post(
     "/generators", status_code=status.HTTP_201_CREATED, response_model=GeneratorVersionResponse
 )
@@ -451,63 +417,6 @@ def register_generator(
 def list_generators(admin: AdminAssessor, uow: Uow) -> list[GeneratorVersionResponse]:
     dtos = queries.list_generator_versions(SqlAlchemyGeneratorVersionRepository(uow.session))
     return [GeneratorVersionResponse.from_dto(d) for d in dtos]
-
-
-@evaluand_router.post(
-    "/generators/{generator_version_id}/artifacts",
-    status_code=status.HTTP_201_CREATED,
-    response_model=GeneratorArtifactResponse,
-)
-def register_generator_artifact(
-    generator_version_id: UUID,
-    request: RegisterGeneratorArtifactRequest,
-    admin: AdminAssessor,
-    uow: Uow,
-) -> GeneratorArtifactResponse:
-    use_case = RegisterGeneratorArtifact(
-        generators=SqlAlchemyGeneratorVersionRepository(uow.session),
-        artifacts=SqlAlchemyGeneratorArtifactRepository(uow.session),
-        publisher=uow.events,
-        uow=uow,
-    )
-    try:
-        artifact = use_case(
-            RegisterGeneratorArtifactCommand(
-                generator_version_id=generator_version_id,
-                kind=request.kind,
-                locator=request.locator,
-                format=request.format,
-            )
-        )
-    except GeneratorVersionNotFound as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="generator version not found"
-        ) from exc
-    except InvalidGeneratorArtifact as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
-
-    return GeneratorArtifactResponse(
-        artifact_id=artifact.id,
-        generator_version_id=artifact.generator_version_id,
-        kind=artifact.kind,
-        locator=artifact.locator,
-        format=artifact.format,
-    )
-
-
-@evaluand_router.get(
-    "/generators/{generator_version_id}/artifacts",
-    response_model=list[GeneratorArtifactResponse],
-)
-def list_generator_artifacts(
-    generator_version_id: UUID, admin: AdminAssessor, uow: Uow
-) -> list[GeneratorArtifactResponse]:
-    dtos = queries.list_generator_artifacts(
-        SqlAlchemyGeneratorArtifactRepository(uow.session), generator_version_id
-    )
-    return [GeneratorArtifactResponse.from_dto(d) for d in dtos]
 
 
 @evaluand_router.post("/briefs", status_code=status.HTTP_201_CREATED, response_model=BriefResponse)

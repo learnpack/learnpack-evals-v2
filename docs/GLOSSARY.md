@@ -26,11 +26,17 @@
   a separate `SourceSystem` would be born.)*
 - **GeneratorVersion** *(formerly `GeneratorConfiguration`)* — the **declared identity of the
   examinee**: `{id, name, version, optional free-form metadata}`. **Immutable**; a genuinely
-  different generator ⇒ new record. It is the accumulation key of generator-level claims
+  different generator ⇒ new record — and that covers **every step of its workflow**: there is no
+  sub-component versioning axis (ADR-0030). It is the accumulation key of generator-level claims
   (ADR-0013) — a symmetry of *role* with `SourceConfiguration`, not of mechanism: here the
   identity is **declarative and unverifiable** (the generator lives outside the system), which is
   why there are no mandatory config fields (they are promoted from the blob to typed fields only
-  when something consumes them). `unknown` allowed **but never by default** (ADR-0024): content
+  when something consumes them). The metadata blob carries **optional reference data the version
+  declares about itself** — today `changelog`, prose for whoever reads a report; it annotates a
+  version and versions nothing, and being part of the declared identity it is **write-once**
+  (ADR-0030). The generator's *internals* (prompts, workflow steps, configuration) are **not held
+  here at all**; what the generator **produces** is a separate matter and is evidence —
+  `ContentPackage` and `GenerationBrief`. `unknown` allowed **but never by default** (ADR-0024): content
   valid for per-content judgments, **excluded** from generator-level accumulation. Silent drift is
   undetectable from the inside — process discipline, and a registered cause in loop B's
   diagnostic taxonomy.

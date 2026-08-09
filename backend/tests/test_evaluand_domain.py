@@ -1,12 +1,10 @@
-"""Domain invariants of GeneratorVersion, GenerationBrief and GeneratorArtifact — no DB."""
+"""Domain invariants of GeneratorVersion and GenerationBrief — no DB."""
 
 import pytest
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief, InvalidBrief
 from app.modules.evaluand_registry.domain.generator import (
-    GeneratorArtifact,
     GeneratorVersion,
-    InvalidGeneratorArtifact,
     InvalidGeneratorVersion,
 )
 from app.shared.domain.ids import new_id
@@ -39,15 +37,3 @@ def test_brief_defaults_to_no_typed_fields():
     """Lean on purpose: typed fields appear only when task variables consume them."""
     brief = GenerationBrief(id=new_id(), brief="an intro course on loops")
     assert brief.fields == {}
-
-
-@pytest.mark.parametrize("attr", ["kind", "locator"])
-def test_generator_artifact_requires_kind_and_locator(attr):
-    kwargs = {
-        "id": new_id(),
-        "generator_version_id": new_id(),
-        "kind": "prompt-template",
-        "locator": "https://example.com/t",
-    } | {attr: ""}
-    with pytest.raises(InvalidGeneratorArtifact, match=attr):
-        GeneratorArtifact(**kwargs)
