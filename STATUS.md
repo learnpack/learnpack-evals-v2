@@ -50,7 +50,9 @@ the root `README.md`.
   signal per quality, with the denominator that diverges from ADR-0018 §4 — realized after
   block 7), **ADR-0025** (pedagogical frames: the vocabulary is a swappable, disjoint
   namespace — **decided, deliberately not built**) and **ADR-0026** (a claim asserts about
-  exactly one quality — realized with ADR-0023, which made the cost visible). GLOSSARY
+  exactly one quality — realized with ADR-0023, which made the cost visible) and
+  **ADR-0027** (package intake by mechanical discovery behind a port; content identity by
+  content hash — realized after the increment, see the intake bullet under Open). GLOSSARY
   reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
@@ -332,9 +334,16 @@ the data in the package).
   `POST /admin/contents/register-by-source` (http(s) sources; 201 created / 200 unchanged /
   409 content-changed) and `GET /admin/contents/formats`; the admin form registers by
   package URL + generator + provenance — the hand-typed artifact rows are gone, and the
-  frontend no longer hardcodes `LearnpackV1`. Stage 2 stays deferred (own ADR): **zip
-  upload + storage** (`PackageStoragePort`, filesystem in dev, S3-compatible bucket in
-  prod) for packages not hosted anywhere.
+  frontend no longer hardcodes `LearnpackV1`. **What ADR-0027 leaves deferred, doors
+  open:** stage 2 — **zip upload + storage** (`PackageStoragePort`, filesystem in dev,
+  S3-compatible bucket in prod; its own ADR) for packages not hosted anywhere;
+  **pull-based batch registration from the LearnPack API** (the `[future]` connected ACL —
+  a new root/source for the same `PackageDiscoveryPort` and the same loop, nothing else
+  changes); and the **auto re-versioning policy** when the content hash changes under the
+  same declared version (today: refused with "declare a new version"; minting the next
+  version automatically is a decision not yet taken). The `courses/<name>@<version>/`
+  folder convention is provisional and isolated in one CLI function
+  (`_generator_for_folder`).
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
   its metadata) is registered in the local dev DB and by `seed-demo`; **repeat the act in
