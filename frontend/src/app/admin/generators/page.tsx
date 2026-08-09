@@ -2,27 +2,26 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Package, Plus } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  useCreateGenerator,
-  useCreateGeneratorArtifact,
-  useGeneratorArtifacts,
-  useGenerators,
-} from "@/lib/api/hooks";
+import { useCreateGenerator, useGenerators } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 import type { GeneratorVersionResponse } from "@/lib/api/types";
+
+/** The one key this console writes into the identity blob (ADR-0030 §2). */
+const CHANGELOG_KEY = "changelog";
 
 export default function GeneratorsPage() {
   const { data: generators, isLoading, error } = useGenerators();
   const [creating, setCreating] = useState(false);
-  const [artifactsFor, setArtifactsFor] = useState<GeneratorVersionResponse | null>(null);
+  const [detailsFor, setDetailsFor] = useState<GeneratorVersionResponse | null>(null);
 
   return (
     <div className="max-w-5xl">
@@ -65,8 +64,8 @@ export default function GeneratorsPage() {
                     <TableCell className="font-medium">{g.name}</TableCell>
                     <TableCell>{g.version}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => setArtifactsFor(g)}>
-                        <Package className="h-3.5 w-3.5" /> Artifacts
+                      <Button variant="ghost" size="sm" onClick={() => setDetailsFor(g)}>
+                        <FileText className="h-3.5 w-3.5" /> Details
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -87,14 +86,12 @@ export default function GeneratorsPage() {
       </Dialog>
 
       <Dialog
-        open={artifactsFor !== null}
-        onClose={() => setArtifactsFor(null)}
-        title="Generator artifacts"
-        description={
-          artifactsFor ? `${artifactsFor.name} ${artifactsFor.version}` : undefined
-        }
+        open={detailsFor !== null}
+        onClose={() => setDetailsFor(null)}
+        title="Generator details"
+        description={detailsFor ? `${detailsFor.name} ${detailsFor.version}` : undefined}
       >
-        {artifactsFor ? <ArtifactsPanel generator={artifactsFor} /> : null}
+        {detailsFor ? <GeneratorDetails generator={detailsFor} /> : null}
       </Dialog>
     </div>
   );
@@ -104,11 +101,18 @@ function GeneratorForm({ onDone }: { onDone: () => void }) {
   const createGenerator = useCreateGenerator();
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
+  const [changelog, setChangelog] = useState("");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    const note = changelog.trim();
     createGenerator.mutate(
-      { name: name.trim(), version: version.trim() },
+      {
+        name: name.trim(),
+        version: version.trim(),
+        // An empty field declares nothing — it must not write an empty key into the blob.
+        ...(note ? { metadata: { [CHANGELOG_KEY]: note } } : {}),
+      },
       {
         onSuccess: () => {
           toast.success("Generator registered.");
@@ -150,6 +154,18 @@ function GeneratorForm({ onDone }: { onDone: () => void }) {
           required
         />
       </div>
+      <div className="space-y-1.5">
+        <Label>Changelog</Label>
+        <Textarea
+          value={changelog}
+          onChange={(e) => setChangelog(e.target.value)}
+          placeholder="What changed in this version, in a sentence or two."
+        />
+        <p className="text-xs text-muted-foreground">
+          Optional reference for whoever reads the results. It cannot be edited afterwards — the
+          declared identity is immutable.
+        </p>
+      </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
@@ -163,72 +179,40 @@ function GeneratorForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function ArtifactsPanel({ generator }: { generator: GeneratorVersionResponse }) {
-  const { data: artifacts, isLoading } = useGeneratorArtifacts(generator.generator_version_id);
-  const createArtifact = useCreateGeneratorArtifact(generator.generator_version_id);
-  const [kind, setKind] = useState("");
-  const [locator, setLocator] = useState("");
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    createArtifact.mutate(
-      { kind: kind.trim(), locator: locator.trim() },
-      {
-        onSuccess: () => {
-          toast.success("Artifact registered.");
-          setKind("");
-          setLocator("");
-        },
-        onError: (err) =>
-          toast.error("Could not register the artifact.", {
-            description: (err as ApiError).message,
-          }),
-      },
-    );
-  }
+/** Read-only. The form writes `changelog` and nothing else, but the endpoint accepts any
+ *  metadata (the seeder and API clients use it), so whatever is stored is rendered. */
+function GeneratorDetails({ generator }: { generator: GeneratorVersionResponse }) {
+  const { [CHANGELOG_KEY]: changelog, ...rest } = generator.metadata ?? {};
+  const otherKeys = Object.keys(rest);
 
   return (
-    <div className="space-y-4">
-      {isLoading ? (
-        <LoadingState />
-      ) : !artifacts || artifacts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No artifacts yet. Registered now, profiled when a claim needs them.
-        </p>
-      ) : (
-        <ul className="space-y-1 text-sm">
-          {artifacts.map((a) => (
-            <li key={a.artifact_id}>
-              <span className="font-medium">{a.kind}</span>{" "}
-              <span className="text-muted-foreground">{a.locator}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="space-y-4 text-sm">
+      <div className="space-y-1">
+        <h3 className="font-medium">Changelog</h3>
+        {typeof changelog === "string" && changelog.trim() ? (
+          <p className="whitespace-pre-wrap text-muted-foreground">{changelog}</p>
+        ) : (
+          <p className="text-muted-foreground">None declared for this version.</p>
+        )}
+      </div>
 
-      <form onSubmit={submit} className="flex items-end gap-2">
-        <div className="flex-1 space-y-1.5">
-          <Label>Kind</Label>
-          <Input
-            value={kind}
-            onChange={(e) => setKind(e.target.value)}
-            placeholder="prompt-template"
-            required
-          />
-        </div>
-        <div className="flex-[2] space-y-1.5">
-          <Label>Locator</Label>
-          <Input
-            value={locator}
-            onChange={(e) => setLocator(e.target.value)}
-            placeholder="https://…"
-            required
-          />
-        </div>
-        <Button type="submit" disabled={createArtifact.isPending}>
-          Add
-        </Button>
-      </form>
+      <div className="space-y-1">
+        <h3 className="font-medium">Other metadata</h3>
+        {otherKeys.length === 0 ? (
+          <p className="text-muted-foreground">None.</p>
+        ) : (
+          <ul className="space-y-1">
+            {otherKeys.map((key) => (
+              <li key={key}>
+                <span className="font-medium">{key}</span>{" "}
+                <span className="text-muted-foreground">
+                  {typeof rest[key] === "string" ? String(rest[key]) : JSON.stringify(rest[key])}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

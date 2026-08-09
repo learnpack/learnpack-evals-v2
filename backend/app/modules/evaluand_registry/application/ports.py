@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import GeneratorVersion
 
 
 class GeneratorVersionRepositoryPort(Protocol):
@@ -85,12 +85,6 @@ class PackageDiscoveryPort(Protocol):
     (ADR-0027). Realized per format by the intake ACL; transport is the adapter's axis."""
 
     def discover(self, package_format: str, source_locator: str) -> DiscoveredPackage: ...
-
-
-class GeneratorArtifactRepositoryPort(Protocol):
-    def add(self, artifact: GeneratorArtifact) -> None: ...
-
-    def list_for_generator(self, generator_version_id: UUID) -> list[GeneratorArtifact]: ...
 
 
 class ContentRepositoryPort(Protocol):

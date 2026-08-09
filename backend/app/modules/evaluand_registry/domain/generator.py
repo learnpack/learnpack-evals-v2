@@ -1,10 +1,19 @@
 """GeneratorVersion — the declared identity of the examinee (GLOSSARY, design 12 §Registry).
 
 Immutable by design: a genuinely different generator means a new registration, never an
-edit. The identity is declarative and unverifiable from inside the system (the generator
-lives outside); unregistered drift is a standard diagnosis cause, not something we can
-detect. Config fields stay inside the free-form metadata blob until something consumes
-them (demand-driven promotion).
+edit. That covers every step of its workflow — there is no sub-component versioning axis
+(ADR-0030 §4). The identity is declarative and unverifiable from inside the system (the
+generator lives outside); unregistered drift is a standard diagnosis cause, not something
+we can detect.
+
+`metadata` carries optional **reference data a version declares about itself** — today
+`changelog`, prose for a human reading a report (ADR-0030 §2). It annotates a version; it
+never versions anything. Being part of the declared identity, it is write-once. Keys stay
+in the blob until something consumes them (demand-driven promotion).
+
+The generator's *internals* — prompts, workflow steps, configuration — are not held here at
+all (ADR-0030 §1). Generator-**produced** data is untouched by that: it is evidence, and it
+arrives as package artifacts (ADR-0017/0027) and the `GenerationBrief` (ADR-0022).
 """
 
 from dataclasses import dataclass, field
@@ -14,10 +23,6 @@ from uuid import UUID
 
 class InvalidGeneratorVersion(Exception):
     """The generator version violates a domain invariant."""
-
-
-class InvalidGeneratorArtifact(Exception):
-    """The generator artifact violates a domain invariant."""
 
 
 @dataclass(frozen=True)
@@ -31,23 +36,3 @@ class GeneratorVersion:
         for attr in ("name", "version"):
             if not getattr(self, attr).strip():
                 raise InvalidGeneratorVersion(f"{attr} is required")
-
-
-@dataclass(frozen=True)
-class GeneratorArtifact:
-    """A generator-level artifact, shared across its contents.
-
-    Registered now, profiled only when a claim needs it (first-increment mark in
-    design 13). `kind` is an open vocabulary — no enum in the domain.
-    """
-
-    id: UUID
-    generator_version_id: UUID
-    kind: str
-    locator: str
-    format: str | None = None
-
-    def __post_init__(self) -> None:
-        for attr in ("kind", "locator"):
-            if not getattr(self, attr).strip():
-                raise InvalidGeneratorArtifact(f"{attr} is required")

@@ -2,7 +2,7 @@
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import GeneratorVersion
 from app.shared.domain.events import DomainEvent
 
 AGGREGATE_TYPE = "EducationalContent"
@@ -33,20 +33,6 @@ def brief_registered(brief: GenerationBrief) -> DomainEvent:
             "fieldKeys": sorted(brief.fields),
             # Null for manually registered briefs (ADR-0022).
             "briefHash": brief.brief_hash,
-        },
-    )
-
-
-def generator_artifact_registered(artifact: GeneratorArtifact) -> DomainEvent:
-    return DomainEvent(
-        event_type="GeneratorArtifactRegistered",
-        aggregate_type=GENERATOR_AGGREGATE,
-        aggregate_id=str(artifact.generator_version_id),
-        payload={
-            "artifactId": str(artifact.id),
-            "generatorVersionId": str(artifact.generator_version_id),
-            "kind": artifact.kind,
-            "locator": artifact.locator,
         },
     )
 

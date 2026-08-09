@@ -132,6 +132,12 @@ def test_register_generator_writes_aggregate_and_event(admin_client, cleanup, se
     cleanup["generators"].append(body["generator_version_id"])
     assert body["metadata"] == {"model": "gpt"}
 
+    # The blob comes back on the read path too — it is what the console's Details dialog
+    # renders, and the only channel for what a version declares about itself (ADR-0030 §2).
+    listed = admin_client.get("/admin/generators").json()
+    mine = next(g for g in listed if g["generator_version_id"] == body["generator_version_id"])
+    assert mine["metadata"] == {"model": "gpt"}
+
     event_type = session.execute(
         text("SELECT event_type FROM events WHERE aggregate_id = :id"),
         {"id": body["generator_version_id"]},
@@ -176,30 +182,22 @@ def test_blank_brief_is_rejected(admin_client):
     assert admin_client.post("/admin/briefs", json={"brief": "   "}).status_code == 422
 
 
-def test_generator_artifact_requires_a_registered_generator(admin_client):
-    response = admin_client.post(
-        "/admin/generators/00000000-0000-0000-0000-000000000000/artifacts",
-        json={"kind": "prompt-template", "locator": "https://example.com/t"},
+def test_generator_artifact_endpoints_are_gone(admin_client):
+    """ADR-0030: the generator's internals are not held here. The route is retired, not
+    merely unused — a client still calling it must find out."""
+    assert (
+        admin_client.post(
+            "/admin/generators/00000000-0000-0000-0000-000000000000/artifacts",
+            json={"kind": "prompt-template", "locator": "https://example.com/t"},
+        ).status_code
+        == 404
     )
-    assert response.status_code == 404
-
-
-def test_generator_artifacts_are_registered_and_listed(admin_client, cleanup, unique):
-    generator_id = admin_client.post(
-        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
-    ).json()["generator_version_id"]
-    cleanup["generators"].append(generator_id)
-
-    created = admin_client.post(
-        f"/admin/generators/{generator_id}/artifacts",
-        json={"kind": "knowledge-graph", "locator": "https://example.com/kg.json"},
+    assert (
+        admin_client.get(
+            "/admin/generators/00000000-0000-0000-0000-000000000000/artifacts"
+        ).status_code
+        == 404
     )
-    assert created.status_code == 201, created.text
-
-    listed = admin_client.get(f"/admin/generators/{generator_id}/artifacts").json()
-    assert [(a["kind"], a["locator"]) for a in listed] == [
-        ("knowledge-graph", "https://example.com/kg.json")
-    ]
 
 
 def test_generators_and_briefs_are_listed(admin_client, cleanup, unique):

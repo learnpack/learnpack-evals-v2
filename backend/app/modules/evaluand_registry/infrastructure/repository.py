@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorArtifact, GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import GeneratorVersion
 from app.modules.evaluand_registry.domain.package import ContentPackage, PackageArtifact
 
 _COLUMNS = (
@@ -371,52 +371,3 @@ class SqlAlchemyBriefRepository:
             .all()
         )
         return [self._to_domain(row) for row in rows]
-
-
-class SqlAlchemyGeneratorArtifactRepository:
-    def __init__(self, session: Session) -> None:
-        self._session = session
-
-    def add(self, artifact: GeneratorArtifact) -> None:
-        self._session.execute(
-            text(
-                """
-                INSERT INTO generator_artifacts (id, generator_version_id, kind, locator, format)
-                VALUES (:id, :gvid, :kind, :locator, :format)
-                """
-            ),
-            {
-                "id": artifact.id,
-                "gvid": artifact.generator_version_id,
-                "kind": artifact.kind,
-                "locator": artifact.locator,
-                "format": artifact.format,
-            },
-        )
-
-    def list_for_generator(self, generator_version_id: UUID) -> list[GeneratorArtifact]:
-        rows = (
-            self._session.execute(
-                text(
-                    """
-                    SELECT id, generator_version_id, kind, locator, format
-                      FROM generator_artifacts
-                     WHERE generator_version_id = :gvid
-                     ORDER BY registered_at
-                    """
-                ),
-                {"gvid": generator_version_id},
-            )
-            .mappings()
-            .all()
-        )
-        return [
-            GeneratorArtifact(
-                id=row["id"],
-                generator_version_id=row["generator_version_id"],
-                kind=row["kind"],
-                locator=row["locator"],
-                format=row["format"],
-            )
-            for row in rows
-        ]

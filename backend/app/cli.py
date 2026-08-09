@@ -1711,7 +1711,8 @@ def _seed_demo_generator() -> UUID:
             RegisterGeneratorVersionCommand(
                 name=name,
                 version=version,
-                metadata={"promptPreprocessor": "not versioned yet"},
+                # Optional reference prose, the only key the console writes (ADR-0030 §2).
+                metadata={"changelog": "First registered version of the demo generator."},
             )
         )
         return generator.id

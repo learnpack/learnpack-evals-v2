@@ -10,14 +10,12 @@ from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
     ContentSnapshot,
-    GeneratorArtifactDTO,
     GeneratorVersionDTO,
     PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.application.ports import (
     BriefRepositoryPort,
     ContentRepositoryPort,
-    GeneratorArtifactRepositoryPort,
     GeneratorVersionRepositoryPort,
 )
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
@@ -122,18 +120,3 @@ def get_brief(briefs: BriefRepositoryPort, brief_id: UUID) -> BriefDTO | None:
 
 def list_briefs(briefs: BriefRepositoryPort) -> list[BriefDTO]:
     return [_to_brief_dto(b) for b in briefs.list_all()]
-
-
-def list_generator_artifacts(
-    artifacts: GeneratorArtifactRepositoryPort, generator_version_id: UUID
-) -> list[GeneratorArtifactDTO]:
-    return [
-        GeneratorArtifactDTO(
-            artifact_id=a.id,
-            generator_version_id=a.generator_version_id,
-            kind=a.kind,
-            locator=a.locator,
-            format=a.format,
-        )
-        for a in artifacts.list_for_generator(generator_version_id)
-    ]

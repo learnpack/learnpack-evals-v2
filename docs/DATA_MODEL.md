@@ -31,7 +31,7 @@ erDiagram
 | Module | Tables |
 |---|---|
 | identity | `assessors` |
-| evaluand_registry | `contents`, `content_package_artifacts`, `generator_versions`, `generator_artifacts`, `generation_briefs` |
+| evaluand_registry | `contents`, `content_package_artifacts`, `generator_versions`, `generation_briefs` |
 | evaluation_design | `pedagogical_frameworks`, `pedagogical_dimensions`, `qualities`, `data_requirements`, `instrument_versions`, `instrument_claims`, `instrument_criteria`, `instrument_bindings`, `rubric_versions`, `criteria` |
 | content_profiling | `content_profiles`, `profile_entries`, `profile_extras`, `extraction_acceptances` |
 | evaluation | `evaluations`, `criterion_scores`, `criterion_outcomes`, `computed_metrics`, `quality_judgments`, `judgment_claims`, `findings`, `assessor_ratifications` |
@@ -69,7 +69,6 @@ erDiagram
 erDiagram
     generation_briefs ||--o{ contents : "brief_id"
     generator_versions ||--o{ contents : "generator_version_id"
-    generator_versions ||--o{ generator_artifacts : "owns"
     contents ||--o{ content_package_artifacts : "package surface"
 
     generation_briefs {
@@ -84,17 +83,8 @@ erDiagram
         uuid id PK
         text name
         text version
-        jsonb metadata
+        jsonb metadata "reference data the version declares about itself; write-once"
         timestamptz created_at
-    }
-
-    generator_artifacts {
-        uuid id PK
-        uuid generator_version_id FK
-        text kind
-        text locator
-        text format
-        timestamptz registered_at
     }
 
     contents {
