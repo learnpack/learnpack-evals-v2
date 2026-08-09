@@ -349,3 +349,130 @@ def test_the_command_cannot_be_built_without_a_declaration():
             external_id="silent-course",
             consumable_url=COURSE_URL,
         )
+
+
+# ------------------------------------------------------------ register by source (ADR-0027)
+
+
+@pytest.fixture
+def course_server(tmp_path):
+    """A live copy of the frozen bare course, served over real http on an ephemeral port —
+    the endpoint's discovery, hashing and consumable_url all ride the actual transport.
+    The files stay writable, so a test can mutate the course between registrations."""
+    import functools
+    import http.server
+    import pathlib
+    import shutil
+    import threading
+
+    fixtures = pathlib.Path(__file__).parent / "fixtures" / "learnpack_v1"
+    course_dir = tmp_path / "bare-course"
+    shutil.copytree(fixtures / "bare-course", course_dir)
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *args):  # keep 404 probes out of the test output
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", course_dir
+    server.shutdown()
+
+
+def source_payload(base_url: str, **overrides) -> dict:
+    return {
+        "package_format": "LearnpackV1",
+        "source_locator": f"{base_url}/bare-course",
+        "generator_version_id": None,
+    } | overrides
+
+
+def test_register_by_source_discovers_the_package(admin_client, cleanup, session, course_server):
+    base_url, _ = course_server
+    response = admin_client.post(
+        "/admin/contents/register-by-source", json=source_payload(base_url)
+    )
+    assert response.status_code == 201, response.text
+
+    body = response.json()
+    cleanup["contents"].append(body["content"]["content_id"])
+    assert body["created"] is True
+    assert body["artifact_count"] == 5  # manifests + two lesson bodies + one exercise file
+    assert body["content"]["external_id"] == "bare-course"  # identity from the package
+    assert body["content"]["consumable_url"] == f"{base_url}/bare-course"
+
+    artifacts = session.execute(
+        text("SELECT count(*) FROM content_package_artifacts WHERE content_id = :id"),
+        {"id": body["content"]["content_id"]},
+    ).scalar()
+    assert artifacts == 5
+    content_hash = session.execute(
+        text("SELECT content_hash FROM contents WHERE id = :id"),
+        {"id": body["content"]["content_id"]},
+    ).scalar()
+    assert content_hash
+
+
+def test_reregistering_an_unchanged_source_is_a_noop(admin_client, cleanup, course_server):
+    base_url, _ = course_server
+    first = admin_client.post("/admin/contents/register-by-source", json=source_payload(base_url))
+    cleanup["contents"].append(first.json()["content"]["content_id"])
+
+    second = admin_client.post("/admin/contents/register-by-source", json=source_payload(base_url))
+    assert second.status_code == 200, second.text
+    assert second.json()["created"] is False
+    assert second.json()["content"]["content_id"] == first.json()["content"]["content_id"]
+
+
+def test_changed_content_under_the_same_version_is_a_conflict(admin_client, cleanup, course_server):
+    base_url, course_dir = course_server
+    first = admin_client.post("/admin/contents/register-by-source", json=source_payload(base_url))
+    cleanup["contents"].append(first.json()["content"]["content_id"])
+
+    readme = course_dir / "exercises" / "00-frontmatter-only" / "README.md"
+    readme.write_text(readme.read_text(encoding="utf-8") + "\ndrifted", encoding="utf-8")
+
+    conflict = admin_client.post(
+        "/admin/contents/register-by-source", json=source_payload(base_url)
+    )
+    assert conflict.status_code == 409
+    assert "declare a new version" in conflict.json()["detail"]
+
+
+def test_an_undiscoverable_source_is_rejected_not_registered(admin_client, session, course_server):
+    base_url, _ = course_server
+    response = admin_client.post(
+        "/admin/contents/register-by-source",
+        json=source_payload(base_url, source_locator=f"{base_url}/no-such-course"),
+    )
+    assert response.status_code == 422
+
+    orphan = session.execute(
+        text("SELECT count(*) FROM contents WHERE consumable_url = :url"),
+        {"url": f"{base_url}/no-such-course"},
+    ).scalar()
+    assert orphan == 0
+
+
+def test_a_non_http_source_is_refused(admin_client):
+    response = admin_client.post(
+        "/admin/contents/register-by-source",
+        json=source_payload("http://x", source_locator="C:/courses/bare-course"),
+    )
+    assert response.status_code == 422
+    assert "CLI" in response.json()["detail"]
+
+
+def test_register_by_source_without_the_generator_key_is_rejected(admin_client, course_server):
+    base_url, _ = course_server
+    body = source_payload(base_url)
+    del body["generator_version_id"]  # silence is not a declaration (ADR-0024)
+
+    assert admin_client.post("/admin/contents/register-by-source", json=body).status_code == 422
+
+
+def test_the_supported_formats_are_listed(admin_client):
+    response = admin_client.get("/admin/contents/formats")
+    assert response.status_code == 200
+    assert response.json() == ["LearnpackV1"]

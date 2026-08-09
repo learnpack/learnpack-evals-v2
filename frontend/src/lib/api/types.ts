@@ -504,16 +504,23 @@ export interface ComposeStudyDatasetRequest {
   brief_ids: Uuid[];
 }
 
-export interface RegisterContentRequest {
+/** Registration by mechanical discovery (ADR-0027): identity, artifacts and content hash
+ * come from the package itself; the form declares only source + generator + provenance. */
+export interface RegisterBySourceRequest {
   package_format: string;
-  external_id: string;
-  consumable_url: string;
-  version?: string;
-  artifacts?: { kind: string; locator: string; format?: string | null }[];
-  brief_id?: Uuid | null;
+  /** http(s) base URL of the package — local directories are the CLI's business. */
+  source_locator: string;
   /** Required, null declares `unknown` (ADR-0024): silence is not a declaration. */
   generator_version_id: Uuid | null;
   edit_provenance?: EditProvenance;
+  version?: string;
+}
+
+export interface RegisterBySourceResponse {
+  content: ContentResponse;
+  /** False when the same content (by hash) was already registered — a no-op, not an error. */
+  created: boolean;
+  artifact_count: number;
 }
 
 export interface OpenCampaignRequest {

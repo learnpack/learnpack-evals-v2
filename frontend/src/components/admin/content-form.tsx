@@ -1,69 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
-import { useBriefs, useCreateContent, useGenerators } from "@/lib/api/hooks";
+import { useGenerators, usePackageFormats, useRegisterBySource } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import { PACKAGE_FORMAT } from "@/lib/constants";
 import type { EditProvenance } from "@/lib/api/types";
-
-type ArtifactRow = { kind: string; locator: string };
 
 /** The declared "no generator" option — distinct from the unchosen placeholder (ADR-0024). */
 const UNKNOWN_GENERATOR = "unknown";
 
-// No metadata fields on purpose (ADR-0017): whatever the platform declares travels as
-// package artifacts; hand-typed declarations would contaminate the evaluated surface.
+// Registration by discovery (ADR-0027): the form declares a source, never an artifact
+// list — identity, artifacts and content hash come from the package itself. And no
+// metadata fields (ADR-0017): hand-typed declarations would contaminate the evaluated
+// surface.
 export function ContentForm({ onDone }: { onDone: () => void }) {
-  const createContent = useCreateContent();
-  const { data: briefs } = useBriefs();
+  const registerBySource = useRegisterBySource();
+  const { data: formats } = usePackageFormats();
   const { data: generators } = useGenerators();
 
-  const [externalId, setExternalId] = useState("");
-  const [consumableUrl, setConsumableUrl] = useState("");
+  const [sourceLocator, setSourceLocator] = useState("");
+  const [packageFormat, setPackageFormat] = useState("");
   const [version, setVersion] = useState("");
-  const [briefId, setBriefId] = useState("");
   const [generatorVersionId, setGeneratorVersionId] = useState("");
   const [editProvenance, setEditProvenance] = useState<EditProvenance>("unknown");
-  const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
 
-  const pending = createContent.isPending;
+  // A single supported format needs no choice — preselect it, keep the select visible.
+  useEffect(() => {
+    if (!packageFormat && formats?.length === 1) setPackageFormat(formats[0]);
+  }, [formats, packageFormat]);
+
+  const pending = registerBySource.isPending;
 
   function reportError(err: unknown) {
     const e = err as ApiError;
     if (e.status === 409) {
-      toast.error("A course with that id and version already exists.");
+      toast.error("Already registered at that version with different content.", {
+        description: e.message,
+      });
     } else {
-      toast.error("Could not save the course.", { description: e.message });
+      toast.error("Could not register the course.", { description: e.message });
     }
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    createContent.mutate(
+    registerBySource.mutate(
       {
-        package_format: PACKAGE_FORMAT,
-        external_id: externalId.trim(),
-        consumable_url: consumableUrl.trim(),
+        package_format: packageFormat,
+        source_locator: sourceLocator.trim(),
         ...(version.trim() ? { version: version.trim() } : {}),
-        artifacts: artifacts
-          .filter((a) => a.kind.trim() && a.locator.trim())
-          .map((a) => ({ kind: a.kind.trim(), locator: a.locator.trim() })),
-        brief_id: briefId || null,
         // Three states, not two (ADR-0024): the placeholder never reaches here because the
         // select is required; "unknown" is a declaration, and it is not the same as silence.
         generator_version_id: generatorVersionId === UNKNOWN_GENERATOR ? null : generatorVersionId,
         edit_provenance: editProvenance,
       },
       {
-        onSuccess: () => {
-          toast.success("Course registered.");
+        onSuccess: (result) => {
+          if (result.created) {
+            toast.success(
+              `Course registered — ${result.artifact_count} artifacts discovered.`,
+            );
+          } else {
+            toast.info("Already registered — the package content is unchanged.");
+          }
           onDone();
         },
         onError: reportError,
@@ -73,63 +77,65 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Course id (external_id)" required>
-        <Input
-          value={externalId}
-          onChange={(e) => setExternalId(e.target.value)}
-          placeholder="introduction-to-generative-ai"
-          required
-        />
-      </Field>
-      <Field label="Consumable URL" required>
+      <Field
+        label="Package URL"
+        required
+        hint="The course's base URL. Its identity, artifact list and content hash are discovered from the package itself."
+      >
         <Input
           type="url"
-          value={consumableUrl}
-          onChange={(e) => setConsumableUrl(e.target.value)}
-          placeholder="https://introduction-to-generative-ai.learn-pack.com/"
+          value={sourceLocator}
+          onChange={(e) => setSourceLocator(e.target.value)}
+          placeholder="https://introduction-to-generative-ai.learn-pack.com"
           required
         />
       </Field>
-      <Field label="Version" hint="Optional — defaults to 1.">
-        <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1" />
-      </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label="Generator"
-          required
-          hint={
-            (generators ?? []).length === 0
-              ? "No generator registered yet — declare unknown, or register one first."
-              : "Unknown is a valid answer, but it must be chosen: content with an unknown generator stays out of generator-level accumulation."
-          }
-        >
+        <Field label="Package format" required>
           <Select
-            value={generatorVersionId}
-            onChange={(e) => setGeneratorVersionId(e.target.value)}
+            value={packageFormat}
+            onChange={(e) => setPackageFormat(e.target.value)}
             required
           >
             <option value="" disabled>
               Choose…
             </option>
-            <option value={UNKNOWN_GENERATOR}>Unknown — cannot be attributed</option>
-            {(generators ?? []).map((g) => (
-              <option key={g.generator_version_id} value={g.generator_version_id}>
-                {g.name} {g.version}
+            {(formats ?? []).map((format) => (
+              <option key={format} value={format}>
+                {format}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Brief" hint="Optional.">
-          <Select value={briefId} onChange={(e) => setBriefId(e.target.value)}>
-            <option value="">None recorded</option>
-            {(briefs ?? []).map((b) => (
-              <option key={b.brief_id} value={b.brief_id}>
-                {b.brief.slice(0, 60)}
-              </option>
-            ))}
-          </Select>
+        <Field label="Version" hint="Optional — defaults to 1.">
+          <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1" />
         </Field>
       </div>
+      <Field
+        label="Generator"
+        required
+        hint={
+          (generators ?? []).length === 0
+            ? "No generator registered yet — declare unknown, or register one first."
+            : "Unknown is a valid answer, but it must be chosen: content with an unknown generator stays out of generator-level accumulation."
+        }
+      >
+        <Select
+          value={generatorVersionId}
+          onChange={(e) => setGeneratorVersionId(e.target.value)}
+          required
+        >
+          <option value="" disabled>
+            Choose…
+          </option>
+          <option value={UNKNOWN_GENERATOR}>Unknown — cannot be attributed</option>
+          {(generators ?? []).map((g) => (
+            <option key={g.generator_version_id} value={g.generator_version_id}>
+              {g.name} {g.version}
+            </option>
+          ))}
+        </Select>
+      </Field>
       <Field label="Edit provenance" hint="Was the generator output edited by a human?">
         <Select
           value={editProvenance}
@@ -139,54 +145,6 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
           <option value="pure">Pure generator output</option>
           <option value="human_edited">Human edited</option>
         </Select>
-      </Field>
-      <Field
-        label="Package artifacts"
-        hint="Optional — manifests, item banks… the best evidence for extraction."
-      >
-        <div className="space-y-2">
-          {artifacts.map((artifact, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                value={artifact.kind}
-                onChange={(e) =>
-                  setArtifacts(
-                    artifacts.map((a, i) => (i === index ? { ...a, kind: e.target.value } : a)),
-                  )
-                }
-                placeholder="manifest"
-                className="w-40"
-              />
-              <Input
-                value={artifact.locator}
-                onChange={(e) =>
-                  setArtifacts(
-                    artifacts.map((a, i) =>
-                      i === index ? { ...a, locator: e.target.value } : a,
-                    ),
-                  )
-                }
-                placeholder="https://…/learn.json"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setArtifacts(artifacts.filter((_, i) => i !== index))}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setArtifacts([...artifacts, { kind: "", locator: "" }])}
-          >
-            Add artifact
-          </Button>
-        </div>
       </Field>
 
       <div className="flex justify-end gap-2 pt-2">

@@ -7,7 +7,7 @@ boundary — only DTOs (ARCHITECTURE.md §5).
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.modules.evaluand_registry.application import queries
@@ -23,6 +23,7 @@ from app.modules.evaluand_registry.application.dtos import (
     GeneratorArtifactDTO,
     GeneratorVersionDTO,
 )
+from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
 from app.modules.evaluand_registry.application.register_brief import (
     RegisterBrief,
     RegisterBriefCommand,
@@ -44,6 +45,10 @@ from app.modules.evaluand_registry.application.register_generator_version import
     RegisterGeneratorVersion,
     RegisterGeneratorVersionCommand,
 )
+from app.modules.evaluand_registry.application.register_package_from_source import (
+    RegisterPackageFromSource,
+    RegisterPackageFromSourceCommand,
+)
 from app.modules.evaluand_registry.domain.brief import InvalidBrief
 from app.modules.evaluand_registry.domain.content import (
     DEFAULT_VERSION,
@@ -57,6 +62,11 @@ from app.modules.evaluand_registry.domain.generator import (
 from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.fetchers import HttpArtifactFetcher
+from app.modules.evaluand_registry.infrastructure.package_discovery import (
+    DISCOVERIES_BY_FORMAT,
+    HttpPackageRoot,
+    PackageDiscovery,
+)
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
@@ -121,6 +131,23 @@ class ContentResponse(BaseModel):
                 else None
             ),
         )
+
+
+class RegisterBySourceRequest(BaseModel):
+    package_format: str = Field(examples=["LearnpackV1"])
+    # The API takes http(s) sources only — local directories are the CLI's business.
+    source_locator: str = Field(examples=["https://my-course.learn-pack.com"])
+    # Required, and null is a legal value: the key must be present (ADR-0024). Null
+    # declares `unknown`.
+    generator_version_id: UUID | None = Field(...)
+    edit_provenance: str = "unknown"
+    version: str = DEFAULT_VERSION
+
+
+class RegisterBySourceResponse(BaseModel):
+    content: ContentResponse
+    created: bool
+    artifact_count: int
 
 
 class AttributeGeneratorRequest(BaseModel):
@@ -199,6 +226,73 @@ def register_content_version(
         ) from exc
 
     return ContentResponse.from_snapshot(_snapshot_or_404(uow, content.id))
+
+
+@router.post(
+    "/register-by-source",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RegisterBySourceResponse,
+)
+def register_by_source(
+    request: RegisterBySourceRequest, admin: AdminAssessor, uow: Uow, response: Response
+) -> RegisterBySourceResponse:
+    """Register a content version by mechanically discovering a package source (ADR-0027).
+
+    Identity, artifact list and content hash come from the package itself; re-registering
+    an unchanged package answers 200 with `created: false` instead of a conflict."""
+    if not request.source_locator.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="source_locator must be an http(s) URL — local directories are "
+            "registered with the CLI (register-package)",
+        )
+
+    register = RegisterContentVersion(
+        contents=SqlAlchemyContentRepository(uow.session),
+        briefs=SqlAlchemyBriefRepository(uow.session),
+        generators=SqlAlchemyGeneratorVersionRepository(uow.session),
+        publisher=uow.events,
+        uow=uow,
+        brief_intake=PackageBriefIntake(HttpArtifactFetcher()),
+    )
+    use_case = RegisterPackageFromSource(PackageDiscovery(HttpPackageRoot), register)
+    try:
+        registration = use_case(
+            RegisterPackageFromSourceCommand(
+                package_format=request.package_format,
+                source_locator=request.source_locator,
+                generator_version_id=request.generator_version_id,
+                edit_provenance=request.edit_provenance,
+                version=request.version,
+            )
+        )
+    except DuplicateContent as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (
+        PackageDiscoveryError,
+        InvalidContent,
+        InvalidPackage,
+        UnknownGeneratorVersion,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    if not registration.created:
+        response.status_code = status.HTTP_200_OK
+    return RegisterBySourceResponse(
+        content=ContentResponse.from_snapshot(_snapshot_or_404(uow, registration.content.id)),
+        created=registration.created,
+        artifact_count=registration.artifact_count,
+    )
+
+
+@router.get("/formats", response_model=list[str])
+def list_package_formats(admin: AdminAssessor) -> list[str]:
+    """The package formats discovery supports — what the form offers instead of a
+    hardcoded constant (ADR-0027). Declared before `/{content_id}` so the literal path
+    is not captured by the parameter."""
+    return sorted(DISCOVERIES_BY_FORMAT)
 
 
 @router.post("/{content_id}/generator", response_model=ContentResponse)

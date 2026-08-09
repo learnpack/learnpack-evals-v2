@@ -241,7 +241,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 519 tests** against local Postgres (~20 s). Requires
+- **Backend suite green: 526 tests** against local Postgres (~35 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -319,21 +319,22 @@ the data in the package).
   publish (ADR-0023's need, ADR-0025 clause 4). Cost accepted: no comparability across frames at
   any grain, and ADR-0015 reference data bought per frame.
 
-- **Package intake (ADR-0027): stage 1 built on the CLI/local side; the form side is the
-  next PR.** Registration by discovery is live: `PackageDiscoveryPort` + the per-format
-  discovery ACL read `learn.json` + `.learn/config.json` + `.learn/package-manifest.json`,
-  mint the artifact list (the discovery ACL is now the **sole writer** of the `kind`
-  vocabulary) and hash the fetched bytes into `contents.content_hash` (migration 0014) —
-  re-importing an unchanged package is a no-op, changed content under the same declared
-  version is refused. Local courses live in the gitignored `courses/<name>@<version>/`
-  tree, served by a dev-only static mount at `/packages`;
-  `register-package --source <url|dir>` registers one, `register-package --all` the whole
-  tree; the seeder registers the demo courses through the same path. **Pending in the next
-  PR:** `POST /admin/contents/register-by-source` and the form rework (drop the hand-typed
-  artifact rows; register by link + generator + provenance), plus a formats endpoint so the
-  frontend stops hardcoding `LearnpackV1`. Stage 2 stays deferred (own ADR): **zip upload +
-  storage** (`PackageStoragePort`, filesystem in dev, S3-compatible bucket in prod) for
-  packages not hosted anywhere.
+- **Package intake (ADR-0027): stage 1 complete — CLI/local and form.** Registration by
+  discovery is live everywhere: `PackageDiscoveryPort` + the per-format discovery ACL read
+  `learn.json` + `.learn/config.json` + `.learn/package-manifest.json`, mint the artifact
+  list (the discovery ACL is the **sole writer** of the `kind` vocabulary) and hash the
+  fetched bytes into `contents.content_hash` (migration 0014) — re-importing an unchanged
+  package is a reported no-op, changed content under the same declared version is refused.
+  Local courses live in the gitignored `courses/<name>@<version>/` tree, served by a
+  dev-only static mount at `/packages`; `register-package --source <url|dir>` registers
+  one, `register-package --all` the whole tree; the seeder registers the demo courses
+  through the same path. The API side:
+  `POST /admin/contents/register-by-source` (http(s) sources; 201 created / 200 unchanged /
+  409 content-changed) and `GET /admin/contents/formats`; the admin form registers by
+  package URL + generator + provenance — the hand-typed artifact rows are gone, and the
+  frontend no longer hardcodes `LearnpackV1`. Stage 2 stays deferred (own ADR): **zip
+  upload + storage** (`PackageStoragePort`, filesystem in dev, S3-compatible bucket in
+  prod) for packages not hosted anywhere.
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer; prompt preprocessor not versioned yet — noted in
   its metadata) is registered in the local dev DB and by `seed-demo`; **repeat the act in
