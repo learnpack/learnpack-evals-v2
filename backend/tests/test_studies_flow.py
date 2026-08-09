@@ -37,7 +37,6 @@ from app.modules.evaluand_registry.application.register_generator_version import
     RegisterGeneratorVersionCommand,
 )
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
-from app.modules.evaluand_registry.infrastructure.fetchers import FilesystemArtifactFetcher
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
@@ -74,6 +73,7 @@ from app.modules.evaluation_studies.infrastructure.repository import (
 )
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
+from app.shared.infrastructure.fetchers import FilesystemFetcher
 from tests.conftest import fixture_artifact_rows
 
 
@@ -115,7 +115,7 @@ def _register_course(cleanup, unique, suffix, generator_version_id=None):
             generators=SqlAlchemyGeneratorVersionRepository(session),
             publisher=uow.events,
             uow=uow,
-            brief_intake=PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
+            brief_intake=PackageBriefIntake(FilesystemFetcher(DEMO_PACKAGES_DIR)),
         )(
             RegisterContentVersionCommand(
                 package_format="LearnpackV1",

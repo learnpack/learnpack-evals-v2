@@ -17,10 +17,6 @@ from app.modules.evaluand_registry.application.register_content_version import (
 )
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import derive_brief
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
-from app.modules.evaluand_registry.infrastructure.fetchers import (
-    BriefIntakeError,
-    FilesystemArtifactFetcher,
-)
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
@@ -28,6 +24,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
 )
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
+from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher
 
 SYLLABUS = {
     "courseInfo": {
@@ -142,7 +139,7 @@ def test_intake_finds_the_syllabus_by_locator_suffix():
 
 
 def test_intake_is_soft_on_fetch_failure():
-    intake = PackageBriefIntake(StubFetcher(error=BriefIntakeError("boom")))
+    intake = PackageBriefIntake(StubFetcher(error=FetchError("boom")))
 
     assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
 
@@ -223,7 +220,7 @@ def test_registration_dispatches_by_format_end_to_end(cleanup, unique):
 def test_fixture_syllabus_derives_through_the_filesystem_fetcher():
     from app.cli import DEMO_PACKAGES_DIR
 
-    intake = PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR))
+    intake = PackageBriefIntake(FilesystemFetcher(DEMO_PACKAGES_DIR))
     derived = intake.derive(
         "LearnpackV1",
         [
@@ -330,7 +327,7 @@ def test_registration_survives_a_failing_intake(cleanup, unique):
         cleanup,
         unique,
         "d",
-        intake=PackageBriefIntake(StubFetcher(error=BriefIntakeError("network down"))),
+        intake=PackageBriefIntake(StubFetcher(error=FetchError("network down"))),
     )
 
     assert content.brief_id is None  # soft failure: registered absent, never blocked

@@ -61,7 +61,6 @@ from app.modules.evaluand_registry.domain.generator import (
 )
 from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
-from app.modules.evaluand_registry.infrastructure.fetchers import HttpArtifactFetcher
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
     DISCOVERIES_BY_FORMAT,
     HttpPackageRoot,
@@ -75,6 +74,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
 )
 from app.platform.security import AdminAssessor
 from app.platform.uow import UnitOfWork, get_uow
+from app.shared.infrastructure.fetchers import HttpFetcher
 
 router = APIRouter(prefix="/admin/contents", tags=["content-registry"])
 
@@ -198,7 +198,7 @@ def register_content_version(
         generators=SqlAlchemyGeneratorVersionRepository(uow.session),
         publisher=uow.events,
         uow=uow,
-        brief_intake=PackageBriefIntake(HttpArtifactFetcher()),
+        brief_intake=PackageBriefIntake(HttpFetcher()),
     )
     try:
         content = use_case(
@@ -253,7 +253,7 @@ def register_by_source(
         generators=SqlAlchemyGeneratorVersionRepository(uow.session),
         publisher=uow.events,
         uow=uow,
-        brief_intake=PackageBriefIntake(HttpArtifactFetcher()),
+        brief_intake=PackageBriefIntake(HttpFetcher()),
     )
     use_case = RegisterPackageFromSource(PackageDiscovery(HttpPackageRoot), register)
     try:

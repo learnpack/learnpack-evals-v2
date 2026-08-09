@@ -18,14 +18,13 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
-
 from app.modules.evaluand_registry.application.ports import (
     DiscoveredArtifact,
     DiscoveredPackage,
     PackageDiscoveryError,
 )
 from app.modules.evaluand_registry.infrastructure import acl_learnpack
+from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
 # The artifact kind vocabulary (single writer: this module). The extraction adapter and the
 # brief intake read these labels; a test pins the alignment.
@@ -60,16 +59,14 @@ class PackageRoot(Protocol):
 class HttpPackageRoot:
     def __init__(self, base_url: str, timeout_seconds: float = 10.0) -> None:
         self._base_url = base_url.rstrip("/")
-        self._timeout = timeout_seconds
+        self._fetcher = HttpFetcher(timeout_seconds)
 
     def fetch(self, relative_path: str) -> bytes:
-        url = self.locator_for(relative_path)
         try:
-            response = httpx.get(url, timeout=self._timeout, follow_redirects=True)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise PackageDiscoveryError(f"could not fetch '{url}': {exc}") from exc
-        return response.content
+            return self._fetcher.fetch(self.locator_for(relative_path))
+        except FetchError as exc:
+            # A miss during discovery refuses the registration (hard-failing, ADR-0027).
+            raise PackageDiscoveryError(str(exc)) from exc
 
     def locator_for(self, relative_path: str) -> str:
         return f"{self._base_url}/{relative_path}"
@@ -85,15 +82,14 @@ class FilesystemPackageRoot:
     are the relative paths themselves (fixtures)."""
 
     def __init__(self, base_dir: Path, locator_base: str | None = None) -> None:
-        self._base_dir = base_dir
+        self._fetcher = FilesystemFetcher(base_dir)
         self._locator_base = locator_base.rstrip("/") if locator_base else None
 
     def fetch(self, relative_path: str) -> bytes:
-        path = self._base_dir / relative_path
         try:
-            return path.read_bytes()
-        except OSError as exc:
-            raise PackageDiscoveryError(f"could not read '{path.as_posix()}': {exc}") from exc
+            return self._fetcher.fetch(relative_path)
+        except FetchError as exc:
+            raise PackageDiscoveryError(str(exc)) from exc
 
     def locator_for(self, relative_path: str) -> str:
         relative = Path(relative_path).as_posix()

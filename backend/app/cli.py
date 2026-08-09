@@ -85,11 +85,6 @@ from app.modules.evaluand_registry.infrastructure.acl_learnpack import (
     PACKAGE_FORMAT as LEARNPACK_FORMAT,
 )
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
-from app.modules.evaluand_registry.infrastructure.fetchers import (
-    BriefIntakeError,
-    FilesystemArtifactFetcher,
-    HttpArtifactFetcher,
-)
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
     MANIFEST_PATH,
     FilesystemPackageRoot,
@@ -212,6 +207,7 @@ from app.platform.db import SessionLocal
 from app.platform.events import dispatcher
 from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
+from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
@@ -1070,7 +1066,7 @@ def run_import_learnpack(seed_file: Path, base_dir: Path | None = None) -> int:
         print("the file must contain a JSON list of courses", file=sys.stderr)
         return 1
 
-    fetcher = FilesystemArtifactFetcher(base_dir) if base_dir else HttpArtifactFetcher()
+    fetcher = FilesystemFetcher(base_dir) if base_dir else HttpFetcher()
     created = duplicated = failed = 0
     for raw in raw_courses:
         with SessionLocal() as session:
@@ -1144,9 +1140,9 @@ def _mount_preflight(root: FilesystemPackageRoot) -> bool:
     would degrade into absent briefs and failing profiles. Loud refusal instead."""
     locator = root.locator_for(MANIFEST_PATH)
     try:
-        HttpArtifactFetcher().fetch(locator)
+        HttpFetcher().fetch(locator)
         return True
-    except BriefIntakeError as exc:
+    except FetchError as exc:
         print(
             f"the dev mount does not serve this course ({exc}).\n"
             "Start the API with AUTH_MODE=local: registered locators and consumable_url "
@@ -1205,7 +1201,7 @@ def _register_package(
             publisher=uow.events,
             uow=uow,
             # Locators are URLs in both modes (http sources and the dev mount).
-            brief_intake=PackageBriefIntake(HttpArtifactFetcher()),
+            brief_intake=PackageBriefIntake(HttpFetcher()),
         )
         use_case = RegisterPackageFromSource(PackageDiscovery(root_factory), register)
         registration = use_case(
@@ -1684,7 +1680,7 @@ def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
                 generators=SqlAlchemyGeneratorVersionRepository(session),
                 publisher=uow.events,
                 uow=uow,
-                brief_intake=PackageBriefIntake(FilesystemArtifactFetcher(DEMO_PACKAGES_DIR)),
+                brief_intake=PackageBriefIntake(FilesystemFetcher(DEMO_PACKAGES_DIR)),
             )
             use_case = RegisterPackageFromSource(PackageDiscovery(_demo_root), register)
             try:
