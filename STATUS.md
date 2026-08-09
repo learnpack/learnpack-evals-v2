@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-09._
+_Last updated: 2026-08-10._
 
 ## Where we are
 
@@ -55,7 +55,8 @@ the root `README.md`.
   content hash — realized after the increment, see the intake bullet under Open) and
   **ADR-0028** (a consumable URL declares a deployment, not a way to reach the bytes: the
   field becomes optional and a filesystem root never yields one — amends ADR-0027 §5 in
-  part, does not supersede it). GLOSSARY
+  part, does not supersede it) and **ADR-0029** (automatic profiling assumes http(s)
+  transport; one policy subscription list for every process). GLOSSARY
   reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
@@ -219,7 +220,9 @@ trusts it (`python -m app.cli accept-extraction --package-format LearnpackV1 --e
 acceptance is a human act (ADR-0012); `seed-demo` auto-accepts it only in local mode.
 **Acceptance is per adapter version**, and the version changed with the two new
 capabilities, so this act has to be repeated against the current one — an extraction
-accepted for the old version says nothing about what the adapter reads now.
+accepted for the old version says nothing about what the adapter reads now. Since
+**ADR-0029** the act arms **both processes**: the API and the CLI wire the same policy list,
+so `register-package` auto-profiles exactly like the admin form.
 
 **Third pending input from the team (block 6):** once the instrument is published, **ratify it**
 for the first automated assessor (`python -m app.cli ratify-assessor --name structural
@@ -246,7 +249,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 534 tests** against local Postgres (~40 s). Requires
+- **Backend suite green: 540 tests** against local Postgres (~35 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
@@ -355,7 +358,10 @@ the data in the package).
   missing declaration blocks, and the console says so instead of framing a 404.
   `register-package --source <url|dir>` registers
   one, `register-package --all` the whole tree; the seeder registers the demo courses
-  through the same path, declaring their real URLs. The API side:
+  through the same path, declaring their real URLs. Both commands **auto-profile** what they
+  create once the extraction is accepted, and print what the policy did — until **ADR-0029**
+  they never did, because the CLI process subscribed only the evaluation policy while the API
+  subscribed four. There is one shared list now. The API side:
   `POST /admin/contents/register-by-source` (http(s) sources; 201 created / 200 unchanged /
   409 content-changed) and `GET /admin/contents/formats`; the admin form registers by
   package URL + generator + provenance — the hand-typed artifact rows are gone, and the
@@ -369,6 +375,24 @@ the data in the package).
   version automatically is a decision not yet taken). The `courses/<name>@<version>/`
   folder convention is provisional and isolated in one CLI function
   (`_generator_for_folder`).
+
+- **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
+  wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,
+  `import-learnpack --base-dir` — are declined in silence and stay on the manual path
+  (`profile-content`/`reprofile --base-dir`, which pick their own fetcher). Letting the fetch
+  run instead would commit a `failed` profile that the policy's replay guard then refuses to
+  touch: a readable package permanently marked broken by the one path that could not read it.
+  **Deferred, doors open:** resolving the fetcher from the **package root** (the ADR-0027 §1
+  shape) — that is the recorded exit condition, at which point the guard is *deleted*, not
+  generalized; and a **`--no-profile` escape hatch** for bulk registration, whose absence is a
+  real cost — `register-package --all` now pays roughly one fetch per lesson per created
+  course, sequentially, inside each registration's post-commit dispatch, so a large tree takes
+  minutes with no way to opt out. Also noted: `import-learnpack` **without** `--base-dir`
+  starts auto-profiling where it did not before (its locators are URLs); benign, but a
+  behaviour change. And a second, smaller door: `EventDispatcher.subscribe` appends without
+  dedup, so a process that wires twice runs every handler twice — harmless under ADR-0003's
+  idempotence requirement, deliberately left loud rather than silently de-duplicated, since
+  double wiring is exactly the defect class ADR-0029 §1 exists to prevent.
 
   **The enforced consumable guard (ADR-0028 §5)** is `[future]`. The admin console *marks* a
   content that declares no consumable URL when composing a campaign, *disables* it with its

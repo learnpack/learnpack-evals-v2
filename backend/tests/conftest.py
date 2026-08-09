@@ -76,6 +76,32 @@ def namespace(cleanup):
         session.commit()
 
 
+@pytest.fixture
+def accepted_extraction(cleanup):
+    """Arm auto-profiling for the CURRENT LearnpackV1 adapter (ADR-0012's human act).
+
+    Lives here rather than in one test file because the row is **global**: it arms the policy
+    for every content registered afterwards, through any path, for the rest of the session.
+    Registering it in `cleanup` is therefore mandatory (see that fixture's docstring), and a
+    single shared fixture is the only way to make forgetting impossible — a leak breaks
+    `test_profiling_api`'s `accepted is False`, and the failure points at the wrong file.
+    """
+    from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
+    from app.platform.db import SessionLocal
+
+    adapter = ADAPTERS_BY_FORMAT["LearnpackV1"]
+    cleanup["acceptances"].append(("LearnpackV1", adapter.adapter_version))
+    with SessionLocal() as session:
+        session.execute(
+            text(
+                "INSERT INTO extraction_acceptances (package_format, adapter_version, accepted_by)"
+                " VALUES ('LearnpackV1', :version, :by) ON CONFLICT DO NOTHING"
+            ),
+            {"version": adapter.adapter_version, "by": uuid.uuid4()},
+        )
+        session.commit()
+
+
 # --- where the suite runs -------------------------------------------------------------
 # Redirected at import time, before anything can build an engine. With TEST_DATABASE_URL
 # pointing at the local Postgres (docker-compose.yml), the suite runs ~500x faster: it is

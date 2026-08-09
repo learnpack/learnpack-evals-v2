@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 import app.cli as cli
 from app.cli import main, run_register_package, run_register_package_all
+from app.modules.content_profiling.public import ContentProfilingQueries
 from app.modules.evaluand_registry.application.register_generator_version import (
     RegisterGeneratorVersion,
     RegisterGeneratorVersionCommand,
@@ -35,6 +36,32 @@ def courses_tree(tmp_path, monkeypatch, requires_db):
     monkeypatch.setattr(cli, "COURSES_DIR", tree)
     monkeypatch.setattr(cli, "_mount_preflight", lambda root: True)
     return tree
+
+
+@pytest.fixture
+def mount_fetcher(courses_tree, monkeypatch):
+    """Resolve the minted mount URLs against the throwaway tree.
+
+    The auto-profiling policy fetches over http by construction (ADR-0029) and no server runs
+    in tests. Only the transport is swapped: the registered locators stay genuine http URLs,
+    so the locator guard passes on its merits, and only the bytes come from disk. The policy
+    instantiates `HttpPackageFetcher()` inside the handler, so patching the module attribute
+    takes effect per call.
+    """
+    from app.config import get_settings
+    from app.modules.content_profiling.infrastructure import policies as profiling_policies
+    from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
+
+    base = get_settings().local_packages_base_url.rstrip("/") + "/"
+
+    class MountFetcher:
+        def __init__(self) -> None:
+            self._inner = FilesystemPackageFetcher(courses_tree)
+
+        def fetch(self, locator: str) -> bytes:
+            return self._inner.fetch(locator.removeprefix(base))
+
+    monkeypatch.setattr(profiling_policies, "HttpPackageFetcher", MountFetcher)
 
 
 @pytest.fixture
@@ -195,3 +222,45 @@ def test_the_cli_refuses_silence(capsys):
 
     assert main(["register-package", "--all", "--source", "x"]) == 1
     assert "--all" in capsys.readouterr().err
+
+
+# ------------------------------------------------------- the auto-profiling policy (ADR-0029)
+
+
+def test_cli_registration_auto_profiles(
+    courses_tree, cleanup, unique, session, namespace, accepted_extraction, mount_fetcher, capsys
+):
+    """The CLI process wires the same policies as the API (ADR-0029 §1): a package registered
+    through `register-package --all` is profiled inside its own commit.
+
+    What this proves is the *path* — registering through the CLI entry point ends with a
+    profile. It cannot isolate the CLI process: two test modules import `app.main` at module
+    scope, so the singleton dispatcher already carries the chain before any test runs. The
+    parity claim itself lives in `test_policy_wiring.py`.
+    """
+    slug = f"cli-autoprofile-{unique}"
+    put_course(courses_tree, "unknown", slug)
+
+    assert main(["register-package", "--all"]) == 0
+
+    content_id = track(cleanup, session, slug)
+    profile = ContentProfilingQueries(session).get_profile(content_id)
+    assert profile is not None
+    # Not just "a row exists": an unreachable mount leaves one too, `failed`. A count-only
+    # assertion would go green on a broken feature.
+    assert profile.status == "ok"
+    assert "profiling: 1 profiled" in capsys.readouterr().out
+
+
+def test_the_batch_reports_that_nothing_was_profiled(
+    courses_tree, cleanup, unique, session, capsys
+):
+    """Without an acceptance the policy declines in silence (ADR-0012); the summary is what
+    breaks that silence for the operator."""
+    put_course(courses_tree, "unknown", f"cli-quiet-{unique}")
+
+    assert run_register_package_all(courses_tree, "LearnpackV1", "unknown") == 0
+
+    out = capsys.readouterr().out
+    assert "profiling: 0 profiled, 0 failed, 1 not profiled" in out
+    assert "accept-extraction" in out
