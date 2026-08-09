@@ -16,29 +16,19 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.modules.content_profiling.infrastructure.policies import (
-    register_policies as register_profiling_policies,
-)
 from app.modules.content_profiling.infrastructure.router import router as content_profiling_router
 from app.modules.evaluand_registry.infrastructure.router import (
     evaluand_router as evaluand_admin_router,
 )
 from app.modules.evaluand_registry.infrastructure.router import router as evaluand_registry_router
-from app.modules.evaluation.infrastructure.policies import (
-    register_policies as register_evaluation_policies,
-)
 from app.modules.evaluation.infrastructure.router import router as evaluation_router
 from app.modules.evaluation_design.infrastructure.router import router as evaluation_design_router
 from app.modules.evaluation_studies.infrastructure.router import (
     instruments_router as studies_matching_router,
 )
 from app.modules.evaluation_studies.infrastructure.router import router as evaluation_studies_router
-from app.modules.golden_dataset.infrastructure.policies import (
-    register_policies as register_golden_policies,
-)
 from app.modules.golden_dataset.infrastructure.router import router as golden_dataset_router
 from app.modules.identity.infrastructure.router import admin_router as identity_admin_router
-from app.modules.orchestration.infrastructure.policies import register_policies
 from app.modules.orchestration.infrastructure.router import (
     admin_router as orchestration_admin_router,
 )
@@ -50,6 +40,7 @@ from app.platform.auth_local import DEV_USER_HEADER
 from app.platform.db import get_session
 from app.platform.dev_router import router as dev_router
 from app.platform.events import dispatcher
+from app.platform.policies import register_all_policies
 from app.platform.security import CurrentAssessor
 
 settings = get_settings()
@@ -125,13 +116,6 @@ COURSES_DIR = Path(__file__).resolve().parents[2] / "courses"
 if settings.is_local_auth and COURSES_DIR.is_dir():
     app.mount("/packages", StaticFiles(directory=COURSES_DIR), name="local-packages")
 
-# Policies subscribe here, at wiring time. The MVP's chain (08-code.md §5):
-#   EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
-#                       → (golden) GoldenReferenceEstablished
-# Slice 2 (13-code-qa §5): ContentVersionRegistered → (profiling) profile if accepted;
-#   EvaluationCompleted → (evaluation) derive the QualityJudgment + findings.
-# Swapping the in-process dispatcher for a real bus later touches only these lines.
-register_policies(dispatcher)
-register_golden_policies(dispatcher)
-register_profiling_policies(dispatcher)
-register_evaluation_policies(dispatcher)
+# Policies subscribe here, at wiring time. The list is shared with the CLI process, which
+# wires the same one — see `app/platform/policies.py` for the chain (ADR-0029 §1).
+register_all_policies(dispatcher)
