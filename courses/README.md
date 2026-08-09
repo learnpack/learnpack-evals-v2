@@ -25,7 +25,9 @@ generator identities. The special folder `unknown` registers its courses with no
 
 Prerequisites (from `backend/`): local DB up, `.env` with `AUTH_MODE=local`, and the
 dev API running — it serves this tree at `/packages`, so registered **locators** are
-fetchable http URLs (that is what brief intake and profiling need).
+fetchable http URLs (that is what brief intake and profiling need). Because they are http,
+registering a course here also **auto-profiles** it once the extraction is accepted
+(`accept-extraction`, ADR-0012); the command prints what the policy did.
 
 Dropping a course here does not deploy it, so a course registered from this tree declares
 **no consumable URL** (ADR-0028): it can be evaluated automatically, and the admin console

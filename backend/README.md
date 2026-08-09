@@ -42,8 +42,10 @@ uv run python -m app.cli seed-demo         # --reset to start from scratch
 `grace.hopper@local.dev`), the instrument draft imported from `../docs/seed/instruments/`,
 the `LearnpackV1` extraction accepted (in the real store that acceptance is the team's
 deliberate act, ADR-0012 — the demo auto-accepts because it only runs locally), 2 demo
-courses registered with their real frozen packages (auto-profiled by the registration
-policy), and an open campaign with **quorum 2** and its 4 assignments, all **pending
+courses registered with their real frozen packages and profiled by the seeder's own
+explicit step (their locators are relative to the frozen fixture tree, and the automatic
+policy only reaches http(s) ones — ADR-0029), and an open campaign with **quorum 2** and
+its 4 assignments, all **pending
 evaluation**. Two evaluators is the minimum for inter-rater dispersion and for
 `ContentEvaluationCompleted → GoldenReferenceEstablished` to fire.
 
@@ -173,9 +175,13 @@ transaction as the aggregate (`OutboxEventPublisher`). After commit, the in-proc
 `EventDispatcher` delivers the event to subscribed policies. Handlers must be idempotent by
 `event_type + aggregate_id`, so reprocessing from the `events` table is safe.
 
-Policies wired today (`main.py`): the completion chain of the human path (below) and, from
-slice 2, `ContentVersionRegistered → ProfileContent` — registering content auto-profiles it
-**iff** the format's extraction is accepted.
+Policies wired today (one list in `app/platform/policies.py`, called by both the API and the
+CLI so the two processes cannot drift — ADR-0029 §1): the completion chain of the human path
+(below) and, from slice 2, `ContentVersionRegistered → ProfileContent` — registering content
+auto-profiles it **iff** the format's extraction is accepted **and** every artifact locator
+is an http(s) URL. Packages rooted on a filesystem (the seeder's fixtures,
+`import-learnpack --base-dir`) are declined in silence and stay on the manual path, which
+picks its own fetcher.
 
 ## Commands
 
@@ -309,8 +315,16 @@ automatically but not assigned for human scoring.
 Re-importing an unchanged course is a no-op (content hash); the same declared version with
 changed content is refused. See `../courses/README.md` for the folder convention.
 
+Registering **auto-profiles** each newly created course, once the format's extraction is
+accepted — the same policy the admin form triggers (ADR-0029 §1). Both commands print what
+it did (`profiling: N profiled, N failed, N not profiled`), because a decline is silent by
+design and a failure is only logged. The batch therefore costs roughly one fetch per lesson
+per created course; a large tree takes minutes, and there is no way to opt out yet.
+
 `import-learnpack --file courses.json` remains for hand-composed batches that already
-carry their artifact lists (canonical JSON shape only).
+carry their artifact lists (canonical JSON shape only). With `--base-dir` its locators are
+filesystem paths, so the automatic policy declines them; without it they are URLs and it
+profiles like any other path.
 
 ## Modules
 

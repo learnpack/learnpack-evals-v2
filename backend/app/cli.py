@@ -13,6 +13,7 @@ into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md
 
 import argparse
 import json
+import logging
 import re
 import sys
 from collections.abc import Callable
@@ -52,6 +53,7 @@ from app.modules.content_profiling.infrastructure.repository import (
     SqlAlchemyAcceptanceRepository,
     SqlAlchemyProfileRepository,
 )
+from app.modules.content_profiling.public import ContentProfilingQueries
 from app.modules.evaluand_registry.application.attribute_generator import (
     AttributeGenerator,
     AttributeGeneratorCommand,
@@ -1190,8 +1192,12 @@ def _register_package(
     edit_provenance: str,
     version: str,
     consumable_url: str | None = None,
-) -> tuple[str, str]:
-    """Register one source through the canonical path; (status, detail) for the console."""
+) -> tuple[str, str, UUID]:
+    """Register one source through the canonical path.
+
+    Returns (status, detail, content id) — the id so the caller can report what the
+    auto-profiling policy did with what it just registered (`_report_profiling`).
+    """
     with SessionLocal() as session:
         uow = UnitOfWork(session)
         register = RegisterContentVersion(
@@ -1220,11 +1226,46 @@ def _register_package(
             "created",
             f"{content.external_id} v{content.version} "
             f"({registration.artifact_count} artifacts, id {content.id})",
+            content.id,
         )
     return (
         "unchanged",
         f"{content.external_id} already registered as v{content.version} with identical content",
+        content.id,
     )
+
+
+def _report_profiling(content_ids: list[UUID]) -> None:
+    """What the auto-profiling policy did with what was just registered.
+
+    The policy runs inside each registration's own post-commit dispatch (ADR-0003), so by the
+    time this prints it has already run or already declined. Both silences need breaking: a
+    decline is silent by design (ADR-0029 §3) and a failure is a log line the dispatcher
+    swallowed. This is the only place the loop says which of the three happened.
+
+    Counts only what this run CREATED: an unchanged registration emits no event, so its
+    profile — if any — is old news, and counting it would report work this run did not do.
+    """
+    if not content_ids:
+        return
+    profiled = failed = 0
+    with SessionLocal() as session:
+        queries = ContentProfilingQueries(session)
+        for content_id in content_ids:
+            profile = queries.get_profile(content_id)
+            if profile is None:
+                continue
+            profiled += profile.status == "ok"
+            failed += profile.status == "failed"
+    unprofiled = len(content_ids) - profiled - failed
+    print(f"profiling: {profiled} profiled, {failed} failed, {unprofiled} not profiled")
+    if profiled == 0 and failed == 0:
+        # The two guards that decline in silence, named where someone will read them.
+        print(
+            "  nothing was auto-profiled: profiling is armed per adapter version by "
+            "`accept-extraction --package-format <format>` (ADR-0012), and only reaches "
+            "packages whose locators are http(s) URLs (ADR-0029)"
+        )
 
 
 def run_register_package(
@@ -1260,7 +1301,7 @@ def run_register_package(
             if not _mount_preflight(root):
                 return 1
             root_factory = _fixed_root(root)
-        status, detail = _register_package(
+        status, detail, content_id = _register_package(
             source,
             root_factory,
             generator_version_id,
@@ -1277,6 +1318,9 @@ def run_register_package(
         return 1
 
     print(f"{status}  {detail}")
+    # Single-source registration is what a human runs while debugging one course — exactly
+    # when "did it profile?" is the question.
+    _report_profiling([content_id] if status == "created" else [])
     return 0
 
 
@@ -1320,12 +1364,13 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
     if not _mount_preflight(_course_root(course_dirs[0][1])):
         return 1
 
+    created_ids: list[UUID] = []
     created = unchanged = conflicts = invalid = 0
     for folder, course_dir in course_dirs:
         label = f"{folder.name}/{course_dir.name}"
         try:
             root = _course_root(course_dir)
-            status, detail = _register_package(
+            status, detail, content_id = _register_package(
                 str(course_dir),
                 _fixed_root(root),
                 generators_by_folder[folder.name],
@@ -1343,9 +1388,14 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
             continue
         created += status == "created"
         unchanged += status == "unchanged"
+        if status == "created":
+            created_ids.append(content_id)
         print(f"  {status}  {detail}")
 
     print(f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid")
+    _report_profiling(created_ids)
+    # A failed profile is not a failed registration: the evaluand is registered either way
+    # (the hard/soft split of ADR-0027 §3). The exit code stays about registration.
     return 1 if conflicts or invalid else 0
 
 
@@ -1822,8 +1872,13 @@ DEMO_INSTRUMENT_SPEC = REPO_ROOT / "docs" / "seed" / "instruments" / "learnpack-
 
 
 def _seed_demo_acceptance(admin_id: UUID) -> None:
-    """Accept the current LearnpackV1 adapter so registration auto-profiles (demo only —
-    in the real store this is the team's deliberate act, ADR-0012)."""
+    """Accept the current LearnpackV1 adapter (demo only — in the real store this is the
+    team's deliberate act, ADR-0012).
+
+    It arms the automatic policy for anything registered from an http source afterwards. It
+    is NOT what profiles the demo courses: their locators are relative to the frozen fixture
+    tree, so the policy declines them (ADR-0029 §2) and `_seed_demo_profiles` does the work.
+    """
     adapter = ADAPTERS_BY_FORMAT["LearnpackV1"]
     with SessionLocal() as session:
         uow = UnitOfWork(session)
@@ -1839,7 +1894,10 @@ def _seed_demo_acceptance(admin_id: UUID) -> None:
 
 
 def _seed_demo_profiles(content_ids: dict[str, UUID]) -> int:
-    """Profile any course the policy did not reach (reused contents emit no event).
+    """Profile the demo courses. The automatic policy never reaches them — `_demo_root`
+    prefixes locators with the bare course slug, and the policy fetches over http only
+    (ADR-0029 §2) — so this step is not redundant, and it stays necessary even for a reused
+    content, which emits no event at all.
 
     Artifacts are the frozen real packages, so the workbench shows the full extraction:
     lesson inventory, verbatim bodies and activity counts, plus the declared metadata.
@@ -1874,7 +1932,8 @@ def run_seed_demo(reset: bool) -> int:
     _seed_demo_acceptance(assessor_ids["admin@local.dev"])
 
     generator_id = _seed_demo_generator()
-    # New registrations auto-profile via the policy.
+    # The automatic policy declines these: their locators are relative to the frozen fixture
+    # tree, and it fetches over http only (ADR-0029 §2). Hence the explicit step below.
     content_ids = _seed_demo_contents(generator_id)
     profiled = _seed_demo_profiles(content_ids)
     campaign_id = _seed_demo_campaign(list(content_ids.values()))
@@ -1894,6 +1953,18 @@ def run_seed_demo(reset: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Logging first: the dispatcher swallows a failing policy into `logger.exception`, and
+    # with no configured root logger that traceback never reaches the console — the message
+    # arrives via logging's lastResort, the stack does not. stderr because results go to
+    # stdout and some of them are piped; ASCII-only format because a Windows cp1252 console
+    # raises UnicodeEncodeError on anything else (see main.py). Not behind a flag: the defect
+    # being fixed IS the invisibility, and an opt-in means whoever needed the traceback did
+    # not have it on the run that mattered.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,
+    )
     # The CLI is its own process and wires the SAME policies as the API: one list, so the
     # two cannot drift again (ADR-0029 §1).
     register_all_policies(dispatcher)
