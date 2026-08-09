@@ -1965,6 +1965,11 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
         stream=sys.stderr,
     )
+    # INFO is where this codebase reports policy outcomes (a golden reference established, a
+    # content completed) — worth seeing. httpx reports every single request at INFO too, and
+    # profiling fetches one file per lesson: on a batch that is hundreds of lines of transport
+    # noise burying exactly the errors this configuration exists to surface.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     # The CLI is its own process and wires the SAME policies as the API: one list, so the
     # two cannot drift again (ADR-0029 §1).
     register_all_policies(dispatcher)
