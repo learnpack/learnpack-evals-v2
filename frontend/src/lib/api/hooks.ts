@@ -33,7 +33,8 @@ import type {
   ProfileResponse,
   ProgressReport,
   RegisterBriefRequest,
-  RegisterContentRequest,
+  RegisterBySourceRequest,
+  RegisterBySourceResponse,
   RegisterGeneratorArtifactRequest,
   RegisterGeneratorRequest,
   ScoresReport,
@@ -61,6 +62,7 @@ export const queryKeys = {
   myAssignments: ["me", "assignments"] as const,
   assignment: (id: Uuid) => ["assignments", id] as const,
   contents: ["admin", "contents"] as const,
+  packageFormats: ["admin", "contents", "formats"] as const,
   generators: ["admin", "generators"] as const,
   generatorArtifacts: (id: Uuid) => ["admin", "generators", id, "artifacts"] as const,
   briefs: ["admin", "briefs"] as const,
@@ -144,12 +146,25 @@ export function useContents() {
   });
 }
 
-export function useCreateContent() {
+/** The package formats discovery supports — what the form offers (ADR-0027). */
+export function usePackageFormats() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.packageFormats,
+    queryFn: () => api<string[]>("/admin/contents/formats"),
+  });
+}
+
+/** Register by mechanically discovering a package source (ADR-0027). */
+export function useRegisterBySource() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: RegisterContentRequest) =>
-      api<ContentResponse>("/admin/contents", { method: "POST", body }),
+    mutationFn: (body: RegisterBySourceRequest) =>
+      api<RegisterBySourceResponse>("/admin/contents/register-by-source", {
+        method: "POST",
+        body,
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
   });
 }
