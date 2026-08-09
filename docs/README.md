@@ -34,6 +34,7 @@ to do with a note when its task ends — are in `../CLAUDE.md`, section **Docume
 **Current (reference)**
 - `ARCHITECTURE.md` — non-negotiable invariants.
 - `GLOSSARY.md` — ubiquitous language.
+- `DATA_MODEL.md` — logical Postgres schema (tables, ownership, FK vs app-level refs).
 - `MEASUREMENT.md` — where a `ComputedMetric` is computed, what each one means, and the evidence
   behind every threshold — including the measures that were tried and rejected.
 
