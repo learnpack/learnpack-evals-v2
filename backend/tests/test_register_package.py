@@ -22,7 +22,6 @@ from app.modules.evaluand_registry.application.register_package_from_source impo
     RegisterPackageFromSourceCommand,
 )
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
-from app.modules.evaluand_registry.infrastructure.fetchers import FilesystemArtifactFetcher
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
     FilesystemPackageRoot,
     PackageDiscovery,
@@ -34,6 +33,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
 )
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
+from app.shared.infrastructure.fetchers import FilesystemFetcher
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 
@@ -52,7 +52,7 @@ def use_case(session, root_factory=fixtures_root) -> RegisterPackageFromSource:
         generators=SqlAlchemyGeneratorVersionRepository(session),
         publisher=uow.events,
         uow=uow,
-        brief_intake=PackageBriefIntake(FilesystemArtifactFetcher(FIXTURES)),
+        brief_intake=PackageBriefIntake(FilesystemFetcher(FIXTURES)),
     )
     return RegisterPackageFromSource(PackageDiscovery(root_factory), register)
 

@@ -18,7 +18,7 @@ from typing import Any, Protocol
 
 from app.modules.evaluand_registry.application.ports import DerivedBrief
 from app.modules.evaluand_registry.infrastructure import acl_learnpack
-from app.modules.evaluand_registry.infrastructure.fetchers import BriefIntakeError
+from app.shared.infrastructure.fetchers import FetchError
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,6 @@ class PackageBriefIntake:
             return None
         try:
             return intake.derive(self._fetcher.fetch(locator))
-        except (BriefIntakeError, ValueError, json.JSONDecodeError) as exc:
+        except (FetchError, ValueError, json.JSONDecodeError) as exc:
             logger.warning("brief intake failed for '%s': %s — registered absent", locator, exc)
             return None
