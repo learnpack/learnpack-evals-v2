@@ -9,10 +9,8 @@ row after a real `POST /admin/contents` proves the synchronous wiring works.
 import pytest
 from sqlalchemy import text
 
-from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
 from app.modules.content_profiling.infrastructure.policies import on_content_version_registered
 from app.shared.domain.events import DomainEvent
-from app.shared.domain.ids import new_id
 
 
 @pytest.fixture
@@ -24,21 +22,7 @@ def admin(as_user, cleanup, promote, unique):
     return client
 
 
-@pytest.fixture
-def accept(cleanup, session):
-    adapter = ADAPTERS_BY_FORMAT["LearnpackV1"]
-    cleanup["acceptances"].append(("LearnpackV1", adapter.adapter_version))
-    session.execute(
-        text(
-            "INSERT INTO extraction_acceptances (package_format, adapter_version, accepted_by) "
-            "VALUES ('LearnpackV1', :version, :by) ON CONFLICT DO NOTHING"
-        ),
-        {"version": adapter.adapter_version, "by": new_id()},
-    )
-    session.commit()
-
-
-def register(admin, cleanup, unique, suffix: str):
+def register(admin, cleanup, unique, suffix: str, artifacts: list | None = None):
     content_id = admin.post(
         "/admin/contents",
         json={
@@ -46,6 +30,7 @@ def register(admin, cleanup, unique, suffix: str):
             "external_id": f"course-{suffix}-{unique}",
             "consumable_url": "https://policy-test.learn-pack.com/",
             "generator_version_id": None,
+            "artifacts": artifacts or [],
         },
     ).json()["content_id"]
     cleanup["contents"].append(content_id)
@@ -63,6 +48,16 @@ def profiled_events(session, content_id) -> int:
     return session.execute(
         text(
             "SELECT count(*) FROM events WHERE event_type = 'ContentProfiled' "
+            "AND payload->>'contentId' = :id"
+        ),
+        {"id": str(content_id)},
+    ).scalar_one()
+
+
+def profiling_failed_events(session, content_id) -> int:
+    return session.execute(
+        text(
+            "SELECT count(*) FROM events WHERE event_type = 'ContentProfilingFailed' "
             "AND payload->>'contentId' = :id"
         ),
         {"id": str(content_id)},
@@ -102,7 +97,7 @@ def test_without_acceptance_registration_profiles_nothing(
 
 
 def test_with_acceptance_registration_profiles_synchronously_and_replay_is_idempotent(
-    admin, cleanup, unique, session, namespace, accept
+    admin, cleanup, unique, session, namespace, accepted_extraction
 ):
     content_id = register(admin, cleanup, unique, "accepted")
 
@@ -114,5 +109,44 @@ def test_with_acceptance_registration_profiles_synchronously_and_replay_is_idemp
     on_content_version_registered(event)
     on_content_version_registered(event)
     session.commit()
+    assert profile_count(session, content_id) == 1
+    assert profiled_events(session, content_id) == 1
+
+
+def test_a_package_whose_locators_are_not_http_is_not_auto_profiled(
+    admin, cleanup, unique, session, namespace, accepted_extraction
+):
+    """The automatic path fetches over http only (ADR-0029 §2). A filesystem-rooted package —
+    the seeder's fixtures, `import-learnpack --base-dir` — is declined in silence: no row and
+    no event, because a policy-written `failed` profile would be stuck on a readable package
+    (the replay guard refuses ok AND failed)."""
+    content_id = register(
+        admin,
+        cleanup,
+        unique,
+        "relative-locators",
+        artifacts=[
+            {"kind": "manifest", "locator": "bare-course/learn.json"},
+            {"kind": "package_manifest", "locator": "bare-course/.learn/package-manifest.json"},
+        ],
+    )
+
+    assert profile_count(session, content_id) == 0
+    assert profiling_failed_events(session, content_id) == 0
+
+    # And the replay finds the same answer, so nothing accumulates on a retry.
+    on_content_version_registered(stored_registration_event(session, content_id))
+    session.commit()
+    assert profile_count(session, content_id) == 0
+
+
+def test_a_package_with_no_artifacts_still_profiles(
+    admin, cleanup, unique, session, namespace, accepted_extraction
+):
+    """The locator guard quantifies over the artifacts, so an empty package passes it
+    vacuously (ADR-0029 §4): nothing to reach, all-`absent` entries, no network. `any` or an
+    early return on an empty tuple would delete this behaviour."""
+    content_id = register(admin, cleanup, unique, "no-artifacts")
+
     assert profile_count(session, content_id) == 1
     assert profiled_events(session, content_id) == 1
