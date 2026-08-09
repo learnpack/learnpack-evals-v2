@@ -12,3 +12,10 @@ courses/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Task (go-task) cache
+.task/
+
+# AI agents
+.claude/
+.cursor/
