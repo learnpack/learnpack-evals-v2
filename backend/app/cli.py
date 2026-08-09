@@ -1083,7 +1083,8 @@ def run_import_learnpack(seed_file: Path, base_dir: Path | None = None) -> int:
                 command = RegisterContentVersionCommand(
                     package_format=raw["package_format"],
                     external_id=raw["external_id"],
-                    consumable_url=raw["consumable_url"],
+                    # Optional (ADR-0028): an entry with no deployed instance omits the key.
+                    consumable_url=raw.get("consumable_url"),
                     version=str(raw.get("version", "1")),
                     artifacts=raw.get("artifacts", []),
                     brief_id=UUID(raw["brief_id"]) if raw.get("brief_id") else None,
@@ -1121,8 +1122,9 @@ COURSES_DIR = REPO_ROOT / "courses"
 
 def _course_root(course_dir: Path) -> FilesystemPackageRoot:
     """A local course's root: locators are minted into the dev mount, so the registered
-    package behaves exactly like an http-served one (brief intake, profiling, console).
-    The course must live under `courses/` — that is the tree the mount serves."""
+    package behaves exactly like an http-served one for fetching (brief intake, profiling).
+    The course must live under `courses/` — that is the tree the mount serves. It does not
+    make the course consumable: a local course registers with no consumable URL (ADR-0028)."""
     try:
         relative = course_dir.resolve().relative_to(COURSES_DIR.resolve())
     except ValueError:
@@ -1135,9 +1137,9 @@ def _course_root(course_dir: Path) -> FilesystemPackageRoot:
 
 
 def _mount_preflight(root: FilesystemPackageRoot) -> bool:
-    """One GET through the mount before registering. Registered locators and
-    `consumable_url` point into it, so registering with the API down would not fail — it
-    would degrade into absent briefs and failing profiles. Loud refusal instead."""
+    """One GET through the mount before registering. Registered locators point into it, so
+    registering with the API down would not fail — it would degrade into absent briefs and
+    failing profiles. Loud refusal instead."""
     locator = root.locator_for(MANIFEST_PATH)
     try:
         HttpFetcher().fetch(locator)
@@ -1145,9 +1147,9 @@ def _mount_preflight(root: FilesystemPackageRoot) -> bool:
     except FetchError as exc:
         print(
             f"the dev mount does not serve this course ({exc}).\n"
-            "Start the API with AUTH_MODE=local: registered locators and consumable_url "
-            f"point into {get_settings().local_packages_base_url}, so without it the brief "
-            "intake and profiling would fail silently later.",
+            "Start the API with AUTH_MODE=local: registered locators point into "
+            f"{get_settings().local_packages_base_url}, so without it the brief intake and "
+            "profiling would fail silently later.",
             file=sys.stderr,
         )
         return False
@@ -1551,6 +1553,10 @@ DEMO_ASSESSORS: list[tuple[str, str, Role]] = [
 # with AI) would contaminate the declared surface the instrument evaluates — the profiles
 # must read `absent`, which is the true finding about this generator. That input-side
 # information belongs to the GenerationBrief (pending intake — see STATUS).
+#
+# The URLs below are *declarations* of a real deployment (ADR-0028), not overrides of
+# something discovery found: `_demo_root` prefixes locators with the course slug, which is no
+# URL at all. They are why the demo keeps a working iframe while local courses do not.
 DEMO_CONTENTS: list[dict[str, Any]] = [
     {
         "package_format": "LearnpackV1",
@@ -1947,7 +1953,8 @@ def main(argv: list[str] | None = None) -> int:
         "--consumable-url",
         dest="consumable_url",
         default=None,
-        help="override the discovered consumable URL",
+        help="declare the http(s) URL of a deployed, human-consumable instance of this "
+        "course; a local course usually has none (ADR-0028)",
     )
     register_parser.add_argument(
         "--all",
@@ -2133,7 +2140,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     "--all takes each course's source and generator from the courses/ "
                     "tree; --source/--generator/--version/--consumable-url are for single "
-                    "registration",
+                    "registration (one URL cannot declare a deployment for many courses)",
                     file=sys.stderr,
                 )
                 return 1

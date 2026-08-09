@@ -24,8 +24,13 @@ generator identities. The special folder `unknown` registers its courses with no
 ## Usage
 
 Prerequisites (from `backend/`): local DB up, `.env` with `AUTH_MODE=local`, and the
-dev API running — it serves this tree at `/packages`, so registered locators and
-`consumable_url` are honest http URLs.
+dev API running — it serves this tree at `/packages`, so registered **locators** are
+fetchable http URLs (that is what brief intake and profiling need).
+
+Dropping a course here does not deploy it, so a course registered from this tree declares
+**no consumable URL** (ADR-0028): it can be evaluated automatically, and the admin console
+marks it *not deployed* and refuses to assign it for human scoring. If the course is in fact
+deployed somewhere, declare it with `--consumable-url <https://…>`.
 
 ```bash
 cd backend

@@ -45,7 +45,9 @@ class PackageArtifactDTO:
 class ContentPackageDTO:
     content_id: UUID
     package_format: str
-    consumable_url: str
+    # None when no deployed, human-consumable instance is declared (ADR-0028). Undefaulted
+    # on purpose: inputs may omit it, outputs always state it — possibly null.
+    consumable_url: str | None
     artifacts: list[PackageArtifactDTO]
 
 
@@ -55,7 +57,9 @@ class ContentSnapshot:
     package_format: str
     external_id: str
     version: str
-    consumable_url: str
+    # None when no deployed, human-consumable instance is declared (ADR-0028): the content is
+    # a complete evaluand for the automated path, and cannot be handed to a human evaluator.
+    consumable_url: str | None
     brief_id: UUID | None = None
     generator_version_id: UUID | None = None
     edit_provenance: str = "unknown"

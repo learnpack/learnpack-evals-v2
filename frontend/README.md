@@ -108,9 +108,12 @@ shows up, check that it still works.
 
 ## Demo happy path
 
-1. Log in as **admin** → `/admin/contents`: register a course (with a real
-   `consumable_url`; optionally a generator, brief and package artifacts — with the
-   extraction accepted, registering auto-profiles it, visible in `/admin/profiles`).
+1. Log in as **admin** → `/admin/contents`: register a course by **package URL** + generator
+   + provenance — discovery reads the artifact list from the package itself (ADR-0027), so
+   there is nothing to type by hand. With the extraction accepted, registering auto-profiles
+   it, visible in `/admin/profiles`. A course registered from a local source declares no
+   consumable URL (ADR-0028): it shows as *not deployed* and cannot be assigned for human
+   scoring, so use a real deployed course for this walkthrough.
 2. `/admin/campaigns`: new campaign (quorum, courses).
 3. Invite/log in an **evaluator** in Clerk → appears in the picker → assign them the course
    in `/admin/campaigns/[id]`.

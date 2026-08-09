@@ -98,6 +98,30 @@ def test_a_canonical_entry_without_the_key_is_invalid(cleanup, unique, session, 
     assert track(cleanup, session, external_id) is None
 
 
+def test_a_canonical_entry_may_omit_the_consumable_url(cleanup, unique, session, tmp_path):
+    """The contract mirrors the field (ADR-0028): absent means no deployed instance is
+    declared. Deliberately unlike `generator_version_id` just above, whose key is required —
+    there, silence loses the accumulation key; here it costs an empty panel."""
+    external_id = f"undeployed-{unique}"
+    path = write(
+        tmp_path,
+        [
+            {
+                "package_format": "LearnpackV1",
+                "external_id": external_id,
+                "generator_version_id": None,
+            }
+        ],
+    )
+
+    assert run_import_learnpack(path) == 0
+    assert track(cleanup, session, external_id)
+    stored = session.execute(
+        text("SELECT consumable_url FROM contents WHERE external_id = :e"), {"e": external_id}
+    ).scalar()
+    assert stored is None
+
+
 def test_a_canonical_entry_may_declare_unknown(cleanup, unique, session, tmp_path):
     external_id = f"canonical-unknown-{unique}"
     path = write(

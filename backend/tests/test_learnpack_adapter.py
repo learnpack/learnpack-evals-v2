@@ -45,7 +45,6 @@ def fixture_package(course: str) -> PackageDTO:
     return PackageDTO(
         content_id=new_id(),
         package_format="LearnpackV1",
-        consumable_url=f"https://{course}.learn-pack.com/",
         artifacts=tuple(artifacts),
     )
 
@@ -175,7 +174,6 @@ def test_package_without_artifacts_yields_absent_lesson_data(adapter, fetcher):
     package = PackageDTO(
         content_id=new_id(),
         package_format="LearnpackV1",
-        consumable_url="https://no-artifacts.learn-pack.com/",
     )
     entries, extras = adapter.extract(package, fetcher)
     assert {e.data_requirement_id for e in entries} == set(CAPABILITIES)
@@ -261,7 +259,6 @@ def test_a_course_without_assessment_reports_absent_not_empty(adapter, fetcher):
         PackageDTO(
             content_id=package.content_id,
             package_format=package.package_format,
-            consumable_url=package.consumable_url,
             artifacts=lesson_only,
         ),
         fetcher,
@@ -298,7 +295,6 @@ def test_artifacts_outside_a_lesson_directory_invent_no_lesson(adapter, fetcher)
         PackageDTO(
             content_id=package.content_id,
             package_format=package.package_format,
-            consumable_url=package.consumable_url,
             artifacts=package.artifacts + strays,
         ),
         fetcher,
@@ -323,7 +319,6 @@ def test_images_and_solutions_are_not_exercises(adapter, fetcher):
         PackageDTO(
             content_id=package.content_id,
             package_format=package.package_format,
-            consumable_url=package.consumable_url,
             artifacts=package.artifacts + noise,
         ),
         fetcher,

@@ -62,14 +62,26 @@ export function AssignForm({
     <form onSubmit={submit} className="space-y-4">
       <div className="space-y-1.5">
         <Label>Course</Label>
+        {/* Disabled with its reason, not filtered out (ADR-0028): an absent option reads as
+            a bug, a disabled one reads as a fact. This is the act that would put a human in
+            front of nothing, so this is where the refusal belongs — advisory for now, the
+            server does not enforce it (STATUS). */}
         <Select value={contentId} onChange={(e) => setContentId(e.target.value)}>
           <option value="">Select a course…</option>
           {courses.map((c) => (
-            <option key={c.content_id} value={c.content_id}>
+            <option key={c.content_id} value={c.content_id} disabled={!c.consumable_url}>
               {c.external_id} · v{c.version}
+              {c.consumable_url ? "" : " — not deployed"}
             </option>
           ))}
         </Select>
+        {courses.some((c) => !c.consumable_url) ? (
+          <p className="text-xs text-muted-foreground">
+            Courses marked <span className="font-medium">not deployed</span> declare no
+            consumable URL, so there is nothing for an evaluator to open. They can still be
+            evaluated automatically.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-1.5">

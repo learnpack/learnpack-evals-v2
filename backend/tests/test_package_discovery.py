@@ -164,13 +164,26 @@ def test_the_brief_intake_finds_the_discovered_syllabus():
     assert LearnpackV1BriefIntake().locate(rows) == "intro/.learn/initialSyllabus.json"
 
 
-def test_roots_declare_their_consumable_url():
+def test_only_an_http_root_declares_a_consumable_url():
+    """ADR-0028: the served root of a LearnPack package IS the running course, so an http
+    root declares one. A filesystem root never does — the dev mount makes the locators
+    fetchable, which is a transport arrangement, not a deployment."""
     assert HttpPackageRoot("https://x.learn-pack.com/").consumable_url == "https://x.learn-pack.com"
     assert (
         FilesystemPackageRoot(
             FIXTURES, locator_base="http://localhost:8000/packages/g/c"
         ).consumable_url
-        == "http://localhost:8000/packages/g/c"
+        is None
     )
     assert FilesystemPackageRoot(FIXTURES, locator_base="bare-course").consumable_url is None
     assert FilesystemPackageRoot(FIXTURES).consumable_url is None
+
+
+def test_a_filesystem_discovery_yields_no_consumable_url():
+    """The seam one level up from the root: what reaches `DiscoveredPackage`, and hence
+    registration, carries no URL even when the locators are honest mount URLs."""
+    discovered = discover("bare-course", locator_base="http://localhost:8000/packages/g@1/c")
+    assert discovered.consumable_url is None
+    assert all(
+        a.locator.startswith("http://localhost:8000/packages/") for a in discovered.artifacts
+    )

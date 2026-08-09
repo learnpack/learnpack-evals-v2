@@ -9,10 +9,7 @@ rediscovering an already-registered, unchanged package is a reported no-op.
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.modules.evaluand_registry.application.ports import (
-    PackageDiscoveryError,
-    PackageDiscoveryPort,
-)
+from app.modules.evaluand_registry.application.ports import PackageDiscoveryPort
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
@@ -30,7 +27,9 @@ class RegisterPackageFromSourceCommand:
     generator_version_id: UUID | None
     edit_provenance: str = "unknown"
     version: str = DEFAULT_VERSION
-    # Overrides the discovered URL (the seeder keeps its declared learn-pack.com URLs).
+    # Declares a deployed, human-consumable instance (ADR-0028) — not an override of a
+    # discovered value. Discovery supplies one only when the root IS the deployed course (an
+    # http root); a filesystem source never does, and registers without one.
     consumable_url: str | None = None
 
 
@@ -49,12 +48,8 @@ class RegisterPackageFromSource:
     def __call__(self, command: RegisterPackageFromSourceCommand) -> PackageRegistration:
         discovered = self._discovery.discover(command.package_format, command.source_locator)
 
+        # A declaration beats what discovery inferred; neither is required (ADR-0028).
         consumable_url = command.consumable_url or discovered.consumable_url
-        if consumable_url is None:
-            raise PackageDiscoveryError(
-                f"'{command.source_locator}' yields no consumable URL — the source is not "
-                "http-served and no override was given"
-            )
 
         try:
             content = self._register(

@@ -66,6 +66,8 @@ class DiscoveredPackage:
     package_format: str
     external_id: str
     title: str | None
+    # Only a root that IS the deployed course declares one (ADR-0028): an http root does, a
+    # filesystem root never does — serving the bytes is transport, not deployment.
     consumable_url: str | None
     artifacts: tuple[DiscoveredArtifact, ...]
     content_hash: str

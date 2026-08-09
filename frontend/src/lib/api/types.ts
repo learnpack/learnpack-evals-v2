@@ -19,7 +19,8 @@ export interface ContentResponse {
   package_format: string;
   external_id: string;
   version: string;
-  consumable_url: string;
+  /** Null when no deployed, human-consumable instance is declared (ADR-0028). */
+  consumable_url: string | null;
   brief_id: Uuid | null;
   generator_version_id: Uuid | null;
   edit_provenance: EditProvenance;
@@ -41,7 +42,7 @@ export interface PackageArtifact {
 export interface ContentPackageResponse {
   content_id: Uuid;
   package_format: string;
-  consumable_url: string;
+  consumable_url: string | null;
   artifacts: PackageArtifact[];
 }
 
@@ -187,7 +188,7 @@ export interface AssignmentDetail {
   assignment_id: Uuid;
   status: string;
   content_id: Uuid;
-  consumable_url: string;
+  consumable_url: string | null;
   instrument_version_id: string;
   scale_min: number;
   scale_max: number;

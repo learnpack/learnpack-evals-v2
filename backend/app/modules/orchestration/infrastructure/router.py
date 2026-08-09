@@ -109,7 +109,10 @@ class AssignmentDetailResponse(BaseModel):
     assignment_id: UUID
     status: str
     content_id: UUID
-    consumable_url: str
+    # Null when the content declares no deployed instance (ADR-0028): the evaluator screen
+    # states the absence. Nothing here refuses the assignment yet — the console prevents it
+    # and the enforced guard is deferred (STATUS).
+    consumable_url: str | None
     instrument_version_id: str
     scale_min: int
     scale_max: int

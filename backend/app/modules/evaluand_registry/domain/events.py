@@ -76,6 +76,7 @@ def content_version_registered(content: EducationalContent) -> DomainEvent:
             "packageFormat": content.package_format,
             "externalId": content.external_id,
             "version": content.version,
+            # Null when no deployed, human-consumable instance is declared (ADR-0028).
             "consumableUrl": content.consumable_url,
             # Nullable on purpose: absent brief = recorded absent; null generator = unknown.
             "briefId": str(content.brief_id) if content.brief_id else None,

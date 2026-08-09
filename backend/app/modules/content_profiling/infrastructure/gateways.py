@@ -28,7 +28,6 @@ class RegistryContentGateway:
         return PackageDTO(
             content_id=package.content_id,
             package_format=package.package_format,
-            consumable_url=package.consumable_url,
             artifacts=tuple(
                 ArtifactDTO(kind=a.kind, locator=a.locator, format=a.format)
                 for a in package.artifacts

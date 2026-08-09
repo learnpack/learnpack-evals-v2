@@ -25,7 +25,6 @@ class PackageDTO:
 
     content_id: UUID
     package_format: str
-    consumable_url: str
     artifacts: tuple[ArtifactDTO, ...] = ()
 
 

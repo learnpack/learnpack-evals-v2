@@ -111,14 +111,23 @@ export default function ContentsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <a
-                        href={c.consumable_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                      >
-                        Open <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
+                      {c.consumable_url ? (
+                        <a
+                          href={c.consumable_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          Open <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title="No deployed instance declared: this course can be evaluated automatically, but not by a human."
+                        >
+                          none
+                        </span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

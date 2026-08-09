@@ -54,7 +54,10 @@ class UnknownGeneratorVersion(Exception):
 class RegisterContentVersionCommand:
     package_format: str
     external_id: str
-    consumable_url: str
+    # Declares a deployed, human-consumable instance (ADR-0028). Defaulted, unlike the
+    # generator link below: silence here means "none declared", it is visible in the console
+    # and it costs an empty panel — not an accumulation key the system cannot recover.
+    consumable_url: str | None = None
     version: str = DEFAULT_VERSION
     # {kind, locator, format?} rows — the ContentPackage (open kinds; ADR-0009 evidence).
     artifacts: list[dict[str, Any]] = field(default_factory=list)

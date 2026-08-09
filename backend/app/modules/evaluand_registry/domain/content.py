@@ -35,12 +35,18 @@ class EducationalContent:
     `brief_id`/`generator_version_id` are nullable on purpose: an absent brief is
     *recorded* absent, and a null generator means `unknown` — valid for content-level
     judgments, excluded from generator-level accumulation (design 12 §Registry).
+
+    `consumable_url` is nullable for a different reason (ADR-0028): it declares that a
+    deployed, human-consumable instance of this version exists — a fact about the world
+    outside this system, which no discovery can produce. Without it the version is still a
+    complete evaluand: the profile is built from the artifact locators, never from this URL.
+    What a null closes is the human path.
     """
 
     id: UUID
     package_format: str
     external_id: str
-    consumable_url: str
+    consumable_url: str | None = None
     version: str = DEFAULT_VERSION
     package: ContentPackage = field(default_factory=ContentPackage)
     brief_id: UUID | None = None
@@ -61,11 +67,13 @@ class EducationalContent:
             raise InvalidContent("external_id is required")
         if not self.version or not self.version.strip():
             raise InvalidContent("version is required")
-        # The evaluator has to be able to consume the content (07-define.md).
-        if not self.consumable_url or not self.consumable_url.strip():
-            raise InvalidContent("consumable_url is required")
-        if not self.consumable_url.startswith(("http://", "https://")):
-            raise InvalidContent("consumable_url must be an http(s) URL")
+        # A declaration that a deployed, human-consumable instance exists (ADR-0028) — not a
+        # way to reach the package's bytes; those are the artifact locators. None declares
+        # none; a blank is never coerced into one, so a caller that means "none" says so.
+        if self.consumable_url is not None and not self.consumable_url.startswith(
+            ("http://", "https://")
+        ):
+            raise InvalidContent("consumable_url must be an http(s) URL when declared")
         if self.edit_provenance not in EDIT_PROVENANCES:
             raise InvalidContent(f"edit_provenance must be one of {', '.join(EDIT_PROVENANCES)}")
 
