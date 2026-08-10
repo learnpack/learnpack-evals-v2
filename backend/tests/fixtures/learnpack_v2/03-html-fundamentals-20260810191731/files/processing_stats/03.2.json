@@ -1,0 +1,32 @@
+{
+  "lesson_id": "03.2",
+  "lesson_slug": "03.2-nesting-and-indentation-organizing-your-code",
+  "total_components": 2,
+  "component_type_counts": {
+    "open_text_question": 2
+  },
+  "component_retries": [
+    {
+      "type": "open_text_question",
+      "instance": 0,
+      "reason": [
+        "question_text is required and must be a non-empty string",
+        "eval_criteria is required and must be a non-empty string (eval attribute)",
+        "example_answers must be a list"
+      ],
+      "resolved": true
+    },
+    {
+      "type": "open_text_question",
+      "instance": 1,
+      "reason": [
+        "question_text is required and must be a non-empty string",
+        "eval_criteria is required and must be a non-empty string (eval attribute)",
+        "example_answers must be a list"
+      ],
+      "resolved": true
+    }
+  ],
+  "component_soft_warnings": [],
+  "lesson_soft_warnings": []
+}

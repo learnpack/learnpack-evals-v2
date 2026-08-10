@@ -1,0 +1,12 @@
+{
+  "lesson_id": "01.0",
+  "lesson_slug": "01.0-what-is-html",
+  "total_components": 2,
+  "component_type_counts": {
+    "mermaid_diagram": 1,
+    "fill_in_the_blank": 1
+  },
+  "component_retries": [],
+  "component_soft_warnings": [],
+  "lesson_soft_warnings": []
+}

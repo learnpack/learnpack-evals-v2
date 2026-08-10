@@ -58,5 +58,31 @@ FORMAT_CASES: dict[str, FormatCase] = {
                 }
             ),
         ),
+        FormatCase(
+            package_format="LearnpackV2",
+            fixture_dir=FIXTURES / "learnpack_v2" / "03-html-fundamentals-20260810191731",
+            # Composed from what the run declares about itself — the tree carries no slug.
+            # Deliberately not the directory name, which the fixture still spells out.
+            expected_external_id="03-html-fundamentals-20260810184810",
+            expected_artifact_kinds=frozenset(
+                {
+                    "run_manifest",
+                    "user_intent",
+                    "course_value",
+                    "concept_graph",
+                    "coverage_check",
+                    "course_brief",
+                    "lesson_plan",
+                    "lesson_brief",
+                    "lesson_stats",
+                    "lesson_content",
+                }
+            ),
+            # The seed the run was started from, embedded verbatim.
+            expects_brief=True,
+            # No extraction adapter yet (runbook step 3): registration and dedupe work,
+            # profiles are simply not built.
+            expected_capabilities=None,
+        ),
     )
 }

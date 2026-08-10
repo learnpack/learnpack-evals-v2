@@ -1,0 +1,106 @@
+{
+  "course_title": "HTML Fundamentals: Building Web Page Structure",
+  "course_duration_minutes": 30,
+  "language": "en",
+  "lessons": [
+    {
+      "id": "00.0",
+      "title": "Welcome to HTML Fundamentals",
+      "type": "READ",
+      "module_number": 0,
+      "duration_minutes": 1,
+      "concept_covered": "welcome",
+      "key_insight": null
+    },
+    {
+      "id": "01.0",
+      "title": "What is HTML?",
+      "type": "READ",
+      "module_number": 1,
+      "duration_minutes": 2,
+      "concept_covered": "HTML as markup language",
+      "key_insight": "HTML is not a programming language — it's a markup language that describes and structures content."
+    },
+    {
+      "id": "01.1",
+      "title": "The HTML Document Structure",
+      "type": "READ",
+      "module_number": 1,
+      "duration_minutes": 2,
+      "concept_covered": "HTML document skeleton",
+      "key_insight": null
+    },
+    {
+      "id": "02.0",
+      "title": "HTML Elements: Opening and Closing Tags",
+      "type": "READ",
+      "module_number": 2,
+      "duration_minutes": 2,
+      "concept_covered": "HTML element syntax",
+      "key_insight": "Every piece of content lives between an opening and closing tag (or inside a self-closing one) — and getting the nesting right is what gives a page structure."
+    },
+    {
+      "id": "02.1",
+      "title": "HTML Attributes: Adding Settings to Elements",
+      "type": "CODE",
+      "module_number": 2,
+      "duration_minutes": 4,
+      "concept_covered": "HTML attributes",
+      "key_insight": "Attributes are the 'settings' on an HTML element — without them, an image has no source and a link has no destination."
+    },
+    {
+      "id": "02.2",
+      "title": "Headings and Paragraphs: Writing Text Content",
+      "type": "CODE",
+      "module_number": 2,
+      "duration_minutes": 4,
+      "concept_covered": "Heading and paragraph elements",
+      "key_insight": null
+    },
+    {
+      "id": "03.0",
+      "title": "Linking with Anchor Elements",
+      "type": "CODE",
+      "module_number": 3,
+      "duration_minutes": 4,
+      "concept_covered": "Anchor elements",
+      "key_insight": null
+    },
+    {
+      "id": "03.1",
+      "title": "Embedding Images",
+      "type": "CODE",
+      "module_number": 3,
+      "duration_minutes": 4,
+      "concept_covered": "Image elements",
+      "key_insight": null
+    },
+    {
+      "id": "03.2",
+      "title": "Nesting and Indentation: Organizing Your Code",
+      "type": "QUIZ",
+      "module_number": 3,
+      "duration_minutes": 3,
+      "concept_covered": "Nesting and indentation",
+      "key_insight": null
+    },
+    {
+      "id": "04.0",
+      "title": "Building a Complete HTML Page",
+      "type": "CODE",
+      "module_number": 4,
+      "duration_minutes": 3,
+      "concept_covered": "Complete HTML page construction",
+      "key_insight": null
+    },
+    {
+      "id": "04.1",
+      "title": "Course Wrap-Up and Next Steps",
+      "type": "READ",
+      "module_number": 4,
+      "duration_minutes": 1,
+      "concept_covered": "course-outro",
+      "key_insight": null
+    }
+  ]
+}

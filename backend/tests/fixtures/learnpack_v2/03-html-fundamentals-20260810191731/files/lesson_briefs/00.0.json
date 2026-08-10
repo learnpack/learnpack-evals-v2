@@ -1,0 +1,13 @@
+{
+  "lesson_id": "00.0",
+  "teaching_objective": "After this lesson, the learner can explain what HTML is and why it is used to structure web pages.",
+  "teaching_approach": "Use the analogy of a house blueprint: HTML provides the structure and layout of a web page, just like a blueprint defines the rooms and walls of a house. Emphasize that HTML is not programming but a markup language — it's about describing content, not logic.",
+  "key_points": [
+    "HTML (HyperText Markup Language) is the standard language for creating web pages.",
+    "HTML is a markup language, not a programming language — it uses tags to describe content.",
+    "This course will teach you how to read and write HTML so you can build your own web pages."
+  ],
+  "exercise": null,
+  "misconceptions": [],
+  "context_so_far": "This is the first lesson. The learner has no prior context from this course."
+}

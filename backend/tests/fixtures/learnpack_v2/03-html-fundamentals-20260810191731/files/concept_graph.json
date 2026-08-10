@@ -1,0 +1,72 @@
+{
+  "concepts": [
+    {
+      "concept": "HTML as markup language",
+      "prerequisites": [],
+      "maps_to_objective_id": "obj-1"
+    },
+    {
+      "concept": "HTML document skeleton",
+      "prerequisites": [
+        "HTML as markup language"
+      ],
+      "maps_to_objective_id": "obj-1"
+    },
+    {
+      "concept": "HTML element syntax",
+      "prerequisites": [
+        "HTML as markup language"
+      ],
+      "maps_to_objective_id": "obj-2"
+    },
+    {
+      "concept": "HTML attributes",
+      "prerequisites": [
+        "HTML element syntax"
+      ],
+      "maps_to_objective_id": "obj-2"
+    },
+    {
+      "concept": "Heading and paragraph elements",
+      "prerequisites": [
+        "HTML element syntax"
+      ],
+      "maps_to_objective_id": "obj-2"
+    },
+    {
+      "concept": "Anchor elements",
+      "prerequisites": [
+        "HTML element syntax",
+        "HTML attributes"
+      ],
+      "maps_to_objective_id": "obj-2"
+    },
+    {
+      "concept": "Image elements",
+      "prerequisites": [
+        "HTML element syntax",
+        "HTML attributes"
+      ],
+      "maps_to_objective_id": "obj-2"
+    },
+    {
+      "concept": "Nesting and indentation",
+      "prerequisites": [
+        "HTML element syntax",
+        "Heading and paragraph elements"
+      ],
+      "maps_to_objective_id": "obj-3"
+    },
+    {
+      "concept": "Complete HTML page construction",
+      "prerequisites": [
+        "HTML document skeleton",
+        "Nesting and indentation",
+        "Anchor elements",
+        "Image elements",
+        "Heading and paragraph elements"
+      ],
+      "maps_to_objective_id": "obj-3"
+    }
+  ]
+}

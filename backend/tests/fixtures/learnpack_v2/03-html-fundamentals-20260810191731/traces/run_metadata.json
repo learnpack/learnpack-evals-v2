@@ -1,0 +1,33 @@
+{
+  "system_name": "learnpack-generator",
+  "system_version": "59a1591-dirty",
+  "started_at": "2026-08-10T18:48:10+00:00",
+  "system_metadata": {
+    "run_info": {
+      "run_label": "03-html-fundamentals",
+      "request_source": "datasets\\seeds\\dataset\\03-html-fundamentals.md",
+      "seed_id": "03-html-fundamentals"
+    }
+  },
+  "completeness": {
+    "complete": true,
+    "generated_modules": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "planned_modules": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "statistics": {
+    "total_cost_usd": 0.023369,
+    "duration_seconds": 1268.86
+  }
+}
