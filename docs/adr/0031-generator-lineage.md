@@ -135,8 +135,13 @@ gates. This is the same move ADR-0030 §3 made for the metadata correction.
   in SQL, because the repository ports in this context return domain objects without exception.
   Bounded, not free — the escape is named above.
 - (−) The migration folds pre-existing names that differ only in casing or surrounding whitespace
-  into one lineage, keeping the earliest-declared spelling. That is deliberate and it is data
-  loss: nothing records that a row once said otherwise.
+  into one lineage, keeping the earliest-declared spelling. Two rows could differ that way because
+  `name` is plain text and the old unique constraint compared byte for byte. The folding is
+  deliberate, and the discarded spelling stops being queryable state — it survives only as the
+  `name` inside the `GeneratorVersionRegistered` row of the append-only outbox, which is a past
+  fact and not something anything reads. Where the fold would instead collide on
+  `(generatorId, version)`, the migration refuses rather than choose which registration was the
+  real one.
 - (−) `docs/design/12` and `13` keep describing `GeneratorVersion` as `{id, name, version}`. They
   are frozen snapshots and are not corrected; this ADR is what supersedes them.
 
