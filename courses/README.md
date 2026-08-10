@@ -1,8 +1,8 @@
 # Local courses (dev intake — ADR-0027)
 
-Drop downloaded LearnpackV1 course packages here to register and evaluate them locally.
-Everything in this directory except this README is **gitignored**: course content is data,
-never part of the repo.
+Drop downloaded course packages here to register and evaluate them locally, in any package
+format the backend supports. Everything in this directory except this README is
+**gitignored**: course content is data, never part of the repo.
 
 ## Layout
 
@@ -46,6 +46,11 @@ uv run python -m app.cli register-package \
 # everything under courses/<name>@<version>/ and courses/unknown/
 uv run python -m app.cli register-package --all
 ```
+
+The folder name declares the generator, never the **format**: `--format` does that, and it
+defaults to `LearnpackV1`. A course in any other format needs it passed, and since `--all`
+applies one `--format` to the whole tree, a tree holding several formats is registered one
+format per run.
 
 Re-importing an unchanged course is a no-op (content hash); a changed course under the same
 declared version is refused — pass `--version` to register it as a new version.

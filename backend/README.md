@@ -311,9 +311,17 @@ uv run python -m app.cli register-generator-version   --generator-name learnpack
 uv run python -m app.cli register-package --source https://my-course.learn-pack.com --generator <uuid|unknown>
 uv run python -m app.cli register-package --source ../courses/unknown/my-course --generator unknown
 
+# a course in any other package format — `--format` defaults to LearnpackV1
+uv run python -m app.cli register-package --source ../courses/gen@2.0.0/a-run --generator <uuid> --format LearnpackV2
+
 # every course under courses/<name>@<version>/ and courses/unknown/ (batch)
 uv run python -m app.cli register-package --all
 ```
+
+`--format` names the source's `PackageFormat` and **defaults to `LearnpackV1`**, so a package
+in any other format needs it spelled out — discovery would otherwise read it with the wrong
+adapter and refuse it. `--all` takes one `--format` for the whole tree, so a `courses/` tree
+holding more than one format is registered one format per run.
 
 Local sources need the dev API running (`AUTH_MODE=local`): it serves the repo's
 gitignored `courses/` tree at `/packages` (base URL: `LOCAL_PACKAGES_BASE_URL`, default
@@ -394,10 +402,15 @@ Rules that are easy to miss:
   deployment).
 
 **You can stop here and ship.** After this step: the format appears in
-`GET /admin/contents/formats` and in the admin form's selector; `register-package` works;
-re-imports dedupe by content hash; the brief registers absent; profiles are simply not
-built yet. In your `FormatCase`, `expected_capabilities=None` says exactly this — the
-extraction tests skip instead of failing.
+`GET /admin/contents/formats` and in the admin form's selector; `register-package --format
+<name>` works; re-imports dedupe by content hash; the brief registers absent; profiles are
+simply not built yet. In your `FormatCase`, `expected_capabilities=None` says exactly this —
+the extraction tests skip instead of failing.
+
+To try it against a real course you need a generator to declare, which step 6 only registers
+later. Declare `--generator unknown` instead: the state is a legitimate declaration and it is
+repairable — `attribute-generator` links the course once the lineage exists, exactly once
+(ADR-0024).
 
 ### Step 3 — Extraction adapter (required for any evaluation)
 
@@ -427,6 +440,12 @@ embed the instruction they were generated from (LearnpackV1:
 a `DerivedBrief`. Intake is best-effort and non-blocking (ADR-0022): any miss logs and
 registers the brief absent — a valid state, not an error. If your format carries nothing,
 skip this step entirely; skipping is correct.
+
+If the commission is **free text** rather than a structured payload (LearnpackV2 embeds the
+generation seed verbatim), `derive()` has to say for itself what "not a commission" looks
+like: a parser rejects a corrupt payload for you, and free text has no parse step to fail.
+The kit probes exactly this, so decide what an unreadable text document is — empty, control
+bytes, undecodable — and return `None` for it.
 
 ### Step 5 — Make the contract kit green
 
@@ -473,6 +492,11 @@ Domain and application layers of any module · the ports · the events · the as
 logic · the frontend (the form reads formats from the API) · migrations. If a step seems
 to require touching one of these, stop: either the step is wrong or it needs an ADR
 first.
+
+**What you may well touch:** `app/cli.py`. It is the composition root, and the local intake
+path in it has been written against one format at a time before. A helper that names a
+specific format's file is a bug the next format uncovers, not a rule you have to work
+around — fix it there.
 
 ## Modules
 
