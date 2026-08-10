@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from app.modules.evaluand_registry.application.ports import DerivedBrief
-from app.modules.evaluand_registry.infrastructure import acl_learnpack
+from app.modules.evaluand_registry.infrastructure import acl_learnpack, acl_learnpack_v2
 from app.shared.infrastructure.fetchers import FetchError
 
 logger = logging.getLogger(__name__)
@@ -55,8 +55,27 @@ class LearnpackV1BriefIntake:
         return acl_learnpack.derive_brief(payload)
 
 
+class LearnpackV2BriefIntake:
+    """LearnpackV2: the commission is `files/course_brief.md` — the generation seed itself,
+    carried verbatim by the run's output (ADR-0022)."""
+
+    package_format = acl_learnpack_v2.PACKAGE_FORMAT
+
+    def locate(self, artifacts: list[dict[str, Any]]) -> str | None:
+        for artifact in artifacts:
+            locator = artifact.get("locator", "")
+            if artifact.get("kind") == "course_brief" or locator.endswith(
+                acl_learnpack_v2.COURSE_BRIEF_LOCATOR_SUFFIX
+            ):
+                return str(locator)
+        return None
+
+    def derive(self, payload: bytes) -> DerivedBrief | None:
+        return acl_learnpack_v2.derive_brief(payload)
+
+
 BRIEF_INTAKES_BY_FORMAT: dict[str, FormatBriefIntakePort] = {
-    intake.package_format: intake for intake in (LearnpackV1BriefIntake(),)
+    intake.package_format: intake for intake in (LearnpackV1BriefIntake(), LearnpackV2BriefIntake())
 }
 
 

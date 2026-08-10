@@ -1,0 +1,19 @@
+{
+  "goal": "Learn HTML fundamentals to build the structure of web pages",
+  "target_audience": "Complete beginners with no prior web development experience",
+  "difficulty": null,
+  "language": "en",
+  "target_duration_minutes": null,
+  "course_category": null,
+  "learning_outcomes": [],
+  "scope_notes": null,
+  "tone": null,
+  "missing_fields": [
+    "difficulty",
+    "course_category",
+    "target_duration_minutes",
+    "learning_outcomes",
+    "tone",
+    "scope_notes"
+  ]
+}

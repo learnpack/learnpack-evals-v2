@@ -1,0 +1,17 @@
+{
+  "lesson_id": "01.0",
+  "teaching_objective": "After this lesson, the learner can identify the role of HTML as a markup language and distinguish it from a programming language.",
+  "teaching_approach": "Reinforce the 'blueprint' analogy from the welcome lesson but zoom in: just as a blueprint uses symbols (not code) to show where walls and doors go, HTML uses tags (not logic or variables) to show where headings, paragraphs, and images go. Emphasize that 'markup' means adding labels to content so the browser knows how to display it.",
+  "key_points": [
+    "HTML stands for HyperText Markup Language — it uses tags, not instructions, to describe content.",
+    "A markup language adds meaning to text (e.g., telling the browser 'this is a heading'), while a programming language gives the computer instructions to follow.",
+    "You can think of HTML as the 'skeleton' of a web page — it defines the structure, but not the behavior or styling."
+  ],
+  "exercise": null,
+  "misconceptions": [
+    "Beginners often think HTML is like Python or JavaScript — they look for 'if' or 'for' keywords. Clarify that HTML has no logic or variables.",
+    "Some learners believe every HTML element changes the look of text (like making it bold or colorful). Remind them HTML is about structure, not style — that's CSS's job.",
+    "The word 'markup' might be unfamiliar. Explicitly connect it to 'marking up' a document with a highlighter or sticky notes — you're simply labeling content."
+  ],
+  "context_so_far": "## Prior lesson briefs\n### 00.0 — Welcome to HTML Fundamentals\n- Objective: After this lesson, the learner can explain what HTML is and why it is used to structure web pages.\n- Approach: Use the analogy of a house blueprint: HTML provides the structure and layout of a web page, just like a blueprint defines the rooms and walls of a house. Emphasize that HTML is not programming but a markup language — it's about describing content, not logic.\n- Key points:\n  - HTML (HyperText Markup Language) is the standard language for creating web pages.\n  - HTML is a markup language, not a programming language — it uses tags to describe content.\n  - This course will teach you how to read and write HTML so you can build your own web pages."
+}

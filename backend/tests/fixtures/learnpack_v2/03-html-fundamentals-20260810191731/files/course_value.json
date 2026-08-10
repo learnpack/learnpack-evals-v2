@@ -1,0 +1,39 @@
+{
+  "target_duration_minutes": 30,
+  "learning_objectives": [
+    {
+      "id": "obj-1",
+      "outcome": "The learner can identify the structure of an HTML document and explain the role of the <html>, <head>, and <body> elements",
+      "verifiable_by": "Given a labeled diagram of an HTML document skeleton, the learner can match each section (doctype, html, head, body) with its correct purpose"
+    },
+    {
+      "id": "obj-2",
+      "outcome": "The learner can write HTML elements with attributes for headings, paragraphs, links, and images",
+      "verifiable_by": "Given a content specification ('a link to example.com that opens in a new tab'), the learner writes the correct anchor tag with the href and target attributes"
+    },
+    {
+      "id": "obj-3",
+      "outcome": "The learner can construct a valid, minimal HTML page from scratch using proper nesting and indentation",
+      "verifiable_by": "The learner writes a complete .html file that renders a heading, a paragraph, an image, and a link — all correctly nested inside the body element, and verifiable via browser preview"
+    }
+  ],
+  "learner_transformation": "Goes from having no idea how web pages are built to being able to read, understand, and write a simple structured HTML document using text elements, links, and images — confidently distinguishing between content and the tags that wrap it.",
+  "key_insights": [
+    {
+      "id": "insight-1",
+      "insight": "HTML is not a programming language — it's a markup language that describes and structures content.",
+      "why_it_matters": "This reframe prevents beginners from feeling overwhelmed by 'coding.' They can relax and focus on wrapping content in the right tags rather than worrying about logic, variables, or control flow."
+    },
+    {
+      "id": "insight-2",
+      "insight": "Every piece of content lives between an opening and closing tag (or inside a self-closing one) — and getting the nesting right is what gives a page structure.",
+      "why_it_matters": "Beginners often forget closing tags or mis-nest elements. Internalizing the 'open—content—close' pattern early prevents the most common HTML bugs and builds intuition for how browsers interpret code."
+    },
+    {
+      "id": "insight-3",
+      "insight": "Attributes are the 'settings' on an HTML element — without them, an image has no source and a link has no destination.",
+      "why_it_matters": "This mental model helps learners remember that tags like <img> or <a> need extra instructions (src, href) to work, and that attributes are always written inside the opening tag as name-value pairs."
+    }
+  ],
+  "budget_notes": "Duration was not specified by the user. I derived target_duration_minutes = 30 based on scope analysis: HTML fundamentals for absolute beginners needs enough time to establish the markup concept, syntax patterns, and a simple build exercise. Three learning objectives fit the 20–40 min heuristic cleanly (2–3 objectives). No tension detected — scope is realistic, audience starting point matches the outcome level, and goal uses 'learn fundamentals' (not mastery language)."
+}

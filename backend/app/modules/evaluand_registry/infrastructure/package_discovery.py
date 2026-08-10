@@ -8,13 +8,16 @@ package identically from any serving root.
 This module is the sole writer of the artifact `kind` vocabulary. Discovery is hard-failing
 on purpose (contrast with the brief intake's soft misses): a package whose manifests or
 enumeration cannot be read is not registered — a mis-discovered package would *be* the
-evaluand, wrong. The one soft spot is the syllabus: packages legitimately lack it, and its
-absence is a first-class recorded state downstream (ADR-0022).
+evaluand, wrong. Whether a format has a soft spot at all is the format's own business:
+LearnpackV1 has exactly one, the syllabus, because packages legitimately lack it and its
+absence is a first-class recorded state downstream (ADR-0022); LearnpackV2 has none,
+because it embeds its commission unconditionally.
 """
 
 import hashlib
 import json
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -23,11 +26,12 @@ from app.modules.evaluand_registry.application.ports import (
     DiscoveredPackage,
     PackageDiscoveryError,
 )
-from app.modules.evaluand_registry.infrastructure import acl_learnpack
+from app.modules.evaluand_registry.infrastructure import acl_learnpack, acl_learnpack_v2
 from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
 # The artifact kind vocabulary (single writer: this module). The extraction adapter and the
-# brief intake read these labels; a test pins the alignment.
+# brief intake read these labels; a test pins the alignment. Each format writes its own
+# vocabulary; `lesson_content` is shared because a lesson body is a lesson body.
 KIND_MANIFEST = "manifest"
 KIND_PACKAGE_MANIFEST = "package_manifest"
 KIND_SYLLABUS = "syllabus"
@@ -40,6 +44,27 @@ CONFIG_PATH = ".learn/config.json"
 SYLLABUS_PATH = ".learn/initialSyllabus.json"
 LESSONS_DIR = "exercises"
 LESSON_BODY_NAME = "README.md"
+
+KIND_RUN_MANIFEST = "run_manifest"
+KIND_USER_INTENT = "user_intent"
+KIND_COURSE_VALUE = "course_value"
+KIND_CONCEPT_GRAPH = "concept_graph"
+KIND_COVERAGE_CHECK = "coverage_check"
+KIND_COURSE_BRIEF = "course_brief"
+KIND_LESSON_PLAN = "lesson_plan"
+KIND_LESSON_BRIEF = "lesson_brief"
+KIND_LESSON_STATS = "lesson_stats"
+
+V2_RUN_MANIFEST_PATH = "traces/run_metadata.json"
+V2_USER_INTENT_PATH = "files/user_intent.json"
+V2_COURSE_VALUE_PATH = "files/course_value.json"
+V2_CONCEPT_GRAPH_PATH = "files/concept_graph.json"
+V2_COVERAGE_CHECK_PATH = "files/coverage_check.json"
+V2_COURSE_BRIEF_PATH = "files/course_brief.md"
+V2_LESSON_PLAN_PATH = "files/lesson_plan.json"
+V2_LESSON_BRIEFS_DIR = "files/lesson_briefs"
+V2_LESSON_STATS_DIR = "files/processing_stats"
+V2_LESSONS_DIR = "lessons"
 
 
 class PackageRoot(Protocol):
@@ -248,8 +273,120 @@ class LearnpackV1Discovery:
         return paths
 
 
+class LearnpackV2Discovery:
+    """LearnpackV2: a generator run's output tree, not a runnable course.
+
+    Identity is composed rather than declared — the tree carries no slug — from the two
+    things `traces/run_metadata.json` states about the run: which seed it was started from
+    and when. The full lesson enumeration comes from `files/lesson_plan.json`, which lists
+    lesson **ids**, not filenames; each id's `files/processing_stats/<id>.json` declares the
+    `lesson_slug` that names its body under `lessons/`. So the tree is read without ever
+    listing a directory, exactly like V1 and for the same reason: a `PackageRoot` fetches by
+    path and nothing more, over filesystem or HTTP alike.
+
+    The declared surface is the course plus the evidence of how it was generated. The run's
+    `logs/` and the generator's `config/` are deliberately outside it: one is run telemetry
+    down to absolute paths on the machine that produced it, the other is the generator
+    describing itself (ADR-0030), and neither is the evaluand.
+    """
+
+    package_format = acl_learnpack_v2.PACKAGE_FORMAT
+
+    def discover(self, root: PackageRoot) -> DiscoveredPackage:
+        fetched: dict[str, bytes] = {}
+        artifacts: list[DiscoveredArtifact] = []
+
+        def take(path: str, kind: str) -> bytes:
+            raw = root.fetch(path)
+            fetched[path] = raw
+            artifacts.append(DiscoveredArtifact(kind=kind, locator=root.locator_for(path)))
+            return raw
+
+        manifest = _parse_json(take(V2_RUN_MANIFEST_PATH, KIND_RUN_MANIFEST), V2_RUN_MANIFEST_PATH)
+        external_id = self._external_id(manifest)
+
+        take(V2_USER_INTENT_PATH, KIND_USER_INTENT)
+        take(V2_COURSE_VALUE_PATH, KIND_COURSE_VALUE)
+        take(V2_CONCEPT_GRAPH_PATH, KIND_CONCEPT_GRAPH)
+        take(V2_COVERAGE_CHECK_PATH, KIND_COVERAGE_CHECK)
+        take(V2_COURSE_BRIEF_PATH, KIND_COURSE_BRIEF)
+
+        plan = _parse_json(take(V2_LESSON_PLAN_PATH, KIND_LESSON_PLAN), V2_LESSON_PLAN_PATH)
+
+        for lesson_id in self._lesson_ids(plan):
+            take(f"{V2_LESSON_BRIEFS_DIR}/{lesson_id}.json", KIND_LESSON_BRIEF)
+            stats_path = f"{V2_LESSON_STATS_DIR}/{lesson_id}.json"
+            slug = self._lesson_slug(_parse_json(take(stats_path, KIND_LESSON_STATS), stats_path))
+            take(f"{V2_LESSONS_DIR}/{slug}.md", KIND_LESSON_CONTENT)
+
+        return DiscoveredPackage(
+            package_format=self.package_format,
+            external_id=external_id,
+            title=plan.get("course_title") if isinstance(plan, dict) else None,
+            consumable_url=root.consumable_url,
+            artifacts=tuple(artifacts),
+            content_hash=_content_hash(fetched),
+        )
+
+    def _external_id(self, manifest: Any) -> str:
+        """`<seed>-<run start>`: which instruction produced this course, and which run of it.
+
+        The seed alone would collide across regenerations; the timestamp alone says nothing
+        about what was asked. `started_at` is the run's own declaration, so the id survives
+        the tree being moved, renamed or served from anywhere — which the directory name,
+        the other obvious candidate, would not.
+        """
+        if not isinstance(manifest, dict):
+            raise PackageDiscoveryError(f"'{V2_RUN_MANIFEST_PATH}' is not a JSON object")
+        run_info = (manifest.get("system_metadata") or {}).get("run_info")
+        seed_id = run_info.get("seed_id") if isinstance(run_info, dict) else None
+        if not isinstance(seed_id, str) or not seed_id.strip():
+            raise PackageDiscoveryError(f"'{V2_RUN_MANIFEST_PATH}' declares no run seed id")
+
+        started_at = manifest.get("started_at")
+        if not isinstance(started_at, str):
+            raise PackageDiscoveryError(f"'{V2_RUN_MANIFEST_PATH}' declares no run start")
+        try:
+            started = datetime.fromisoformat(started_at)
+        except ValueError as exc:
+            raise PackageDiscoveryError(
+                f"'{V2_RUN_MANIFEST_PATH}' declares an unreadable run start '{started_at}': {exc}"
+            ) from exc
+        # Normalized to UTC so the same run reads the same id wherever it is discovered; a
+        # declaration without an offset is taken at face value, not localized.
+        if started.tzinfo is not None:
+            started = started.astimezone(UTC)
+
+        return f"{seed_id.strip()}-{started.strftime('%Y%m%d%H%M%S')}"
+
+    def _lesson_ids(self, plan: Any) -> list[str]:
+        lessons = plan.get("lessons") if isinstance(plan, dict) else None
+        if not isinstance(lessons, list):
+            raise PackageDiscoveryError(f"'{V2_LESSON_PLAN_PATH}' declares no lessons list")
+
+        ids: list[str] = []
+        for lesson in lessons:
+            if not isinstance(lesson, dict):
+                raise PackageDiscoveryError(f"'{V2_LESSON_PLAN_PATH}' has a non-object lesson")
+            lesson_id = lesson.get("id")
+            if not isinstance(lesson_id, str) or not lesson_id.strip():
+                raise PackageDiscoveryError(f"'{V2_LESSON_PLAN_PATH}' has a lesson without an id")
+            ids.append(lesson_id)
+        return ids
+
+    def _lesson_slug(self, stats: Any) -> str:
+        """The stats file is what names the lesson body — the plan never does."""
+        slug = stats.get("lesson_slug") if isinstance(stats, dict) else None
+        if not isinstance(slug, str) or not slug.strip():
+            raise PackageDiscoveryError(
+                f"a file in '{V2_LESSON_STATS_DIR}' declares no lesson_slug"
+            )
+        return slug
+
+
 DISCOVERIES_BY_FORMAT: dict[str, FormatPackageDiscoveryPort] = {
-    discovery.package_format: discovery for discovery in (LearnpackV1Discovery(),)
+    discovery.package_format: discovery
+    for discovery in (LearnpackV1Discovery(), LearnpackV2Discovery())
 }
 
 

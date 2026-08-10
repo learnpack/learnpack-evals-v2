@@ -3,6 +3,8 @@
 import pytest
 from sqlalchemy import text
 
+from tests.format_cases import FORMAT_CASES
+
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 
 
@@ -575,6 +577,10 @@ def test_register_by_source_without_the_generator_key_is_rejected(admin_client, 
 
 
 def test_the_supported_formats_are_listed(admin_client):
+    """What the form offers is the supported set, whole (ADR-0027). Pinned against the
+    format kit's cases rather than a literal: the kit already locks those to the registries,
+    so a new format lands in the selector by adding its case — not by remembering to edit a
+    list over here."""
     response = admin_client.get("/admin/contents/formats")
     assert response.status_code == 200
-    assert response.json() == ["LearnpackV1"]
+    assert response.json() == sorted(FORMAT_CASES)

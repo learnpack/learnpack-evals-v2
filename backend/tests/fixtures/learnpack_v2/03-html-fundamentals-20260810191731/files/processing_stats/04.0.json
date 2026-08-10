@@ -1,0 +1,20 @@
+{
+  "lesson_id": "04.0",
+  "lesson_slug": "04.0-building-a-complete-html-page",
+  "total_components": 1,
+  "component_type_counts": {
+    "code_challenge_proposal": 1
+  },
+  "component_retries": [
+    {
+      "type": "code_challenge_proposal",
+      "instance": 0,
+      "reason": [
+        "description is required and must be a non-empty string"
+      ],
+      "resolved": true
+    }
+  ],
+  "component_soft_warnings": [],
+  "lesson_soft_warnings": []
+}
