@@ -437,7 +437,15 @@ def register_generator(
                 name=request.name, confirm_distinct_from=request.confirm_distinct_from
             )
         )
-    except (DuplicateGenerator, SimilarGeneratorExists) as exc:
+    except SimilarGeneratorExists as exc:
+        # The one error in this router whose `detail` is an object rather than a string: the
+        # name to echo back is part of the contract (ADR-0031 §4), not decoration inside a
+        # sentence, and a client that had to parse it out of prose would break on a reword.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "similarTo": exc.existing},
+        ) from exc
+    except DuplicateGenerator as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidGenerator as exc:
         raise HTTPException(

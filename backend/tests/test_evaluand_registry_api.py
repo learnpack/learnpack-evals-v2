@@ -220,8 +220,11 @@ def test_a_near_miss_is_refused_until_the_candidate_is_echoed_back(admin_client,
     typo = f"gen-alpah-{unique}"
     refused = admin_client.post("/admin/generators", json={"name": typo})
     assert refused.status_code == 409
-    # The refusal names what it thinks you meant, or the operator cannot act on it.
-    assert registered in refused.json()["detail"]
+    # The candidate travels as data, not inside prose: it is what the retry must echo, so a
+    # client cannot be left to parse it out of a sentence someone may reword.
+    detail = refused.json()["detail"]
+    assert detail["similarTo"] == registered
+    assert registered in detail["message"]
 
     wrong_echo = admin_client.post(
         "/admin/generators", json={"name": typo, "confirm_distinct_from": "something-else"}
