@@ -138,16 +138,8 @@ def test_intake_finds_the_syllabus_by_locator_suffix():
     assert fetcher.fetched == ["course/.learn/initialSyllabus.json"]
 
 
-def test_intake_is_soft_on_fetch_failure():
-    intake = PackageBriefIntake(StubFetcher(error=FetchError("boom")))
-
-    assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
-
-
-def test_intake_is_soft_on_corrupt_syllabus():
-    intake = PackageBriefIntake(StubFetcher(b"not json at all"))
-
-    assert intake.derive("LearnpackV1", [SYLLABUS_ARTIFACT]) is None
+# The soft misses — fetch failure, corrupt payload → None, never an exception — are
+# pinned per format in tests/test_format_contract.py (test_the_intake_never_blocks).
 
 
 class FakeV2Intake:

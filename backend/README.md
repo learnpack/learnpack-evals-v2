@@ -337,6 +337,143 @@ carry their artifact lists (canonical JSON shape only). With `--base-dir` its lo
 filesystem paths, so the automatic policy declines them; without it they are URLs and it
 profiles like any other path.
 
+## Adding a package format
+
+A *package format* is a packaging convention this system knows how to read (e.g.
+`LearnpackV1`). Supporting a new one means writing two or three small adapters against
+existing ports, plus a handful of recorded human acts. You never touch the domain model,
+the evaluation pipeline, the frontend, or the database schema.
+
+**Concepts you need (30 seconds).** A *port* is an interface the core defines
+(`FormatPackageDiscoveryPort`, `ExtractionAdapterPort`, `FormatBriefIntakePort`); an
+*adapter* is your implementation of it for your format; a *registry* is the dict that maps
+format name → adapter — adding a format is one new entry, never a wiring change.
+Everything downstream of the `ContentProfile` (the canonical representation your
+extraction adapter produces) is format-agnostic and does not change. The steps below land
+**incrementally**: after step 2 your packages already register and dedupe; profiling and
+evaluation come later.
+
+The contract every format must satisfy is executable:
+`tests/test_format_contract.py`, parametrized over `tests/format_cases.py`. A format
+registered in any registry without a `FormatCase` fails the suite — so the kit is also
+your to-do list: add your case early and work until it is green.
+
+### Step 0 — Choose the format name. Carefully.
+
+The string (e.g. `LearnpackV2`) is the namespace of every `externalId` (ADR-0005) and
+travels into immutable rows: persisted profiles, published study reports. There is no
+rename. This is the step with the least code and the most consequences.
+
+### Step 1 — Freeze a real fixture package
+
+Copy one real, representative package into `tests/fixtures/<your_format>/`. The fixture
+comes first, not last: every later step is verified against it, and the contract kit
+requires it. Prefer a package that exercises the format's full surface — every artifact
+kind, and the commission if the format carries one (see the `FormatCase` fields).
+
+### Step 2 — Discovery adapter (required; makes the format registrable)
+
+File: `app/modules/evaluand_registry/infrastructure/package_discovery.py` — add your
+class beside `LearnpackV1Discovery`, and one entry to the tuple that builds
+`DISCOVERIES_BY_FORMAT` at the bottom of the file. Implement
+`FormatPackageDiscoveryPort`: given a `PackageRoot` (an injected "place to fetch files
+from" — filesystem or HTTP, you don't care which), read your format's manifests and
+return a `DiscoveredPackage`: external id, title, the artifact list, and the content hash
+(use the module's `_content_hash` helper — the hash scheme is a compatibility contract).
+
+Rules that are easy to miss:
+
+- Discovery is **hard-failing** by design (ADR-0027): if a manifest is missing or lies,
+  raise `PackageDiscoveryError` — a mis-discovered package would *be* the evaluand,
+  wrong. The one allowed soft spot is the commission artifact (LearnpackV1's carrier is
+  its syllabus), whose absence is a recorded state.
+- Discovery is the **sole writer of the artifact `kind` vocabulary** for your format.
+  Your extraction adapter (step 3) will read exactly these kinds.
+- Never mint a `consumable_url` yourself: ask the root (`root.consumable_url`). A
+  filesystem root never declares one (ADR-0028 — serving bytes is transport, not
+  deployment).
+
+**You can stop here and ship.** After this step: the format appears in
+`GET /admin/contents/formats` and in the admin form's selector; `register-package` works;
+re-imports dedupe by content hash; the brief registers absent; profiles are simply not
+built yet. In your `FormatCase`, `expected_capabilities=None` says exactly this — the
+extraction tests skip instead of failing.
+
+### Step 3 — Extraction adapter (required for any evaluation)
+
+Directory: `app/modules/content_profiling/infrastructure/adapters/` — one module per
+format, plus one entry in `ADAPTERS_BY_FORMAT` (`adapters/__init__.py`). Implement
+`ExtractionAdapterPort`: read the registered artifacts and produce the entries of the
+`ContentProfile`. Declare:
+
+- `PACKAGE_FORMAT` — the same string as step 0. The two modules deliberately do not share
+  the constant (module isolation); the contract kit checks they agree.
+- `ADAPTER_VERSION` — the identity of *how you read*. Any change in the mapping is a new
+  version, and each version needs its own acceptance (step 6).
+- `CAPABILITIES` — which `DataRequirement` ids you can supply, chosen from the ids the
+  instrument mints (`../docs/seed/instruments/`). Do **not** invent data your format does
+  not declare: an unmet requirement correctly derives `not_applicable`, and
+  matching/readiness surface it. Every value you produce must satisfy the requirement's
+  declared `value_domain` (ADR-0020) — the profile aggregate verifies this when built.
+- Extraction is deterministic and fails whole (`ExtractionError` → a `failed` profile),
+  never half-profiles.
+
+### Step 4 — Brief intake (only if your format carries the commission)
+
+File: `app/modules/evaluand_registry/infrastructure/brief_intake.py`. If your packages
+embed the instruction they were generated from (LearnpackV1:
+`.learn/initialSyllabus.json`), implement `FormatBriefIntakePort` and register it in
+`BRIEF_INTAKES_BY_FORMAT`: `locate()` finds the artifact, `derive()` turns its bytes into
+a `DerivedBrief`. Intake is best-effort and non-blocking (ADR-0022): any miss logs and
+registers the brief absent — a valid state, not an error. If your format carries nothing,
+skip this step entirely; skipping is correct.
+
+### Step 5 — Make the contract kit green
+
+Add your `FormatCase` to `tests/format_cases.py` (fixture path + expectations, written as
+literals — importing them from your adapter would make the assertions tautological). Run
+`uv run pytest tests/test_format_contract.py`. The failing tests are your remaining to-do
+list; when they are green, the code side is done. Behavior beyond the contract — your
+format's equivalent of LearnpackV1's activity counting — gets its own test file, plus
+calibration pins if any criterion depends on empirical thresholds
+(`../docs/MEASUREMENT.md`).
+
+### Step 6 — The recorded human acts (no code)
+
+These are deliberate human decisions (ADR-0012, ADR-0019, ADR-0031); do not script them
+away.
+
+1. **Register the generator lineage and version** (once per generator — see
+   [Registering courses](#registering-courses)). The spelling of the name is permanent;
+   the version's changelog is write-once.
+2. **Accept the extraction** (per adapter version): `accept-extraction --package-format
+   <name> --email <admin>`. This is what arms auto-profiling on registration; until then
+   profiling stays manual.
+3. **Bind the instrument to the format**: add a `bindings` entry with your
+   `package_format` (see `../docs/seed/instruments/learnpack-course-qa-v1.yaml`). A
+   published version is immutable, so this means a new instrument version
+   (`bump-instrument` → edit → `import-instrument` → `publish-instrument`). Then check
+   `GET /admin/instruments/{version}/matching?package_format=<name>` for the demand your
+   format cannot meet — those criteria derive `not_applicable`, which is honest, not
+   broken.
+4. **Ratify the assessor for the new instrument version** (ADR-0019, command under
+   [Instruments and content profiling](#instruments-and-content-profiling-slice-2)).
+   Criteria the assessor cannot execute derive `not_assessed` — the visible backlog, not
+   a failure.
+
+### Step 7 — Verify end to end
+
+`register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
+instrument is a draft → `declare-study | pin-study | compose-dataset | open-study |
+publish-study` → `show-report` / `show-fitness`.
+
+### What you never touch
+
+Domain and application layers of any module · the ports · the events · the assessors'
+logic · the frontend (the form reads formats from the API) · migrations. If a step seems
+to require touching one of these, stop: either the step is wrong or it needs an ADR
+first.
+
 ## Modules
 
 identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·
