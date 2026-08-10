@@ -58,7 +58,9 @@ the root `README.md`.
   part, does not supersede it) and **ADR-0029** (automatic profiling assumes http(s)
   transport; one policy subscription list for every process) and **ADR-0030** (the generator
   declares reference data about itself, not artifacts — `GeneratorArtifact` retired, see the
-  bullet under Open). GLOSSARY
+  bullet under Open) and **ADR-0031** (a generator is an entity; its versions belong to it —
+  the lineage becomes a row, the name is typed once per generator, and the one act that still
+  types one is guarded against a near miss). GLOSSARY
   reflects
   the five states, the automated assessor by lineage, `DataRequirement` with its two
   halves, the quote demanded only of executed scored, and `unknown` as a declaration.
@@ -247,6 +249,25 @@ each abstention reason names which capability it needs: the **judgment** itself,
 **extraction/classification**, after which the pass condition is a count or an order check.
 The second kind is the cheaper one to build first.
 
+**After block 7 — the generator lineage (ADR-0031).** `GeneratorVersion` was
+`{id, name, version}` with the `name` retyped by hand at every registration, so a typo minted a
+second generator in silence — a failure no `UNIQUE` can catch, since uniqueness protects against
+collision and this is unwanted *distinction*, and a permanent one, since the row is immutable.
+The lineage is now its own row: `Generator {id, name}` owns `GeneratorVersion
+{id, generator_id, version, metadata}` (migration 0017, with a backfill). Registering a version
+selects a parent by id and has no name to misspell; the single remaining act that types a name —
+minting a lineage — refuses anything within one or two edits of a registered name and proceeds
+only when the caller **echoes that name back** (`confirm_distinct_from` / `--distinct-from`), so a
+blind retry cannot pass and no script can carry the override by default. A name differing from a
+registered one only in casing or padding is refused outright and is *not* overridable: the store
+holds a unique index on `lower(btrim(name))`, the half that survives concurrency. The read side
+did not move — the version DTO joins its lineage name, so `GeneratorInfo`, the study report JSON,
+the fitness JSON and every screen rendering `{name} {version}` are untouched. Two CLI acts now
+exist where there were none (`register-generator`, `register-generator-version`), which is what
+the genetic-algorithm loop registers through. The repair act (`rename-generator`) is deliberately
+**not built**: published reports freeze the name, so a rename would fix the console and leave the
+typo permanent in every report already out — the ADR names the shape it would take.
+
 **Fourth pending input from the team (block 7): publish the first real study.** The loop is
 live end to end: register real contents (the brief arrives mechanically when the package
 carries `.learn/initialSyllabus.json`), evaluate them, then
@@ -260,8 +281,13 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 537 tests** against local Postgres (~35 s). Requires
+- **Backend suite green: 556 tests** against local Postgres (~37 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+- **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
+  a wrong echo is refused again and the right one registers; and against the store alone, two
+  lineages differing only in casing or padding cannot coexist. Migration 0017's fold is pinned
+  over scratch tables — earliest-declared spelling wins, separator differences are *not* merged,
+  and rows that would collide on `(generator_id, version)` are reported instead of merged.
 - **The full slice-2 loop tested end-to-end** (suite): register two paired contents (brief
   intake pairs them by hash) → profile → publish an instrument copy → ratify → evaluate →
   declare/pin/compose/open/publish a study → immutable report with the judgment ids
@@ -334,7 +360,14 @@ the data in the package).
   *declaration*, not an override of a discovered value. Since **ADR-0030**
   `POST|GET /admin/generators/{id}/artifacts` **no longer exist** (404) and the
   `GeneratorArtifactRegistered` event is no longer published — anyone scripting either has
-  nothing to move to, by decision.
+  nothing to move to, by decision. Since **ADR-0031** the generator endpoints are two
+  resources: `GET /admin/generators` returns **lineages** `{generator_id, name}` where it used
+  to return versions, `POST /admin/generators` takes `{name, confirm_distinct_from?}` and mints
+  one, and versions moved to `POST /admin/generators/{generator_id}/versions` and
+  `GET /admin/generator-versions` (which answers the old shape plus `generator_id`). A client
+  reading the old `GET /admin/generators` breaks; nothing outside this repo's console reads it.
+  One error detail is now an **object** rather than a string — the near-miss 409 carries
+  `{message, similarTo}`, because the name to echo back is contract, not prose.
 - **`GeneratorArtifact` retired (ADR-0030).** The entity, the `generator_artifacts` table
   (migration 0016), the event, both endpoints and the console form are gone. It was built
   under the "register yes, extract no" mark and never read by anything: no policy subscribed,
@@ -446,8 +479,20 @@ the data in the package).
   `learnpack-generator 1.0.0` (SemVer) is registered in the local dev DB and by `seed-demo`;
   **repeat the act in production before registering real content**, so the declaration
   ADR-0024 now demands can name a real generator instead of falling back to `unknown`.
-  Registering it is also the moment to write its **changelog** (ADR-0030): the field is
+  It is **two acts** since ADR-0031 — `register-generator --name learnpack-generator`, then
+  `register-generator-version --generator-name learnpack-generator --version 1.0.0` — and the
+  first one is where the spelling is decided for good, since nothing renames a lineage.
+  Registering the version is also the moment to write its **changelog** (ADR-0030): the field is
   write-once, so a version registered without one keeps none.
+- **Runbook for migration `0017`.** It refuses to run if two `generator_versions` rows fold to
+  the same `(lower(btrim(name)), version)` — the message lists them and gives the `UPDATE` /
+  `DELETE` to run — because merging them would mean the migration deciding which registration
+  was the real one. Rows that fold cleanly (same name modulo casing, different versions) become
+  **one** lineage keeping the earliest-declared spelling; the other spellings stop being
+  queryable state and survive only inside the `GeneratorVersionRegistered` rows of the outbox.
+  On the local dev DB there is a single generator, so the fold is a no-op there. `downgrade`
+  goes back **with** its data (the name is derivable from the lineage); what it cannot restore
+  is a lineage with no versions, or the spellings the fold discarded.
 - **Correcting a generator's declared metadata is `[future]` (ADR-0030 §3).**
   `GeneratorVersion` is immutable and `RegisterGeneratorVersion` is its only writer, so a typo
   in a changelog can only be fixed by registering another version. The repair act has a shape
