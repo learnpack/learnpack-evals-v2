@@ -498,6 +498,164 @@ path in it has been written against one format at a time before. A helper that n
 specific format's file is a bug the next format uncovers, not a rule you have to work
 around — fix it there.
 
+## Authoring an instrument
+
+An *instrument* is the **evidential argument** a study pins: what is being asserted about a
+generator's output, and what would count as evidence for it. Adding a package format teaches
+the system to *read* something; authoring an instrument decides what is worth *asking*.
+
+Authoring is file-based and assistant-drafted, publishing is a human act, and a published
+version never changes. The commands are in
+[Instruments and content profiling](#instruments-and-content-profiling-slice-2) — that table
+decides which one you want. This runbook is about what to write.
+
+**The chain, in one line.** A **quality** is what we care about · a **claim** asserts one
+thing about **exactly one** quality (ADR-0026) · a **criterion** is a check whose outcome
+evidences a claim · a **data requirement** is a datum a criterion needs to be executable, and
+an extraction adapter is what supplies it. You author from the top down and the system
+validates from the bottom up.
+
+There is no aggregate score across criteria and there never will be (ADR-0011). An instrument
+reports per criterion, per claim; anyone looking for one number is looking for a different
+system.
+
+### Step 0 — Do you actually need a new instrument?
+
+Usually not. **An instrument forks when its claims change, not when the package format
+changes** (ADR-0032). A new format normally joins the instrument you already have: add a
+`bindings` entry, publish the new version, done.
+
+Criteria the new format's extraction cannot feed derive `not_applicable`. That is a report,
+not a defect — demand stated honestly and left unanswered — and it is not a reason to fork.
+
+Measure it before deciding:
+
+```bash
+GET /admin/instruments/{instrument_version_id}/matching?package_format=<name>
+```
+
+It returns, per criterion, what it requires and what is missing; the unmet demand grouped by
+data requirement; and per claim, how many of its criteria are covered. **A claim with zero
+covered criteria is the signal to read closely**: either the format cannot answer a question
+that still applies, or the question does not apply to that artifact at all. The second case is
+where a second instrument is warranted — and what justifies it is the different question, not
+the different format.
+
+### Step 1 — Know what you cannot mint here
+
+Qualities, dimensions and frameworks are **reference data**, not instrument content. They live
+in `../docs/seed/pedagogical-reference.yaml` and enter with `uv run python -m app.cli seed`.
+Your instrument *references* their ids; publishing refuses ids that do not exist.
+
+So if your argument needs a quality nobody has named yet, that is an edit to the reference
+file and a reseed — before you publish, not during. The same goes for a warrant: a claim can
+only cite a framework the reference declares.
+
+### Step 2 — Reuse data requirement ids; mint only what is new
+
+The demand-side namespace is **global across instruments** (ADR-0014). A criterion may require
+an id that already exists without redeclaring it in your file — inheriting `lesson_bodies` or
+`course_descriptor` costs nothing and keeps one meaning per id.
+
+Declare a `data_requirements` entry only for an id you are **minting**, and write its
+`definition` and its `value_domain` at that moment: the definition says what the datum means,
+the value domain says what shape it takes, and both are the contract extraction adapters
+conform to (ADR-0020).
+
+Redeclaring an existing id with a different definition or a different shape is blocked by a
+lint. That is the guardrail, not an obstacle — decide which case you are in:
+
+| Situation | What to do |
+|---|---|
+| Same meaning, different words | Keep the existing definition, or add an `aliases` entry |
+| Same meaning, the declaration itself is wrong | `import-instrument --revise-definitions`, the deliberate act |
+| Similar but **not** the same thing | Mint a new id with its own definition |
+
+One constraint that bites from the other side: **an extraction adapter cannot declare a
+capability for an id no instrument declares.** The format contract kit asserts
+`capabilities ⊆ declared_value_domains()`. So a datum and its supply land together — mint the
+id in the instrument and teach the adapter to produce it in the same change, or the kit
+refuses one half of it.
+
+### Step 3 — Write the YAML
+
+One file per version, `../docs/seed/instruments/{instrument_id}-{version}.yaml`.
+`learnpack-course-qa-v1.yaml` is the worked example to read alongside this.
+
+| Key | What it carries |
+|---|---|
+| `instrument_id`, `version`, `name`, `purpose` | The identity and what the argument is for |
+| `assisted_by` | What drafted it and in what role — assistance is recorded, never hidden |
+| `bindings` | The `package_format`s this version is designed for, plus `task_variables` a criterion conditions on (demand-driven: add one when a criterion needs it, not before) |
+| `data_requirements` | Only the ids you mint (step 2) |
+| `claims` | `statement`, one `qualities` entry, `warrants`, `sufficiency`, `alternative_explanations` |
+| `criteria` | `statement`, `pass_condition`, `failure_modes`, `claims`, `requires`, `on_missing_evidence`, `eligible_sources` |
+
+Two fields that are easy to write carelessly:
+
+- **`alternative_explanations`** on a claim is the discipline that keeps a `fail` honest: what
+  else could produce this evidence besides the defect you are asserting? Write the ones a
+  dispute would raise.
+- **`on_missing_evidence`** decides what a criterion does when its datum is absent. `fail`
+  says the absence **is** the finding (ADR-0021 records it as derived, with no quote);
+  `no_evidence` says absence settles nothing. Choosing `fail` is a claim in itself — make it
+  deliberately.
+
+`sufficiency` today has one built rule: `conjunctive`. `existential` and `m_of_n` are
+documented vocabulary, not behavior — do not author against them yet.
+
+### Step 4 — Import, then make publish green
+
+```bash
+uv run python -m app.cli import-instrument --file ../docs/seed/instruments/<file>.yaml
+uv run python -m app.cli publish-instrument --id <version-id> --email <admin>
+```
+
+`import-instrument` creates or replaces a **draft** and runs the lint: data requirements
+well-formed, no divergent redeclarations, no criterion requiring an id nothing defines. It
+reports every problem in one run rather than stopping at the first.
+
+`publish-instrument` validates the **whole evidential argument**, and that list is this
+runbook's equivalent of the format contract kit — the executable definition of a complete
+instrument:
+
+- every criterion references a claim that exists;
+- every criterion's required data is inside the namespace;
+- there is at least one claim;
+- every claim has at least one criterion evidencing it;
+- every claim asserts about **exactly one** quality (ADR-0026);
+- every quality and every warrant a claim cites is known reference data;
+- there is at least one `bindings` entry.
+
+Iterate on the draft as often as you like — it is replaced in place, no version bump involved.
+Publishing is the point of no return: from there the version is immutable and any change is a
+new version (`bump-instrument`).
+
+### Step 5 — The recorded human acts
+
+1. **Publish** — the act above. Nothing assistant-drafted reaches published without a human
+   performing it.
+2. **Ratify the assessors** against this instrument version (ADR-0019). Within one lineage
+   this is cheap — the diff against the previous version is computed mechanically and only
+   changed or new executed criteria need `--confirm`. Across instruments it is not a diff at
+   all: an assessor vouched for one argument has not been vouched for another, so a new
+   instrument ratifies from scratch. Criteria no assessor can execute derive `not_assessed` —
+   the visible backlog, not a failure.
+
+### Step 6 — Verify end to end
+
+Calibrate while it is still a draft — `evaluate --content-id <id> --instrument-version-id <id>
+--dry-run` persists nothing and prints the outcome table, so you can read what your criteria
+actually do against real content before freezing them. Then the study path:
+`declare-study | pin-study | compose-dataset | open-study | publish-study` → `show-report`.
+
+### What you never touch
+
+A published version, ever — bump instead · the qualities and frameworks from inside an
+instrument file — they are reference data (step 1) · the meaning of an existing data
+requirement id without `--revise-definitions` · the domain rules publish enforces. If your
+argument seems to need one of these bent, it needs an ADR first.
+
 ## Modules
 
 identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·

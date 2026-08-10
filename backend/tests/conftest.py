@@ -11,21 +11,39 @@ from sqlalchemy import text
 
 from app.config import get_settings
 
-# The instrument the team authors — the single source of the declared value domains
-# (ADR-0020). Tests mint the namespace from this file rather than from a copy, so a
-# profiling fixture can never pass against a shape the real instrument does not declare.
-INSTRUMENT_SPEC_FILE = (
-    pathlib.Path(__file__).resolve().parents[2]
-    / "docs"
-    / "seed"
-    / "instruments"
-    / "learnpack-course-qa-v1.yaml"
-)
+INSTRUMENTS_DIR = pathlib.Path(__file__).resolve().parents[2] / "docs" / "seed" / "instruments"
+
+# One authored instrument, for tests that need a whole spec to copy and mutate. The declared
+# namespace below is NOT read from here: ids are global across instruments (ADR-0014), so
+# reading one file would hide every id another instrument mints.
+INSTRUMENT_SPEC_FILE = INSTRUMENTS_DIR / "learnpack-course-qa-v1.yaml"
 
 
 def declared_value_domains() -> dict[str, dict]:
-    spec = yaml.safe_load(INSTRUMENT_SPEC_FILE.read_text(encoding="utf-8"))
-    return {r["id"]: r["value_domain"] for r in spec["data_requirements"]}
+    """The declared demand-side namespace (ADR-0020), merged across every authored
+    instrument. Tests mint it from the real files rather than from a copy, so a profiling
+    fixture can never pass against a shape no instrument declares.
+
+    Two files declaring one id with different shapes is refused here, loudly. The DB is
+    already guarded — the import lint blocks a divergent redeclaration — but that guard only
+    fires when someone imports, and these files are read straight off disk.
+    """
+    domains: dict[str, dict] = {}
+    declared_by: dict[str, str] = {}
+    for spec_file in sorted(INSTRUMENTS_DIR.glob("*.yaml")):
+        spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        for requirement in spec.get("data_requirements", []):
+            requirement_id, domain = requirement["id"], requirement["value_domain"]
+            if domains.get(requirement_id, domain) != domain:
+                raise AssertionError(
+                    f"data requirement '{requirement_id}' is declared with two different "
+                    f"value domains: {declared_by[requirement_id]} says "
+                    f"{json.dumps(domains[requirement_id], sort_keys=True)}, {spec_file.name} "
+                    f"says {json.dumps(domain, sort_keys=True)} — one id, one shape (ADR-0020)"
+                )
+            domains[requirement_id] = domain
+            declared_by[requirement_id] = spec_file.name
+    return domains
 
 
 LEARNPACK_FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "learnpack_v1"
