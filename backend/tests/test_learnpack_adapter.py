@@ -6,16 +6,14 @@ from pathlib import Path
 import pytest
 
 from app.modules.content_profiling.application.dtos import ArtifactDTO, PackageDTO
-from app.modules.content_profiling.domain.profile import ContentProfile, ExtractionError
-from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
+from app.modules.content_profiling.domain.profile import ExtractionError
 from app.modules.content_profiling.infrastructure.adapters.learnpack_v1 import (
-    ADAPTER_VERSION,
     CAPABILITIES,
     LearnpackV1Adapter,
 )
 from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
 from app.shared.domain.ids import new_id
-from app.shared.domain.value_domain import check_value, validate_spec
+from app.shared.domain.value_domain import check_value
 from tests.conftest import declared_value_domains
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
@@ -67,9 +65,9 @@ def by_slug(activities_entry):
     return {item["lessonSlug"]: item for item in activities_entry.value}
 
 
-def test_adapter_is_registered_for_its_format():
-    assert ADAPTERS_BY_FORMAT["LearnpackV1"].adapter_version == ADAPTER_VERSION
-    assert ADAPTERS_BY_FORMAT["LearnpackV1"].capabilities == CAPABILITIES
+# The registry entry, determinism, the profile-aggregate fit and the namespace hygiene
+# are pinned per format in tests/test_format_contract.py; what stays here is this
+# format's own convention.
 
 
 def test_full_package_yields_cited_entries(adapter, fetcher):
@@ -341,28 +339,6 @@ def test_malformed_manifest_fails_extraction_instead_of_half_profiling(adapter, 
         adapter.extract(package, fetcher)
 
 
-def test_extraction_is_deterministic(adapter, fetcher):
-    package = fixture_package("object-representation-in-python")
-    assert adapter.extract(package, fetcher) == adapter.extract(package, fetcher)
-
-
-def test_extraction_satisfies_the_profile_aggregate(adapter, fetcher):
-    """The adapter's output builds a valid ok profile — the two halves fit."""
-    package = fixture_package("object-representation-in-python")
-    entries, extras = adapter.extract(package, fetcher)
-    profile = ContentProfile.ok(
-        id=new_id(),
-        content_id=package.content_id,
-        package_format="LearnpackV1",
-        adapter_version=ADAPTER_VERSION,
-        capabilities=CAPABILITIES,
-        value_domains=declared_value_domains(),
-        entries=entries,
-        extras=extras,
-    )
-    assert profile.status == "ok"
-
-
 @pytest.mark.parametrize(
     "course",
     [
@@ -391,10 +367,3 @@ def test_every_extracted_value_matches_the_declared_value_domain(adapter, fetche
         for problem in check_value(e.value, domains[e.data_requirement_id], e.data_requirement_id)
     ]
     assert problems == []
-
-
-def test_the_declared_value_domains_are_well_formed():
-    """Every capability the adapter claims has a usable declaration behind it."""
-    domains = declared_value_domains()
-    assert CAPABILITIES <= set(domains)
-    assert [p for d in domains.values() for p in validate_spec(d)] == []

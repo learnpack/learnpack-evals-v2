@@ -15,7 +15,6 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
     FilesystemPackageRoot,
     HttpPackageRoot,
     LearnpackV1Discovery,
-    PackageDiscovery,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
@@ -120,30 +119,8 @@ def test_a_config_declared_file_that_is_missing_fails(tmp_path):
         LearnpackV1Discovery().discover(FilesystemPackageRoot(tmp_path / "course"))
 
 
-def test_an_unknown_format_is_refused():
-    with pytest.raises(PackageDiscoveryError):
-        PackageDiscovery().discover("NoSuchFormat", str(FIXTURES / "bare-course"))
-
-
-# ------------------------------------------------------------------ the content hash
-
-
-def test_the_hash_is_deterministic_and_root_independent():
-    """Keyed by root-relative path: the same package hashes identically from any serving
-    root — what makes dedupe work across fixtures, the dev mount and production."""
-    assert (
-        discover("bare-course").content_hash
-        == discover("bare-course", locator_base="served/from/elsewhere").content_hash
-    )
-
-
-def test_changed_bytes_change_the_hash(tmp_path):
-    shutil.copytree(FIXTURES / "bare-course", tmp_path / "course")
-    readme = tmp_path / "course" / "exercises" / "00-frontmatter-only" / "README.md"
-    readme.write_text(readme.read_text(encoding="utf-8") + "\ndrifted", encoding="utf-8")
-
-    mutated = LearnpackV1Discovery().discover(FilesystemPackageRoot(tmp_path / "course"))
-    assert mutated.content_hash != discover("bare-course").content_hash
+# The refusal of an unknown format and the content-hash contract (deterministic,
+# root-independent, byte-sensitive) are pinned per format in tests/test_format_contract.py.
 
 
 # ------------------------------------------------------------------ vocabulary + roots
@@ -177,13 +154,5 @@ def test_only_an_http_root_declares_a_consumable_url():
     )
     assert FilesystemPackageRoot(FIXTURES, locator_base="bare-course").consumable_url is None
     assert FilesystemPackageRoot(FIXTURES).consumable_url is None
-
-
-def test_a_filesystem_discovery_yields_no_consumable_url():
-    """The seam one level up from the root: what reaches `DiscoveredPackage`, and hence
-    registration, carries no URL even when the locators are honest mount URLs."""
-    discovered = discover("bare-course", locator_base="http://localhost:8000/packages/g@1/c")
-    assert discovered.consumable_url is None
-    assert all(
-        a.locator.startswith("http://localhost:8000/packages/") for a in discovered.artifacts
-    )
+    # The seam one level up — a filesystem DISCOVERY yielding no consumable URL — is
+    # pinned per format in tests/test_format_contract.py (ADR-0028).
