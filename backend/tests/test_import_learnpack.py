@@ -11,30 +11,13 @@ import pytest
 from sqlalchemy import text
 
 from app.cli import main, run_import_learnpack
-from app.modules.evaluand_registry.application.register_generator_version import (
-    RegisterGeneratorVersion,
-    RegisterGeneratorVersionCommand,
-)
-from app.modules.evaluand_registry.infrastructure.repository import (
-    SqlAlchemyGeneratorVersionRepository,
-)
-from app.platform.db import SessionLocal
-from app.platform.uow import UnitOfWork
 
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 
 
 @pytest.fixture
-def generator(cleanup, unique):
-    with SessionLocal() as session:
-        uow = UnitOfWork(session)
-        version = RegisterGeneratorVersion(
-            generators=SqlAlchemyGeneratorVersionRepository(session),
-            publisher=uow.events,
-            uow=uow,
-        )(RegisterGeneratorVersionCommand(name=f"import-gen-{unique}", version="1.0.0"))
-    cleanup["generators"].append(version.id)
-    return version.id
+def generator(register_generator_version, unique):
+    return register_generator_version(f"import-gen-{unique}")
 
 
 def write(tmp_path, courses):

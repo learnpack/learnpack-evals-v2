@@ -24,8 +24,19 @@
   packages.
   *(Annotated trigger: if a platform emitted several formats sharing externalIds,
   a separate `SourceSystem` would be born.)*
-- **GeneratorVersion** *(formerly `GeneratorConfiguration`)* — the **declared identity of the
-  examinee**: `{id, name, version, optional free-form metadata}`. **Immutable**; a genuinely
+- **Generator** — the **lineage**: `{id, name}`, what a study means by "this generator", and the
+  owner of its `GeneratorVersion`s (ADR-0031). It declares its name and **nothing else** — no
+  metadata blob, because that is where the generator internals ADR-0030 §1 kept outside this
+  system would come back. It is not a second versioning axis: it groups whole versions, it does
+  not version parts of one. The name is **typed once per generator**, at the single act that
+  mints a lineage; every later act selects it by id, which is what makes a misspelling
+  unrepresentable where registrations are frequent. That minting act is guarded: a name within
+  one or two edits of a registered one is refused until the caller **echoes back** the name it
+  named — the same lineage under different casing or padding is refused outright, and cannot be
+  overridden.
+- **GeneratorVersion** *(formerly `GeneratorConfiguration`; the `name` moved to its `Generator`
+  in ADR-0031)* — the **declared identity of the
+  examinee**: `{id, generatorId, version, optional free-form metadata}`. **Immutable**; a genuinely
   different generator ⇒ new record — and that covers **every step of its workflow**: there is no
   sub-component versioning axis (ADR-0030). It is the accumulation key of generator-level claims
   (ADR-0013) — a symmetry of *role* with `SourceConfiguration`, not of mechanism: here the
@@ -258,7 +269,9 @@
   limitation) and `not_applicable`. A `PedagogicalDimension`'s fitness is the unweighted **mean**
   of its defined qualities; a `GeneratorVersion`'s **pools** the criterion counts across its
   contents. An empty denominator is `undefined`, never `0`. It is the fitness function of the
-  genetic-algorithm experiment (individual = `GeneratorVersion`, generation = `EvaluationStudy`),
+  genetic-algorithm experiment (individual = `GeneratorVersion`, generation = `EvaluationStudy`;
+  the individual stays the **version** — it is what can be *run* — and its `Generator` is what
+  groups individuals across generations, ADR-0031),
   it carries its **formula version** and its **coverage** — including which assessors were
   ratified, since values from different coverages are not comparable — and it **never enters a
   `StudyReport`** (ADR-0011 is untouched: claims and findings remain the product).
@@ -297,7 +310,8 @@
 ## Cross-cutting
 
 - **DomainEvent** — a past fact of the domain; the means by which state evolves
-  (events-first). E.g. (slice 2 model): `GeneratorVersionRegistered` · `BriefRegistered` ·
+  (events-first). E.g. (slice 2 model): `GeneratorRegistered` · `GeneratorVersionRegistered` ·
+  `BriefRegistered` ·
   `ContentVersionRegistered` · `ContentProfiled` / `ContentProfilingFailed` ·
   `ExtractionAccepted` · `InstrumentVersionPublished` · `InstrumentDefectIdentified` ·
   `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` · `FindingRaised` ·

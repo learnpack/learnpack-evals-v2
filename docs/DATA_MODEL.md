@@ -1,7 +1,7 @@
 # DATA_MODEL — logical Postgres schema
 
 Logical model of the tables the system persists today. Source of truth for shape:
-Alembic migrations under `backend/alembic/versions/` (head = `0015`). Names follow
+Alembic migrations under `backend/alembic/versions/` (head = `0017`). Names follow
 `GLOSSARY.md`. Module boundaries follow `ARCHITECTURE.md`: intra-module foreign keys
 are real; many cross-module identifiers are **app-validated references** (no DB FK),
 shown below as dashed links.
@@ -31,7 +31,7 @@ erDiagram
 | Module | Tables |
 |---|---|
 | identity | `assessors` |
-| evaluand_registry | `contents`, `content_package_artifacts`, `generator_versions`, `generation_briefs` |
+| evaluand_registry | `contents`, `content_package_artifacts`, `generators`, `generator_versions`, `generation_briefs` |
 | evaluation_design | `pedagogical_frameworks`, `pedagogical_dimensions`, `qualities`, `data_requirements`, `instrument_versions`, `instrument_claims`, `instrument_criteria`, `instrument_bindings`, `rubric_versions`, `criteria` |
 | content_profiling | `content_profiles`, `profile_entries`, `profile_extras`, `extraction_acceptances` |
 | evaluation | `evaluations`, `criterion_scores`, `criterion_outcomes`, `computed_metrics`, `quality_judgments`, `judgment_claims`, `findings`, `assessor_ratifications` |
@@ -68,6 +68,7 @@ erDiagram
 ```mermaid
 erDiagram
     generation_briefs ||--o{ contents : "brief_id"
+    generators ||--o{ generator_versions : "generator_id"
     generator_versions ||--o{ contents : "generator_version_id"
     contents ||--o{ content_package_artifacts : "package surface"
 
@@ -79,9 +80,15 @@ erDiagram
         timestamptz created_at
     }
 
+    generators {
+        uuid id PK
+        text name "unique on lower(btrim(name)); the lineage"
+        timestamptz created_at
+    }
+
     generator_versions {
         uuid id PK
-        text name
+        uuid generator_id FK
         text version
         jsonb metadata "reference data the version declares about itself; write-once"
         timestamptz created_at
@@ -112,7 +119,10 @@ erDiagram
 ```
 
 Logical content identity: `(package_format, external_id, version)` unique.
-`content_hash` supports discovery dedupe; `consumable_url` declares a deployment, not package bytes.
+Generator identity in two grains (ADR-0031): a lineage is unique on `lower(btrim(name))` — an
+expression index, so casing and padding cannot make two — and a version is unique on
+`(generator_id, version)`. `content_hash` supports discovery dedupe; `consumable_url` declares a
+deployment, not package bytes.
 
 ## 4. evaluation_design
 
@@ -485,7 +495,8 @@ The automated QA path, omitting campaign/human and study report composition:
 
 ```mermaid
 flowchart LR
-  GV[generator_versions] --> C[contents]
+  G[generators] --> GV[generator_versions]
+  GV --> C[contents]
   GB[generation_briefs] --> C
   C --> CPA[content_package_artifacts]
   C --> CP[content_profiles]

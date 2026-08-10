@@ -159,20 +159,71 @@ def unique() -> str:
 
 
 @pytest.fixture
+def register_generator_version(cleanup):
+    """Mint a lineage and one version under it, tracked for cleanup, and return the **version**
+    id — which is what a content declares.
+
+    One call, because almost every test wants "a registered examinee" rather than the two acts
+    that produce it (ADR-0031). Tests that are *about* those acts call them directly.
+    """
+    from app.modules.evaluand_registry.application.register_generator import (
+        RegisterGenerator,
+        RegisterGeneratorCommand,
+    )
+    from app.modules.evaluand_registry.application.register_generator_version import (
+        RegisterGeneratorVersion,
+        RegisterGeneratorVersionCommand,
+    )
+    from app.modules.evaluand_registry.infrastructure.repository import (
+        SqlAlchemyGeneratorRepository,
+        SqlAlchemyGeneratorVersionRepository,
+    )
+    from app.platform.db import SessionLocal
+    from app.platform.uow import UnitOfWork
+
+    def _register(name: str, version: str = "1.0.0", metadata: dict | None = None):
+        with SessionLocal() as s:
+            generators = SqlAlchemyGeneratorRepository(s)
+            uow = UnitOfWork(s)
+            generator = RegisterGenerator(generators, uow.events, uow)(
+                RegisterGeneratorCommand(name=name)
+            )
+            cleanup["generator_lineages"].append(generator.id)
+
+            uow = UnitOfWork(s)
+            registered = RegisterGeneratorVersion(
+                generators, SqlAlchemyGeneratorVersionRepository(s), uow.events, uow
+            )(
+                RegisterGeneratorVersionCommand(
+                    generator_id=generator.id, version=version, metadata=metadata or {}
+                )
+            )
+            cleanup["generators"].append(registered.id)
+            return registered.id
+
+    return _register
+
+
+@pytest.fixture
 def cleanup(requires_db) -> Iterator[dict[str, list]]:
     """Collect rows created by a test and remove them afterwards.
 
     Deletion follows the FK order: evaluations/completions → assignments → campaigns →
-    profiles → contents → generators/briefs → assessors. Outbox rows are keyed by the
-    aggregate id that produced them. `acceptances` holds (package_format, adapter_version)
-    tuples — an acceptance is global, so any test that creates one MUST register it here
-    or every later content registration in the session would get auto-profiled.
+    profiles → contents → generators/briefs → generator lineages → assessors. Outbox rows are
+    keyed by the aggregate id that produced them. `acceptances` holds (package_format,
+    adapter_version) tuples — an acceptance is global, so any test that creates one MUST
+    register it here or every later content registration in the session would get auto-profiled.
+
+    `generators` holds generator **version** ids and `generator_lineages` the ids of the
+    `Generator` rows that own them (ADR-0031) — two buckets because they are two tables with a
+    foreign key between them.
     """
     created: dict[str, list] = {
         "contents": [],
         "assessors": [],
         "campaigns": [],
         "generators": [],
+        "generator_lineages": [],
         "briefs": [],
         "instruments": [],
         "data_requirements": [],
@@ -261,6 +312,10 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
                 text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(generator_id)}
             )
             s.execute(text("DELETE FROM generator_versions WHERE id = :id"), {"id": generator_id})
+        # And the lineage after its versions, which reference it (ADR-0031).
+        for lineage_id in created["generator_lineages"]:
+            s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(lineage_id)})
+            s.execute(text("DELETE FROM generators WHERE id = :id"), {"id": lineage_id})
         for brief_id in created["briefs"]:
             s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(brief_id)})
             s.execute(text("DELETE FROM generation_briefs WHERE id = :id"), {"id": brief_id})

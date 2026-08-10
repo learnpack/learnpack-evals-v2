@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
-import { useGenerators, usePackageFormats, useRegisterBySource } from "@/lib/api/hooks";
+import { useGeneratorVersions, usePackageFormats, useRegisterBySource } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import type { EditProvenance } from "@/lib/api/types";
+import type { EditProvenance, GeneratorVersionResponse } from "@/lib/api/types";
 
 /** The declared "no generator" option — distinct from the unchosen placeholder (ADR-0024). */
 const UNKNOWN_GENERATOR = "unknown";
@@ -21,7 +21,16 @@ const UNKNOWN_GENERATOR = "unknown";
 export function ContentForm({ onDone }: { onDone: () => void }) {
   const registerBySource = useRegisterBySource();
   const { data: formats } = usePackageFormats();
-  const { data: generators } = useGenerators();
+  const { data: generators } = useGeneratorVersions();
+  // Grouped by lineage (ADR-0031), so the list reads as versions of a generator rather than a
+  // flat run of near-identical labels. `<optgroup>` is native — no combobox, no new dependency.
+  const groupedVersions = useMemo(() => {
+    const byName = new Map<string, GeneratorVersionResponse[]>();
+    for (const version of generators ?? []) {
+      byName.set(version.name, [...(byName.get(version.name) ?? []), version]);
+    }
+    return [...byName.entries()];
+  }, [generators]);
 
   const [sourceLocator, setSourceLocator] = useState("");
   const [packageFormat, setPackageFormat] = useState("");
@@ -129,10 +138,14 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
             Choose…
           </option>
           <option value={UNKNOWN_GENERATOR}>Unknown — cannot be attributed</option>
-          {(generators ?? []).map((g) => (
-            <option key={g.generator_version_id} value={g.generator_version_id}>
-              {g.name} {g.version}
-            </option>
+          {groupedVersions.map(([name, owned]) => (
+            <optgroup key={name} label={name}>
+              {owned.map((v) => (
+                <option key={v.generator_version_id} value={v.generator_version_id}>
+                  {v.version}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </Select>
       </Field>

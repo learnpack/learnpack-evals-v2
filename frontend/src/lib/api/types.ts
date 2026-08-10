@@ -46,8 +46,16 @@ export interface ContentPackageResponse {
   artifacts: PackageArtifact[];
 }
 
+/** The lineage (ADR-0031): what a study means by "this generator". Owns its versions. */
+export interface GeneratorResponse {
+  generator_id: Uuid;
+  name: string;
+}
+
 export interface GeneratorVersionResponse {
   generator_version_id: Uuid;
+  generator_id: Uuid;
+  /** Joined from the lineage — a version is identified as "<name> <version>" everywhere. */
   name: string;
   version: string;
   metadata: Record<string, unknown>;
@@ -55,6 +63,11 @@ export interface GeneratorVersionResponse {
 
 export interface RegisterGeneratorRequest {
   name: string;
+  /** Echo of the name a near-miss refusal named, declaring this is a different generator. */
+  confirm_distinct_from?: string;
+}
+
+export interface RegisterGeneratorVersionRequest {
   version: string;
   metadata?: Record<string, unknown>;
 }

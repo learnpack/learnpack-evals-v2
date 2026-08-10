@@ -293,7 +293,18 @@ Two aggregation rules not to confuse:
 ## Registering courses
 
 The canonical intake is **discovery** (ADR-0027): declare a package source and the system
-reads the artifact list, the descriptor and a content hash from the package itself.
+reads the artifact list, the descriptor and a content hash from the package itself. A course
+declares which generator produced it, so the generator has to exist first — two acts, because
+the name is typed once per generator and never again (ADR-0031):
+
+```bash
+# the lineage. A name one or two edits from a registered one is refused until you echo the
+# name it named back with --distinct-from, which is what stops a typo minting a second one.
+uv run python -m app.cli register-generator --name learnpack-generator
+
+# a version under it, by id or by name; neither form ever creates the generator
+uv run python -m app.cli register-generator-version   --generator-name learnpack-generator --version 2.4.0 --changelog "What changed."
+```
 
 ```bash
 # one course, by URL or by a local directory under the repo's courses/ tree

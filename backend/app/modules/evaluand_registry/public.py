@@ -17,30 +17,35 @@ from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
     ContentSnapshot,
+    GeneratorDTO,
     GeneratorVersionDTO,
     PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.platform.uow import UnitOfWork, get_uow
 
 # Events this module publishes — the contract subscribers rely on.
 CONTENT_VERSION_REGISTERED = "ContentVersionRegistered"
+GENERATOR_REGISTERED = "GeneratorRegistered"
 GENERATOR_VERSION_REGISTERED = "GeneratorVersionRegistered"
 BRIEF_REGISTERED = "BriefRegistered"
 
 __all__ = [
     "BRIEF_REGISTERED",
     "CONTENT_VERSION_REGISTERED",
+    "GENERATOR_REGISTERED",
     "GENERATOR_VERSION_REGISTERED",
     "BriefDTO",
     "ContentPackageDTO",
     "ContentSnapshot",
     "ContentVersionRegisteredFact",
     "EvaluandRegistryQueries",
+    "GeneratorDTO",
     "GeneratorVersionDTO",
     "PackageArtifactDTO",
     "get_evaluand_registry_queries",
@@ -71,7 +76,8 @@ class EvaluandRegistryQueries:
 
     def __init__(self, session: Session) -> None:
         self._contents = SqlAlchemyContentRepository(session)
-        self._generators = SqlAlchemyGeneratorVersionRepository(session)
+        self._generators = SqlAlchemyGeneratorRepository(session)
+        self._versions = SqlAlchemyGeneratorVersionRepository(session)
         self._briefs = SqlAlchemyBriefRepository(session)
 
     def get_content_snapshot(self, content_id: UUID) -> ContentSnapshot | None:
@@ -84,7 +90,9 @@ class EvaluandRegistryQueries:
         return _queries.list_content_snapshots(self._contents)
 
     def get_generator_version(self, generator_version_id: UUID) -> GeneratorVersionDTO | None:
-        return _queries.get_generator_version(self._generators, generator_version_id)
+        return _queries.get_generator_version(
+            self._versions, self._generators, generator_version_id
+        )
 
     def get_available_contents(
         self,

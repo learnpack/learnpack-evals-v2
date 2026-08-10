@@ -16,7 +16,7 @@ import {
   useAttributeGenerator,
   useBriefs,
   useContents,
-  useGenerators,
+  useGeneratorVersions,
 } from "@/lib/api/hooks";
 import type { ContentResponse, GeneratorVersionResponse } from "@/lib/api/types";
 
@@ -28,7 +28,7 @@ export default function ContentsPage() {
   // that decide what a study can do with a course are readable — which commission it
   // shares (the pairing key) and whether its generator is known.
   const { data: briefs } = useBriefs();
-  const { data: generators } = useGenerators();
+  const { data: generators } = useGeneratorVersions();
   const [creating, setCreating] = useState(false);
 
   const briefById = useMemo(() => new Map((briefs ?? []).map((b) => [b.brief_id, b])), [briefs]);
@@ -201,17 +201,23 @@ function AttributeGeneratorCell({
       >
         {generators.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No generator registered yet — register one first in /admin/generators.
+            No generator version registered yet — register one first in /admin/generators.
           </p>
         ) : (
           <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
             <option value="" disabled>
               Choose…
             </option>
-            {generators.map((g) => (
-              <option key={g.generator_version_id} value={g.generator_version_id}>
-                {g.name} {g.version}
-              </option>
+            {[...new Map(generators.map((g) => [g.name, g] as const)).keys()].map((name) => (
+              <optgroup key={name} label={name}>
+                {generators
+                  .filter((g) => g.name === name)
+                  .map((g) => (
+                    <option key={g.generator_version_id} value={g.generator_version_id}>
+                      {g.version}
+                    </option>
+                  ))}
+              </optgroup>
             ))}
           </Select>
         )}

@@ -10,17 +10,19 @@ from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
     ContentSnapshot,
+    GeneratorDTO,
     GeneratorVersionDTO,
     PackageArtifactDTO,
 )
 from app.modules.evaluand_registry.application.ports import (
     BriefRepositoryPort,
     ContentRepositoryPort,
+    GeneratorRepositoryPort,
     GeneratorVersionRepositoryPort,
 )
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import Generator, GeneratorVersion
 
 
 def _to_snapshot(content: EducationalContent) -> ContentSnapshot:
@@ -87,12 +89,17 @@ def get_available_contents(
     ]
 
 
-def _to_generator_dto(generator: GeneratorVersion) -> GeneratorVersionDTO:
+def _to_generator_dto(generator: Generator) -> GeneratorDTO:
+    return GeneratorDTO(generator_id=generator.id, name=generator.name)
+
+
+def _to_generator_version_dto(version: GeneratorVersion, name: str) -> GeneratorVersionDTO:
     return GeneratorVersionDTO(
-        generator_version_id=generator.id,
-        name=generator.name,
-        version=generator.version,
-        metadata=generator.metadata,
+        generator_version_id=version.id,
+        generator_id=version.generator_id,
+        name=name,
+        version=version.version,
+        metadata=version.metadata,
     )
 
 
@@ -100,17 +107,38 @@ def _to_brief_dto(brief: GenerationBrief) -> BriefDTO:
     return BriefDTO(brief_id=brief.id, brief=brief.brief, fields=brief.fields)
 
 
+def list_generators(generators: GeneratorRepositoryPort) -> list[GeneratorDTO]:
+    return [_to_generator_dto(g) for g in generators.list_all()]
+
+
+# The lineage name is joined in Python, not in SQL: the repositories in this module return
+# domain objects without exception, and the lineage list is small and already fetched for other
+# reasons. Two reads where there was one, bounded by that cardinality (ADR-0031, ADR-0006).
 def get_generator_version(
-    generators: GeneratorVersionRepositoryPort, generator_version_id: UUID
+    versions: GeneratorVersionRepositoryPort,
+    generators: GeneratorRepositoryPort,
+    generator_version_id: UUID,
 ) -> GeneratorVersionDTO | None:
-    generator = generators.get_by_id(generator_version_id)
-    return None if generator is None else _to_generator_dto(generator)
+    version = versions.get_by_id(generator_version_id)
+    if version is None:
+        return None
+    generator = generators.get_by_id(version.generator_id)
+    # The FK guarantees it; an orphan would be a corrupted store, not a missing DTO.
+    assert generator is not None
+    return _to_generator_version_dto(version, generator.name)
 
 
 def list_generator_versions(
-    generators: GeneratorVersionRepositoryPort,
+    versions: GeneratorVersionRepositoryPort,
+    generators: GeneratorRepositoryPort,
 ) -> list[GeneratorVersionDTO]:
-    return [_to_generator_dto(g) for g in generators.list_all()]
+    names = {g.id: g.name for g in generators.list_all()}
+    dtos = [_to_generator_version_dto(v, names[v.generator_id]) for v in versions.list_all()]
+    # Stable sort over a list the repository already ordered by registration, so the result is
+    # (lineage name, registration order) — versions of one generator arrive together, oldest
+    # first, which is what a grouped reader wants and what a raw id ordering would scramble.
+    dtos.sort(key=lambda dto: dto.name.lower())
+    return dtos
 
 
 def get_brief(briefs: BriefRepositoryPort, brief_id: UUID) -> BriefDTO | None:

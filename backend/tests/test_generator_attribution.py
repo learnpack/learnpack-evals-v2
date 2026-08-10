@@ -21,10 +21,6 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
 )
-from app.modules.evaluand_registry.application.register_generator_version import (
-    RegisterGeneratorVersion,
-    RegisterGeneratorVersionCommand,
-)
 from app.modules.evaluand_registry.domain.content import GeneratorAlreadyAttributed
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
@@ -37,18 +33,16 @@ from app.platform.uow import UnitOfWork
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 
 
+# Two lineages that read as different generators, not as a slip of the same one: since
+# ADR-0031 a name one edit from a registered one is refused, and a test that wants two
+# examinees has to actually ask for two.
+LINEAGE_NAMES = {"a": "attribution-source", "b": "unrelated-toolchain"}
+
+
 @pytest.fixture
-def generator(cleanup, unique):
+def generator(register_generator_version, unique):
     def _register(suffix: str = "a"):
-        with SessionLocal() as session:
-            uow = UnitOfWork(session)
-            version = RegisterGeneratorVersion(
-                generators=SqlAlchemyGeneratorVersionRepository(session),
-                publisher=uow.events,
-                uow=uow,
-            )(RegisterGeneratorVersionCommand(name=f"attr-gen-{suffix}-{unique}", version="1.0.0"))
-        cleanup["generators"].append(version.id)
-        return version.id
+        return register_generator_version(f"{LINEAGE_NAMES[suffix]}-{unique}")
 
     return _register
 

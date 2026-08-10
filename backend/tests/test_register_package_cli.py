@@ -9,6 +9,7 @@ pointed at a throwaway tree so locators mint into the fake mount.
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
@@ -16,15 +17,6 @@ from sqlalchemy import text
 import app.cli as cli
 from app.cli import main, run_register_package, run_register_package_all
 from app.modules.content_profiling.public import ContentProfilingQueries
-from app.modules.evaluand_registry.application.register_generator_version import (
-    RegisterGeneratorVersion,
-    RegisterGeneratorVersionCommand,
-)
-from app.modules.evaluand_registry.infrastructure.repository import (
-    SqlAlchemyGeneratorVersionRepository,
-)
-from app.platform.db import SessionLocal
-from app.platform.uow import UnitOfWork
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 
@@ -65,16 +57,11 @@ def mount_fetcher(courses_tree, monkeypatch):
 
 
 @pytest.fixture
-def generator(cleanup, unique):
-    with SessionLocal() as session:
-        uow = UnitOfWork(session)
-        version = RegisterGeneratorVersion(
-            generators=SqlAlchemyGeneratorVersionRepository(session),
-            publisher=uow.events,
-            uow=uow,
-        )(RegisterGeneratorVersionCommand(name=f"cli-gen-{unique}", version="1.0.0"))
-    cleanup["generators"].append(version.id)
-    return version
+def generator(register_generator_version, unique):
+    """The `courses/<name>@<version>/` convention needs both halves, and since ADR-0031 they
+    live in different rows — so the fixture hands back what the folder name is built from."""
+    name, version = f"cli-gen-{unique}", "1.0.0"
+    return SimpleNamespace(id=register_generator_version(name, version), name=name, version=version)
 
 
 def put_course(tree: Path, folder: str, slug: str) -> Path:

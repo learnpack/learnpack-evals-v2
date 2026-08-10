@@ -17,9 +17,10 @@ courses/
     <course-slug>/
 ```
 
-The folder name declares the generator (ADR-0024): `<name>@<version>` must match a
-**registered** GeneratorVersion — the import refuses unregistered ones and never creates
-generator identities. The special folder `unknown` registers its courses with no generator.
+The folder name declares the generator (ADR-0024): `<name>` must match a **registered**
+`Generator` and `<version>` one of its registered versions (ADR-0031). The import refuses
+unregistered ones — naming which half is missing — and never creates generator identities. The
+special folder `unknown` registers its courses with no generator.
 
 ## Usage
 

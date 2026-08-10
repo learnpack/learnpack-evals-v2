@@ -11,8 +11,18 @@ from uuid import UUID
 
 
 @dataclass(frozen=True)
+class GeneratorDTO:
+    generator_id: UUID
+    name: str
+
+
+@dataclass(frozen=True)
 class GeneratorVersionDTO:
     generator_version_id: UUID
+    generator_id: UUID
+    # Joined from the lineage. The name moved out of the version row (ADR-0031 §1), but every
+    # reader of this DTO identifies a version by "<name> <version>", so the read side is kept
+    # whole rather than made to join at each call site.
     name: str
     version: str
     metadata: dict[str, Any]

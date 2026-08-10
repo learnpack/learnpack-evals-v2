@@ -20,6 +20,7 @@ from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
     ContentSnapshot,
+    GeneratorDTO,
     GeneratorVersionDTO,
 )
 from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
@@ -34,10 +35,17 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
 )
+from app.modules.evaluand_registry.application.register_generator import (
+    DuplicateGenerator,
+    RegisterGenerator,
+    RegisterGeneratorCommand,
+    SimilarGeneratorExists,
+)
 from app.modules.evaluand_registry.application.register_generator_version import (
     DuplicateGeneratorVersion,
     RegisterGeneratorVersion,
     RegisterGeneratorVersionCommand,
+    UnknownGenerator,
 )
 from app.modules.evaluand_registry.application.register_package_from_source import (
     RegisterPackageFromSource,
@@ -49,7 +57,10 @@ from app.modules.evaluand_registry.domain.content import (
     GeneratorAlreadyAttributed,
     InvalidContent,
 )
-from app.modules.evaluand_registry.domain.generator import InvalidGeneratorVersion
+from app.modules.evaluand_registry.domain.generator import (
+    InvalidGenerator,
+    InvalidGeneratorVersion,
+)
 from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
@@ -60,6 +71,7 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.platform.security import AdminAssessor
@@ -346,6 +358,25 @@ evaluand_router = APIRouter(prefix="/admin", tags=["evaluand-registry"])
 
 class RegisterGeneratorRequest(BaseModel):
     name: str = Field(examples=["learnpack-generator"])
+    confirm_distinct_from: str | None = Field(
+        default=None,
+        description=(
+            "Echo of the registered name a refusal named, declaring this generator is a "
+            "different one (ADR-0031)."
+        ),
+    )
+
+
+class GeneratorResponse(BaseModel):
+    generator_id: UUID
+    name: str
+
+    @classmethod
+    def from_dto(cls, dto: GeneratorDTO) -> "GeneratorResponse":
+        return cls(generator_id=dto.generator_id, name=dto.name)
+
+
+class RegisterGeneratorVersionRequest(BaseModel):
     version: str = Field(examples=["2.4.0"])
     # Free-form identity blob; fields get promoted to typed columns only when consumed.
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -353,6 +384,7 @@ class RegisterGeneratorRequest(BaseModel):
 
 class GeneratorVersionResponse(BaseModel):
     generator_version_id: UUID
+    generator_id: UUID
     name: str
     version: str
     metadata: dict[str, Any]
@@ -361,6 +393,7 @@ class GeneratorVersionResponse(BaseModel):
     def from_dto(cls, dto: GeneratorVersionDTO) -> "GeneratorVersionResponse":
         return cls(
             generator_version_id=dto.generator_version_id,
+            generator_id=dto.generator_id,
             name=dto.name,
             version=dto.version,
             metadata=dto.metadata,
@@ -383,22 +416,75 @@ class BriefResponse(BaseModel):
 
 
 @evaluand_router.post(
-    "/generators", status_code=status.HTTP_201_CREATED, response_model=GeneratorVersionResponse
+    "/generators", status_code=status.HTTP_201_CREATED, response_model=GeneratorResponse
 )
 def register_generator(
     request: RegisterGeneratorRequest, admin: AdminAssessor, uow: Uow
-) -> GeneratorVersionResponse:
-    use_case = RegisterGeneratorVersion(
-        generators=SqlAlchemyGeneratorVersionRepository(uow.session),
+) -> GeneratorResponse:
+    """Mint a generator lineage — the rare act (ADR-0031 §3).
+
+    The only gate where a generator name is still typed, hence the only one that guards
+    against a near miss. Both refusals are 409: one is the same lineage, the other is a
+    question, and the second is answered by echoing the name it named."""
+    use_case = RegisterGenerator(
+        generators=SqlAlchemyGeneratorRepository(uow.session),
         publisher=uow.events,
         uow=uow,
     )
     try:
         generator = use_case(
-            RegisterGeneratorVersionCommand(
-                name=request.name, version=request.version, metadata=request.metadata
+            RegisterGeneratorCommand(
+                name=request.name, confirm_distinct_from=request.confirm_distinct_from
             )
         )
+    except SimilarGeneratorExists as exc:
+        # The one error in this router whose `detail` is an object rather than a string: the
+        # name to echo back is part of the contract (ADR-0031 §4), not decoration inside a
+        # sentence, and a client that had to parse it out of prose would break on a reword.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": str(exc), "similarTo": exc.existing},
+        ) from exc
+    except DuplicateGenerator as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InvalidGenerator as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    return GeneratorResponse(generator_id=generator.id, name=generator.name)
+
+
+@evaluand_router.get("/generators", response_model=list[GeneratorResponse])
+def list_generators(admin: AdminAssessor, uow: Uow) -> list[GeneratorResponse]:
+    dtos = queries.list_generators(SqlAlchemyGeneratorRepository(uow.session))
+    return [GeneratorResponse.from_dto(d) for d in dtos]
+
+
+@evaluand_router.post(
+    "/generators/{generator_id}/versions",
+    status_code=status.HTTP_201_CREATED,
+    response_model=GeneratorVersionResponse,
+)
+def register_generator_version(
+    generator_id: UUID, request: RegisterGeneratorVersionRequest, admin: AdminAssessor, uow: Uow
+) -> GeneratorVersionResponse:
+    """Register a version under a generator — the routine act. The lineage arrives as a path
+    id, so this act has no name to misspell (ADR-0031 §1)."""
+    use_case = RegisterGeneratorVersion(
+        generators=SqlAlchemyGeneratorRepository(uow.session),
+        versions=SqlAlchemyGeneratorVersionRepository(uow.session),
+        publisher=uow.events,
+        uow=uow,
+    )
+    try:
+        version = use_case(
+            RegisterGeneratorVersionCommand(
+                generator_id=generator_id, version=request.version, metadata=request.metadata
+            )
+        )
+    except UnknownGenerator as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DuplicateGeneratorVersion as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidGeneratorVersion as exc:
@@ -407,15 +493,20 @@ def register_generator(
         ) from exc
 
     dto = queries.get_generator_version(
-        SqlAlchemyGeneratorVersionRepository(uow.session), generator.id
+        SqlAlchemyGeneratorVersionRepository(uow.session),
+        SqlAlchemyGeneratorRepository(uow.session),
+        version.id,
     )
     assert dto is not None  # just written in this transaction
     return GeneratorVersionResponse.from_dto(dto)
 
 
-@evaluand_router.get("/generators", response_model=list[GeneratorVersionResponse])
-def list_generators(admin: AdminAssessor, uow: Uow) -> list[GeneratorVersionResponse]:
-    dtos = queries.list_generator_versions(SqlAlchemyGeneratorVersionRepository(uow.session))
+@evaluand_router.get("/generator-versions", response_model=list[GeneratorVersionResponse])
+def list_generator_versions(admin: AdminAssessor, uow: Uow) -> list[GeneratorVersionResponse]:
+    dtos = queries.list_generator_versions(
+        SqlAlchemyGeneratorVersionRepository(uow.session),
+        SqlAlchemyGeneratorRepository(uow.session),
+    )
     return [GeneratorVersionResponse.from_dto(d) for d in dtos]
 
 

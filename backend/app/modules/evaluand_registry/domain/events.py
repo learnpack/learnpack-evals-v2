@@ -2,23 +2,39 @@
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import Generator, GeneratorVersion
 from app.shared.domain.events import DomainEvent
 
 AGGREGATE_TYPE = "EducationalContent"
-GENERATOR_AGGREGATE = "GeneratorVersion"
+GENERATOR_AGGREGATE = "Generator"
+GENERATOR_VERSION_AGGREGATE = "GeneratorVersion"
 BRIEF_AGGREGATE = "GenerationBrief"
 
 
-def generator_version_registered(generator: GeneratorVersion) -> DomainEvent:
+def generator_registered(generator: Generator) -> DomainEvent:
+    """A lineage was minted (ADR-0031) — the rare act, as opposed to registering a version
+    under one."""
     return DomainEvent(
-        event_type="GeneratorVersionRegistered",
+        event_type="GeneratorRegistered",
         aggregate_type=GENERATOR_AGGREGATE,
         aggregate_id=str(generator.id),
+        payload={"generatorId": str(generator.id), "name": generator.name},
+    )
+
+
+def generator_version_registered(version: GeneratorVersion, generator: Generator) -> DomainEvent:
+    """The lineage travels by id *and* by name. An event is a past fact in an append-only
+    outbox, and a payload that needs a join against current state to be read is a worse
+    record — so the name is carried redundantly, on purpose."""
+    return DomainEvent(
+        event_type="GeneratorVersionRegistered",
+        aggregate_type=GENERATOR_VERSION_AGGREGATE,
+        aggregate_id=str(version.id),
         payload={
-            "generatorVersionId": str(generator.id),
+            "generatorVersionId": str(version.id),
+            "generatorId": str(generator.id),
             "name": generator.name,
-            "version": generator.version,
+            "version": version.version,
         },
     )
 

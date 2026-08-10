@@ -366,28 +366,13 @@ def test_derive_brief_returns_none_for_non_course_payloads(payload):
 # ------------------------------------------- public read surface for dataset composition
 
 
-def _register_generator(cleanup, unique):
-    from app.modules.evaluand_registry.application.register_generator_version import (
-        RegisterGeneratorVersion,
-        RegisterGeneratorVersionCommand,
-    )
-
-    with SessionLocal() as session:
-        uow = UnitOfWork(session)
-        generator = RegisterGeneratorVersion(
-            generators=SqlAlchemyGeneratorVersionRepository(session),
-            publisher=uow.events,
-            uow=uow,
-        )(RegisterGeneratorVersionCommand(name=f"intake-gen-{unique}", version="1.0.0"))
-    cleanup["generators"].append(generator.id)
-    return generator.id
-
-
-def test_get_available_contents_filters_for_dataset_composition(cleanup, unique):
+def test_get_available_contents_filters_for_dataset_composition(
+    cleanup, unique, register_generator_version
+):
     from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 
     intake = PackageBriefIntake(StubFetcher(SYLLABUS_BYTES))
-    generator_id = _register_generator(cleanup, unique)
+    generator_id = register_generator_version(f"intake-gen-{unique}")
     with_brief = _register(cleanup, unique, "g1", intake=intake)
     linked = _register(cleanup, unique, "g2", intake=intake, generator_version_id=generator_id)
     plain = _register(cleanup, unique, "g3", intake=None, artifacts=[])

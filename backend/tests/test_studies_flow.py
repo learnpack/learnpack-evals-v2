@@ -32,10 +32,6 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
 )
-from app.modules.evaluand_registry.application.register_generator_version import (
-    RegisterGeneratorVersion,
-    RegisterGeneratorVersionCommand,
-)
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
@@ -133,18 +129,6 @@ def _register_course(cleanup, unique, suffix, generator_version_id=None):
     return content
 
 
-def _register_generator(cleanup, unique):
-    with SessionLocal() as session:
-        uow = UnitOfWork(session)
-        generator = RegisterGeneratorVersion(
-            generators=SqlAlchemyGeneratorVersionRepository(session),
-            publisher=uow.events,
-            uow=uow,
-        )(RegisterGeneratorVersionCommand(name=f"studies-flow-generator-{unique}", version="1.0.0"))
-    cleanup["generators"].append(generator.id)
-    return generator.id
-
-
 def _studies_wiring(session):
     uow = UnitOfWork(session)
     return uow, SqlAlchemyStudyRepository(session)
@@ -175,12 +159,12 @@ def _project_fitness(session, study_id):
 
 
 def test_the_first_increment_closes_the_loop(
-    cleanup, unique, session, namespace, admin, patched_package
+    cleanup, unique, session, namespace, admin, patched_package, register_generator_version
 ):
     admin_id, email = admin
 
     # --- the evaluand side: paired registrations, one generator known, one unknown
-    generator_id = _register_generator(cleanup, unique)
+    generator_id = register_generator_version(f"studies-flow-generator-{unique}")
     linked = _register_course(cleanup, unique, "linked", generator_version_id=generator_id)
     orphan = _register_course(cleanup, unique, "orphan")
     assert linked.brief_id == orphan.brief_id  # ADR-0022: hash identity pairs them
@@ -359,12 +343,12 @@ def test_the_first_increment_closes_the_loop(
 
 
 def test_an_attributed_content_enters_generator_level_accumulation(
-    cleanup, unique, session, namespace, admin, patched_package
+    cleanup, unique, session, namespace, admin, patched_package, register_generator_version
 ):
     """What the repair act is for (ADR-0024): a content registered with its generator
     unknown is excluded from accumulation, and after attribution it counts."""
     admin_id, email = admin
-    generator_id = _register_generator(cleanup, unique)
+    generator_id = register_generator_version(f"studies-flow-generator-{unique}")
     orphan = _register_course(cleanup, unique, "late")  # declared unknown at registration
 
     version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
