@@ -2,7 +2,7 @@
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
 pin-study | compose-dataset | open-study | publish-study | show-report |
-attribute-generator`.
+attribute-generator | register-generator | register-generator-version`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -69,9 +69,17 @@ from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersionCommand,
     UnknownGeneratorVersion,
 )
+from app.modules.evaluand_registry.application.register_generator import (
+    DuplicateGenerator,
+    RegisterGenerator,
+    RegisterGeneratorCommand,
+    SimilarGeneratorExists,
+)
 from app.modules.evaluand_registry.application.register_generator_version import (
+    DuplicateGeneratorVersion,
     RegisterGeneratorVersion,
     RegisterGeneratorVersionCommand,
+    UnknownGenerator,
 )
 from app.modules.evaluand_registry.application.register_package_from_source import (
     RegisterPackageFromSource,
@@ -83,6 +91,7 @@ from app.modules.evaluand_registry.domain.content import (
     GeneratorAlreadyAttributed,
     InvalidContent,
 )
+from app.modules.evaluand_registry.domain.generator import normalized_name
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import (
     PACKAGE_FORMAT as LEARNPACK_FORMAT,
 )
@@ -97,6 +106,7 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
@@ -1040,6 +1050,77 @@ def run_attribute_generator(content_id: UUID, generator_version_id: UUID, email:
     return 0
 
 
+def run_register_generator(name: str, distinct_from: str | None) -> int:
+    """Mint a generator lineage (ADR-0031 §3) — the rare act, and the only one that still
+    takes a typed name, hence the only one guarded against a near miss."""
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = RegisterGenerator(
+            generators=SqlAlchemyGeneratorRepository(session), publisher=uow.events, uow=uow
+        )
+        try:
+            generator = use_case(
+                RegisterGeneratorCommand(name=name, confirm_distinct_from=distinct_from)
+            )
+        except SimilarGeneratorExists as exc:
+            print(str(exc), file=sys.stderr)
+            print(
+                f"  re-run with --distinct-from {exc.existing!r} if it really is another generator",
+                file=sys.stderr,
+            )
+            return 1
+        except DuplicateGenerator as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"registered generator {generator.name} ({generator.id})")
+    return 0
+
+
+def run_register_generator_version(
+    generator_id: UUID | None, generator_name: str | None, version: str, changelog: str | None
+) -> int:
+    """Register a version under a generator (ADR-0031 §3) — the routine act, the one the
+    genetic-algorithm loop runs many times per generation."""
+    with SessionLocal() as session:
+        generators = SqlAlchemyGeneratorRepository(session)
+        if generator_id is None:
+            assert generator_name is not None  # argparse guarantees one of the two
+            # Resolves, never mints: creating a lineage is the other command, on purpose.
+            found = generators.find_by_name_key(normalized_name(generator_name))
+            if found is None:
+                print(
+                    f"no generator named {generator_name!r} — register it first with "
+                    "register-generator",
+                    file=sys.stderr,
+                )
+                return 1
+            generator_id = found.id
+
+        uow = UnitOfWork(session)
+        use_case = RegisterGeneratorVersion(
+            generators=generators,
+            versions=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            registered = use_case(
+                RegisterGeneratorVersionCommand(
+                    generator_id=generator_id,
+                    version=version,
+                    # An empty flag declares nothing; it must not write an empty key (ADR-0030).
+                    metadata={"changelog": changelog} if changelog else {},
+                )
+            )
+        except (UnknownGenerator, DuplicateGeneratorVersion) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"registered version {registered.version} ({registered.id})")
+    return 0
+
+
 def _generator_declaration(value: str) -> str:
     """`--generator` takes a generator version id or the literal `unknown` (ADR-0024).
     Validated at parse time so a typo fails before anything is registered."""
@@ -1166,7 +1247,10 @@ def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
     """Resolve a courses/ generator folder to its declaration. Provisional convention
     (ADR-0027), isolated here so a richer one replaces one function: `<name>@<version>`
     names a **registered** GeneratorVersion, `unknown` declares none (ADR-0024). Anything
-    else refuses — mechanical intake never mints generator identities."""
+    else refuses — mechanical intake never mints generator identities.
+
+    Two steps since ADR-0031, which is also two distinct answers: the lineage may not exist,
+    or it may exist without that version. Naming which one is the point."""
     if folder_name == "unknown":
         return None
     name, sep, version = folder_name.rpartition("@")
@@ -1174,12 +1258,21 @@ def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
         raise UnknownGeneratorVersion(
             f"folder '{folder_name}' is not '<name>@<version>' or 'unknown' (see courses/README.md)"
         )
-    generators = SqlAlchemyGeneratorVersionRepository(session)
-    match = next((g for g in generators.list_all() if (g.name, g.version) == (name, version)), None)
+    generator = SqlAlchemyGeneratorRepository(session).find_by_name_key(normalized_name(name))
+    if generator is None:
+        raise UnknownGeneratorVersion(
+            f"folder '{folder_name}' names no registered generator '{name}' — register it "
+            "first (app.cli register-generator)"
+        )
+    versions = SqlAlchemyGeneratorVersionRepository(session)
+    match = next(
+        (v for v in versions.list_all() if (v.generator_id, v.version) == (generator.id, version)),
+        None,
+    )
     if match is None:
         raise UnknownGeneratorVersion(
-            f"folder '{folder_name}' names no registered generator version — register it "
-            "first (POST /admin/generators)"
+            f"generator '{generator.name}' has no registered version '{version}' — register it "
+            "first (app.cli register-generator-version)"
         )
     return match.id
 
@@ -1694,28 +1787,41 @@ DEMO_GENERATOR = ("learnpack-generator", "1.0.0")
 
 
 def _seed_demo_generator() -> UUID:
-    """The demo's declared examinee. One course is linked to it and the other is declared
-    unknown (ADR-0024), so the local study report exercises both paths: a populated
-    generator level and the `unknownExclusions` caveat."""
+    """The demo's declared examinee, seeded as the two acts it now is (ADR-0031): the lineage,
+    then a version under it. One course is linked to that version and the other is declared
+    unknown (ADR-0024), so the local study report exercises both paths: a populated generator
+    level and the `unknownExclusions` caveat.
+
+    Returns the **version** id, which is what a content declares."""
     name, version = DEMO_GENERATOR
     with SessionLocal() as session:
-        generators = SqlAlchemyGeneratorVersionRepository(session)
+        generators = SqlAlchemyGeneratorRepository(session)
+        versions = SqlAlchemyGeneratorVersionRepository(session)
+
+        generator = generators.find_by_name_key(normalized_name(name))
+        if generator is None:
+            uow = UnitOfWork(session)
+            generator = RegisterGenerator(generators, uow.events, uow)(
+                RegisterGeneratorCommand(name=name)
+            )
+
+        declared = (generator.id, version)
         existing = next(
-            (g for g in generators.list_all() if (g.name, g.version) == DEMO_GENERATOR), None
+            (v for v in versions.list_all() if (v.generator_id, v.version) == declared), None
         )
         if existing is not None:
             return existing.id
 
         uow = UnitOfWork(session)
-        generator = RegisterGeneratorVersion(generators, uow.events, uow)(
+        registered = RegisterGeneratorVersion(generators, versions, uow.events, uow)(
             RegisterGeneratorVersionCommand(
-                name=name,
+                generator_id=generator.id,
                 version=version,
                 # Optional reference prose, the only key the console writes (ADR-0030 §2).
                 metadata={"changelog": "First registered version of the demo generator."},
             )
         )
-        return generator.id
+        return registered.id
 
 
 def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
@@ -1853,6 +1959,8 @@ def _reset_demo(session: Session) -> None:
         "DELETE FROM generation_briefs",
         # Registered by the seeder (ADR-0024), not seeded reference data; after contents.
         "DELETE FROM generator_versions",
+        # The lineage owns the versions (ADR-0031); after them (FK).
+        "DELETE FROM generators",
         "DELETE FROM events",
         # Ratifications reference assessors on both sides (ADR-0019); before assessors.
         "DELETE FROM assessor_ratifications",
@@ -2188,6 +2296,33 @@ def main(argv: list[str] | None = None) -> int:
         "--email", required=True, help="the admin performing the act (attributed_by)"
     )
 
+    generator_parser = subparsers.add_parser(
+        "register-generator",
+        help="mint a generator lineage — the name is typed here and nowhere else (ADR-0031)",
+    )
+    generator_parser.add_argument("--name", required=True)
+    generator_parser.add_argument(
+        "--distinct-from",
+        default=None,
+        metavar="NAME",
+        help="the registered name a refusal named, echoed back to declare this is another "
+        "generator",
+    )
+
+    generator_version_parser = subparsers.add_parser(
+        "register-generator-version",
+        help="register a version under a registered generator (ADR-0031)",
+    )
+    # One or the other: a name is the natural handle for a script, an id for anything that
+    # just created the lineage. Neither can mint one.
+    generator_ref = generator_version_parser.add_mutually_exclusive_group(required=True)
+    generator_ref.add_argument("--generator-id", type=UUID)
+    generator_ref.add_argument("--generator-name")
+    generator_version_parser.add_argument("--version", required=True)
+    generator_version_parser.add_argument(
+        "--changelog", default=None, help="optional prose for whoever reads a report (ADR-0030)"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "seed":
@@ -2282,6 +2417,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "attribute-generator":
         return run_attribute_generator(
             UUID(args.content_id), UUID(args.generator_version_id), args.email
+        )
+    elif args.command == "register-generator":
+        return run_register_generator(args.name, args.distinct_from)
+    elif args.command == "register-generator-version":
+        return run_register_generator_version(
+            args.generator_id, args.generator_name, args.version, args.changelog
         )
     return 0
 
