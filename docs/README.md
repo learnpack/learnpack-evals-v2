@@ -52,7 +52,8 @@ absence-derived `fail`: no quote, origin recorded · `0022` mechanical brief int
 fitness projection · `0024` explicit generator attribution · `0025` pedagogical frames (decided,
 not built) · `0026` a claim asserts about exactly one quality · `0027` package intake by
 mechanical discovery · `0028` a consumable URL declares a deployment · `0029` automatic profiling
-assumes http(s) transport · `0030` the generator declares reference data, not artifacts.
+assumes http(s) transport · `0030` the generator declares reference data, not artifacts · `0031` a
+generator is an entity; its versions belong to it.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
