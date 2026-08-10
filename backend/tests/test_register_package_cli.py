@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 import app.cli as cli
 from app.cli import main, run_register_package, run_register_package_all
+from app.config import get_settings
 from app.modules.content_profiling.public import ContentProfilingQueries
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
@@ -26,7 +27,7 @@ def courses_tree(tmp_path, monkeypatch, requires_db):
     tree = tmp_path / "courses"
     tree.mkdir()
     monkeypatch.setattr(cli, "COURSES_DIR", tree)
-    monkeypatch.setattr(cli, "_mount_preflight", lambda root: True)
+    monkeypatch.setattr(cli, "_mount_preflight", lambda root, course_dir: True)
     return tree
 
 
@@ -251,3 +252,32 @@ def test_the_batch_reports_that_nothing_was_profiled(
     out = capsys.readouterr().out
     assert "profiling: 0 profiled, 0 failed, 1 not profiled" in out
     assert "accept-extraction" in out
+
+
+# ------------------------------------------------------------------ the mount preflight
+
+
+def test_the_preflight_probes_a_file_the_course_actually_has(tmp_path, monkeypatch):
+    """The check is "does the mount serve this tree", which is true of every format. Probing
+    a named manifest tied it to LearnpackV1's convention, so a local course of any other
+    format was refused before discovery ever ran — and told to start an API that was already
+    running."""
+    monkeypatch.setattr(cli, "COURSES_DIR", tmp_path)
+    course_dir = tmp_path / "gen@2.0.0" / "a-run"
+    (course_dir / "traces").mkdir(parents=True)
+    (course_dir / "traces" / "run_metadata.json").write_text("{}", encoding="utf-8")
+
+    probed: list[str] = []
+
+    class RecordingFetcher:
+        def fetch(self, locator: str) -> bytes:
+            probed.append(locator)
+            return b"{}"
+
+    monkeypatch.setattr(cli, "HttpFetcher", RecordingFetcher)
+
+    assert cli._mount_preflight(cli._course_root(course_dir), course_dir)
+    assert probed == [
+        f"{get_settings().local_packages_base_url.rstrip('/')}"
+        "/gen@2.0.0/a-run/traces/run_metadata.json"
+    ]

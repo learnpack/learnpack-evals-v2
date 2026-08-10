@@ -97,7 +97,6 @@ from app.modules.evaluand_registry.infrastructure.acl_learnpack import (
 )
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
-    MANIFEST_PATH,
     FilesystemPackageRoot,
     HttpPackageRoot,
     PackageDiscovery,
@@ -1217,11 +1216,19 @@ def _course_root(course_dir: Path) -> FilesystemPackageRoot:
     return FilesystemPackageRoot(course_dir, locator_base=f"{base}/{relative.as_posix()}")
 
 
-def _mount_preflight(root: FilesystemPackageRoot) -> bool:
+def _mount_preflight(root: FilesystemPackageRoot, course_dir: Path) -> bool:
     """One GET through the mount before registering. Registered locators point into it, so
     registering with the API down would not fail — it would degrade into absent briefs and
-    failing profiles. Loud refusal instead."""
-    locator = root.locator_for(MANIFEST_PATH)
+    failing profiles. Loud refusal instead.
+
+    The probe is a file this course actually has, picked off disk: what is being checked is
+    that the mount serves *this tree*, which is true of every format. Probing a named
+    manifest would make the check format-specific, and it would refuse every format whose
+    convention does not happen to use that name."""
+    probe = next((p for p in sorted(course_dir.rglob("*")) if p.is_file()), None)
+    if probe is None:
+        return True  # nothing to serve; discovery will refuse it with a better message
+    locator = root.locator_for(probe.relative_to(course_dir).as_posix())
     try:
         HttpFetcher().fetch(locator)
         return True
@@ -1391,7 +1398,7 @@ def run_register_package(
                 print(f"'{source}' is neither an http(s) URL nor a directory", file=sys.stderr)
                 return 1
             root = _course_root(course_dir)
-            if not _mount_preflight(root):
+            if not _mount_preflight(root, course_dir):
                 return 1
             root_factory = _fixed_root(root)
         status, detail, content_id = _register_package(
@@ -1454,7 +1461,7 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
         print("nothing was registered", file=sys.stderr)
         return 1
 
-    if not _mount_preflight(_course_root(course_dirs[0][1])):
+    if not _mount_preflight(_course_root(course_dirs[0][1]), course_dirs[0][1]):
         return 1
 
     created_ids: list[UUID] = []
