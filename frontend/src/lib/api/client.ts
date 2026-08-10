@@ -4,9 +4,10 @@
  * Identity travels in headers, never in a cookie: the Clerk session JWT as `Authorization:
  * Bearer` (ADR-0004, cross-origin), or `X-Dev-User` in local mode (ADR-0008). Which one is
  * decided by `lib/auth`; this client only forwards what it is given.
- * FastAPI error bodies are `{ detail: ... }`: `detail` is a string for our HTTPExceptions, but
- * a list for metadata-validation (422) and for FastAPI's own body validation (422). We
- * normalize both into `ApiError`.
+ * FastAPI error bodies are `{ detail: ... }`: `detail` is a string for our HTTPExceptions, a
+ * list for metadata-validation (422) and for FastAPI's own body validation (422), and an
+ * object when the error carries data the UI must act on rather than merely display. We
+ * normalize all three into `ApiError`.
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -15,12 +16,20 @@ export class ApiError extends Error {
   status: number;
   /** Field-scoped messages when the backend returned a validation list. */
   fieldErrors?: Record<string, string>;
+  /** The rest of an object `detail` — data the caller is expected to act on. */
+  data?: Record<string, unknown>;
 
-  constructor(status: number, message: string, fieldErrors?: Record<string, string>) {
+  constructor(
+    status: number,
+    message: string,
+    fieldErrors?: Record<string, string>,
+    data?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.data = data;
   }
 }
 
@@ -53,6 +62,11 @@ function normalizeError(status: number, body: unknown): ApiError {
       messages.push(field ? `${field}: ${msg}` : msg);
     }
     return new ApiError(status, messages.join("; ") || "Validation failed", fieldErrors);
+  }
+
+  if (detail && typeof detail === "object") {
+    const { message, ...data } = detail as { message?: string } & Record<string, unknown>;
+    return new ApiError(status, message ?? `Request failed (${status})`, undefined, data);
   }
 
   return new ApiError(status, `Request failed (${status})`);

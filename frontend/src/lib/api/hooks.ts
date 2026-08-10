@@ -22,6 +22,7 @@ import type {
   ContentResponse,
   DeclareStudyRequest,
   EvaluationResponse,
+  GeneratorResponse,
   GeneratorVersionResponse,
   GoldenStatus,
   InstrumentResponse,
@@ -35,6 +36,7 @@ import type {
   RegisterBySourceRequest,
   RegisterBySourceResponse,
   RegisterGeneratorRequest,
+  RegisterGeneratorVersionRequest,
   ScoresReport,
   StudyFitness,
   StudyReadiness,
@@ -62,6 +64,7 @@ export const queryKeys = {
   contents: ["admin", "contents"] as const,
   packageFormats: ["admin", "contents", "formats"] as const,
   generators: ["admin", "generators"] as const,
+  generatorVersions: ["admin", "generator-versions"] as const,
   briefs: ["admin", "briefs"] as const,
   instruments: ["admin", "instruments"] as const,
   profiles: ["admin", "profiles"] as const,
@@ -177,11 +180,21 @@ export function useAttributeGenerator() {
   });
 }
 
+/** The lineages. `/generators` and `/generator-versions` are two resources since ADR-0031:
+ *  the first is what a name identifies, the second is what a content declares. */
 export function useGenerators() {
   const api = useApi();
   return useQuery({
     queryKey: queryKeys.generators,
-    queryFn: () => api<GeneratorVersionResponse[]>("/admin/generators"),
+    queryFn: () => api<GeneratorResponse[]>("/admin/generators"),
+  });
+}
+
+export function useGeneratorVersions() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.generatorVersions,
+    queryFn: () => api<GeneratorVersionResponse[]>("/admin/generator-versions"),
   });
 }
 
@@ -190,8 +203,26 @@ export function useCreateGenerator() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: RegisterGeneratorRequest) =>
-      api<GeneratorVersionResponse>("/admin/generators", { method: "POST", body }),
+      api<GeneratorResponse>("/admin/generators", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.generators }),
+  });
+}
+
+export function useCreateGeneratorVersion() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ generatorId, body }: { generatorId: Uuid; body: RegisterGeneratorVersionRequest }) =>
+      api<GeneratorVersionResponse>(`/admin/generators/${generatorId}/versions`, {
+        method: "POST",
+        body,
+      }),
+    // A new version changes what the version list shows, not the lineage list — but the
+    // grouped view reads both, so both are invalidated.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.generators });
+      qc.invalidateQueries({ queryKey: queryKeys.generatorVersions });
+    },
   });
 }
 
