@@ -122,19 +122,39 @@ def test_list_contents_includes_the_new_one(admin_client, cleanup, unique):
 # ------------------------------------------------------------ generators & briefs
 
 
-def test_register_generator_writes_aggregate_and_event(admin_client, cleanup, session, unique):
+def mint_generator(admin_client, cleanup, name: str) -> str:
+    """The lineage act, tracked for cleanup. Its own helper because it is now a separate call
+    that every generator test starts from (ADR-0031 §3)."""
+    response = admin_client.post("/admin/generators", json={"name": name})
+    assert response.status_code == 201, response.text
+    generator_id = response.json()["generator_id"]
+    cleanup["generator_lineages"].append(generator_id)
+    return generator_id
+
+
+def add_version(admin_client, cleanup, generator_id: str, version: str, **body) -> dict:
     response = admin_client.post(
-        "/admin/generators",
-        json={"name": f"gen-{unique}", "version": "2.4.0", "metadata": {"model": "gpt"}},
+        f"/admin/generators/{generator_id}/versions", json={"version": version, **body}
     )
     assert response.status_code == 201, response.text
-    body = response.json()
-    cleanup["generators"].append(body["generator_version_id"])
+    created = response.json()
+    cleanup["generators"].append(created["generator_version_id"])
+    return created
+
+
+def test_register_generator_version_writes_aggregate_and_event(
+    admin_client, cleanup, session, unique
+):
+    generator_id = mint_generator(admin_client, cleanup, f"gen-{unique}")
+    body = add_version(admin_client, cleanup, generator_id, "2.4.0", metadata={"model": "gpt"})
     assert body["metadata"] == {"model": "gpt"}
+    # The version answers with its lineage, so a reader never has to join to name it.
+    assert body["generator_id"] == generator_id
+    assert body["name"] == f"gen-{unique}"
 
     # The blob comes back on the read path too — it is what the console's Details dialog
     # renders, and the only channel for what a version declares about itself (ADR-0030 §2).
-    listed = admin_client.get("/admin/generators").json()
+    listed = admin_client.get("/admin/generator-versions").json()
     mine = next(g for g in listed if g["generator_version_id"] == body["generator_version_id"])
     assert mine["metadata"] == {"model": "gpt"}
 
@@ -145,21 +165,78 @@ def test_register_generator_writes_aggregate_and_event(admin_client, cleanup, se
     assert event_type == "GeneratorVersionRegistered"
 
 
-def test_duplicate_generator_identity_is_rejected(admin_client, cleanup, unique):
+def test_minting_a_lineage_writes_its_own_event(admin_client, cleanup, session, unique):
+    generator_id = mint_generator(admin_client, cleanup, f"gen-{unique}")
+    event_type = session.execute(
+        text("SELECT event_type FROM events WHERE aggregate_id = :id"),
+        {"id": generator_id},
+    ).scalar_one()
+    assert event_type == "GeneratorRegistered"
+
+
+def test_duplicate_generator_version_is_rejected(admin_client, cleanup, unique):
     """Immutable identity: a genuinely different generator is a NEW registration."""
-    first = admin_client.post("/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"})
-    cleanup["generators"].append(first.json()["generator_version_id"])
+    generator_id = mint_generator(admin_client, cleanup, f"gen-{unique}")
+    add_version(admin_client, cleanup, generator_id, "1.0")
 
     duplicate = admin_client.post(
-        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
+        f"/admin/generators/{generator_id}/versions", json={"version": "1.0"}
     )
     assert duplicate.status_code == 409
 
-    new_version = admin_client.post(
-        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.1"}
+    add_version(admin_client, cleanup, generator_id, "1.1")
+
+
+def test_a_version_under_an_unregistered_generator_is_refused(admin_client):
+    """A version never mints its lineage — registering one is the other act, deliberately."""
+    response = admin_client.post(
+        "/admin/generators/00000000-0000-0000-0000-000000000000/versions",
+        json={"version": "1.0"},
     )
-    assert new_version.status_code == 201
-    cleanup["generators"].append(new_version.json()["generator_version_id"])
+    assert response.status_code == 404
+
+
+def test_the_same_lineage_cannot_be_registered_twice(admin_client, cleanup, unique):
+    """Case and surrounding whitespace are not an identity: they are what a keyboard varies
+    without meaning to (ADR-0031 §5). Not a near miss — the same lineage, so not overridable."""
+    mint_generator(admin_client, cleanup, f"gen-{unique}")
+
+    for variant in (f"gen-{unique}", f"  GEN-{unique.upper()}  "):
+        again = admin_client.post("/admin/generators", json={"name": variant})
+        assert again.status_code == 409, variant
+        # Even an echo cannot force it through: this is not a question being asked.
+        forced = admin_client.post(
+            "/admin/generators", json={"name": variant, "confirm_distinct_from": f"gen-{unique}"}
+        )
+        assert forced.status_code == 409, variant
+
+
+def test_a_near_miss_is_refused_until_the_candidate_is_echoed_back(admin_client, cleanup, unique):
+    """The defect this whole change exists for: `gen-alpha` mistyped as `gen-alpah` used to
+    mint a second lineage in silence (ADR-0031)."""
+    registered = f"gen-alpha-{unique}"
+    mint_generator(admin_client, cleanup, registered)
+
+    typo = f"gen-alpah-{unique}"
+    refused = admin_client.post("/admin/generators", json={"name": typo})
+    assert refused.status_code == 409
+    # The refusal names what it thinks you meant, or the operator cannot act on it.
+    assert registered in refused.json()["detail"]
+
+    wrong_echo = admin_client.post(
+        "/admin/generators", json={"name": typo, "confirm_distinct_from": "something-else"}
+    )
+    assert wrong_echo.status_code == 409
+
+    confirmed = admin_client.post(
+        "/admin/generators", json={"name": typo, "confirm_distinct_from": registered}
+    )
+    assert confirmed.status_code == 201, confirmed.text
+    cleanup["generator_lineages"].append(confirmed.json()["generator_id"])
+
+
+def test_a_blank_generator_name_is_rejected(admin_client):
+    assert admin_client.post("/admin/generators", json={"name": "   "}).status_code == 422
 
 
 def test_register_brief_writes_aggregate_and_event(admin_client, cleanup, session, unique):
@@ -201,18 +278,20 @@ def test_generator_artifact_endpoints_are_gone(admin_client):
 
 
 def test_generators_and_briefs_are_listed(admin_client, cleanup, unique):
-    generator_id = admin_client.post(
-        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
-    ).json()["generator_version_id"]
-    cleanup["generators"].append(generator_id)
+    generator_id = mint_generator(admin_client, cleanup, f"gen-{unique}")
+    version_id = add_version(admin_client, cleanup, generator_id, "1.0")["generator_version_id"]
     brief_id = admin_client.post("/admin/briefs", json={"brief": f"brief-{unique}"}).json()[
         "brief_id"
     ]
     cleanup["briefs"].append(brief_id)
 
+    # Two resources since ADR-0031 §3: /generators lists lineages, /generator-versions the
+    # versions under them. One path cannot mean both.
     generators = admin_client.get("/admin/generators").json()
+    versions = admin_client.get("/admin/generator-versions").json()
     briefs = admin_client.get("/admin/briefs").json()
-    assert generator_id in {g["generator_version_id"] for g in generators}
+    assert generator_id in {g["generator_id"] for g in generators}
+    assert version_id in {v["generator_version_id"] for v in versions}
     assert brief_id in {b["brief_id"] for b in briefs}
 
 
@@ -222,10 +301,8 @@ def test_generators_and_briefs_are_listed(admin_client, cleanup, unique):
 def test_content_carries_package_brief_generator_and_provenance(
     admin_client, cleanup, session, unique
 ):
-    generator_id = admin_client.post(
-        "/admin/generators", json={"name": f"gen-{unique}", "version": "1.0"}
-    ).json()["generator_version_id"]
-    cleanup["generators"].append(generator_id)
+    lineage_id = mint_generator(admin_client, cleanup, f"gen-{unique}")
+    generator_id = add_version(admin_client, cleanup, lineage_id, "1.0")["generator_version_id"]
     brief_id = admin_client.post("/admin/briefs", json={"brief": f"brief-{unique}"}).json()[
         "brief_id"
     ]
@@ -312,10 +389,8 @@ def test_registration_without_the_generator_key_is_rejected(admin_client, unique
 def test_a_discovered_generator_can_be_attributed_through_the_api(
     admin_client, cleanup, unique, session
 ):
-    generator = admin_client.post(
-        "/admin/generators", json={"name": f"late-gen-{unique}", "version": "1.0.0"}
-    ).json()
-    cleanup["generators"].append(generator["generator_version_id"])
+    lineage_id = mint_generator(admin_client, cleanup, f"late-gen-{unique}")
+    generator = add_version(admin_client, cleanup, lineage_id, "1.0.0")
     content = admin_client.post("/admin/contents", json=payload(unique)).json()
     cleanup["contents"].append(content["content_id"])
     assert content["generator_version_id"] is None
