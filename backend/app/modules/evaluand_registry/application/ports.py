@@ -6,15 +6,30 @@ from uuid import UUID
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import Generator, GeneratorVersion
+
+
+class GeneratorRepositoryPort(Protocol):
+    def get_by_id(self, generator_id: UUID) -> Generator | None: ...
+
+    # Takes the key `normalized_name` produced: the normalization is a domain rule, stated in
+    # one place, and the adapter's WHERE is the same expression as the unique index.
+    def find_by_name_key(self, name_key: str) -> Generator | None: ...
+
+    def add(self, generator: Generator) -> None: ...
+
+    # Ordered by registration. The near-miss guard reads it whole — at this cardinality (one row
+    # per generator the team has ever built) that is cheaper than asking the database to compute
+    # string distances.
+    def list_all(self) -> list[Generator]: ...
 
 
 class GeneratorVersionRepositoryPort(Protocol):
     def get_by_id(self, generator_version_id: UUID) -> GeneratorVersion | None: ...
 
-    def exists(self, name: str, version: str) -> bool: ...
+    def exists(self, generator_id: UUID, version: str) -> bool: ...
 
-    def add(self, generator: GeneratorVersion) -> None: ...
+    def add(self, version: GeneratorVersion) -> None: ...
 
     def list_all(self) -> list[GeneratorVersion]: ...
 

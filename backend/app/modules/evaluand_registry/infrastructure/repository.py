@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.evaluand_registry.domain.brief import GenerationBrief
 from app.modules.evaluand_registry.domain.content import EducationalContent
-from app.modules.evaluand_registry.domain.generator import GeneratorVersion
+from app.modules.evaluand_registry.domain.generator import Generator, GeneratorVersion
 from app.modules.evaluand_registry.domain.package import ContentPackage, PackageArtifact
 
 _COLUMNS = (
@@ -245,6 +245,53 @@ class SqlAlchemyContentRepository:
         return [self._to_domain(row, packages.get(row["id"], ContentPackage())) for row in rows]
 
 
+class SqlAlchemyGeneratorRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    @staticmethod
+    def _to_domain(row: RowMapping) -> Generator:
+        return Generator(id=row["id"], name=row["name"])
+
+    def get_by_id(self, generator_id: UUID) -> Generator | None:
+        row = (
+            self._session.execute(
+                text("SELECT id, name FROM generators WHERE id = :id"),
+                {"id": generator_id},
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_domain(row)
+
+    def find_by_name_key(self, name_key: str) -> Generator | None:
+        # The same expression as `uq_generators_name_key`, so this lookup uses that index and
+        # cannot disagree with the constraint about what counts as the same lineage.
+        row = (
+            self._session.execute(
+                text("SELECT id, name FROM generators WHERE lower(btrim(name)) = :key"),
+                {"key": name_key},
+            )
+            .mappings()
+            .first()
+        )
+        return None if row is None else self._to_domain(row)
+
+    def add(self, generator: Generator) -> None:
+        self._session.execute(
+            text("INSERT INTO generators (id, name) VALUES (:id, :name)"),
+            {"id": generator.id, "name": generator.name},
+        )
+
+    def list_all(self) -> list[Generator]:
+        rows = (
+            self._session.execute(text("SELECT id, name FROM generators ORDER BY created_at"))
+            .mappings()
+            .all()
+        )
+        return [self._to_domain(row) for row in rows]
+
+
 class SqlAlchemyGeneratorVersionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -253,7 +300,7 @@ class SqlAlchemyGeneratorVersionRepository:
     def _to_domain(row: RowMapping) -> GeneratorVersion:
         return GeneratorVersion(
             id=row["id"],
-            name=row["name"],
+            generator_id=row["generator_id"],
             version=row["version"],
             metadata=row["metadata"] or {},
         )
@@ -261,7 +308,10 @@ class SqlAlchemyGeneratorVersionRepository:
     def get_by_id(self, generator_version_id: UUID) -> GeneratorVersion | None:
         row = (
             self._session.execute(
-                text("SELECT id, name, version, metadata FROM generator_versions WHERE id = :id"),
+                text(
+                    "SELECT id, generator_id, version, metadata "
+                    "FROM generator_versions WHERE id = :id"
+                ),
                 {"id": generator_version_id},
             )
             .mappings()
@@ -269,26 +319,29 @@ class SqlAlchemyGeneratorVersionRepository:
         )
         return None if row is None else self._to_domain(row)
 
-    def exists(self, name: str, version: str) -> bool:
+    def exists(self, generator_id: UUID, version: str) -> bool:
         found = self._session.execute(
-            text("SELECT 1 FROM generator_versions WHERE name = :name AND version = :version"),
-            {"name": name, "version": version},
+            text(
+                "SELECT 1 FROM generator_versions "
+                "WHERE generator_id = :generator_id AND version = :version"
+            ),
+            {"generator_id": generator_id, "version": version},
         ).first()
         return found is not None
 
-    def add(self, generator: GeneratorVersion) -> None:
+    def add(self, version: GeneratorVersion) -> None:
         self._session.execute(
             text(
                 """
-                INSERT INTO generator_versions (id, name, version, metadata)
-                VALUES (:id, :name, :version, cast(:metadata as jsonb))
+                INSERT INTO generator_versions (id, generator_id, version, metadata)
+                VALUES (:id, :generator_id, :version, cast(:metadata as jsonb))
                 """
             ),
             {
-                "id": generator.id,
-                "name": generator.name,
-                "version": generator.version,
-                "metadata": json.dumps(generator.metadata),
+                "id": version.id,
+                "generator_id": version.generator_id,
+                "version": version.version,
+                "metadata": json.dumps(version.metadata),
             },
         )
 
@@ -296,7 +349,8 @@ class SqlAlchemyGeneratorVersionRepository:
         rows = (
             self._session.execute(
                 text(
-                    "SELECT id, name, version, metadata FROM generator_versions ORDER BY created_at"
+                    "SELECT id, generator_id, version, metadata "
+                    "FROM generator_versions ORDER BY created_at"
                 )
             )
             .mappings()
