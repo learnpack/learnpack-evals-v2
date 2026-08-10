@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
 from app.modules.content_profiling.application.dtos import ArtifactDTO, PackageDTO
 from app.modules.content_profiling.domain.profile import ContentProfile, ExtractionError
@@ -46,6 +47,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
 from app.shared.domain.ids import new_id
 from app.shared.domain.value_domain import check_value, validate_spec
 from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher
+from tests import conftest
 from tests.conftest import declared_value_domains
 from tests.format_cases import FORMAT_CASES, FormatCase
 
@@ -103,6 +105,46 @@ def test_an_unknown_format_is_refused():
 def test_the_declared_value_domains_are_well_formed():
     """The demand-side namespace every adapter declares against (ADR-0020)."""
     assert [p for d in declared_value_domains().values() for p in validate_spec(d)] == []
+
+
+def _instruments_dir(tmp_path, monkeypatch, **files: dict) -> None:
+    for name, spec in files.items():
+        (tmp_path / f"{name}.yaml").write_text(yaml.safe_dump(spec), encoding="utf-8")
+    monkeypatch.setattr(conftest, "INSTRUMENTS_DIR", tmp_path)
+
+
+def test_the_namespace_spans_every_authored_instrument(tmp_path, monkeypatch):
+    """Data requirement ids are global across instruments (ADR-0014): a second instrument
+    mints into the same namespace, and reusing an id costs nothing. Reading one file would
+    hide every id the others mint, and an adapter supplying one would look unfounded."""
+    shared = {"type": "string_list"}
+    _instruments_dir(
+        tmp_path,
+        monkeypatch,
+        first={"data_requirements": [{"id": "shared_datum", "value_domain": shared}]},
+        second={
+            "data_requirements": [
+                {"id": "shared_datum", "value_domain": shared},  # reused, not redefined
+                {"id": "minted_by_the_second", "value_domain": {"type": "string"}},
+            ]
+        },
+    )
+
+    assert set(declared_value_domains()) == {"shared_datum", "minted_by_the_second"}
+
+
+def test_one_id_declared_with_two_shapes_is_refused(tmp_path, monkeypatch):
+    """The import lint guards the DB, but only when someone imports; these files are read
+    off disk, so the same rule is enforced here — naming the id and both files."""
+    _instruments_dir(
+        tmp_path,
+        monkeypatch,
+        first={"data_requirements": [{"id": "drifting", "value_domain": {"type": "string"}}]},
+        second={"data_requirements": [{"id": "drifting", "value_domain": {"type": "number"}}]},
+    )
+
+    with pytest.raises(AssertionError, match="drifting.*two different value domains"):
+        declared_value_domains()
 
 
 # ------------------------------------------------------------------ discovery (step 2)
