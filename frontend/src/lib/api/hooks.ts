@@ -10,6 +10,7 @@ import { useCallback } from "react";
 import { useAuthHeaders } from "@/lib/auth";
 import { apiFetch, type RequestOptions } from "./client";
 import type {
+  AssessorPackageResponse,
   AssessorResponse,
   AssignContentRequest,
   AttributeGeneratorRequest,
@@ -29,9 +30,12 @@ import type {
   Me,
   OpenCampaignRequest,
   PinStudyInstrumentRequest,
+  PreviewEvaluationRequest,
+  PreviewEvaluationResponse,
   ProfileCapabilitiesResponse,
   ProfileResponse,
   ProgressReport,
+  QualityReferenceResponse,
   RegisterBriefRequest,
   RegisterBySourceRequest,
   RegisterBySourceResponse,
@@ -74,6 +78,8 @@ export const queryKeys = {
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
   assessors: ["admin", "assessors"] as const,
+  assessorPackages: ["admin", "assessor-packages"] as const,
+  qualityReference: ["admin", "reference", "qualities"] as const,
   scores: ["admin", "reports", "scores"] as const,
   progress: ["admin", "progress"] as const,
   studies: ["admin", "studies"] as const,
@@ -328,6 +334,35 @@ export function useAssessors() {
   return useQuery({
     queryKey: queryKeys.assessors,
     queryFn: () => api<AssessorResponse[]>("/admin/assessors"),
+  });
+}
+
+/** The in-code registry of automated assessor packages (ADR-0016), as data. */
+export function useAssessorPackages() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.assessorPackages,
+    queryFn: () => api<AssessorPackageResponse[]>("/admin/assessor-packages"),
+  });
+}
+
+/** The pedagogical vocabulary's quality → dimension grouping (live reference data). */
+export function useQualityReference() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.qualityReference,
+    queryFn: () => api<QualityReferenceResponse[]>("/admin/reference/qualities"),
+  });
+}
+
+/** The dry-run over HTTP: accepts drafts, needs no ratification, persists nothing.
+ *  Never retried — an LLM-carrying assessor spends real calls per attempt. */
+export function usePreviewEvaluation() {
+  const api = useApi();
+  return useMutation({
+    retry: false,
+    mutationFn: (body: PreviewEvaluationRequest) =>
+      api<PreviewEvaluationResponse>("/admin/evaluations/preview", { method: "POST", body }),
   });
 }
 

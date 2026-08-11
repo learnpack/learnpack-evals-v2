@@ -27,6 +27,9 @@ from app.platform.security import AdminAssessor
 from app.platform.uow import UnitOfWork, get_uow
 
 router = APIRouter(prefix="/admin/instruments", tags=["evaluation-design"])
+# The norm-side vocabulary, read-only. Its own prefix: `/admin/instruments/...` would
+# collide with the `/{instrument_version_id}` path parameter.
+reference_router = APIRouter(prefix="/admin/reference", tags=["evaluation-design"])
 
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
@@ -135,3 +138,23 @@ def publish_instrument(
     )
     assert snapshot is not None  # just published in this transaction
     return InstrumentResponse.from_snapshot(snapshot)
+
+
+class QualityReferenceResponse(BaseModel):
+    quality_id: str
+    # Null for a quality that groups under no dimension — it rolls up nowhere.
+    dimension_id: str | None
+
+
+@reference_router.get("/qualities", response_model=list[QualityReferenceResponse])
+def list_quality_reference(admin: AdminAssessor, uow: Uow) -> list[QualityReferenceResponse]:
+    """The pedagogical vocabulary's grouping (quality → dimension), as it is today.
+
+    What the calibration page's local fitness projection groups by. LIVE reference data on
+    purpose: a dry run reads the current vocabulary; the map frozen per instrument version
+    at publish (ADR-0023) exists to protect *published studies*, and a preview is neither."""
+    mapping = SqlAlchemyReferenceDataRepository(uow.session).quality_dimensions()
+    return [
+        QualityReferenceResponse(quality_id=quality_id, dimension_id=dimension_id)
+        for quality_id, dimension_id in sorted(mapping.items())
+    ]

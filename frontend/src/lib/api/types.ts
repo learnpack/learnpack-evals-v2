@@ -541,3 +541,82 @@ export interface DevIdentity {
   display_name: string | null;
   role: string; // "admin" | "evaluator"
 }
+
+// --- Calibration (the dry-run over HTTP) ------------------------------------
+
+/** One quality of the pedagogical vocabulary, with the dimension it groups under. */
+export interface QualityReferenceResponse {
+  quality_id: string;
+  dimension_id: string | null;
+}
+
+/** One automated assessor package from the in-code registry (ADR-0016). */
+export interface AssessorPackageResponse {
+  name: string;
+  version: string;
+  display_name: string;
+  /** The instrument lineage the artifact owes itself to (ADR-0019). */
+  instrument_id: string;
+  executes: string[];
+  /** criterion_id → the declared reason for abstaining (ADR-0018). */
+  abstains: Record<string, string>;
+  /** True when the package carries LLM tasks: real calls, needs the backend's LLM_API_KEY. */
+  uses_llm: boolean;
+}
+
+export interface PreviewEvaluationRequest {
+  content_id: Uuid;
+  instrument_version_id: string;
+  assessor_name: string;
+  assessor_version: string;
+}
+
+export type CriterionOutcomeState =
+  | "pass"
+  | "fail"
+  | "no_evidence"
+  | "not_applicable"
+  | "not_assessed";
+
+export interface PreviewOutcome {
+  criterion_id: string;
+  outcome: CriterionOutcomeState;
+  /** True when the state was derived mechanically; false when an executor judged it. */
+  derived: boolean;
+  quote: string | null;
+  locator: Record<string, unknown> | null;
+  failure_mode: string | null;
+}
+
+export interface PreviewClaim {
+  claim_id: string;
+  status: "supported" | "refuted" | "insufficient";
+  /** The domain's own camelCase vocabulary: pass, fail, noEvidence, … */
+  evidence_basis: Record<string, number>;
+}
+
+export interface PreviewFinding {
+  claim_id: string;
+  criterion_id: string;
+  failure_mode: string;
+  quote: string | null;
+  locator: Record<string, unknown> | null;
+}
+
+export interface PreviewMetric {
+  metric_id: string;
+  value: unknown;
+}
+
+export interface PreviewEvaluationResponse {
+  instrument_version_id: string;
+  instrument_status: string;
+  assessor: { name: string; version: string; display_name: string };
+  outcomes: PreviewOutcome[];
+  claims: PreviewClaim[];
+  findings: PreviewFinding[];
+  coverage: Record<string, unknown>;
+  metrics: PreviewMetric[];
+  /** Always false — the contract states what the page claims (dry run). */
+  persisted: false;
+}

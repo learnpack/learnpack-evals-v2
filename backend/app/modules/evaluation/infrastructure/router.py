@@ -8,27 +8,48 @@ command: the assignment becomes `submitted` because the completion policy hears
 
 Note what is *not* imported here: no repository or adapter of another module — only their
 `public.py` (ARCHITECTURE.md §3).
+
+`admin_router` is the automated path's admin surface: the assessor-package registry and
+the dry-run (`PreviewEvaluation`) exposed for the calibration page. The dry-run is pure
+computation — it persists nothing, so exposing it is not a command reaching a page; the
+deliberate acts (profile, accept, ratify, evaluate for real) stay in the CLI.
 """
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.modules.evaluation.application.evaluate_content import (
+    InstrumentNotEvaluable,
+    ProfileNotAvailable,
+)
+from app.modules.evaluation.application.preview_evaluation import (
+    Preview,
+    PreviewEvaluation,
+    PreviewEvaluationCommand,
+)
 from app.modules.evaluation.application.submit_evaluation import (
     ScoreInput,
     SubmitEvaluation,
     SubmitEvaluationCommand,
 )
 from app.modules.evaluation.domain.evaluation import InvalidEvaluation
+from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
+from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
+from app.modules.evaluation.infrastructure.gateways import (
+    DesignInstrumentGateway,
+    ProfilingGateway,
+)
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
 from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
 from app.modules.orchestration.public import OrchestrationQueries, get_orchestration_queries
-from app.platform.security import CurrentAssessor
+from app.platform.security import AdminAssessor, CurrentAssessor
 from app.platform.uow import UnitOfWork, get_uow
 
 router = APIRouter(prefix="/evaluations", tags=["evaluation"])
+admin_router = APIRouter(prefix="/admin", tags=["automated-evaluation"])
 
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_queries)]
@@ -116,3 +137,189 @@ def submit_evaluation(
             for s in evaluation.result.scores
         ],
     )
+
+
+# --------------------------------------------------- the automated path's admin surface
+
+
+class AssessorPackageResponse(BaseModel):
+    """One registry entry — identity and coverage, never the executors (callables)."""
+
+    name: str
+    version: str
+    display_name: str
+    instrument_id: str
+    executes: list[str]
+    abstains: dict[str, str]
+    # Whether the package carries LLM tasks: the page warns about cost and the backend's
+    # LLM_API_KEY. Environment concern only — the identity is in the code (ADR-0034).
+    uses_llm: bool
+
+    @classmethod
+    def from_package(cls, package: AssessorPackage) -> "AssessorPackageResponse":
+        return cls(
+            name=package.name,
+            version=package.version,
+            display_name=package.display_name,
+            instrument_id=package.instrument_id,
+            executes=sorted(package.coverage.executes),
+            abstains=dict(sorted(package.coverage.abstains.items())),
+            uses_llm="llm" in package.source_config,
+        )
+
+
+class PreviewEvaluationRequest(BaseModel):
+    content_id: UUID
+    instrument_version_id: str
+    assessor_name: str
+    assessor_version: str
+
+
+class PreviewOutcomeResponse(BaseModel):
+    criterion_id: str
+    outcome: str
+    derived: bool
+    quote: str | None
+    locator: dict[str, Any] | None
+    failure_mode: str | None
+
+
+class PreviewClaimResponse(BaseModel):
+    claim_id: str
+    status: str
+    # Keys stay camelCase inside on purpose: this dict is the domain's own vocabulary
+    # (`pass`, `noEvidence`, …), the same one persisted judgments carry.
+    evidence_basis: dict[str, int]
+
+
+class PreviewFindingResponse(BaseModel):
+    claim_id: str
+    criterion_id: str
+    failure_mode: str
+    quote: str | None
+    locator: dict[str, Any] | None
+
+
+class PreviewMetricResponse(BaseModel):
+    metric_id: str
+    value: Any
+
+
+class PreviewAssessorResponse(BaseModel):
+    name: str
+    version: str
+    display_name: str
+
+
+class PreviewEvaluationResponse(BaseModel):
+    instrument_version_id: str
+    # The page badges a draft run as calibration; the dry-run accepts drafts by design.
+    instrument_status: str
+    assessor: PreviewAssessorResponse
+    outcomes: list[PreviewOutcomeResponse]
+    claims: list[PreviewClaimResponse]
+    findings: list[PreviewFindingResponse]
+    coverage: dict[str, Any]
+    metrics: list[PreviewMetricResponse]
+    # The contract states what the page claims: a dry-run never persists anything.
+    persisted: Literal[False] = False
+
+    @classmethod
+    def from_preview(
+        cls, preview: Preview, package: AssessorPackage
+    ) -> "PreviewEvaluationResponse":
+        return cls(
+            instrument_version_id=preview.instrument.instrument_version_id,
+            instrument_status=preview.instrument.status,
+            assessor=PreviewAssessorResponse(
+                name=package.name, version=package.version, display_name=package.display_name
+            ),
+            outcomes=[
+                PreviewOutcomeResponse(
+                    criterion_id=o.criterion_id,
+                    outcome=o.outcome,
+                    derived=o.derived,
+                    quote=o.quote,
+                    locator=dict(o.locator) if o.locator is not None else None,
+                    failure_mode=o.failure_mode,
+                )
+                for o in preview.outcomes
+            ],
+            claims=[
+                PreviewClaimResponse(
+                    claim_id=c.claim_id, status=c.status, evidence_basis=dict(c.evidence_basis)
+                )
+                for c in preview.judgment.claims
+            ],
+            findings=[
+                PreviewFindingResponse(
+                    claim_id=f.claim_id,
+                    criterion_id=f.criterion_id,
+                    failure_mode=f.failure_mode,
+                    quote=f.quote,
+                    locator=dict(f.locator) if f.locator is not None else None,
+                )
+                for f in preview.judgment.findings
+            ],
+            coverage=dict(preview.judgment.coverage),
+            metrics=[
+                PreviewMetricResponse(metric_id=m.metric_id, value=m.value) for m in preview.metrics
+            ],
+        )
+
+
+@admin_router.get("/assessor-packages", response_model=list[AssessorPackageResponse])
+def list_assessor_packages(admin: AdminAssessor) -> list[AssessorPackageResponse]:
+    """The in-code registry, as data: what can judge, over which lineage, at what cost."""
+    return [
+        AssessorPackageResponse.from_package(package)
+        for _, package in sorted(AUTOMATED_ASSESSORS.items())
+    ]
+
+
+@admin_router.post("/evaluations/preview", response_model=PreviewEvaluationResponse)
+def preview_evaluation(
+    request: PreviewEvaluationRequest, admin: AdminAssessor, uow: Uow
+) -> PreviewEvaluationResponse:
+    """The dry-run over HTTP — the calibration page's engine.
+
+    Same construction as the CLI's `evaluate --dry-run`: accepts drafts, needs no
+    ratification, persists nothing. An LLM-carrying package spends real calls here."""
+    package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
+    if package is None:
+        known = ", ".join(f"{n}:{v}" for n, v in sorted(AUTOMATED_ASSESSORS))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"unknown assessor {request.assessor_name}:{request.assessor_version} "
+                f"(registry has: {known})"
+            ),
+        )
+    use_case = PreviewEvaluation(
+        instruments=DesignInstrumentGateway(uow.session),
+        profiles=ProfilingGateway(uow.session),
+        coverage=package.coverage,
+        executors=dict(package.executors),
+    )
+    try:
+        preview = use_case(
+            PreviewEvaluationCommand(
+                content_id=request.content_id,
+                instrument_version_id=request.instrument_version_id,
+            )
+        )
+    except InstrumentNotEvaluable as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ProfileNotAvailable as exc:
+        # 409: the state is wrong and the caller can fix it (profile the content first).
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except AssessorExecutionError as exc:
+        # ADR-0034 clause 4: the judge could not produce a verdict (LLM transport down, or
+        # the output contract was never satisfied). Nothing happened; retrying is running
+        # the preview again. 502 because the failing dependency is upstream of this API.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"the assessor could not produce a verdict: {exc} — "
+            "nothing persisted; fix the cause (or just retry, if it was transient)",
+        ) from exc
+    return PreviewEvaluationResponse.from_preview(preview, package)
