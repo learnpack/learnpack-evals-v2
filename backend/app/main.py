@@ -4,7 +4,6 @@ Nothing inner imports this module. Routers and policy subscriptions are register
 as the modules land (blocks 2–4).
 """
 
-from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -17,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.modules.content_profiling.infrastructure.router import router as content_profiling_router
+from app.modules.evaluand_registry.infrastructure import local_sources
 from app.modules.evaluand_registry.infrastructure.router import (
     evaluand_router as evaluand_admin_router,
 )
@@ -114,13 +114,24 @@ app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local
 
-# The gitignored local courses tree, served over http(s) so locally registered packages get
-# fetchable locators (ADR-0027) — that is all it gives them: serving a package's bytes is not
-# deploying a course, so a local course declares no consumable URL (ADR-0028). Local-only by
-# the ADR-0008 gate; the `is_dir()` check keeps a course-less checkout booting.
-COURSES_DIR = Path(__file__).resolve().parents[2] / "courses"
-if settings.is_local_auth and COURSES_DIR.is_dir():
-    app.mount("/packages", StaticFiles(directory=COURSES_DIR), name="local-packages")
+
+# The local source roots — the gitignored `courses/` tree and whatever else the environment
+# declares (ADR-0027 §5, ADR-0035 §1) — served over http(s) so locally registered packages get
+# fetchable locators. That is all it gives them: serving a package's bytes is not deploying a
+# course, so a local course declares no consumable URL (ADR-0028). Local-only by the ADR-0008
+# gate, and `mounts()` skips a root whose directory is missing, which keeps a checkout without
+# any of them booting.
+def mount_local_sources(application: FastAPI) -> None:
+    for source_root in local_sources.mounts():
+        application.mount(
+            source_root.mount_path,
+            StaticFiles(directory=source_root.path),
+            name=source_root.mount_name,
+        )
+
+
+if settings.is_local_auth:
+    mount_local_sources(app)
 
 # Policies subscribe here, at wiring time. The list is shared with the CLI process, which
 # wires the same one — see `app/platform/policies.py` for the chain (ADR-0029 §1).
