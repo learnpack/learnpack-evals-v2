@@ -415,9 +415,7 @@ def test_schema_violations_are_fed_back_and_the_model_recovers(fake_llm):
 
 def test_an_ungrounded_quote_is_a_schema_violation(fake_llm):
     hallucinated = outcomes_json(("You will master everything effortlessly", "master", True))
-    client = fake_llm(
-        outcomes=[hallucinated, outcomes_json((GROUNDED_OUTCOME, "build", True))]
-    )
+    client = fake_llm(outcomes=[hallucinated, outcomes_json((GROUNDED_OUTCOME, "build", True))])
 
     outcomes, usage = tasks.outcomes_extraction(outcomes_profile())
 

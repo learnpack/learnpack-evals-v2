@@ -124,9 +124,7 @@ def test_an_unusable_2xx_is_an_error_not_a_half_answer():
     with pytest.raises(LlmResponseError, match="no message content"):
         client.complete(model="m", messages=MESSAGES)
 
-    client, _ = client_with(
-        lambda request: httpx.Response(200, json=ok_body(content="   "))
-    )
+    client, _ = client_with(lambda request: httpx.Response(200, json=ok_body(content="   ")))
     with pytest.raises(LlmResponseError, match="empty"):
         client.complete(model="m", messages=MESSAGES)
 
