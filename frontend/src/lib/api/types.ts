@@ -544,6 +544,12 @@ export interface DevIdentity {
 
 // --- Calibration (the dry-run over HTTP) ------------------------------------
 
+/** One quality of the pedagogical vocabulary, with the dimension it groups under. */
+export interface QualityReferenceResponse {
+  quality_id: string;
+  dimension_id: string | null;
+}
+
 /** One automated assessor package from the in-code registry (ADR-0016). */
 export interface AssessorPackageResponse {
   name: string;

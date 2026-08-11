@@ -35,6 +35,7 @@ import type {
   ProfileCapabilitiesResponse,
   ProfileResponse,
   ProgressReport,
+  QualityReferenceResponse,
   RegisterBriefRequest,
   RegisterBySourceRequest,
   RegisterBySourceResponse,
@@ -78,6 +79,7 @@ export const queryKeys = {
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
   assessors: ["admin", "assessors"] as const,
   assessorPackages: ["admin", "assessor-packages"] as const,
+  qualityReference: ["admin", "reference", "qualities"] as const,
   scores: ["admin", "reports", "scores"] as const,
   progress: ["admin", "progress"] as const,
   studies: ["admin", "studies"] as const,
@@ -341,6 +343,15 @@ export function useAssessorPackages() {
   return useQuery({
     queryKey: queryKeys.assessorPackages,
     queryFn: () => api<AssessorPackageResponse[]>("/admin/assessor-packages"),
+  });
+}
+
+/** The pedagogical vocabulary's quality → dimension grouping (live reference data). */
+export function useQualityReference() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.qualityReference,
+    queryFn: () => api<QualityReferenceResponse[]>("/admin/reference/qualities"),
   });
 }
 

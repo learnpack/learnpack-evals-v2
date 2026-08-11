@@ -81,6 +81,24 @@ def test_assessor_packages_list_the_registry_without_its_internals(admin):
     assert by_key[("drafts-structural", "1")]["uses_llm"] is False
 
 
+# -------------------------------------------------------------------- quality reference
+
+
+def test_quality_reference_requires_admin(evaluator_client):
+    assert evaluator_client.get("/admin/reference/qualities").status_code == 403
+
+
+def test_quality_reference_maps_qualities_to_dimensions(admin):
+    """What the page's local fitness projection groups by — live reference data, the
+    vocabulary as seeded (docs/seed/pedagogical-reference.yaml)."""
+    response = admin.get("/admin/reference/qualities")
+    assert response.status_code == 200, response.text
+    by_quality = {row["quality_id"]: row["dimension_id"] for row in response.json()}
+    assert by_quality["progression-cognitive-demand"] == "learning-progression"
+    assert by_quality["objectives-observable"] == "objectives-quality"
+    assert len(by_quality) >= 21  # the seeded vocabulary, at least
+
+
 # ---------------------------------------------------------------------------- preview
 
 

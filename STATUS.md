@@ -186,7 +186,12 @@ profile 409 · `AssessorExecutionError` 502 with "nothing persisted, retry is sa
 CLI-only — the profiling module's stance holds) and registering local folders
 (`register-package --source <dir>`); registering by http(s) source stays on the Courses
 page. `evaluate --dry-run` remains the scriptable path — the page and the CLI share the
-same use case, so they cannot drift.
+same use case, so they cannot drift. The results end with a **fitness preview**: the
+ADR-0023 arithmetic (formula v1, same denominator rule) computed locally over the one dry
+run, per quality and rolled up per dimension, labelled as an orientation for calibration —
+the real fitness stays a per-study read from persisted judgments. The grouping comes from
+`GET /admin/reference/qualities` (live `quality → dimension` reference data, on purpose:
+the map frozen at publish protects published studies, and a preview is neither).
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -348,7 +353,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 687 tests** against local Postgres (~40 s). Requires
+- **Backend suite green: 689 tests** against local Postgres (~45 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`

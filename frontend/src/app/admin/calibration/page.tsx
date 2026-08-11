@@ -24,12 +24,15 @@ import {
   useInstruments,
   usePreviewEvaluation,
   useProfiles,
+  useQualityReference,
 } from "@/lib/api/hooks";
 import type {
   AssessorPackageResponse,
+  InstrumentResponse,
   PreviewEvaluationResponse,
   PreviewMetric,
   PreviewOutcome,
+  QualityReferenceResponse,
   Uuid,
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -54,12 +57,18 @@ export default function CalibrationPage() {
   const profiles = useProfiles();
   const instruments = useInstruments();
   const packages = useAssessorPackages();
+  const qualityReference = useQualityReference();
   const preview = usePreviewEvaluation();
 
   const [contentId, setContentId] = useState<Uuid | "">("");
   const [instrumentVersionId, setInstrumentVersionId] = useState("");
   const [assessorKey, setAssessorKey] = useState(""); // "name:version"
-  const [result, setResult] = useState<PreviewEvaluationResponse | null>(null);
+  // The instrument travels with the result: the fitness projection must read the version
+  // that actually ran, not whatever the select points at afterwards.
+  const [run, setRun] = useState<{
+    result: PreviewEvaluationResponse;
+    instrument: InstrumentResponse;
+  } | null>(null);
 
   /** Whether a content has an `ok` profile — the dry-run's one hard prerequisite. */
   const profileStatus = useMemo(() => {
@@ -92,8 +101,9 @@ export default function CalibrationPage() {
   const selectedPackage = sortedPackages.find((p) => `${p.name}:${p.version}` === assessorKey);
   const ready = contentId && instrumentVersionId && selectedPackage && !preview.isPending;
 
-  function run() {
-    if (!contentId || !instrumentVersionId || !selectedPackage) return;
+  function runPreview() {
+    if (!contentId || !instrumentVersionId || !selectedPackage || !selectedInstrument) return;
+    const instrument = selectedInstrument;
     preview.mutate(
       {
         content_id: contentId,
@@ -103,7 +113,7 @@ export default function CalibrationPage() {
       },
       {
         onSuccess: (data) => {
-          setResult(data);
+          setRun({ result: data, instrument });
           toast.success("Dry run finished.", { description: "Nothing was persisted." });
         },
         onError: (err) => {
@@ -124,10 +134,21 @@ export default function CalibrationPage() {
     );
   }
 
-  if (contents.isLoading || profiles.isLoading || instruments.isLoading || packages.isLoading) {
+  if (
+    contents.isLoading ||
+    profiles.isLoading ||
+    instruments.isLoading ||
+    packages.isLoading ||
+    qualityReference.isLoading
+  ) {
     return <LoadingState />;
   }
-  const loadError = contents.error ?? profiles.error ?? instruments.error ?? packages.error;
+  const loadError =
+    contents.error ??
+    profiles.error ??
+    instruments.error ??
+    packages.error ??
+    qualityReference.error;
   if (loadError) return <ErrorState message={(loadError as Error).message} />;
 
   return (
@@ -296,7 +317,7 @@ export default function CalibrationPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            <Button onClick={run} disabled={!ready}>
+            <Button onClick={runPreview} disabled={!ready}>
               {preview.isPending ? <Spinner className="mr-2" /> : null}
               {preview.isPending ? "Running — LLM criteria take a while…" : "Run dry evaluation"}
             </Button>
@@ -304,7 +325,13 @@ export default function CalibrationPage() {
               Nothing is persisted: no evaluation, no judgment, no events.
             </p>
           </div>
-          {result ? <PreviewResults result={result} /> : null}
+          {run ? (
+            <PreviewResults
+              result={run.result}
+              instrument={run.instrument}
+              qualityReference={qualityReference.data ?? []}
+            />
+          ) : null}
         </CardContent>
       </Card>
     </div>
@@ -320,7 +347,15 @@ function packageLabel(assessorPackage: AssessorPackageResponse): string {
 
 // ------------------------------------------------------------------------- results
 
-function PreviewResults({ result }: { result: PreviewEvaluationResponse }) {
+function PreviewResults({
+  result,
+  instrument,
+  qualityReference,
+}: {
+  result: PreviewEvaluationResponse;
+  instrument: InstrumentResponse;
+  qualityReference: QualityReferenceResponse[];
+}) {
   const partition = new Map<string, number>();
   for (const outcome of result.outcomes) {
     partition.set(outcome.outcome, (partition.get(outcome.outcome) ?? 0) + 1);
@@ -429,6 +464,179 @@ function PreviewResults({ result }: { result: PreviewEvaluationResponse }) {
           ) : null}
         </div>
       </div>
+
+      <FitnessPreview
+        result={result}
+        instrument={instrument}
+        qualityReference={qualityReference}
+      />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ fitness preview
+
+interface QualityFitnessRow {
+  qualityId: string;
+  dimensionId: string | null;
+  fitness: number | null;
+  counts: { pass: number; fail: number; noEvidence: number; excluded: number };
+}
+
+interface DimensionFitnessRow {
+  dimensionId: string;
+  fitness: number | null;
+  qualities: number;
+  defined: number;
+}
+
+/** The ADR-0023 arithmetic (formula v1), locally over this one dry run.
+ *
+ * `pass / (pass + fail + no_evidence)`; `not_assessed`/`not_applicable` stay out of the
+ * denominator; an empty denominator is UNDEFINED, never zero. Criteria attach to a quality
+ * through the claims that assert about it, counting once per quality (set semantics).
+ * A dimension is the unweighted mean of its defined qualities. */
+function computeFitnessPreview(
+  result: PreviewEvaluationResponse,
+  instrument: InstrumentResponse,
+  qualityReference: QualityReferenceResponse[],
+): { qualities: QualityFitnessRow[]; dimensions: DimensionFitnessRow[] } {
+  const dimensionOf = new Map(qualityReference.map((q) => [q.quality_id, q.dimension_id]));
+  const outcomeOf = new Map(result.outcomes.map((o) => [o.criterion_id, o.outcome]));
+
+  const claimsOfQuality = new Map<string, Set<string>>();
+  for (const claim of instrument.claims) {
+    for (const qualityId of claim.quality_ids) {
+      if (!claimsOfQuality.has(qualityId)) claimsOfQuality.set(qualityId, new Set());
+      claimsOfQuality.get(qualityId)!.add(claim.claim_id);
+    }
+  }
+
+  const qualities: QualityFitnessRow[] = [...claimsOfQuality.entries()]
+    .map(([qualityId, claimIds]) => {
+      const counts = { pass: 0, fail: 0, noEvidence: 0, excluded: 0 };
+      for (const criterion of instrument.criteria) {
+        if (!criterion.claim_ids.some((id) => claimIds.has(id))) continue;
+        const outcome = outcomeOf.get(criterion.criterion_id);
+        if (outcome === "pass") counts.pass += 1;
+        else if (outcome === "fail") counts.fail += 1;
+        else if (outcome === "no_evidence") counts.noEvidence += 1;
+        else if (outcome) counts.excluded += 1;
+      }
+      const denominator = counts.pass + counts.fail + counts.noEvidence;
+      return {
+        qualityId,
+        dimensionId: dimensionOf.get(qualityId) ?? null,
+        fitness: denominator === 0 ? null : counts.pass / denominator,
+        counts,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (a.dimensionId ?? "~").localeCompare(b.dimensionId ?? "~") ||
+        a.qualityId.localeCompare(b.qualityId),
+    );
+
+  const grouped = new Map<string, { scores: number[]; qualities: number }>();
+  for (const row of qualities) {
+    if (row.dimensionId === null) continue; // groups nowhere, rolls up nowhere
+    if (!grouped.has(row.dimensionId)) grouped.set(row.dimensionId, { scores: [], qualities: 0 });
+    const entry = grouped.get(row.dimensionId)!;
+    entry.qualities += 1;
+    if (row.fitness !== null) entry.scores.push(row.fitness);
+  }
+  const dimensions: DimensionFitnessRow[] = [...grouped.entries()]
+    .map(([dimensionId, entry]) => ({
+      dimensionId,
+      fitness:
+        entry.scores.length === 0
+          ? null
+          : entry.scores.reduce((sum, score) => sum + score, 0) / entry.scores.length,
+      qualities: entry.qualities,
+      defined: entry.scores.length,
+    }))
+    .sort((a, b) => a.dimensionId.localeCompare(b.dimensionId));
+
+  return { qualities, dimensions };
+}
+
+/** Undefined is shown as such — a zero would say "everything measurable failed" when
+ *  nothing was measurable (ADR-0023 §6). */
+function FitnessValue({ value }: { value: number | null }) {
+  if (value === null) return <span className="italic text-muted-foreground">undefined</span>;
+  return <span className="font-medium tabular-nums">{(value * 100).toFixed(0)}%</span>;
+}
+
+function FitnessPreview({
+  result,
+  instrument,
+  qualityReference,
+}: {
+  result: PreviewEvaluationResponse;
+  instrument: InstrumentResponse;
+  qualityReference: QualityReferenceResponse[];
+}) {
+  const { qualities, dimensions } = computeFitnessPreview(result, instrument, qualityReference);
+  if (qualities.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-medium">Fitness preview</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          The ADR-0023 optimization signal (formula v1: pass / (pass + fail + no_evidence)),
+          computed locally over this single dry run — an orientation for calibration, not a
+          verdict. The real fitness is read per study, from persisted judgments.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {dimensions.map((dimension) => (
+          <span key={dimension.dimensionId} className="rounded bg-muted/60 px-2 py-1 text-xs">
+            {dimension.dimensionId} <FitnessValue value={dimension.fitness} />
+            <span className="ml-1 text-muted-foreground">
+              ({dimension.defined}/{dimension.qualities} qualities)
+            </span>
+          </span>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Quality</TableHead>
+              <TableHead>Dimension</TableHead>
+              <TableHead>Fitness</TableHead>
+              <TableHead>pass / fail / no_evidence</TableHead>
+              <TableHead>Excluded</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {qualities.map((row) => (
+              <TableRow key={row.qualityId}>
+                <TableCell className="font-mono text-xs">{row.qualityId}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {row.dimensionId ?? "—"}
+                </TableCell>
+                <TableCell>
+                  <FitnessValue value={row.fitness} />
+                </TableCell>
+                <TableCell className="text-xs tabular-nums">
+                  {row.counts.pass} / {row.counts.fail} / {row.counts.noEvidence}
+                </TableCell>
+                <TableCell className="text-xs tabular-nums text-muted-foreground">
+                  {row.counts.excluded}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Excluded = not_assessed + not_applicable: outside the denominator on purpose — the
+        assessor&apos;s limits and unmet format demand are not the generator&apos;s fault.
+      </p>
     </div>
   );
 }
