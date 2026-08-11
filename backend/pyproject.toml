@@ -50,6 +50,7 @@ files = [
     "app/platform/db.py",
     "app/platform/uow.py",
     "app/platform/events.py",
+    "app/platform/llm.py",
     "app/modules/evaluand_registry",
     "app/modules/evaluation_design",
     "app/modules/content_profiling",
