@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-09._
+_Last updated: 2026-08-11._
 
 ## Where we are
 
@@ -120,6 +120,18 @@ briefs will be one new entry, no registry or wiring change. `import-learnpack` g
 `--base-dir` (its canonical path also carried a latent ADR-0017 `TypeError`, now fixed:
 the canonical JSON takes `artifacts`/`brief_id`/`generator_version_id`/`edit_provenance`,
 no `metadata`).
+
+**The drafts lineage's first assessor (`drafts-structural` v1).** The `course-drafts-qa`
+lineage can now ratify: an assessor artifact declares itself against it — 7 executed
+criteria and 22 named abstentions over the 29 of v2, a superset of v1's 22, so both
+published versions ratify with the one artifact. It is a copy of `structural` v1, not an
+import (ADR-0016: shared code would tie the two identities together), restricted to the
+criteria this lineage defines, with one deliberate difference: the objectives count metric
+is `declared_objectives_count`, because the lineage mints a data requirement named
+`declared_objectives` (the objectives themselves) and a report must not carry one name with
+two meanings. `structural` v1 is untouched and keeps its metric name in its own lineage,
+where nothing collides. With the registry past one package, `evaluate` now requires
+`--assessor <name>:<version>` explicitly — the single-package default is gone.
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -281,7 +293,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 556 tests** against local Postgres (~37 s). Requires
+- **Backend suite green: 654 tests** against local Postgres (~40 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
   a wrong echo is refused again and the right one registers; and against the store alone, two

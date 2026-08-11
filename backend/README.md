@@ -280,8 +280,12 @@ Two aggregation rules not to confuse:
   `uv run python -m app.cli profile-content --content-id <id>`.
 - **Automated evaluation** (`evaluation`): calibrate an instrument — drafts included —
   against real content with
-  `uv run python -m app.cli evaluate --content-id <id> --instrument-version-id <id> --dry-run`
-  (prints the five-state outcome table and the claim summary; persists nothing). The real
+  `uv run python -m app.cli evaluate --content-id <id> --instrument-version-id <id>
+  --assessor <name>:<version> --dry-run`
+  (prints the five-state outcome table and the claim summary; persists nothing).
+  `--assessor` is always explicit: the registry holds one package per instrument lineage
+  (`structural:1` for `learnpack-course-qa`, `drafts-structural:1` for `course-drafts-qa`),
+  and naming which one is doing the judging is part of the act. The real
   path requires a **published** version and a **ratified** assessor (ADR-0019):
   `uv run python -m app.cli ratify-assessor --name structural --version 1
   --instrument-version-id <id> --email <admin>` — the initial registration is the first
@@ -647,11 +651,21 @@ new version (`bump-instrument`).
    instrument ratifies from scratch. Criteria no assessor can execute derive `not_assessed` —
    the visible backlog, not a failure.
 
+   One prerequisite the act cannot supply: a **new lineage** can ratify nothing until an
+   assessor artifact declares itself against it — coverage is code, not an act. The
+   declaration is the package's `INSTRUMENT_ID`
+   (`app/modules/evaluation/infrastructure/assessors/<name>/__init__.py`), and
+   `ratify-assessor` refuses a package whose `INSTRUMENT_ID` names another lineage. Writing
+   that package is the prerequisite; ratifying it is the human act.
+
 ### Step 6 — Verify end to end
 
 Calibrate while it is still a draft — `evaluate --content-id <id> --instrument-version-id <id>
---dry-run` persists nothing and prints the outcome table, so you can read what your criteria
-actually do against real content before freezing them. Then the study path:
+--assessor <name>:<version> --dry-run` persists nothing and prints the outcome table, so you
+can read what your criteria actually do against real content before freezing them. It is also
+the **only** way to exercise an instrument whose lineage has no assessor yet: the dry run does
+not compare lineages, so any registered package's executors can be pointed at any version.
+Then the study path:
 `declare-study | pin-study | compose-dataset | open-study | publish-study` → `show-report`.
 
 ### What you never touch

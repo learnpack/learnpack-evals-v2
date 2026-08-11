@@ -11,7 +11,7 @@ Also here (same fixtures): the judgment-policy replay test and the dry-run test.
 
 import copy
 import dataclasses
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 import yaml
@@ -339,6 +339,15 @@ def test_evaluate_guards(cleanup, unique, session, admin, patched_package, profi
     track_automated(cleanup, patched_package.name)
     other = publish_instrument(cleanup, copy_spec(unique, version="v10"), admin_id)
     assert run_evaluate(str(profiled_course), other, f"{patched_package.name}:1", False) == 1
+
+
+def test_evaluate_requires_an_explicit_assessor(capsys):
+    """No default since the registry grew past one package: an assessor owes itself to a
+    lineage, and naming which one is doing the judging is part of the act."""
+    assert run_evaluate(str(uuid4()), "any-version-id", None, True) == 1
+    err = capsys.readouterr().err
+    assert "--assessor" in err
+    assert "structural:1" in err and "drafts-structural:1" in err  # the registry, listed
 
 
 def test_judgment_policy_replay_is_idempotent(

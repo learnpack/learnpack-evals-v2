@@ -779,13 +779,13 @@ def run_evaluate(
     except ValueError:
         print(f"invalid content id: {raw_content_id}", file=sys.stderr)
         return 1
-    if assessor_spec is None and len(AUTOMATED_ASSESSORS) == 1:
-        ((assessor_name, assessor_version),) = AUTOMATED_ASSESSORS
-    elif assessor_spec is None or ":" not in assessor_spec:
-        print("pass --assessor <name>:<version>", file=sys.stderr)
+    if assessor_spec is None or ":" not in assessor_spec:
+        # Always explicit since the registry grew past one package: an assessor owes
+        # itself to a lineage, and naming which one is doing the judging is part of the act.
+        known = ", ".join(f"{n}:{v}" for n, v in sorted(AUTOMATED_ASSESSORS))
+        print(f"pass --assessor <name>:<version> (registry has: {known})", file=sys.stderr)
         return 1
-    else:
-        assessor_name, assessor_version = assessor_spec.split(":", 1)
+    assessor_name, assessor_version = assessor_spec.split(":", 1)
     package = _assessor_package(assessor_name, assessor_version)
     if package is None:
         return 1
@@ -2359,7 +2359,9 @@ def main(argv: list[str] | None = None) -> int:
     evaluate_parser.add_argument("--content-id", required=True)
     evaluate_parser.add_argument("--instrument-version-id", required=True)
     evaluate_parser.add_argument(
-        "--assessor", help="name:version (default: the only registered package)"
+        "--assessor",
+        required=True,
+        help="name:version - always explicit: the registry holds one package per lineage",
     )
     evaluate_parser.add_argument(
         "--dry-run",
