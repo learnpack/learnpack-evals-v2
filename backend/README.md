@@ -283,9 +283,13 @@ Two aggregation rules not to confuse:
   `uv run python -m app.cli evaluate --content-id <id> --instrument-version-id <id>
   --assessor <name>:<version> --dry-run`
   (prints the five-state outcome table and the claim summary; persists nothing).
-  `--assessor` is always explicit: the registry holds one package per instrument lineage
-  (`structural:1` for `learnpack-course-qa`, `drafts-structural:1` for `course-drafts-qa`),
-  and naming which one is doing the judging is part of the act. The real
+  `--assessor` is always explicit: the registry holds `structural:1` for
+  `learnpack-course-qa` and, for `course-drafts-qa`, both `drafts-structural:1` (pure
+  code) and `drafts-hybrid:1` (its superset, with LLM-carried criteria) — an instrument
+  admits 0..N assessors (ADR-0016), and naming which one is doing the judging is part of
+  the act. Mind that judgments do not combine across assessors: the report and the
+  fitness read the most recent judgment per content, so within one study evaluate each
+  content with ONE assessor, not several. The real
   path requires a **published** version and a **ratified** assessor (ADR-0019):
   `uv run python -m app.cli ratify-assessor --name structural --version 1
   --instrument-version-id <id> --email <admin>` — the initial registration is the first
@@ -293,6 +297,18 @@ Two aggregation rules not to confuse:
   mechanically and only changed/new **executed** criteria demand
   `--confirm <criterion-id>`. Then `evaluate` without `--dry-run` persists the evaluation
   (outcomes + raw metrics) and the judgment policy derives claims, coverage and findings.
+- **LLM-carrying assessors** (ADR-0034): `drafts-hybrid` extracts/classifies with an LLM
+  and decides pass/fail in code. It needs `LLM_API_KEY` in the environment (see
+  `.env.example`; `LLM_BASE_URL` points at any OpenAI-compatible endpoint, OpenRouter by
+  default) — the key is *access*; which model judges is pinned in the assessor's code and
+  declared in its `SOURCE_CONFIG`, prompts fingerprint included, so changing a model or a
+  prompt without a VERSION bump is refused at ratification. Every `evaluate` — dry run
+  included — spends real calls (a few per evaluation; tasks are memoized per profile, and
+  tokens/latency come back as `llm_*` metrics with the outcomes). If the model
+  irrecoverably fails (transport down, output contract never satisfied, an ungrounded
+  quote), the evaluation **aborts whole and persists nothing**; fix or just retry.
+  The test suite never touches the network: the transport is faked at the
+  `runtime.get_client` seam.
 
 ## Registering courses
 
