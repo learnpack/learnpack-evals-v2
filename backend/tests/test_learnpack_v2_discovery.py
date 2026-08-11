@@ -1,7 +1,7 @@
 """LearnpackV2's own convention, beyond what the format contract kit asserts for every
 format: how a generator run's output tree is enumerated, where its identity is composed
-from, what it deliberately leaves outside the declared surface, and how a free-text
-commission is read. Against the frozen real package. No DB, no network."""
+from, what it deliberately leaves outside the declared surface, and how the request it was
+started from is read. Against the frozen real package. No DB, no network."""
 
 import json
 import shutil
@@ -195,62 +195,68 @@ def test_an_undeclared_identity_refuses_the_package(tmp_path, mutate, message):
 # ------------------------------------------------------------------ the commission
 
 
-def seed_bytes() -> bytes:
-    return (FIXTURE / "files/course_brief.md").read_bytes()
+def request_bytes() -> bytes:
+    return (FIXTURE / "files/course_request.json").read_bytes()
 
 
-def test_the_seed_is_the_commission_verbatim():
-    """The seed has no declared shape — whatever the creator wrote is the instruction — so
-    nothing is parsed out of it and nothing is normalized into it."""
-    derived = LearnpackV2BriefIntake().derive(seed_bytes())
+def request_content() -> str:
+    return json.loads(request_bytes().decode("utf-8"))["content"]
+
+
+def test_the_request_is_the_commission_verbatim():
+    """The envelope is structure; the commission inside it is not. Whatever the creator
+    wrote is the instruction, so nothing is read out of `content` and nothing is
+    normalized into it — trailing spaces and line breaks included."""
+    derived = LearnpackV2BriefIntake().derive(request_bytes())
 
     assert derived is not None
-    assert derived.brief == seed_bytes().decode("utf-8")
+    assert derived.brief == request_content()
+    assert derived.brief.startswith("Title: ")
 
 
 def test_the_commission_records_that_the_prompt_was_kept():
     """The distinction the study report's caveats are built on: V2 carries the original
     instruction, V1 only a syllabus derived from one."""
-    derived = LearnpackV2BriefIntake().derive(seed_bytes())
+    derived = LearnpackV2BriefIntake().derive(request_bytes())
 
     assert derived is not None
     assert derived.fields == {"origin": "generation_seed", "promptRecorded": True}
 
 
-def test_the_same_seed_derives_the_same_identity():
-    first = LearnpackV2BriefIntake().derive(seed_bytes())
-    second = LearnpackV2BriefIntake().derive(seed_bytes())
-    other = LearnpackV2BriefIntake().derive(b"# A different course entirely")
+def test_the_identity_is_the_request_not_its_envelope():
+    """The commission's identity is the instruction, so the same request re-wrapped — extra
+    keys, different formatting — is the same brief and cannot mint a second one."""
+    rewrapped = json.dumps(
+        {"content": request_content(), "emitted_by": "some later envelope"}, indent=4
+    ).encode("utf-8")
 
-    assert first is not None and second is not None and other is not None
-    assert first.brief_hash == second.brief_hash
+    first = LearnpackV2BriefIntake().derive(request_bytes())
+    again = LearnpackV2BriefIntake().derive(rewrapped)
+    other = LearnpackV2BriefIntake().derive(b'{"content": "A different course entirely"}')
+
+    assert first is not None and again is not None and other is not None
+    assert first.brief_hash == again.brief_hash
     assert first.brief_hash != other.brief_hash
 
 
-def test_the_intake_locates_the_seed_among_the_discovered_artifacts():
+def test_the_intake_locates_the_request_among_the_discovered_artifacts():
     rows = [{"kind": a.kind, "locator": a.locator} for a in discover().artifacts]
-    assert LearnpackV2BriefIntake().locate(rows) == "files/course_brief.md"
+    assert LearnpackV2BriefIntake().locate(rows) == "files/course_request.json"
 
 
 @pytest.mark.parametrize(
     "payload",
     [
-        pytest.param(b"", id="empty"),
-        pytest.param(b"   \n\t  ", id="blank"),
-        pytest.param(b"\x00 not parseable by any format", id="control bytes"),
-        pytest.param(b"\xff\xfe not utf-8", id="undecodable"),
+        pytest.param(b'{"content": ""}', id="empty content"),
+        pytest.param(b'{"content": "   \\n\\t  "}', id="blank content"),
+        pytest.param(b'{"content": null}', id="null content"),
+        pytest.param(b'{"content": {"nested": "object"}}', id="content is not text"),
+        pytest.param(b'{"request": "under another key"}', id="no content key"),
+        pytest.param(b'["not", "an", "envelope"]', id="not an object"),
     ],
 )
-def test_a_payload_that_is_not_a_text_document_registers_the_brief_absent(payload):
-    """ADR-0022: a miss is soft. Free text has no parse step to fail, so the check that a
-    structured commission gets from its parser has to be stated here."""
+def test_an_envelope_with_no_request_registers_the_brief_absent(payload):
+    """ADR-0022: a miss is soft — the content registers with its brief absent, which is a
+    recorded state. Payloads that are not JSON at all are the port's business, and the
+    format contract kit pins that they never escape either."""
     assert LearnpackV2BriefIntake().derive(payload) is None
-
-
-def test_a_seed_keeps_its_ordinary_whitespace():
-    """The rejection above is about control bytes, not about formatting: tabs, newlines and
-    trailing spaces are how people write markdown."""
-    derived = LearnpackV2BriefIntake().derive(b"# Title\r\n\n\tindented line  \n")
-
-    assert derived is not None
-    assert derived.brief == "# Title\r\n\n\tindented line  \n"

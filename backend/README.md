@@ -441,11 +441,16 @@ a `DerivedBrief`. Intake is best-effort and non-blocking (ADR-0022): any miss lo
 registers the brief absent — a valid state, not an error. If your format carries nothing,
 skip this step entirely; skipping is correct.
 
-If the commission is **free text** rather than a structured payload (LearnpackV2 embeds the
-generation seed verbatim), `derive()` has to say for itself what "not a commission" looks
-like: a parser rejects a corrupt payload for you, and free text has no parse step to fail.
-The kit probes exactly this, so decide what an unreadable text document is — empty, control
-bytes, undecodable — and return `None` for it.
+A commission is written by a person, so **what carries it is structured and what it says is
+not**: both formats wrap free prose (LearnpackV1 in a syllabus field, LearnpackV2 in a
+`{"content": …}` envelope). Parse the carrier, then leave the instruction alone — reading
+fields out of the prose would substitute your reading for the creator's words. If the
+carrier is ever plain text with no envelope at all, `derive()` has to say for itself what
+"not a commission" looks like, because there is no parse step to fail it; the kit probes
+that case.
+
+Hash the **instruction**, not the payload: a brief's identity is what was asked, so the
+same request re-wrapped must not mint a second one.
 
 ### Step 5 — Make the contract kit green
 
