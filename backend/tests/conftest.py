@@ -18,6 +18,9 @@ INSTRUMENTS_DIR = pathlib.Path(__file__).resolve().parents[2] / "docs" / "seed" 
 # reading one file would hide every id another instrument mints.
 INSTRUMENT_SPEC_FILE = INSTRUMENTS_DIR / "learnpack-course-qa-v1.yaml"
 
+# The drafts lineage's current version — what `drafts-structural` declares coverage over.
+DRAFTS_INSTRUMENT_SPEC_FILE = INSTRUMENTS_DIR / "course-drafts-qa-v2.yaml"
+
 
 def declared_value_domains() -> dict[str, dict]:
     """The declared demand-side namespace (ADR-0020), merged across every authored
