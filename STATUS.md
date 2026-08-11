@@ -408,7 +408,9 @@ the data in the package).
   `promptRecorded: false` per brief, `not_assessed` insufficiencies, the drift finding.
   `attribute-generator` then fills the unknown one and refuses the second attempt.
   `/admin/studies` drives the study acts with a confirm dialog on Publish; `/admin/contents`
-  shows brief and generator, and offers the attribution on the unknown cell.
+  shows brief and generator, offers the attribution on the unknown cell, and narrows the list
+  by format and by generator lineage → version (`unknown` being one of the choices) —
+  client-side over the list the endpoint already returns whole.
 - **Local mode** (ADR-0008) tested end to end: `seed-demo` idempotent and with `--reset`
   (the reset also wipes ratifications, studies and generator versions), `/me` and
   `/dev/identities` responding with `X-Dev-User`, and the frontend compiling **without any
