@@ -314,10 +314,16 @@ Two aggregation rules not to confuse:
 - **The calibration page** (`/admin/calibration` in the console) is the guided way to run
   the dry-run loop: pick a profiled content, an instrument version (drafts included) and
   an assessor package, run, and read the outcome table with quotes, claim statuses and
-  LLM spend. It sits on two admin endpoints — `GET /admin/assessor-packages` (the in-code
-  registry as data) and `POST /admin/evaluations/preview` (the same `PreviewEvaluation`
-  use case the CLI wires; accepts drafts, needs no ratification, persists nothing). The
-  CLI (`evaluate --dry-run`) stays as the scriptable path. What the page deliberately
+  LLM spend. It sits on `GET /admin/assessor-packages` (the in-code registry as data) and
+  on the dry-run's three: `POST /admin/evaluations/preview` **starts** a run and returns
+  its id (202), `GET /admin/evaluations/preview/{run_id}` reads it while it advances —
+  one step per executed criterion and per LLM attempt, then the result or a named error —
+  and `.../trace` returns every LLM attempt whole, prompts and raw answers included. It
+  is the same `PreviewEvaluation` use case the CLI wires (accepts drafts, needs no
+  ratification, persists nothing); it is started rather than awaited because with
+  LLM-carried criteria it takes minutes. Runs live **in memory**, last few only: a
+  restart forgets them, which is the correct trade for a dry-run that persists nothing.
+  The CLI (`evaluate --dry-run`) stays as the scriptable path. What the page deliberately
   does **not** do: trigger profiling (a deliberate act, CLI-only — it shows the command
   instead) or register local folders (`register-package --source <dir>`). An
   LLM-carrying assessor spends real calls per run, on the backend's `LLM_API_KEY`.

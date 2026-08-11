@@ -9,6 +9,8 @@ IS the same use case behind a different door.
 # ruff: noqa: F811 — imported pytest fixtures are re-bound as test parameters by design.
 
 import dataclasses
+import time
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -21,6 +23,7 @@ from test_instrument_authoring_api import import_spec
 
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
+from app.platform import observability
 
 
 @pytest.fixture
@@ -100,6 +103,33 @@ def test_quality_reference_maps_qualities_to_dimensions(admin):
 
 
 # ---------------------------------------------------------------------------- preview
+#
+# The dry-run is started, not awaited (it takes minutes with LLM criteria), so every test
+# here does what the page does: start it, then read the run until it ends.
+
+
+def start_run(client, package, content_id, instrument_version_id: str) -> str:
+    response = client.post(
+        "/admin/evaluations/preview", json=preview_body(package, content_id, instrument_version_id)
+    )
+    assert response.status_code == 202, response.text
+    return response.json()["run_id"]
+
+
+def read_until_done(client, run_id: str, timeout: float = 30.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = client.get(f"/admin/evaluations/preview/{run_id}")
+        assert response.status_code == 200, response.text
+        run = response.json()
+        if run["status"] != "running":
+            return run
+        time.sleep(0.02)
+    raise AssertionError(f"run {run_id} never finished")
+
+
+def run_preview(client, package, content_id, instrument_version_id: str) -> dict:
+    return read_until_done(client, start_run(client, package, content_id, instrument_version_id))
 
 
 def test_preview_runs_a_draft_and_persists_nothing(
@@ -115,13 +145,11 @@ def test_preview_runs_a_draft_and_persists_nothing(
         )
 
     before = counts()
-    response = admin.post(
-        "/admin/evaluations/preview", json=preview_body(patched_package, profiled_course, draft_id)
-    )
-    assert response.status_code == 200, response.text
+    run = run_preview(admin, patched_package, profiled_course, draft_id)
+    assert run["status"] == "done" and run["error"] is None
     assert counts() == before  # zero writes: no evaluation, no judgment, no events
 
-    body = response.json()
+    body = run["result"]
     assert body["persisted"] is False
     assert body["instrument_status"] == "draft"
     assert body["assessor"] == {
@@ -154,12 +182,47 @@ def test_preview_runs_a_draft_and_persists_nothing(
     assert {m["metric_id"] for m in body["metrics"]}  # raw executor metrics travel too
 
 
+def test_a_run_reports_each_criterion_as_it_lands(
+    admin, cleanup, unique, patched_package, profiled_course
+):
+    """The progress the page shows while it waits: one step per EXECUTED criterion —
+    a derived outcome runs no executor, so there is nothing to report about it."""
+    draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
+
+    run = run_preview(admin, patched_package, profiled_course, draft_id)
+
+    steps = run["steps"]
+    executed = {o["criterion_id"] for o in run["result"]["outcomes"] if not o["derived"]}
+    assert {step["label"] for step in steps if step["kind"] == "criterion"} == executed
+    assert all(step["detail"] in {"pass", "fail"} for step in steps)
+    assert all(step["ok"] for step in steps)  # a `fail` is a verdict, not a malfunction
+    # Ordered in time and measured on the server, so the page needs no clock of its own.
+    assert [step["at_ms"] for step in steps] == sorted(step["at_ms"] for step in steps)
+    assert run["elapsed_ms"] >= 0 and run["finished_at"]
+
+
 def test_preview_requires_admin(evaluator_client, patched_package, profiled_course):
     response = evaluator_client.post(
         "/admin/evaluations/preview",
         json=preview_body(patched_package, profiled_course, "any-version"),
     )
     assert response.status_code == 403
+
+
+def test_reading_a_run_requires_admin(
+    evaluator_client, admin, cleanup, unique, patched_package, profiled_course
+):
+    draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
+    run_id = start_run(admin, patched_package, profiled_course, draft_id)
+
+    assert evaluator_client.get(f"/admin/evaluations/preview/{run_id}").status_code == 403
+    assert evaluator_client.get(f"/admin/evaluations/preview/{run_id}/trace").status_code == 403
+
+
+def test_an_unknown_run_is_404_and_says_why_it_could_be_gone(admin):
+    response = admin.get(f"/admin/evaluations/preview/{uuid4()}")
+    assert response.status_code == 404
+    assert "in memory" in response.json()["detail"]
 
 
 def test_preview_with_an_unknown_assessor_is_404_and_names_the_registry(admin, profiled_course):
@@ -176,16 +239,16 @@ def test_preview_with_an_unknown_assessor_is_404_and_names_the_registry(admin, p
     assert "drafts-hybrid:1" in response.json()["detail"]  # the known list, like the CLI
 
 
-def test_preview_with_an_unknown_instrument_is_404(admin, patched_package, profiled_course):
-    response = admin.post(
-        "/admin/evaluations/preview",
-        json=preview_body(patched_package, profiled_course, "does-not-exist"),
-    )
-    assert response.status_code == 404
-    assert "not found" in response.json()["detail"]
+def test_an_unknown_instrument_fails_the_run(admin, patched_package, profiled_course):
+    """Discovered by the run, not by the request: every ending is read from one place."""
+    run = run_preview(admin, patched_package, profiled_course, "does-not-exist")
+
+    assert run["status"] == "failed" and run["result"] is None
+    assert run["error"]["kind"] == "instrument_missing"
+    assert "not found" in run["error"]["message"]
 
 
-def test_preview_without_an_ok_profile_is_409(admin, cleanup, unique, patched_package):
+def test_a_content_without_an_ok_profile_fails_the_run(admin, cleanup, unique, patched_package):
     unprofiled = admin.post(
         "/admin/contents",
         json={
@@ -198,19 +261,19 @@ def test_preview_without_an_ok_profile_is_409(admin, cleanup, unique, patched_pa
 
     # The instrument gate runs first, so a real draft is needed to reach the profile gate.
     draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
-    response = admin.post(
-        "/admin/evaluations/preview",
-        json=preview_body(patched_package, unprofiled["content_id"], draft_id),
-    )
-    assert response.status_code == 409
-    assert "profile it first" in response.json()["detail"]
+    run = run_preview(admin, patched_package, unprofiled["content_id"], draft_id)
+
+    assert run["status"] == "failed" and run["result"] is None
+    assert run["error"]["kind"] == "profile_missing"
+    assert "profile it first" in run["error"]["message"]
 
 
-def test_an_assessor_that_cannot_judge_is_a_502(
-    admin, cleanup, unique, monkeypatch, patched_package, profiled_course
+def test_an_assessor_that_cannot_judge_fails_the_run(
+    admin, cleanup, unique, session, monkeypatch, patched_package, profiled_course
 ):
-    """ADR-0034 clause 4 through the HTTP door: the judge's irrecoverable failure is an
-    upstream fault (502), nothing persisted, and the detail says retrying is fine."""
+    """ADR-0034 clause 4 through the HTTP door: the judge's irrecoverable failure ends the
+    run with no verdict at all, nothing persisted, and the cause named so the page can say
+    what to do about it."""
 
     def boom(spec, profile):
         raise AssessorExecutionError(
@@ -226,10 +289,84 @@ def test_an_assessor_that_cannot_judge_is_a_502(
     )
     monkeypatch.setitem(AUTOMATED_ASSESSORS, (name, broken.version), broken)
     draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
+    before = session.execute(text("SELECT count(*) FROM evaluations")).scalar_one()
 
-    response = admin.post(
-        "/admin/evaluations/preview", json=preview_body(broken, profiled_course, draft_id)
+    run = run_preview(admin, broken, profiled_course, draft_id)
+
+    assert run["status"] == "failed" and run["result"] is None
+    assert run["error"]["kind"] == "assessor_failed"
+    assert "never satisfied the output contract" in run["error"]["message"]
+    assert session.execute(text("SELECT count(*) FROM evaluations")).scalar_one() == before
+    # The criterion that blew up is in the log: the page shows where it stopped.
+    assert any(
+        not step["ok"] and "AssessorExecutionError" in step["detail"] for step in run["steps"]
     )
-    assert response.status_code == 502
-    detail = response.json()["detail"]
-    assert "could not produce a verdict" in detail and "nothing persisted" in detail
+
+
+def test_the_trace_carries_every_llm_attempt_of_the_run(
+    admin, cleanup, unique, monkeypatch, patched_package, profiled_course
+):
+    """The point of the whole thing: after a run, the prompt each task sent and the raw
+    text it got back are readable — retries included, untruncated."""
+    prompt = "classify these objectives verbatim" * 20
+
+    def calls_a_model(spec, profile):
+        for attempt, error in ((1, "HTTP 429"), (2, None)):
+            observability.emit(
+                observability.LlmCall(
+                    task_id="objectives_classification",
+                    attempt=attempt,
+                    model_requested="vendor/model",
+                    messages=({"role": "user", "content": prompt},),
+                    latency_ms=12,
+                    model_answered=None if error else "vendor/model",
+                    provider=None if error else "TheOneThatAnswered",
+                    response_text=None if error else '{"objectives": []}',
+                    finish_reason=None if error else "stop",
+                    tokens_in=0 if error else 900,
+                    tokens_out=0 if error else 30,
+                    error=error,
+                )
+            )
+        return patched_package.executors[spec.criterion_id](spec, profile)
+
+    name = f"talkative-{unique}"
+    talkative = dataclasses.replace(
+        patched_package,
+        name=name,
+        executors={criterion_id: calls_a_model for criterion_id in patched_package.executors},
+        source_config={**patched_package.source_config, "name": name},
+    )
+    monkeypatch.setitem(AUTOMATED_ASSESSORS, (name, talkative.version), talkative)
+    draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
+
+    run_id = start_run(admin, talkative, profiled_course, draft_id)
+    run = read_until_done(admin, run_id)
+    assert run["status"] == "done"
+
+    trace = admin.get(f"/admin/evaluations/preview/{run_id}/trace")
+    assert trace.status_code == 200, trace.text
+    calls = trace.json()["calls"]
+    assert len(calls) == 2 * len([s for s in run["steps"] if s["kind"] == "criterion"])
+    failed, succeeded = calls[0], calls[1]
+    assert failed["error"] == "HTTP 429" and failed["attempt"] == 1
+    assert succeeded["provider"] == "TheOneThatAnswered"
+    assert succeeded["response_text"] == '{"objectives": []}'
+    assert succeeded["messages"][0]["content"] == prompt  # whole, not abridged
+
+    # The same records are the live progress the page reads while it waits.
+    llm_steps = [step for step in run["steps"] if step["kind"] == "llm_call"]
+    assert llm_steps[0]["label"] == "objectives_classification"
+    assert "attempt 1 · HTTP 429" in llm_steps[0]["detail"] and not llm_steps[0]["ok"]
+    assert "900→30 tokens" in llm_steps[1]["detail"]
+
+
+def test_a_trace_is_empty_when_the_assessor_never_asks_a_model(
+    admin, cleanup, unique, patched_package, profiled_course
+):
+    draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
+    run_id = start_run(admin, patched_package, profiled_course, draft_id)
+    read_until_done(admin, run_id)
+
+    trace = admin.get(f"/admin/evaluations/preview/{run_id}/trace").json()
+    assert trace["calls"] == [] and trace["status"] == "done"
