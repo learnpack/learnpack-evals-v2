@@ -33,6 +33,7 @@ slot.
 import json
 import re
 import statistics
+from itertools import pairwise
 from typing import Any
 
 from app.modules.evaluation.domain.model import (
@@ -305,7 +306,7 @@ def objectives_non_decreasing_demand(spec: CriterionSpec, profile: ProfileData) 
     if len(classified) < 2:
         # A single objective is a point: nothing to fall back from, nothing flat.
         return _result(entry, True, spec, metrics=metrics)
-    for previous, current in zip(classified, classified[1:], strict=True):
+    for previous, current in pairwise(classified):
         if current.rank < previous.rank - ALLOWED_BLOOM_DROP:
             return _result(entry, False, spec, 0, metrics, quote=current.text)
     if len(ranks) >= FLAT_MIN_OBJECTIVES and len(set(ranks)) == 1:
