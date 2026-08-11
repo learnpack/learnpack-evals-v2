@@ -323,3 +323,83 @@ def test_an_unparseable_artifact_fails_the_whole_extraction():
 
     with pytest.raises(ExtractionError, match="not valid JSON"):
         LearnpackV2Adapter().extract(package, fetcher)
+
+
+# ------------------------------------------------------------------ the alignment data
+
+
+def test_the_objectives_travel_with_their_declared_verification():
+    """What `learning_objectives` cannot carry: the id each objective declares for itself and
+    the criterion it says would verify it. The second is what lets a criterion hold the
+    assessment to the objective's own promise instead of to ours."""
+    objectives = extract_fixture()["declared_objectives"].value
+
+    assert len(objectives) == 3
+    assert objectives[0]["id"] == "obj-1"
+    assert objectives[0]["outcome"].startswith("The learner can identify the structure")
+    assert objectives[0]["verifiableBy"].startswith("Given a labeled diagram")
+
+
+def test_the_two_objective_ids_carry_the_same_objectives():
+    """Both are supplied on purpose and must not drift: one counts them, the other compares
+    against them, and a course where they disagreed would be judged twice over."""
+    entries = extract_fixture()
+
+    assert [o["outcome"] for o in entries["declared_objectives"].value] == (
+        entries["learning_objectives"].value
+    )
+
+
+def test_an_objective_without_a_declared_verification_reports_null():
+    """Present-and-null, never omitted: the objective is there and its verification is not,
+    which is a different statement from the objective being absent (ADR-0020)."""
+    package, fetcher = _package(
+        **{
+            "course_value.json": (
+                b'{"learning_objectives": [{"id": "obj-1", "outcome": "Do a thing"}]}'
+            ),
+        }
+    )
+
+    entries = {e.data_requirement_id: e for e in LearnpackV2Adapter().extract(package, fetcher)[0]}
+
+    assert entries["declared_objectives"].value == [
+        {"id": "obj-1", "outcome": "Do a thing", "verifiableBy": None}
+    ]
+
+
+def test_the_lesson_concepts_follow_the_plan_s_declared_order():
+    """The trajectory, read without opening a single body."""
+    concepts = extract_fixture()["lesson_concepts"].value
+    inventory = extract_fixture()["lesson_inventory"].value
+
+    assert [c["lessonId"] for c in concepts] == [lesson["lessonId"] for lesson in inventory]
+    assert concepts[0] == {"lessonId": "00.0", "concept": "welcome"}
+    assert concepts[1]["concept"] == "HTML as markup language"
+
+
+def test_the_framing_lessons_declare_their_own_concepts():
+    """`welcome` and `course-outro` are named concepts like any other, and they sit outside
+    the course's concept graph by convention. The adapter reports what the plan declares and
+    leaves that distinction to the criteria that care about it."""
+    concepts = extract_fixture()["lesson_concepts"].value
+
+    assert concepts[0]["concept"] == "welcome"
+    assert concepts[-1]["concept"] == "course-outro"
+
+
+def test_a_lesson_that_names_no_concept_reports_null():
+    package, fetcher = _package(
+        **{
+            "lesson_plan.json": (
+                b'{"lessons": [{"id": "00.0"}, {"id": "01.0", "concept_covered": "x"}]}'
+            ),
+        }
+    )
+
+    entries = {e.data_requirement_id: e for e in LearnpackV2Adapter().extract(package, fetcher)[0]}
+
+    assert entries["lesson_concepts"].value == [
+        {"lessonId": "00.0", "concept": None},
+        {"lessonId": "01.0", "concept": "x"},
+    ]

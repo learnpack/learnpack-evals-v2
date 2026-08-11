@@ -90,6 +90,8 @@ FORMAT_CASES: dict[str, FormatCase] = {
                     "lesson_bodies",
                     "lesson_assessment_items",
                     "learning_objectives",
+                    "declared_objectives",
+                    "lesson_concepts",
                     "target_audience",
                 }
             ),
