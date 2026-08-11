@@ -328,6 +328,39 @@ Two aggregation rules not to confuse:
   instead) or register local folders (`register-package --source <dir>`). An
   LLM-carrying assessor spends real calls per run, on the backend's `LLM_API_KEY`.
 
+### Reading a calibration trace
+
+A semantic criterion's verdict is only as good as the question that produced it, and the
+question is a prompt nobody sees. `LLM_TRACE_DIR` is where every attempt gets written —
+one JSON object per line, per run:
+
+```
+{"task_id": "...", "attempt": 1, "model_requested": "...", "model_answered": "...",
+ "provider": "...", "messages": [...], "response_text": "...", "finish_reason": "...",
+ "tokens_in": 0, "tokens_out": 0, "latency_ms": 0, "error": null}
+```
+
+One record per **attempt**, not per successful call: a task that took three rounds to
+satisfy its output contract wrote three lines, and the second line's `messages` end with
+the validator's own complaint about the first. Nothing is truncated — an abridged prompt
+cannot be compared against the one that produced a different answer, which is the only
+reason to read this.
+
+What each field settles:
+
+- `finish_reason: "length"` — the answer was cut off. It reaches the caller as *"the
+  answer is not valid JSON"*, which names the symptom; this names the cause.
+- `provider` — OpenRouter routes one model id to several upstreams and they do not honor
+  `response_format` alike, so two runs asking the same question can get different shapes
+  back. This is who answered.
+- `error` with no `response_text` — the request never landed (timeout, rate limit). The
+  next line is the retry.
+
+Both doors write one: the page's runs under their run id, `evaluate --dry-run` under
+`cli-<id>`, printing the path when it finishes. The folder is gitignored and disposable
+— the traces of a machine, not of the repo. Leave `LLM_TRACE_DIR` empty and none are
+written.
+
 ## Registering courses
 
 The canonical intake is **discovery** (ADR-0027): declare a package source and the system

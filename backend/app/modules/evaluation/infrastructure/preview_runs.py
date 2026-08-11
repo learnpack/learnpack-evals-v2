@@ -31,6 +31,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -99,6 +100,7 @@ class RunView:
     calls: Sequence[observability.LlmCall]
     preview: Preview | None
     error: RunError | None
+    trace_path: Path | None
 
 
 class PreviewRun:
@@ -115,6 +117,10 @@ class PreviewRun:
         self.finished_at: datetime | None = None
         self.preview: Preview | None = None
         self.error: RunError | None = None
+        # Where this run's attempts are also written, when the machine asked for a trace
+        # file. In-memory runs are few and die with the process; the file is what lets
+        # yesterday's calibration attempt be compared against today's.
+        self.trace_path: Path | None = observability.trace_path(str(run_id))
         self._steps: list[RunStep] = []
         self._calls: list[observability.LlmCall] = []
         self._started = time.monotonic()
@@ -165,6 +171,7 @@ class PreviewRun:
                 calls=tuple(self._calls),
                 preview=self.preview,
                 error=self.error,
+                trace_path=self.trace_path,
             )
 
 
@@ -254,10 +261,13 @@ def execute(run: PreviewRun) -> None:
     thread has nowhere to raise: an unhandled exception here would leave the page polling
     a run that never finishes.
     """
+    sink = run.record_call
+    if run.trace_path is not None:
+        sink = observability.fan_out(sink, observability.jsonl_sink(run.trace_path))
     try:
         if run.package.reset_caches is not None:
             run.package.reset_caches()
-        with observability.collecting(run.record_call), SessionLocal() as session:
+        with observability.collecting(sink), SessionLocal() as session:
             use_case = PreviewEvaluation(
                 instruments=DesignInstrumentGateway(session),
                 profiles=ProfilingGateway(session),

@@ -2,11 +2,14 @@
 
 What is pinned here is what the page depends on and the API tests cannot reach cheaply:
 a run reports every executor as it lands, an LLM attempt reads as progress, a worker
-thread never dies silently, and the registry forgets the oldest run rather than the one
-you are looking at.
+thread never dies silently, the registry forgets the oldest run rather than the one you
+are looking at, and the same records that drive the live view end up whole in the trace
+file.
 """
 
+import json
 import time
+from types import SimpleNamespace
 from uuid import uuid4
 
 from app.modules.evaluation.application.preview_evaluation import PreviewEvaluationCommand
@@ -161,6 +164,45 @@ def test_a_worker_never_dies_silently():
     assert view.status == "failed" and view.error is not None
     assert view.error.kind == "unexpected"
     assert "something nobody predicted" in view.error.message
+
+
+# --------------------------------------------------------------------------- the trace file
+
+
+def test_a_trace_file_is_written_only_where_a_machine_asked_for_one(monkeypatch, tmp_path):
+    """`LLM_TRACE_DIR` empty means off: a deployment that should not be writing prompts
+    to disk opts out by never setting it."""
+    monkeypatch.setattr(observability, "get_settings", lambda: SimpleNamespace(llm_trace_dir=""))
+    assert observability.trace_path("a-run") is None
+
+    monkeypatch.setattr(
+        observability, "get_settings", lambda: SimpleNamespace(llm_trace_dir=str(tmp_path))
+    )
+    assert observability.trace_path("a-run") == tmp_path / "a-run.jsonl"
+
+
+def test_each_attempt_is_one_json_line_kept_whole(tmp_path):
+    path = tmp_path / "run.jsonl"
+    sink = observability.jsonl_sink(path)
+
+    sink(a_call())
+    sink(a_call(attempt=2, error="HTTP 429"))
+
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [record["attempt"] for record in records] == [1, 2]
+    assert records[0]["messages"] == [{"role": "user", "content": "hi"}]
+    assert records[1]["error"] == "HTTP 429"
+
+
+def test_one_stream_feeds_both_the_live_run_and_the_file(tmp_path):
+    """Progress and trace are the same records, read at different moments."""
+    run = a_run()
+    path = tmp_path / "run.jsonl"
+
+    observability.fan_out(run.record_call, observability.jsonl_sink(path))(a_call())
+
+    assert len(run.view().calls) == 1
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_the_clock_runs_while_the_run_does_and_stops_when_it_ends():

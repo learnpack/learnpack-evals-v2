@@ -127,6 +127,7 @@ from app.modules.evaluation.infrastructure.gateways import (
     DesignInstrumentGateway,
     ProfilingGateway,
 )
+from app.modules.evaluation.infrastructure.preview_runs import RunStep, with_progress
 from app.modules.evaluation.infrastructure.repository import (
     SqlAlchemyAutomatedEvaluationRepository,
     SqlAlchemyJudgmentRepository,
@@ -212,6 +213,7 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
 )
+from app.platform import observability
 from app.platform.db import SessionLocal
 from app.platform.events import dispatcher
 from app.platform.policies import register_all_policies
@@ -795,18 +797,29 @@ def run_evaluate(
         instruments = DesignInstrumentGateway(session)
         profiles = ProfilingGateway(session)
         if dry_run:
+            # The scriptable half of the calibration loop gets what the page gets: each
+            # criterion announced as it lands (to stderr, so stdout stays the report) and
+            # every LLM attempt written to the run's trace file.
+            if package.reset_caches is not None:
+                package.reset_caches()
+            trace = observability.trace_path(f"cli-{new_id()}")
             preview_use_case = PreviewEvaluation(
                 instruments=instruments,
                 profiles=profiles,
                 coverage=package.coverage,
-                executors=dict(package.executors),
+                executors=with_progress(package.executors, _print_step),
             )
+            sinks = [_print_call]
+            if trace is not None:
+                sinks.append(observability.jsonl_sink(trace))
+            sink = observability.fan_out(*sinks)
             try:
-                preview = preview_use_case(
-                    PreviewEvaluationCommand(
-                        content_id=content_id, instrument_version_id=instrument_version_id
+                with observability.collecting(sink):
+                    preview = preview_use_case(
+                        PreviewEvaluationCommand(
+                            content_id=content_id, instrument_version_id=instrument_version_id
+                        )
                     )
-                )
             except (InstrumentNotEvaluable, ProfileNotAvailable) as exc:
                 print(str(exc), file=sys.stderr)
                 return 1
@@ -817,9 +830,13 @@ def run_evaluate(
                     "transient) and run evaluate again (ADR-0034)",
                     file=sys.stderr,
                 )
+                if trace is not None:
+                    print(f"the prompts and raw answers are in {trace}", file=sys.stderr)
                 return 1
             _print_outcomes(preview.outcomes, preview.judgment)
             print("dry run: nothing persisted (no evaluation, no events, no judgment)")
+            if trace is not None and trace.exists():
+                print(f"LLM trace: {trace}")
             return 0
 
         assessor = SqlAlchemyAssessorRepository(session).get_automated(
@@ -889,6 +906,20 @@ def run_evaluate(
             if excluded:
                 print(f"  excluded (all not_applicable): {', '.join(excluded)}")
     return 0
+
+
+def _print_step(step: RunStep) -> None:
+    """A dry run's progress, on stderr: stdout stays the report a script reads."""
+    print(f"  [{step.duration_ms / 1000:6.1f}s] {step.label}: {step.detail}", file=sys.stderr)
+
+
+def _print_call(call: observability.LlmCall) -> None:
+    spent = call.error or f"{call.tokens_in}->{call.tokens_out} tokens"
+    print(
+        f"  [{call.latency_ms / 1000:6.1f}s] {call.task_id or 'llm call'} "
+        f"attempt {call.attempt}: {spent}",
+        file=sys.stderr,
+    )
 
 
 def _print_outcomes(outcomes, judgment) -> None:  # noqa: ANN001 — CLI presentation only

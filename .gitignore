@@ -9,6 +9,10 @@ notes/*
 courses/*
 !courses/README.md
 
+# Trazas de las corridas con LLM (LLM_TRACE_DIR) — prompts y respuestas crudas de una
+# máquina concreta, nunca versionadas. Ver "Reading a calibration trace" en backend/README.md.
+backend/runs/
+
 # OS
 .DS_Store
 Thumbs.db

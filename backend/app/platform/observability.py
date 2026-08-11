@@ -17,12 +17,16 @@ reason nothing here re-versions an assessor (ADR-0034 §1): recording an answer 
 change which answer arrives.
 """
 
+import json
 import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -105,3 +109,53 @@ def recording() -> tuple[list[LlmCall], Sink]:
 def messages_of(messages: Sequence[Mapping[str, str]]) -> tuple[Mapping[str, str], ...]:
     """A snapshot of the conversation as sent: the caller keeps mutating its own list."""
     return tuple(dict(message) for message in messages)
+
+
+def fan_out(*sinks: Sink) -> Sink:
+    """One stream, several listeners — live progress and the file, from the same records."""
+
+    def deliver(call: LlmCall) -> None:
+        for sink in sinks:
+            sink(call)
+
+    return deliver
+
+
+# --------------------------------------------------------------------------- the file
+#
+# What outlives the process. Runs are kept in memory and only the last few, so the file
+# is where a calibration attempt from yesterday can still be compared against today's.
+
+
+def trace_path(name: str) -> Path | None:
+    """Where this run's trace goes, or None when nobody asked for one.
+
+    `LLM_TRACE_DIR` empty means off — the setting is how a machine opts in, so a
+    deployment that should not be writing prompts to disk simply never sets it.
+    """
+    directory = get_settings().llm_trace_dir.strip()
+    if not directory:
+        return None
+    try:
+        root = Path(directory)
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        logger.exception(
+            "LLM_TRACE_DIR %r cannot be used; this run leaves no trace file", directory
+        )
+        return None
+    return root / f"{name}.jsonl"
+
+
+def jsonl_sink(path: Path) -> Sink:
+    """Append one JSON object per attempt, flushed as it happens.
+
+    Reopened per record on purpose: a run that dies mid-way is exactly the one whose
+    trace has to be readable, and there is no volume here worth buffering for.
+    """
+
+    def write(call: LlmCall) -> None:
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(call.as_record(), ensure_ascii=False) + "\n")
+
+    return write

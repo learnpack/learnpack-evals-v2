@@ -359,6 +359,9 @@ class LlmCallResponse(BaseModel):
 class PreviewRunTraceResponse(BaseModel):
     run_id: UUID
     status: str
+    # Where the same records were written, when the machine asked for a trace file. Runs
+    # are forgotten on restart; the file is not.
+    trace_path: str | None
     calls: list[LlmCallResponse]
 
 
@@ -428,5 +431,6 @@ def read_preview_run_trace(run_id: UUID, admin: AdminAssessor) -> PreviewRunTrac
     return PreviewRunTraceResponse(
         run_id=view.run_id,
         status=view.status,
+        trace_path=str(view.trace_path) if view.trace_path is not None else None,
         calls=[LlmCallResponse(**call.as_record()) for call in view.calls],
     )
