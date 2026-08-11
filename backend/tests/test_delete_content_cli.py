@@ -8,9 +8,11 @@ exist, which is the whole reason this is a command with a check.
 
 import pytest
 from sqlalchemy import text
+from test_auth_local import is_local_database
 
 import app.cli as cli
 from app.cli import run_delete_content
+from app.config import get_settings
 from app.modules.evaluand_registry.application.register_brief import (
     RegisterBrief,
     RegisterBriefCommand,
@@ -27,6 +29,21 @@ from app.modules.evaluand_registry.infrastructure.repository import (
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
+
+
+@pytest.fixture(autouse=True)
+def local_auth(monkeypatch):
+    """The command refuses outside AUTH_MODE=local (ADR-0033), and these tests are about
+    what it does past that guard — the guard itself has its own test below, which patches
+    `cli.get_settings` and is unaffected. CI runs with the clerk default; a contributor's
+    `.env` sets local (backend/README.md), so without this the suite only passed on
+    machines configured like a workbench."""
+    if not is_local_database(get_settings().database_url):
+        pytest.skip("AUTH_MODE=local only builds against a local database (TEST_DATABASE_URL)")
+    monkeypatch.setenv("AUTH_MODE", "local")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

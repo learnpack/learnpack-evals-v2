@@ -293,7 +293,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 648 tests** against local Postgres (~41 s). Requires
+- **Backend suite green: 654 tests** against local Postgres (~40 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
   a wrong echo is refused again and the right one registers; and against the store alone, two
