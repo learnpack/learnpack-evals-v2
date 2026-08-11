@@ -17,6 +17,7 @@ import type {
   AssignmentDetail,
   AssignmentResponse,
   BriefResponse,
+  BrowseResponse,
   CampaignProgress,
   CampaignResponse,
   ComposeStudyDatasetRequest,
@@ -41,7 +42,12 @@ import type {
   RegisterBySourceResponse,
   RegisterGeneratorRequest,
   RegisterGeneratorVersionRequest,
+  RegisterLocalRequest,
+  RegisterLocalResponse,
+  ScanRequest,
+  ScanResponse,
   ScoresReport,
+  SourceRootResponse,
   StudyFitness,
   StudyReadiness,
   StudyReportResponse,
@@ -87,6 +93,9 @@ export const queryKeys = {
   studyReport: (id: Uuid) => ["admin", "studies", id, "report"] as const,
   studyReadiness: (id: Uuid) => ["admin", "studies", id, "readiness"] as const,
   studyFitness: (id: Uuid) => ["admin", "studies", id, "fitness"] as const,
+  localSourceRoots: ["dev", "local-courses", "roots"] as const,
+  localSourceFolder: (root: string, path: string) =>
+    ["dev", "local-courses", "browse", root, path] as const,
 };
 
 // --------------------------------------------------------------------- identity
@@ -171,6 +180,55 @@ export function useRegisterBySource() {
         method: "POST",
         body,
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
+  });
+}
+
+// ------------------------------------- local source intake (dev only, ADR-0035)
+// These four exist only under AUTH_MODE=local; outside it every path answers 404, so the
+// page that uses them never renders in a deployed console.
+
+export function useLocalSourceRoots(enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.localSourceRoots,
+    queryFn: () => api<SourceRootResponse[]>("/dev/local-courses/roots"),
+    enabled,
+  });
+}
+
+export function useLocalSourceFolder(root: string, path: string, enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.localSourceFolder(root, path),
+    queryFn: () =>
+      api<BrowseResponse>(
+        `/dev/local-courses/browse?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`,
+      ),
+    enabled,
+  });
+}
+
+/** The preview: reads and hashes every artifact of every folder, so it is slow and never
+ *  retried — a second identical pass would cost the same and answer the same. */
+export function useScanLocalSource() {
+  const api = useApi();
+  return useMutation({
+    retry: false,
+    mutationFn: (body: ScanRequest) =>
+      api<ScanResponse>("/dev/local-courses/scan", { method: "POST", body }),
+  });
+}
+
+/** One folder per call — the selection is a loop in the page, which is what gives it a
+ *  progress line and bounds each request (ADR-0035 §5). */
+export function useRegisterLocalPackage() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (body: RegisterLocalRequest) =>
+      api<RegisterLocalResponse>("/dev/local-courses/register", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
   });
 }
