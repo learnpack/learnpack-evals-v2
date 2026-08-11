@@ -21,6 +21,7 @@ from app.modules.evaluand_registry.infrastructure.router import (
     evaluand_router as evaluand_admin_router,
 )
 from app.modules.evaluand_registry.infrastructure.router import router as evaluand_registry_router
+from app.modules.evaluation.infrastructure.router import admin_router as evaluation_admin_router
 from app.modules.evaluation.infrastructure.router import router as evaluation_router
 from app.modules.evaluation_design.infrastructure.router import router as evaluation_design_router
 from app.modules.evaluation_studies.infrastructure.router import (
@@ -104,6 +105,7 @@ app.include_router(identity_admin_router)
 app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)
 app.include_router(evaluation_router)
+app.include_router(evaluation_admin_router)
 app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local
