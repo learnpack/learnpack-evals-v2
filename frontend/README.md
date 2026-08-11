@@ -106,6 +106,23 @@ shows up, check that it still works.
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
 - Add the Netlify origin to `ALLOWED_ORIGINS` in the backend.
 
+## Importing courses from disk (local mode only)
+
+`/admin/contents` shows an **Import from disk** button when the build runs with
+`NEXT_PUBLIC_AUTH_MODE=local`. It opens `/admin/contents/import`, which browses the source
+roots the backend declares (`LOCAL_SOURCE_ROOTS`, see `../backend/README.md`), previews what
+registering each folder would do, and registers the ones you tick.
+
+The button is behind a build-time constant, so it never reaches a deployed console — and the
+endpoints it uses answer 404 outside local mode anyway. The page states that if you open it
+directly.
+
+Two things the page says that are easy to misread as bugs: a folder marked **conflict** needs
+the course version bumped (a registered version is immutable, ADR-0005), and an **already
+registered** course whose generator is unknown cannot be fixed by registering it again —
+re-registering an unchanged package is a no-op, so the row offers the attribution act instead
+(ADR-0024).
+
 ## Demo happy path
 
 1. Log in as **admin** → `/admin/contents`: register a course by **package URL** + generator

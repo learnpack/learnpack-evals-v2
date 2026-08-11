@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { ExternalLink, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ExternalLink, HardDrive, Plus } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -20,6 +21,7 @@ import {
   useGeneratorVersions,
 } from "@/lib/api/hooks";
 import type { ContentResponse, GeneratorVersionResponse } from "@/lib/api/types";
+import { IS_LOCAL_AUTH } from "@/lib/auth";
 
 const generatorName = (g?: GeneratorVersionResponse) => (g ? `${g.name} ${g.version}` : undefined);
 
@@ -116,9 +118,21 @@ export default function ContentsPage() {
             AI-generated courses available to evaluate.
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> Add course
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Local development only, and a build-time constant: the endpoints behind that
+              page do not exist in any other mode, so the button never ships to one. */}
+          {IS_LOCAL_AUTH ? (
+            <Link
+              href="/admin/contents/import"
+              className={buttonVariants({ variant: "outline" })}
+            >
+              <HardDrive className="h-4 w-4" /> Import from disk
+            </Link>
+          ) : null}
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> Add course
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
