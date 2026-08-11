@@ -525,7 +525,22 @@ the data in the package).
   `POST /admin/contents/register-by-source` (http(s) sources; 201 created / 200 unchanged /
   409 content-changed) and `GET /admin/contents/formats`; the admin form registers by
   package URL + generator + provenance — the hand-typed artifact rows are gone, and the
-  frontend no longer hardcodes `LearnpackV1`. **What ADR-0027 and ADR-0028 leave deferred,
+  frontend no longer hardcodes `LearnpackV1`.
+  Since **ADR-0035** a local tree no longer has to be `courses/`: `LOCAL_SOURCE_ROOTS`
+  declares `key=path` roots, each served under `/sources/<key>` (`courses/` keeps `/packages`
+  and its base URL, because the locators registered under it are never rewritten), and
+  `/dev/local-courses` — dev-only **and** admin-only, the mode gate on the router so it
+  answers 404 before any 401 — browses them, previews and registers. The preview names five
+  outcomes per folder: `new`, `new_version` (known course, new bytes, declared version free),
+  `unchanged`, `conflict` and `unreadable`. Registration takes **one folder per request**
+  (each created course auto-profiles inside it) and refuses when a probe finds the tree is not
+  actually served — the locators it writes are permanent. A re-registration cannot repair an
+  unknown generator: the hash match returns the existing content untouched and the declared
+  generator is discarded, so the response reports `can_attribute_generator` and the attribution
+  act stays explicit (ADR-0024). `FilesystemFetcher` now refuses locators outside its base
+  directory, which applies to every caller. **The console page (`/admin/contents/import`) is
+  not built yet** — the surface is reachable with `curl` and pinned by
+  `test_local_courses_dev_api.py`. **What ADR-0027 and ADR-0028 leave deferred,
   doors open:** stage 2 — **zip upload + storage** (`PackageStoragePort`, filesystem in dev,
   S3-compatible bucket in prod; its own ADR) for packages not hosted anywhere;
   **pull-based batch registration from the LearnPack API** (the `[future]` connected ACL —
@@ -534,7 +549,11 @@ the data in the package).
   same declared version (today: refused with "declare a new version"; minting the next
   version automatically is a decision not yet taken). The `courses/<name>@<version>/`
   folder convention is provisional and isolated in one CLI function
-  (`_generator_for_folder`).
+  (`_generator_for_folder`) — and stays the CLI's: the console declares the generator in its
+  form and never reads a folder name. **ADR-0035 adds its own deferrals:** roots added at
+  runtime rather than at boot, caching the discovery between scan and register (today the
+  package is read twice, and the second read is the authoritative one), and a `--root` flag
+  bringing the CLI onto the same roots.
 
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
   wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,

@@ -4,6 +4,11 @@ Drop downloaded course packages here to register and evaluate them locally, in a
 format the backend supports. Everything in this directory except this README is
 **gitignored**: course content is data, never part of the repo.
 
+This is the **built-in** local source root, and the only one the CLI reads. A tree that lives
+somewhere else is declared with `LOCAL_SOURCE_ROOTS` and registered from the console
+(ADR-0035) — see `backend/README.md` §*Registering courses*. Everything below is about this
+tree and the CLI.
+
 ## Layout
 
 ```
@@ -21,6 +26,10 @@ The folder name declares the generator (ADR-0024): `<name>` must match a **regis
 `Generator` and `<version>` one of its registered versions (ADR-0031). The import refuses
 unregistered ones — naming which half is missing — and never creates generator identities. The
 special folder `unknown` registers its courses with no generator.
+
+The convention belongs to the CLI. The console declares the generator in its own form and
+never reads the folder name, so a tree registered from `/admin/contents/import` can be laid
+out however the generator writes it.
 
 ## Usage
 

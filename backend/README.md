@@ -364,6 +364,33 @@ automatically but not assigned for human scoring.
 Re-importing an unchanged course is a no-op (content hash); the same declared version with
 changed content is refused. See `../courses/README.md` for the folder convention.
 
+### From other trees, and from the console (ADR-0035)
+
+A tree that does not live under `courses/` is declared in the environment, because a
+registered locator has to stay fetchable and only a served tree provides that:
+
+```bash
+# comma-separated `key=path`; served under LOCAL_SOURCES_BASE_URL/<key>
+LOCAL_SOURCE_ROOTS=runs=D:\generator\out,archive=/srv/old-courses
+```
+
+The key names a URL prefix, so it must match `[a-z0-9._-]+` and cannot be `courses` (the
+built-in root, which keeps its own base URL forever). A malformed declaration stops the
+process; a path that does not exist is reported as absent and skipped. Adding a root needs a
+restart — the trees are mounted when the app assembles.
+
+Every declared root is browsable from **`/admin/contents/import`** in local mode: pick the
+format and generator version once, walk to the folder that holds the courses, and the scan
+says per subfolder what registering would do — `new`, `new_version`, `unchanged`, `conflict`
+or `unreadable` — before anything is written. The CLI stays the batch tool for `courses/`,
+and the `<name>@<version>/` folder convention is its own: the console declares the generator
+in the form instead, and applies it to the whole scan.
+
+One thing the console cannot do, and says so: re-registering a course that was registered
+with an unknown generator does **not** fill it in. That registration is a no-op (the bytes
+match), so the declared generator is discarded — attribution is its own act, offered on the
+row (ADR-0024).
+
 Registering **auto-profiles** each newly created course, once the format's extraction is
 accepted — the same policy the admin form triggers (ADR-0029 §1). Both commands print what
 it did (`profiling: N profiled, N failed, N not profiled`), because a decline is silent by
