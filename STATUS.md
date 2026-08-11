@@ -169,6 +169,25 @@ needs `LLM_API_KEY` set (each dry run spends ~3 calls). What the calibration sho
 whether the extracted outcomes and the Bloom/sophistication classifications read sane
 against the packages, before any real study pins this version.
 
+**The calibration page (`/admin/calibration`).** The dry-run loop no longer requires
+chaining CLI commands with UUIDs by hand: the console now has a guided page — pick a
+profiled content (profile status joined in; a missing profile shows the exact
+`profile-content` command instead of a dead end), pick the instrument version (drafts
+included) and the assessor package (with its lineage, coverage counts and an LLM-cost
+warning), run, and read the partition chips, the per-criterion table with quotes and
+failure modes, the claim statuses and the LLM spend. It sits on two new admin endpoints:
+`GET /admin/assessor-packages` (the in-code registry as data — identity and coverage,
+never the executors) and `POST /admin/evaluations/preview`, which exposes the existing
+`PreviewEvaluation` use case exactly as the CLI wires it — accepts drafts, needs no
+ratification, **persists nothing** (the response says `persisted: false`; the suite pins
+zero writes). Error mapping: unknown assessor/instrument 404 · content without an `ok`
+profile 409 · `AssessorExecutionError` 502 with "nothing persisted, retry is safe"
+(ADR-0034). Deliberately NOT on the page: triggering profiling (a deliberate act,
+CLI-only — the profiling module's stance holds) and registering local folders
+(`register-package --source <dir>`); registering by http(s) source stays on the Courses
+page. `evaluate --dry-run` remains the scriptable path — the page and the CLI share the
+same use case, so they cannot drift.
+
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
 branches; Marta reviews and merges. Each PR with the full suite green.
@@ -329,7 +348,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 679 tests** against local Postgres (~40 s). Requires
+- **Backend suite green: 687 tests** against local Postgres (~40 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -341,6 +360,12 @@ the data in the package).
   five criteria); a hallucinated quote is fed back and, persistent, aborts; the exact
   29-outcome partition over the frozen LearnpackV2 fixture; ratification stores the
   semantic identity (models + prompts fingerprint) whole.
+- **The calibration endpoints pinned** (suite): the registry listing carries coverage and
+  `uses_llm` and leaks nothing else; the preview runs a draft against the frozen course
+  with **zero writes** (evaluations, judgments and events counted before and after), the
+  real numbering-drift finding comes through executed with its quote, and the error paths
+  answer 403/404/409/502 — the 502 through a package whose executors raise
+  `AssessorExecutionError`, per ADR-0034. Frontend typecheck clean.
 - **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
   a wrong echo is refused again and the right one registers; and against the store alone, two
   lineages differing only in casing or padding cannot coexist. Migration 0017's fold is pinned

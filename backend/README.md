@@ -309,6 +309,16 @@ Two aggregation rules not to confuse:
   quote), the evaluation **aborts whole and persists nothing**; fix or just retry.
   The test suite never touches the network: the transport is faked at the
   `runtime.get_client` seam.
+- **The calibration page** (`/admin/calibration` in the console) is the guided way to run
+  the dry-run loop: pick a profiled content, an instrument version (drafts included) and
+  an assessor package, run, and read the outcome table with quotes, claim statuses and
+  LLM spend. It sits on two admin endpoints — `GET /admin/assessor-packages` (the in-code
+  registry as data) and `POST /admin/evaluations/preview` (the same `PreviewEvaluation`
+  use case the CLI wires; accepts drafts, needs no ratification, persists nothing). The
+  CLI (`evaluate --dry-run`) stays as the scriptable path. What the page deliberately
+  does **not** do: trigger profiling (a deliberate act, CLI-only — it shows the command
+  instead) or register local folders (`register-package --source <dir>`). An
+  LLM-carrying assessor spends real calls per run, on the backend's `LLM_API_KEY`.
 
 ## Registering courses
 
