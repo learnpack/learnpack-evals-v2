@@ -12,7 +12,11 @@ from typing import Any
 
 from app.modules.evaluation.domain.derivation import Executor
 from app.modules.evaluation.domain.model import Coverage
-from app.modules.evaluation.infrastructure.assessors import drafts_structural, structural
+from app.modules.evaluation.infrastructure.assessors import (
+    drafts_hybrid,
+    drafts_structural,
+    structural,
+)
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,14 @@ AUTOMATED_ASSESSORS: dict[tuple[str, str], AssessorPackage] = {
             executors=drafts_structural.EXECUTORS,
             coverage=drafts_structural.COVERAGE,
             source_config=drafts_structural.SOURCE_CONFIG,
+        ),
+        AssessorPackage(
+            name=drafts_hybrid.NAME,
+            version=drafts_hybrid.VERSION,
+            instrument_id=drafts_hybrid.INSTRUMENT_ID,
+            executors=drafts_hybrid.EXECUTORS,
+            coverage=drafts_hybrid.COVERAGE,
+            source_config=drafts_hybrid.SOURCE_CONFIG,
         ),
     )
 }
