@@ -370,14 +370,19 @@ A tree that does not live under `courses/` is declared in the environment, becau
 registered locator has to stay fetchable and only a served tree provides that:
 
 ```bash
-# comma-separated `key=path`; served under LOCAL_SOURCES_BASE_URL/<key>
+# one tree, which you decide to call `runs`
+LOCAL_SOURCE_ROOTS=runs=D:\generator\out
+# two trees, comma-separated
 LOCAL_SOURCE_ROOTS=runs=D:\generator\out,archive=/srv/old-courses
 ```
 
-The key names a URL prefix, so it must match `[a-z0-9._-]+` and cannot be `courses` (the
-built-in root, which keeps its own base URL forever). A malformed declaration stops the
-process; a path that does not exist is reported as absent and skipped. Adding a root needs a
-restart — the trees are mounted when the app assembles.
+Each entry is `<name>=<folder>`. The name is yours to choose, but it is not a label: it
+becomes the URL prefix the tree is served at (`LOCAL_SOURCES_BASE_URL/<name>/…`) and is stored
+inside every locator registered from it, so renaming it strands the courses already
+registered. It must match `[a-z0-9._-]+` and cannot be `courses` — that is the built-in root,
+which keeps its own base URL forever. A malformed entry stops the process; a folder that does
+not exist is reported as absent and skipped. Adding a root needs a restart, because the trees
+are mounted when the app assembles.
 
 Every declared root is browsable from **`/admin/contents/import`** in local mode: pick the
 format and generator version once, walk to the folder that holds the courses, and the scan
