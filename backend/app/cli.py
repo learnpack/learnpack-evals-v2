@@ -1049,6 +1049,123 @@ def run_attribute_generator(content_id: UUID, generator_version_id: UUID, email:
     return 0
 
 
+# ------------------------------------------------------------------- delete-content
+# A development affordance, not a capability of the system (ADR-0033).
+
+# What "used" means, and why each one is asked. The last two are the reason this is a command
+# with a check rather than a DELETE in a runbook: `study_dataset` and `study_recipe` carry ids
+# with no foreign key (ADR-0006), so the database would let the deletion succeed and rot.
+_CONTENT_USES = (
+    ("evaluations", "content_id", "it has been evaluated"),
+    ("assignments", "content_id", "it is assigned to an evaluator"),
+    ("campaign_contents", "content_id", "it is part of a campaign"),
+    ("content_evaluation_completions", "content_id", "it has completed quorum"),
+    ("study_dataset", "content_id", "a study's dataset names it"),
+)
+
+
+def _content_uses(session: Session, content_id: UUID, brief_id: UUID | None) -> list[str]:
+    """Everything standing in the way, all of it, so one run tells the whole story."""
+    blocking = [
+        f"{reason} ({table})"
+        for table, column, reason in _CONTENT_USES
+        if session.execute(
+            text(f"SELECT 1 FROM {table} WHERE {column} = :id LIMIT 1"),  # noqa: S608 — literals
+            {"id": content_id},
+        ).scalar()
+    ]
+    if (
+        brief_id is not None
+        and session.execute(
+            text("SELECT 1 FROM study_recipe WHERE brief_id = :id LIMIT 1"), {"id": brief_id}
+        ).scalar()
+    ):
+        blocking.append("a study's recipe names its brief (study_recipe)")
+    return blocking
+
+
+def run_delete_content(content_id: UUID) -> int:
+    """Remove a content version that nothing has used (ADR-0033).
+
+    Local mode only, and `Settings` refuses that unless the database is local (ADR-0008), so
+    the single condition below is the whole guard — the same reasoning `seed-demo` documents.
+
+    The deletion is short precisely because the refusal is strict: unused content has no
+    evaluations, assignments, campaigns or studies to clean up, so what is left is its
+    profiles, itself, an orphaned brief and their events. One transaction, so a refusal
+    halfway through leaves nothing behind.
+    """
+    if not get_settings().is_local_auth:
+        print(
+            "delete-content only runs with AUTH_MODE=local: registered content is never "
+            "removed from a real store, because a published study report is immutable and "
+            "freezes what it evaluated (ADR-0033).",
+            file=sys.stderr,
+        )
+        return 1
+
+    with SessionLocal() as session:
+        row = session.execute(
+            text("SELECT external_id, version, brief_id FROM contents WHERE id = :id"),
+            {"id": content_id},
+        ).one_or_none()
+        if row is None:
+            print(f"no content with id {content_id}", file=sys.stderr)
+            return 1
+        external_id, version, brief_id = row
+
+        blocking = _content_uses(session, content_id, brief_id)
+        if blocking:
+            print(
+                f"{external_id} v{version} has been used and is not removable:\n  "
+                + "\n  ".join(blocking),
+                file=sys.stderr,
+            )
+            return 1
+
+        # Orphaned means orphaned AFTER this deletion: the same brief may be another
+        # content's, which is the paired design rather than an accident (ADR-0013).
+        orphaned_brief = (
+            brief_id is not None
+            and not session.execute(
+                text("SELECT 1 FROM contents WHERE brief_id = :b AND id <> :c LIMIT 1"),
+                {"b": brief_id, "c": content_id},
+            ).scalar()
+        )
+
+        profiles = session.execute(
+            text("SELECT count(*) FROM content_profiles WHERE content_id = :id"),
+            {"id": content_id},
+        ).scalar()
+        artifacts = session.execute(
+            text("SELECT count(*) FROM content_package_artifacts WHERE content_id = :id"),
+            {"id": content_id},
+        ).scalar()
+
+        # `profile_entries` and `profile_extras` cascade from the profile.
+        session.execute(
+            text("DELETE FROM content_profiles WHERE content_id = :id"), {"id": content_id}
+        )
+        # `content_package_artifacts` cascades from the content.
+        session.execute(text("DELETE FROM contents WHERE id = :id"), {"id": content_id})
+        if orphaned_brief:
+            session.execute(text("DELETE FROM generation_briefs WHERE id = :id"), {"id": brief_id})
+        # `events.aggregate_id` is text, not uuid: the id travels as a string or Postgres
+        # refuses to compare it at all.
+        aggregates = [str(content_id)] + ([str(brief_id)] if orphaned_brief else [])
+        events = session.execute(
+            text("DELETE FROM events WHERE aggregate_id = ANY(:ids)"), {"ids": aggregates}
+        ).rowcount
+        session.commit()
+
+    brief_note = "1 orphaned brief" if orphaned_brief else "brief kept (another content shares it)"
+    print(
+        f"deleted {external_id} v{version}: {profiles} profile(s), {artifacts} artifact(s), "
+        f"{events} event(s), {brief_note}"
+    )
+    return 0
+
+
 def run_register_generator(name: str, distinct_from: str | None) -> int:
     """Mint a generator lineage (ADR-0031 §3) — the rare act, and the only one that still
     takes a typed name, hence the only one guarded against a near miss."""
@@ -2295,6 +2412,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     show_fitness_parser.add_argument("--study-id", required=True)
 
+    delete_content_parser = subparsers.add_parser(
+        "delete-content",
+        help="remove a content version nothing has used — local development only (ADR-0033)",
+    )
+    delete_content_parser.add_argument("--content-id", required=True)
+
     attribute_parser = subparsers.add_parser(
         "attribute-generator",
         help="record a generator learnt after registration (once, one way — ADR-0024)",
@@ -2423,6 +2546,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_show_report(UUID(args.study_id))
     elif args.command == "show-fitness":
         return run_show_fitness(UUID(args.study_id))
+    elif args.command == "delete-content":
+        return run_delete_content(UUID(args.content_id))
     elif args.command == "attribute-generator":
         return run_attribute_generator(
             UUID(args.content_id), UUID(args.generator_version_id), args.email
