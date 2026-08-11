@@ -17,6 +17,7 @@ deriving one from the other would only move that mismatch — the mount probe th
 runs before writing is what detects it (ADR-0035 §6).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -129,7 +130,7 @@ def package_root(root: SourceRoot, relative: str) -> FilesystemPackageRoot:
     )
 
 
-def fixed_root(root: PackageRoot):
+def fixed_root(root: PackageRoot) -> Callable[[str], PackageRoot]:
     """A `PackageDiscovery` root factory that ignores the source locator — the package root
     is already built. (The CLI's own copy of this closure stays where it is.)"""
 
