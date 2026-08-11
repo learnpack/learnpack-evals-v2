@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # meaningful under AUTH_MODE=local; the CLI mints local package locators from it.
     local_packages_base_url: str = "http://localhost:8000/packages"
 
+    # LLM transport (ADR-0034): the environment supplies ACCESS — key and endpoint — never
+    # identity. Which model judges is pinned in each assessor's code; pointing the base URL
+    # at another OpenAI-compatible endpoint moves the traffic, not the judge.
+    llm_api_key: str = ""
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":
         """The rules that keep the dev bypass out of any real environment (ADR-0008).

@@ -12,8 +12,9 @@ _Last updated: 2026-08-11._
 **Slice 1 (human MVP): complete and verified locally; the deploy is missing.
 Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 blocks,
 plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
-projection the genetic-algorithm experiment reads) and ADR-0027 (package intake by
-mechanical discovery — in progress, see below) on top of it.**
+projection the genetic-algorithm experiment reads), ADR-0027 (package intake by
+mechanical discovery) and ADR-0034 (LLM-carrying assessors, realized by
+`drafts-hybrid:1` — see below) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -132,6 +133,41 @@ is `declared_objectives_count`, because the lineage mints a data requirement nam
 two meanings. `structural` v1 is untouched and keeps its metric name in its own lineage,
 where nothing collides. With the registry past one package, `evaluate` now requires
 `--assessor <name>:<version>` explicitly — the single-package default is gone.
+
+**The first LLM-carrying assessor (`drafts-hybrid` v1, ADR-0034).** One hybrid artifact
+for the `course-drafts-qa` lineage: the seven structural executors copied from
+`drafts-structural` plus **five semantic criteria** where an LLM extracts or classifies
+(outcome statements and their verbs from the opening lesson, Bloom levels per declared
+objective, sophistication of the planned concepts) and **code decides** — counts, order
+checks, a trajectory rule with its constants pinned by tests. It is one artifact and not a
+separate LLM-only assessor because judgments do not combine across assessors (the report
+and the fitness read the most recent judgment per content); within one study, evaluate
+each content with one assessor. The boundary ADR-0034 draws: models, prompts, temperature
+and decision constants are **identity**, pinned in code and declared in `SOURCE_CONFIG`
+(with a prompts fingerprint the ratification drift-guard checks), while the transport — a
+shared httpx client in `app/platform/llm.py`, OpenRouter by default via `LLM_API_KEY` /
+`LLM_BASE_URL` — is **environment** and re-versions nothing. Structured output with
+feedback retry, verbatim grounding of every extracted quote, per-profile task memoization
+(three calls cover five criteria), cost/latency reported as `llm_*` metrics; an
+irrecoverable LLM failure **aborts the evaluation whole**, nothing persists.
+`cr-objectives-verb-level-band` stays abstained on purpose: `difficulty` is nullable in
+this format and neither pass nor fail is honest against a null anchor — the recorded exit
+is a `declared_difficulty` data requirement (instrument + adapter change, not taken).
+The instrument was bumped to **v3** with it: `cr-objectives-non-decreasing-demand` now
+requires `learning_objectives` (the datum the executor actually reads in a format that
+declares objectives structurally) instead of the bodies where an older format left them
+implicit. Ids and claims are verbatim v2.
+
+**Pending input from the team (drafts lineage):** review and **publish v3**
+(`python -m app.cli publish-instrument --id course-drafts-qa-v3 --email <admin>`), then
+**ratify** the new assessor (`ratify-assessor --name drafts-hybrid --version 1
+--instrument-version-id course-drafts-qa-v3 --email <admin>`) and **calibrate against the
+real model** with `evaluate --dry-run --assessor drafts-hybrid:1` over the frozen corpus —
+the suite pins the decision rules over a faked transport, so what the actual
+`deepseek/deepseek-v4-flash-0731` answers has only been exercised by hand, and the loop
+needs `LLM_API_KEY` set (each dry run spends ~3 calls). What the calibration should watch:
+whether the extracted outcomes and the Bloom/sophistication classifications read sane
+against the packages, before any real study pins this version.
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -293,8 +329,18 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 654 tests** against local Postgres (~40 s). Requires
+- **Backend suite green: 679 tests** against local Postgres (~40 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+  **No test touches the LLM network**: the transport contract is pinned over
+  `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
+  seam — prompts, validation, grounding, feedback retries and decision rules run for real.
+- **`drafts-hybrid` pinned end to end** (suite): coverage is a disjoint union over v3's 29
+  criteria (and decides v1/v2, so any published version of the lineage can ratify); the
+  five semantic executors calibrated on synthetic sequences (falls-back vs consolidation
+  dip, flat-at-length, early peak); one extraction shared by paired criteria (three calls,
+  five criteria); a hallucinated quote is fed back and, persistent, aborts; the exact
+  29-outcome partition over the frozen LearnpackV2 fixture; ratification stores the
+  semantic identity (models + prompts fingerprint) whole.
 - **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
   a wrong echo is refused again and the right one registers; and against the store alone, two
   lineages differing only in casing or padding cannot coexist. Migration 0017's fold is pinned
@@ -393,6 +439,16 @@ the data in the package).
   and the dialog renders whatever is stored. Rows were dropped, not migrated (no production DB
   yet); historical `events` rows stay, being past facts. `docs/design/09`, `12` and `13` still
   describe the entity — frozen snapshots, superseded by the ADR, not corrected.
+- **The judgment half of the drafts backlog.** `drafts-hybrid:1` took the
+  extraction/classification criteria — the cheap half its abstention notes named. The 16
+  judgment-shaped abstentions (whole-course reads: alignment matching, bridges, worked
+  examples, closing integration…) remain the visible backlog; taking any of them is a new
+  assessor version (or another artifact) with LLM-as-judge executors, and materially more
+  tokens per evaluation, since they read lesson bodies rather than lists.
+  `cr-objectives-verb-level-band`'s exit is different and recorded in the abstention
+  itself: mint `declared_difficulty` (instrument bump + adapter version + re-acceptance),
+  so its absence derives `no_evidence` mechanically instead of forcing a verdict against a
+  null anchor.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);

@@ -122,6 +122,7 @@ from app.modules.evaluation.application.preview_evaluation import (
 )
 from app.modules.evaluation.domain.model import InvalidAutomatedEvaluation
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
+from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.evaluation.infrastructure.gateways import (
     DesignInstrumentGateway,
     ProfilingGateway,
@@ -809,6 +810,14 @@ def run_evaluate(
             except (InstrumentNotEvaluable, ProfileNotAvailable) as exc:
                 print(str(exc), file=sys.stderr)
                 return 1
+            except AssessorExecutionError as exc:
+                print(
+                    f"the assessor could not produce a verdict: {exc}\n"
+                    "nothing persisted - fix the cause (or just retry, if it was "
+                    "transient) and run evaluate again (ADR-0034)",
+                    file=sys.stderr,
+                )
+                return 1
             _print_outcomes(preview.outcomes, preview.judgment)
             print("dry run: nothing persisted (no evaluation, no events, no judgment)")
             return 0
@@ -848,6 +857,16 @@ def run_evaluate(
             InvalidAutomatedEvaluation,
         ) as exc:
             print(str(exc), file=sys.stderr)
+            return 1
+        except AssessorExecutionError as exc:
+            # ADR-0034 clause 4: the evaluation is all-or-nothing. The exception fired
+            # before anything was added to the session, so there is nothing to roll back.
+            print(
+                f"the assessor could not produce a verdict: {exc}\n"
+                "nothing persisted - fix the cause (or just retry, if it was "
+                "transient) and run evaluate again (ADR-0034)",
+                file=sys.stderr,
+            )
             return 1
 
         print(
