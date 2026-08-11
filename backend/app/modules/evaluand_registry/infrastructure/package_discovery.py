@@ -50,7 +50,7 @@ KIND_USER_INTENT = "user_intent"
 KIND_COURSE_VALUE = "course_value"
 KIND_CONCEPT_GRAPH = "concept_graph"
 KIND_COVERAGE_CHECK = "coverage_check"
-KIND_COURSE_BRIEF = "course_brief"
+KIND_COURSE_REQUEST = "course_request"
 KIND_LESSON_PLAN = "lesson_plan"
 KIND_LESSON_BRIEF = "lesson_brief"
 KIND_LESSON_STATS = "lesson_stats"
@@ -60,7 +60,7 @@ V2_USER_INTENT_PATH = "files/user_intent.json"
 V2_COURSE_VALUE_PATH = "files/course_value.json"
 V2_CONCEPT_GRAPH_PATH = "files/concept_graph.json"
 V2_COVERAGE_CHECK_PATH = "files/coverage_check.json"
-V2_COURSE_BRIEF_PATH = "files/course_brief.md"
+V2_COURSE_REQUEST_PATH = "files/course_request.json"
 V2_LESSON_PLAN_PATH = "files/lesson_plan.json"
 V2_LESSON_BRIEFS_DIR = "files/lesson_briefs"
 V2_LESSON_STATS_DIR = "files/processing_stats"
@@ -309,7 +309,7 @@ class LearnpackV2Discovery:
         take(V2_COURSE_VALUE_PATH, KIND_COURSE_VALUE)
         take(V2_CONCEPT_GRAPH_PATH, KIND_CONCEPT_GRAPH)
         take(V2_COVERAGE_CHECK_PATH, KIND_COVERAGE_CHECK)
-        take(V2_COURSE_BRIEF_PATH, KIND_COURSE_BRIEF)
+        take(V2_COURSE_REQUEST_PATH, KIND_COURSE_REQUEST)
 
         plan = _parse_json(take(V2_LESSON_PLAN_PATH, KIND_LESSON_PLAN), V2_LESSON_PLAN_PATH)
 

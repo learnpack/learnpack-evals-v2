@@ -1,54 +1,52 @@
 """Anti-corruption layer for LearnpackV2, the generator's run-output format.
 
 Its job is brief derivation (ADR-0022). Where LearnpackV1 has to *read a commission out of*
-a derived syllabus, LearnpackV2 embeds the generation seed itself: `files/course_brief.md`
-is the instruction the run was started from, byte for byte. So the translation is the
-identity — the commission is the seed's own text, unparsed.
+a derived syllabus, LearnpackV2 carries the request the run was started from:
+`files/course_request.json` is a `{"content": …}` envelope around whatever the creator
+wrote, and `content` is that text, unparsed.
 
-That is also why this format records `promptRecorded: True`: the study report's caveats
-list briefs whose original prompt was never persisted (V1's case), and for V2 it was.
+The envelope is structure; the commission is not. What the creator writes has no declared
+shape — headings, prose, bullet points, as much or as little detail as they chose — so
+nothing is read out of `content` and it is preserved verbatim.
+
+`brief_hash` covers the **content**, never the envelope: the commission's identity is the
+instruction, so re-wrapping the same request cannot mint a second brief.
+
+That is also why this format records `promptRecorded: True`: the study report's caveats list
+briefs whose original prompt was never persisted (V1's case), and for V2 it was.
 """
 
 import hashlib
+import json
+from typing import Any
 
 from app.modules.evaluand_registry.application.ports import DerivedBrief
 
 PACKAGE_FORMAT = "LearnpackV2"
 
-COURSE_BRIEF_LOCATOR_SUFFIX = "files/course_brief.md"
-
-# Tab, newline and carriage return are the only C0 controls a text document carries.
-_TEXTUAL_CONTROLS = "\t\n\r"
+COURSE_REQUEST_LOCATOR_SUFFIX = "files/course_request.json"
 
 
 def _sha256(payload: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def derive_brief(seed_bytes: bytes) -> DerivedBrief | None:
-    """Translate `files/course_brief.md` into the commission's identity (ADR-0022).
+def derive_brief(request_bytes: bytes) -> DerivedBrief | None:
+    """Translate `files/course_request.json` into the commission's identity (ADR-0022).
 
-    The seed has **no declared shape** — a run is started from whatever the creator wrote,
-    with whatever headings and detail they chose — so nothing is parsed out of it and the
-    text is preserved verbatim. `fields` stays demand-driven: only what the study report
-    consumes.
-
-    Returns None when the payload is not a text document at all. A format whose commission
-    is structured gets that check for free from its parser; free text needs it stated, and
-    it is a real distinction rather than a formality — a payload carrying control bytes is
-    not a seed somebody wrote, whatever it decodes to.
+    Returns None when the envelope carries no request to speak of — unreadable, the wrong
+    shape, or a `content` that is blank. `fields` stays demand-driven: only what the study
+    report consumes.
     """
-    try:
-        seed = seed_bytes.decode("utf-8")
-    except UnicodeDecodeError:
+    request: Any = json.loads(request_bytes.decode("utf-8"))
+    if not isinstance(request, dict):
         return None
-    if not seed.strip():
-        return None
-    if any(ord(char) < 0x20 and char not in _TEXTUAL_CONTROLS for char in seed):
+    content = request.get("content")
+    if not isinstance(content, str) or not content.strip():
         return None
 
     return DerivedBrief(
-        brief=seed,
+        brief=content,
         fields={"origin": "generation_seed", "promptRecorded": True},
-        brief_hash=_sha256(seed),
+        brief_hash=_sha256(content),
     )

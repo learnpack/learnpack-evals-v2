@@ -71,7 +71,7 @@ FORMAT_CASES: dict[str, FormatCase] = {
                     "course_value",
                     "concept_graph",
                     "coverage_check",
-                    "course_brief",
+                    "course_request",
                     "lesson_plan",
                     "lesson_brief",
                     "lesson_stats",

@@ -56,16 +56,16 @@ class LearnpackV1BriefIntake:
 
 
 class LearnpackV2BriefIntake:
-    """LearnpackV2: the commission is `files/course_brief.md` — the generation seed itself,
-    carried verbatim by the run's output (ADR-0022)."""
+    """LearnpackV2: the commission is `files/course_request.json` — the request the run was
+    started from, carried verbatim inside a `{"content": …}` envelope (ADR-0022)."""
 
     package_format = acl_learnpack_v2.PACKAGE_FORMAT
 
     def locate(self, artifacts: list[dict[str, Any]]) -> str | None:
         for artifact in artifacts:
             locator = artifact.get("locator", "")
-            if artifact.get("kind") == "course_brief" or locator.endswith(
-                acl_learnpack_v2.COURSE_BRIEF_LOCATOR_SUFFIX
+            if artifact.get("kind") == "course_request" or locator.endswith(
+                acl_learnpack_v2.COURSE_REQUEST_LOCATOR_SUFFIX
             ):
                 return str(locator)
         return None
