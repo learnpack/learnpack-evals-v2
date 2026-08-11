@@ -538,9 +538,17 @@ the data in the package).
   unknown generator: the hash match returns the existing content untouched and the declared
   generator is discarded, so the response reports `can_attribute_generator` and the attribution
   act stays explicit (ADR-0024). `FilesystemFetcher` now refuses locators outside its base
-  directory, which applies to every caller. **The console page (`/admin/contents/import`) is
-  not built yet** — the surface is reachable with `curl` and pinned by
-  `test_local_courses_dev_api.py`. **What ADR-0027 and ADR-0028 leave deferred,
+  directory, which applies to every caller. `/admin/contents/import` drives all of it —
+  declare format, generator version and course version, walk the tree, scan, tick the rows,
+  register — reachable from a button on `/admin/contents` that only exists in local mode.
+  It has no automated tests (the frontend has none at all); the surface underneath is pinned
+  by `test_local_courses_dev_api.py`.
+  **Measured against the real `datasets/generated` tree, every LearnpackV2 run there scans as
+  `unreadable`**: discovery requires `files/course_request.json` and those runs do not carry
+  it — the frozen fixture of the same run name does, which is the discrepancy to resolve
+  (regenerate, or reopen whether that artifact is hard). One older run fails differently: its
+  `lesson_plan.json` declares a lesson `03.1` with no `files/lesson_briefs/03.1.json`.
+  **What ADR-0027 and ADR-0028 leave deferred,
   doors open:** stage 2 — **zip upload + storage** (`PackageStoragePort`, filesystem in dev,
   S3-compatible bucket in prod; its own ADR) for packages not hosted anywhere;
   **pull-based batch registration from the LearnPack API** (the `[future]` connected ACL —

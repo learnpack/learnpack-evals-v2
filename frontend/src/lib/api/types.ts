@@ -542,6 +542,103 @@ export interface DevIdentity {
   role: string; // "admin" | "evaluator"
 }
 
+// --- Local source intake (`/dev/local-courses`, ADR-0035) --------------------
+// Only exists under AUTH_MODE=local, and admin-only on top: outside local mode every path
+// answers 404, which is why nothing here is reachable from a deployed console.
+
+/** One filesystem tree the backend may register from. `courses/` is always the first. */
+export interface SourceRootResponse {
+  key: string;
+  path: string;
+  /** Prefix of every locator registered from this root. */
+  url_base: string;
+  /** Live: the directory is there now. It does NOT say the tree is served — only a scan's
+   *  mount probe knows that (a root created after boot is not mounted until a restart). */
+  exists: boolean;
+  builtin: boolean;
+}
+
+export interface FolderEntry {
+  name: string;
+  /** Root-relative, which is what `scan` and `register` take. */
+  path: string;
+  /** How many folders it holds — how "you are one level too high" becomes visible. */
+  child_dir_count: number;
+}
+
+export interface BrowseResponse {
+  root: string;
+  path: string;
+  /** Null at the root itself; "" one level below it. */
+  parent: string | null;
+  entries: FolderEntry[];
+}
+
+/** What registering a folder WOULD do, derived from the rules registration applies:
+ *  `new_version` is a known course whose bytes are new and whose declared version is free —
+ *  it registers, so calling it `new` would misread a regenerated population. */
+export type ScanVerdict = "new" | "new_version" | "unchanged" | "conflict" | "unreadable";
+
+export interface ExistingContent {
+  content_id: Uuid;
+  version: string;
+  generator_version_id: Uuid | null;
+  /** False for rows registered by hand before ADR-0027 — they never dedupe by content. */
+  has_hash: boolean;
+}
+
+export interface ScanCandidate {
+  name: string;
+  path: string;
+  verdict: ScanVerdict;
+  external_id: string | null;
+  title: string | null;
+  artifact_count: number | null;
+  content_hash: string | null;
+  /** Why discovery refused, for `unreadable` only. */
+  error: string | null;
+  /** The registered row this verdict is about. For `new_version`, the most recent one. */
+  existing: ExistingContent | null;
+  /** The existing row declares no generator, so the attribution act applies (ADR-0024). */
+  can_attribute_generator: boolean;
+}
+
+export interface ScanRequest {
+  root: string;
+  path: string;
+  package_format: string;
+  version: string;
+}
+
+export interface ScanResponse {
+  /** False when the locators these folders would register are not actually fetchable —
+   *  registering refuses too, so this is a reason to stop, not a warning to dismiss. */
+  mount_ok: boolean;
+  mount_detail: string | null;
+  candidates: ScanCandidate[];
+}
+
+/** One folder per request, deliberately: each created course auto-profiles inside it. */
+export interface RegisterLocalRequest {
+  root: string;
+  path: string;
+  package_format: string;
+  version: string;
+  /** Required, null declares `unknown` (ADR-0024). */
+  generator_version_id: Uuid | null;
+  edit_provenance?: EditProvenance;
+}
+
+export interface RegisterLocalResponse {
+  content: ContentResponse;
+  /** False when the package was already registered unchanged — a no-op, not an error. */
+  created: boolean;
+  artifact_count: number;
+  /** True when the registered content still declares no generator — including the no-op
+   *  case, where the generator this request declared was discarded (ADR-0035 §9). */
+  can_attribute_generator: boolean;
+}
+
 // --- Calibration (the dry-run over HTTP) ------------------------------------
 
 /** One quality of the pedagogical vocabulary, with the dimension it groups under. */
