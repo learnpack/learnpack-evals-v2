@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.modules.content_profiling.infrastructure.router import router as content_profiling_router
 from app.modules.evaluand_registry.infrastructure import local_sources
+from app.modules.evaluand_registry.infrastructure.dev_router import (
+    router as local_courses_dev_router,
+)
 from app.modules.evaluand_registry.infrastructure.router import (
     evaluand_router as evaluand_admin_router,
 )
@@ -113,6 +116,7 @@ app.include_router(evaluation_admin_router)
 app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local
+app.include_router(local_courses_dev_router)  # idem, and admin-gated on top
 
 
 # The local source roots — the gitignored `courses/` tree and whatever else the environment
