@@ -70,6 +70,9 @@ def request_structured_output(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
+                # Names this question in the trace and nothing else — it never reaches the
+                # wire, so it is not part of what the judge is asked (ADR-0034 §5).
+                task_id=task_id,
             )
         except LlmError as exc:
             raise AssessorExecutionError(f"task '{task_id}': {exc}") from exc

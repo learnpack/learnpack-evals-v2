@@ -80,13 +80,16 @@ class FakeLlmClient:
         }
         self.calls: list[dict] = []
 
-    def complete(self, *, model, messages, temperature, max_tokens, response_format=None):
+    def complete(
+        self, *, model, messages, temperature, max_tokens, response_format=None, task_id=None
+    ):
         self.calls.append(
             {
                 "model": model,
                 "messages": list(messages),
                 "temperature": temperature,
                 "response_format": response_format,
+                "task_id": task_id,
             }
         )
         prompt_text = "\n".join(m["content"] for m in messages)

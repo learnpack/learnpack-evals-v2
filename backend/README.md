@@ -307,8 +307,10 @@ Two aggregation rules not to confuse:
   tokens/latency come back as `llm_*` metrics with the outcomes). If the model
   irrecoverably fails (transport down, output contract never satisfied, an ungrounded
   quote), the evaluation **aborts whole and persists nothing**; fix or just retry.
-  The test suite never touches the network: the transport is faked at the
-  `runtime.get_client` seam.
+  `LLM_TIMEOUT_SECONDS` bounds one call before the transport treats it as transient and
+  backs off — access like the key, so raising it for a long prompt against a slow provider
+  re-versions nothing. The test suite never touches the network: the transport is faked at
+  the `runtime.get_client` seam.
 - **The calibration page** (`/admin/calibration` in the console) is the guided way to run
   the dry-run loop: pick a profiled content, an instrument version (drafts included) and
   an assessor package, run, and read the outcome table with quotes, claim statuses and
