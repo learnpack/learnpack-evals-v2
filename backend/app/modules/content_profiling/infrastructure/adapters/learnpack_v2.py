@@ -6,8 +6,14 @@ of what follows:
 
 - `files/course_value.json` declares `learning_objectives[].outcome` and
   `files/user_intent.json` declares `target_audience`, both as structured fields. So this
-  format supplies two capabilities LearnpackV1 cannot, and the criteria that require them
-  stop deriving `not_applicable`.
+  format supplies capabilities LearnpackV1 cannot, and the criteria that require them stop
+  deriving `not_applicable`. Each objective also declares an id and a `verifiable_by` — the
+  criterion by which it would be checked — which `declared_objectives` carries whole. That
+  is what lets a criterion hold the assessment to what the objective itself promised, and
+  it is why the same objectives travel under two ids: `learning_objectives` is consumed by
+  criteria that count them, `declared_objectives` by criteria that compare against them.
+- `files/lesson_plan.json` names the concept each lesson covers, which `lesson_concepts`
+  carries in the plan's declared order — a course's trajectory without reading any body.
 - There is NO capability for `lesson_activities`. The format carries *proposals*, not
   exercises: a `code_challenge_proposal` block is the prompt a teacher will later use to
   generate the exercise files, and no exercise file exists yet. Supplying the requirement
@@ -61,7 +67,10 @@ from app.modules.content_profiling.domain.profile import (
 )
 
 PACKAGE_FORMAT = "LearnpackV2"
-ADAPTER_VERSION = "1"
+# 2: supplies `declared_objectives` and `lesson_concepts`, the demand course-drafts-qa v2
+# mints for the constructive-alignment dimension. The mapping changed, so the identity of
+# the extraction changed with it — version 1's profiles stay valid and untouched.
+ADAPTER_VERSION = "2"
 
 CAPABILITIES = frozenset(
     {
@@ -70,6 +79,8 @@ CAPABILITIES = frozenset(
         "lesson_bodies",
         "lesson_assessment_items",
         "learning_objectives",
+        "declared_objectives",
+        "lesson_concepts",
         "target_audience",
     }
 )
@@ -218,6 +229,8 @@ class LearnpackV2Adapter:
             self._lesson_bodies(texts_by_slug, inventory),
             self._lesson_assessment_items(texts_by_slug, inventory),
             self._learning_objectives(package, fetcher),
+            self._declared_objectives(package, fetcher),
+            self._lesson_concepts(package, fetcher),
             self._target_audience(package, fetcher),
         ]
         return tuple(entries), ()
@@ -379,6 +392,85 @@ class LearnpackV2Adapter:
         )
 
     # --- what the run declares about the commission it served ---------------------------
+
+    def _declared_objectives(
+        self, package: PackageDTO, fetcher: PackageFetcherPort
+    ) -> ProfileEntry:
+        """The same objectives `learning_objectives` carries as bare statements, with the
+        identity each declares for itself and the criterion it declares would verify it.
+        Both ids are supplied on purpose: one is consumed by criteria that count objectives,
+        the other by criteria that hold the assessment to what the objective promised."""
+        artifact = self._single_artifact(package, KIND_COURSE_VALUE)
+        if artifact is None:
+            return ProfileEntry(data_requirement_id="declared_objectives", provenance="absent")
+
+        declared = self._json_object(artifact, fetcher).get("learning_objectives")
+        objectives = [
+            {
+                "id": objective["id"],
+                "outcome": objective["outcome"],
+                # Declared or not: null says the objective is there and its verification is
+                # not, which is a different statement from the objective being absent.
+                "verifiableBy": (
+                    objective["verifiable_by"]
+                    if isinstance(objective.get("verifiable_by"), str)
+                    else None
+                ),
+            }
+            for objective in declared or []
+            if isinstance(objective, dict)
+            and isinstance(objective.get("id"), str)
+            and isinstance(objective.get("outcome"), str)
+        ]
+        if not objectives:
+            return ProfileEntry(data_requirement_id="declared_objectives", provenance="absent")
+        return ProfileEntry(
+            data_requirement_id="declared_objectives",
+            provenance="declared_structured",
+            value=objectives,
+            quote=_quote(objectives),
+            locator={
+                "source": "artifact",
+                "kind": KIND_COURSE_VALUE,
+                "locator": artifact.locator,
+                "path": "$.learning_objectives[*]",
+            },
+        )
+
+    def _lesson_concepts(self, package: PackageDTO, fetcher: PackageFetcherPort) -> ProfileEntry:
+        """What each lesson declares it covers, in the plan's declared order — the
+        trajectory, without reading a single body."""
+        artifact = self._single_artifact(package, KIND_LESSON_PLAN)
+        if artifact is None:
+            return ProfileEntry(data_requirement_id="lesson_concepts", provenance="absent")
+
+        lessons = self._json_object(artifact, fetcher).get("lessons")
+        concepts = [
+            {
+                "lessonId": lesson["id"],
+                "concept": (
+                    lesson["concept_covered"]
+                    if isinstance(lesson.get("concept_covered"), str)
+                    else None
+                ),
+            }
+            for lesson in lessons or []
+            if isinstance(lesson, dict) and isinstance(lesson.get("id"), str)
+        ]
+        if not concepts:
+            return ProfileEntry(data_requirement_id="lesson_concepts", provenance="absent")
+        return ProfileEntry(
+            data_requirement_id="lesson_concepts",
+            provenance="declared_structured",
+            value=concepts,
+            quote=_quote(concepts),
+            locator={
+                "source": "artifact",
+                "kind": KIND_LESSON_PLAN,
+                "locator": artifact.locator,
+                "path": "$.lessons[*].concept_covered",
+            },
+        )
 
     def _learning_objectives(
         self, package: PackageDTO, fetcher: PackageFetcherPort
