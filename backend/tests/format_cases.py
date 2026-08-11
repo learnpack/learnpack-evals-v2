@@ -80,9 +80,19 @@ FORMAT_CASES: dict[str, FormatCase] = {
             ),
             # The seed the run was started from, embedded verbatim.
             expects_brief=True,
-            # No extraction adapter yet (runbook step 3): registration and dedupe work,
-            # profiles are simply not built.
-            expected_capabilities=None,
+            # Neither `lesson_activities` nor `prerequisites`: a run's output carries
+            # exercise *proposals* rather than exercises, and its concept prerequisites are
+            # between concepts, not entry requirements. Both derive `not_applicable`.
+            expected_capabilities=frozenset(
+                {
+                    "course_descriptor",
+                    "lesson_inventory",
+                    "lesson_bodies",
+                    "lesson_assessment_items",
+                    "learning_objectives",
+                    "target_audience",
+                }
+            ),
         ),
     )
 }
