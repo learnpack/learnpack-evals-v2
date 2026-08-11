@@ -1,5 +1,6 @@
 """Settings from environment (frameworks layer — see ARCHITECTURE.md §1)."""
 
+import re
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
@@ -12,6 +13,12 @@ AuthMode = Literal["clerk", "local"]
 # Hosts that can only be your own machine. `AUTH_MODE=local` is refused against anything else.
 LOCAL_DATABASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
 
+# The repo's `courses/` tree, which is a local source root without being declared as one
+# (ADR-0035 §1). Reserved so nothing can redeclare it under a different path.
+BUILTIN_SOURCE_ROOT = "courses"
+# A key names a URL prefix and a containment boundary, so it stays boring on purpose.
+SOURCE_ROOT_KEY = re.compile(r"^[a-z0-9._-]+$")
+
 
 def database_host(url: str) -> str:
     """The host of a SQLAlchemy URL, or "" if there is none to read."""
@@ -19,6 +26,39 @@ def database_host(url: str) -> str:
         return urlsplit(url).hostname or ""
     except ValueError:
         return ""
+
+
+def parse_source_roots(raw: str) -> list[tuple[str, str]]:
+    """The declared `key=path` local source roots, in declared order (ADR-0035 §1).
+
+    Split on the FIRST `=` only, so a Windows path (`runs=D:\\gen\\out`) survives. Raises
+    on a declaration nobody could act on; the caller decides what that means, and under
+    `AUTH_MODE=local` it means the process does not boot (ADR-0035 §2).
+    """
+    roots: list[tuple[str, str]] = []
+    declared: set[str] = set()
+    for entry in (candidate.strip() for candidate in raw.split(",")):
+        if not entry:
+            continue
+        raw_key, separator, raw_path = entry.partition("=")
+        key, path = raw_key.strip(), raw_path.strip()
+        if not separator or not key or not path:
+            raise ValueError(f"local source root '{entry}' is not '<key>=<path>'")
+        if not SOURCE_ROOT_KEY.match(key):
+            raise ValueError(
+                f"local source root key '{key}' must match [a-z0-9._-]+: it names a URL "
+                "prefix, not a label"
+            )
+        if key == BUILTIN_SOURCE_ROOT:
+            raise ValueError(
+                f"'{BUILTIN_SOURCE_ROOT}' is the built-in local source root (the repo's "
+                "courses/ tree); declare the other trees under a different key"
+            )
+        if key in declared:
+            raise ValueError(f"local source root key '{key}' is declared twice")
+        declared.add(key)
+        roots.append((key, path))
+    return roots
 
 
 class Settings(BaseSettings):
@@ -52,6 +92,15 @@ class Settings(BaseSettings):
     # Where the dev static mount serves the repo's `courses/` tree (ADR-0027). Only
     # meaningful under AUTH_MODE=local; the CLI mints local package locators from it.
     local_packages_base_url: str = "http://localhost:8000/packages"
+
+    # Other filesystem trees the dev intake may register from, comma-separated `key=path`
+    # (ADR-0035 §1). The repo's `courses/` tree is always available and is not declared here.
+    local_source_roots: str = ""
+    # Where those trees are served. Deliberately its own setting rather than something
+    # derived from `local_packages_base_url`: the built-in root keeps that URL forever
+    # because locators registered under it are never rewritten, and deriving a second base
+    # from it would break under a path prefix — into a dead locator nobody notices.
+    local_sources_base_url: str = "http://localhost:8000/sources"
 
     # LLM transport (ADR-0034): the environment supplies ACCESS — key and endpoint — never
     # identity. Which model judges is pinned in each assessor's code; pointing the base URL
@@ -87,6 +136,12 @@ class Settings(BaseSettings):
                 f"database. DATABASE_URL points at {host!r}: use the local database "
                 f"(docker compose up -d) or AUTH_MODE=clerk."
             )
+
+        # The local source roots are validated here and only here (ADR-0035 §2): a malformed
+        # declaration is one nobody can act on, and this is the mode that acts on it. A
+        # directory that does not exist is NOT checked — that is an environment fact, it
+        # warns and is skipped, exactly like the `courses/` tree of a fresh checkout.
+        parse_source_roots(self.local_source_roots)
         return self
 
     @property
@@ -106,6 +161,12 @@ class Settings(BaseSettings):
     @property
     def bootstrap_admin_emails(self) -> list[str]:
         return [email.strip() for email in self.admin_emails.split(",") if email.strip()]
+
+    @property
+    def declared_source_roots(self) -> list[tuple[str, str]]:
+        """The `key=path` roots of `LOCAL_SOURCE_ROOTS`. Validated at construction under
+        `AUTH_MODE=local`, which is the only mode that reads this."""
+        return parse_source_roots(self.local_source_roots)
 
 
 @lru_cache

@@ -156,3 +156,30 @@ def test_only_an_http_root_declares_a_consumable_url():
     assert FilesystemPackageRoot(FIXTURES).consumable_url is None
     # The seam one level up — a filesystem DISCOVERY yielding no consumable URL — is
     # pinned per format in tests/test_format_contract.py (ADR-0028).
+
+
+@pytest.mark.parametrize(
+    "locator",
+    [
+        "../outside.txt",
+        "exercises/../../outside.txt",
+        str(Path("/etc/passwd")),
+    ],
+)
+def test_a_filesystem_root_refuses_a_locator_outside_its_base(tmp_path, locator):
+    """ADR-0035 §7: the paths discovery fetches come from the package's own manifests, so
+    containment cannot rest on whoever named the directory being careful."""
+    (tmp_path / "outside.txt").write_text("secret", encoding="utf-8")
+    course = tmp_path / "course"
+    course.mkdir()
+
+    with pytest.raises(PackageDiscoveryError):
+        FilesystemPackageRoot(course).fetch(locator)
+
+
+def test_a_filesystem_root_still_reads_what_is_inside(tmp_path):
+    course = tmp_path / "course"
+    (course / "exercises").mkdir(parents=True)
+    (course / "exercises" / "app.py").write_text("print(1)", encoding="utf-8")
+
+    assert FilesystemPackageRoot(course).fetch("exercises/app.py") == b"print(1)"

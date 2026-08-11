@@ -91,6 +91,18 @@ def require_admin(
     return assessor
 
 
+def require_local_mode() -> None:
+    """A dev-only surface does not exist outside `AUTH_MODE=local` (ADR-0008).
+
+    Declared on the router rather than checked inside each handler so it resolves *before*
+    any auth dependency: a 401 would confirm the path exists to anyone who asked, and the
+    gate would be one handler away from being forgotten (ADR-0035 §3). Read per request,
+    like the mode itself, so it is testable without rebuilding the app.
+    """
+    if not get_settings().is_local_auth:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
+
+
 VerifiedClaims = Annotated[dict[str, Any], Depends(get_verified_claims)]
 CurrentAssessor = Annotated[AssessorDTO, Depends(get_current_assessor)]
 AdminAssessor = Annotated[AssessorDTO, Depends(require_admin)]
