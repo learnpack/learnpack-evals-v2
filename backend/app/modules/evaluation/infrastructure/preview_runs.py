@@ -261,7 +261,7 @@ def execute(run: PreviewRun) -> None:
     thread has nowhere to raise: an unhandled exception here would leave the page polling
     a run that never finishes.
     """
-    sink = run.record_call
+    sink: observability.Sink = run.record_call
     if run.trace_path is not None:
         sink = observability.fan_out(sink, observability.jsonl_sink(run.trace_path))
     try:
