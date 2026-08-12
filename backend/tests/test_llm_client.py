@@ -135,6 +135,78 @@ def test_an_unusable_2xx_is_an_error_not_a_half_answer():
         client.complete(model="m", messages=MESSAGES)
 
 
+def upstream_error_body(code: int = 502, provider: str = "Sail Research") -> dict:
+    """A real OpenRouter 200 whose provider failed — copied from a calibration trace.
+
+    The gateway's own hop succeeded, so the status line says nothing is wrong; the verdict
+    is on the choice, next to a message with no content at all."""
+    return {
+        "provider": provider,
+        "model": "vendor/model",
+        "choices": [
+            {
+                "finish_reason": "error",
+                "native_finish_reason": None,
+                "error": {
+                    "code": code,
+                    "message": (
+                        f"Upstream error from {provider}: response_format violated: "
+                        "model emitted invalid JSON: expected value at line 1 column 1"
+                    ),
+                    "metadata": {"error_type": "provider_unavailable"},
+                },
+                "message": {"role": "assistant", "content": None, "reasoning": "…"},
+            }
+        ],
+        "usage": {"prompt_tokens": 654, "completion_tokens": 2325},
+    }
+
+
+def test_a_provider_failure_inside_a_200_is_transient():
+    """It is a 502 wearing a 200: retrying is exactly the right move, and the gateway
+    tends to route the second attempt somewhere else."""
+    responses = iter(
+        [
+            httpx.Response(200, json=upstream_error_body()),
+            httpx.Response(200, json=ok_body()),
+        ]
+    )
+    client, sleeps = client_with(lambda request: next(responses))
+
+    assert client.complete(model="m", messages=MESSAGES).text == "answer"
+    assert len(sleeps) == 1
+
+
+def test_a_provider_failure_with_no_retryable_code_is_not_retried():
+    """Without a code that says otherwise, re-asking a fixed question only spends the
+    budget — the same reason a hard 4xx is not retried."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=upstream_error_body(code=400))
+
+    client, sleeps = client_with(handler)
+    with pytest.raises(LlmResponseError, match="upstream error 400"):
+        client.complete(model="m", messages=MESSAGES)
+    assert len(seen) == 1 and not sleeps
+
+
+def test_a_provider_failure_is_recorded_with_who_failed():
+    client, _ = client_with(lambda request: httpx.Response(200, json=upstream_error_body()))
+
+    calls, sink = observability.recording()
+    with observability.collecting(sink):
+        with pytest.raises(LlmTransportError):
+            client.complete(model="m", messages=MESSAGES)
+
+    # Every attempt names the upstream and its verdict — the two fields that say why.
+    assert len(calls) == MAX_TRANSPORT_ATTEMPTS
+    assert calls[0].provider == "Sail Research"
+    assert calls[0].finish_reason == "error"
+    assert "response_format violated" in (calls[0].error or "")
+
+
 def test_a_missing_key_fails_before_touching_the_network():
     seen: list[httpx.Request] = []
 

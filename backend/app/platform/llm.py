@@ -2,7 +2,9 @@
 
 Transport, never semantics. This client knows how to reach an endpoint that speaks the
 OpenAI chat-completions wire format (OpenRouter today, anything compatible tomorrow) and
-how to survive its transient failures: backoff on 429/5xx/timeouts, honoring `Retry-After`.
+how to survive its transient failures: backoff on 429/5xx/timeouts, honoring `Retry-After`,
+and on the upstream failures such a gateway delivers *inside* a 200 — its own hop
+succeeded, the provider behind it did not.
 It does not know models, prompts, schemas or what an answer means — those are assessor
 identity and live pinned inside each LLM-carrying assessor package. Changing this file
 re-versions no assessor, for the same reason upgrading `httpx` never did: a transport
@@ -169,7 +171,7 @@ class ChatCompletionsClient:
                 raise LlmResponseError(detail)
             latency_ms = int((time.monotonic() - started) * 1000)
             try:
-                completion = self._parse(response, requested_model=model, latency_ms=latency_ms)
+                body = _body(response)
             except LlmResponseError as exc:
                 # A 2xx nobody can use is still an answer the trace must carry: it is the
                 # only place the unusable body can be read afterwards.
@@ -181,6 +183,43 @@ class ChatCompletionsClient:
                     attempt_started,
                     response_text=response.text,
                     error=str(exc),
+                )
+                raise
+
+            upstream = _upstream_error(body)
+            if upstream is not None:
+                code, message = upstream
+                detail = f"upstream error {code}: {message}"
+                _observe(
+                    task_id,
+                    attempt,
+                    model,
+                    sent,
+                    attempt_started,
+                    response_text=response.text,
+                    error=detail,
+                    provider=_provider(body),
+                    finish_reason=_finish_reason(body),
+                )
+                if code in RETRYABLE_STATUS:
+                    last_transient = detail
+                    self._backoff(attempt, retry_after=None, cause=last_transient)
+                    continue
+                raise LlmResponseError(detail)
+
+            try:
+                completion = _completion(body, requested_model=model, latency_ms=latency_ms)
+            except LlmResponseError as exc:
+                _observe(
+                    task_id,
+                    attempt,
+                    model,
+                    sent,
+                    attempt_started,
+                    response_text=response.text,
+                    error=str(exc),
+                    provider=_provider(body),
+                    finish_reason=_finish_reason(body),
                 )
                 raise
             _observe(task_id, attempt, model, sent, attempt_started, completion=completion)
@@ -206,34 +245,73 @@ class ChatCompletionsClient:
         )
         self._sleep(delay)
 
-    @staticmethod
-    def _parse(response: httpx.Response, requested_model: str, latency_ms: int) -> LlmCompletion:
-        try:
-            body = response.json()
-        except ValueError as exc:
-            raise LlmResponseError(f"2xx response is not JSON: {response.text[:200]}") from exc
-        try:
-            choice = body["choices"][0]
-            content = choice["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise LlmResponseError(
-                f"response carries no message content: {str(body)[:500]}"
-            ) from exc
-        if not isinstance(content, str) or not content.strip():
-            raise LlmResponseError("response content is empty or not text")
-        usage = body.get("usage") or {}
-        model = body.get("model")
-        finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
-        provider = body.get("provider")
-        return LlmCompletion(
-            text=content,
-            model=model if isinstance(model, str) else requested_model,
-            tokens_in=int(usage.get("prompt_tokens") or 0),
-            tokens_out=int(usage.get("completion_tokens") or 0),
-            latency_ms=latency_ms,
-            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
-            provider=provider if isinstance(provider, str) else None,
-        )
+
+def _body(response: httpx.Response) -> Any:
+    """The decoded 2xx body, or the error for a caller that got prose instead of JSON."""
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise LlmResponseError(f"2xx response is not JSON: {response.text[:200]}") from exc
+
+
+def _choice(body: Any) -> Mapping[str, Any]:
+    """The first choice, or an empty mapping — every reader here tolerates its absence."""
+    if isinstance(body, dict):
+        choices = body.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            return choices[0]
+    return {}
+
+
+def _provider(body: Any) -> str | None:
+    """Which upstream actually served the request, when the gateway says so."""
+    provider = body.get("provider") if isinstance(body, dict) else None
+    return provider if isinstance(provider, str) else None
+
+
+def _finish_reason(body: Any) -> str | None:
+    reason = _choice(body).get("finish_reason")
+    return reason if isinstance(reason, str) else None
+
+
+def _upstream_error(body: Any) -> tuple[int, str] | None:
+    """The provider's own failure, delivered inside a 200.
+
+    A gateway that routes to several upstreams answers 200 for its own hop and carries the
+    upstream's verdict in the payload — `{"code": 502, "message": "…", "metadata": …}`,
+    either at the top level or on the choice. Read as a successful answer it looks like a
+    reply with nothing in it, which is the least informative thing it could be mistaken for.
+    """
+    if not isinstance(body, dict):
+        return None
+    for candidate in (body.get("error"), _choice(body).get("error")):
+        if not isinstance(candidate, dict):
+            continue
+        raw_code = candidate.get("code")
+        code = raw_code if isinstance(raw_code, int) and not isinstance(raw_code, bool) else 0
+        return code, str(candidate.get("message") or candidate)
+    return None
+
+
+def _completion(body: Any, requested_model: str, latency_ms: int) -> LlmCompletion:
+    choice = _choice(body)
+    try:
+        content = choice["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LlmResponseError(f"response carries no message content: {str(body)[:500]}") from exc
+    if not isinstance(content, str) or not content.strip():
+        raise LlmResponseError("response content is empty or not text")
+    usage = body.get("usage") or {}
+    model = body.get("model")
+    return LlmCompletion(
+        text=content,
+        model=model if isinstance(model, str) else requested_model,
+        tokens_in=int(usage.get("prompt_tokens") or 0),
+        tokens_out=int(usage.get("completion_tokens") or 0),
+        latency_ms=latency_ms,
+        finish_reason=_finish_reason(body),
+        provider=_provider(body),
+    )
 
 
 def _observe(
@@ -246,8 +324,14 @@ def _observe(
     completion: LlmCompletion | None = None,
     response_text: str | None = None,
     error: str | None = None,
+    provider: str | None = None,
+    finish_reason: str | None = None,
 ) -> None:
-    """Announce one attempt — successful or not — to whoever is listening."""
+    """Announce one attempt — successful or not — to whoever is listening.
+
+    A failed attempt passes `provider` and `finish_reason` explicitly: they are the two
+    fields that say WHY it failed, and they are readable long before the answer is usable.
+    """
     observability.emit(
         observability.LlmCall(
             task_id=task_id,
@@ -256,9 +340,9 @@ def _observe(
             messages=messages,
             latency_ms=int((time.monotonic() - started) * 1000),
             model_answered=completion.model if completion is not None else None,
-            provider=completion.provider if completion is not None else None,
+            provider=completion.provider if completion is not None else provider,
             response_text=completion.text if completion is not None else response_text,
-            finish_reason=completion.finish_reason if completion is not None else None,
+            finish_reason=completion.finish_reason if completion is not None else finish_reason,
             tokens_in=completion.tokens_in if completion is not None else 0,
             tokens_out=completion.tokens_out if completion is not None else 0,
             error=error,
