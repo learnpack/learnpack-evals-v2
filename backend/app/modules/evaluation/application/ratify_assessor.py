@@ -41,7 +41,8 @@ class ForeignLineage(RatificationRefused):
     def __init__(self, expected_instrument_id: str, actual_instrument_id: str) -> None:
         super().__init__(
             f"the assessor owes itself to lineage '{expected_instrument_id}', "
-            f"not '{actual_instrument_id}'"
+            f"not '{actual_instrument_id}' - its coverage is declared over criterion ids "
+            "that mean nothing in this one (ADR-0019)"
         )
         self.expected_instrument_id = expected_instrument_id
         self.actual_instrument_id = actual_instrument_id
@@ -51,7 +52,10 @@ class InstrumentVersionNotPublished(RatificationRefused):
     """Drafts are calibrated with the dry-run; only a published version is ratifiable."""
 
     def __init__(self, instrument_version_id: str, status: str) -> None:
-        super().__init__(f"{instrument_version_id} is {status}")
+        super().__init__(
+            f"{instrument_version_id} is {status}: ratification requires a published "
+            "version - calibrate a draft with a dry-run instead"
+        )
         self.instrument_version_id = instrument_version_id
         self.status = status
 
@@ -60,7 +64,11 @@ class CoverageIncomplete(RatificationRefused):
     """Some criterion of the version is neither executed nor abstained (ADR-0018)."""
 
     def __init__(self, undecided: frozenset[str]) -> None:
-        super().__init__(f"coverage does not decide: {', '.join(sorted(undecided))}")
+        super().__init__(
+            "coverage does not decide every criterion of the version: "
+            f"{', '.join(sorted(undecided))} - executing or abstaining is a change of the "
+            "artifact, i.e. a new assessor version (ADR-0016)"
+        )
         self.undecided = undecided
 
 

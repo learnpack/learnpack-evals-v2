@@ -9,10 +9,16 @@ command: the assignment becomes `submitted` because the completion policy hears
 Note what is *not* imported here: no repository or adapter of another module — only their
 `public.py` (ARCHITECTURE.md §3).
 
-`admin_router` is the automated path's admin surface: the assessor-package registry and
-the dry-run (`PreviewEvaluation`) exposed for the calibration page. The dry-run is pure
-computation — it persists nothing, so exposing it is not a command reaching a page; the
-deliberate acts (profile, accept, ratify, evaluate for real) stay in the CLI.
+`admin_router` is the automated path's admin surface: the assessor-package registry — with
+what each package has ratified — and the dry-run (`PreviewEvaluation`) exposed for the
+calibration page. Both are reads; the dry-run persists nothing, so exposing it is not a
+command reaching a page.
+
+The **ratification act** now has an HTTP surface too (ADR-0036), but it is not here: it
+spans Identity and Evaluation, so it lives in the composition root
+(`app/platform/ratification_router.py`), which is the one place allowed to name two
+modules' adapters — the same standing `cli.py` has. The other deliberate acts (profile,
+accept, evaluate for real) stay in the CLI, each for a reason of its own (ADR-0036 §6).
 
 The dry-run is started, not awaited: with LLM-carried criteria it takes minutes, and a
 request that long can only report at the end. `POST …/preview` returns a run id, and the

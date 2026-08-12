@@ -65,6 +65,15 @@ gate is used.**
    use cases in one transaction, exactly as the CLI already did inline. Identity's public
    surface stays read-only (05-connect rule 2, intact).
 
+   **Where the HTTP handler lives follows from that**, and is not a filing preference: a
+   handler inside `evaluation/infrastructure/` would have to name Identity's repository,
+   which module isolation forbids and the architecture suite enforces. It goes in
+   `app/platform/`, which the suite already declares to be the composition root alongside
+   `main.py` and `cli.py` — the one place allowed to name two modules' adapters. The route
+   still reads as part of the assessor-package resource
+   (`POST /admin/assessor-packages/{name}/{version}/ratify`); only the file that composes it
+   sits outside either module, and Evaluation's router says so.
+
 4. **Every refusal is named at the boundary, not merely described.** The delta answers
    **409** with an object detail — `{message, criteria: [{criterion_id, change,
    pass_condition}]}` — because the ids to confirm are contract, not prose (the shape ADR-0031
@@ -128,6 +137,8 @@ gate is used.**
 - **Add a write to Identity's published language so Evaluation can call it** → rejected: a
   cross-module command, which 05-connect rule 2 forbids and which nothing here needs — a
   composition root wiring two use cases in one transaction is the shape the CLI already used.
+  Rejected in substance, not on a technicality: routing the same call through a published
+  provider would move where the import sits without changing who is commanding whom.
 - **Ratify automatically when coverage decides every criterion of a newly published version**
   → rejected, and it is the tempting one, since the mechanical check would pass. It is
   ADR-0019's own rejected alternative ("automatic compatibility without ratification"): a new
