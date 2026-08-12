@@ -1,4 +1,4 @@
-"""`drafts-hybrid` v3 — the semantic and judged executors over a fake transport, the
+"""`drafts-hybrid` v4 — the semantic and judged executors over a fake transport, the
 coverage vs the real v3 YAML, the whole package against the frozen LearnpackV2 fixture,
 and ratification.
 
@@ -51,7 +51,7 @@ from app.platform.db import SessionLocal
 from app.platform.llm import LlmCompletion, LlmTransportError
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "3")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "4")]
 
 _V3_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v3.yaml").read_text(encoding="utf-8")
@@ -453,11 +453,11 @@ CLOSING_BODY = (
 GROUNDED_CLOSING = "the three pieces fit together into one workflow"
 
 
-def verdict_json(evidence: str, verdict: bool, failure_mode: int | None = None) -> str:
+def verdict_json(*evidence: str, verdict: bool = True, failure_mode: int | None = None) -> str:
     return json.dumps(
         {
             "reason": "what the lesson does, in one sentence",
-            "evidence": evidence,
+            "evidence": list(evidence),
             "verdict": verdict,
             "failureMode": failure_mode,
         }
@@ -534,7 +534,7 @@ def test_the_judge_answers_with_reason_before_verdict():
 
 
 def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm):
-    fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING, True)])
+    fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)])
 
     result = run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -545,7 +545,7 @@ def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm
 
 def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
     """The normative text is never retyped into the assessor: it travels from the spec."""
-    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING, True)])
+    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)])
     spec = _V3_CRITERIA["cr-closing-lesson-integrates"]
 
     run_judged("cr-closing-lesson-integrates", judged_profile())
@@ -557,7 +557,11 @@ def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
 
 
 def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_llm):
-    fake_llm(closing_projects_forward=[verdict_json("You have built a page", False, 1)])
+    fake_llm(
+        closing_projects_forward=[
+            verdict_json("You have built a page", verdict=False, failure_mode=1)
+        ]
+    )
     spec = _V3_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
@@ -569,9 +573,12 @@ def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_
 def test_a_failure_mode_the_criterion_never_declared_is_refused(fake_llm):
     """The judge decides inside a vocabulary it did not write: an out-of-range mode is a
     contract violation like any other, fed back and fatal when persistent."""
-    out_of_range = verdict_json("You have built a page", False, 9)
+    out_of_range = verdict_json("You have built a page", verdict=False, failure_mode=9)
     client = fake_llm(
-        closing_projects_forward=[out_of_range, verdict_json("You have built a page", False, 0)]
+        closing_projects_forward=[
+            out_of_range,
+            verdict_json("You have built a page", verdict=False, failure_mode=0),
+        ]
     )
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
@@ -583,29 +590,100 @@ def test_a_failure_mode_the_criterion_never_declared_is_refused(fake_llm):
 def test_an_ungrounded_verdict_quote_is_fed_back(fake_llm):
     client = fake_llm(
         closing_integrates=[
-            verdict_json("this sentence is nowhere in the lesson", True),
-            verdict_json(GROUNDED_CLOSING, True),
+            verdict_json("this sentence is nowhere in the lesson"),
+            verdict_json(GROUNDED_CLOSING),
         ]
     )
 
     result = run_judged("cr-closing-lesson-integrates", judged_profile())
 
     assert result.passed and result.quote == GROUNDED_CLOSING
-    assert "verbatim" in client.calls[1]["messages"][-1]["content"]
+    assert "not a passage from the text shown" in client.calls[1]["messages"][-1]["content"]
 
 
 def test_a_judge_that_never_grounds_its_quote_aborts_the_evaluation(fake_llm):
-    fake_llm(closing_integrates=[verdict_json("invented", True)] * 3)
+    """Different wrong answers each time: the schema budget is what runs out."""
+    fake_llm(
+        closing_integrates=[
+            verdict_json("invented one"),
+            verdict_json("invented two"),
+            verdict_json("invented three"),
+        ]
+    )
 
     with pytest.raises(AssessorExecutionError, match="never satisfied the output contract"):
         run_judged("cr-closing-lesson-integrates", judged_profile())
+
+
+# --- v4: the evidence contract the first calibration runs forced ------------------------
+
+
+def test_a_judgement_may_rest_on_several_passages(fake_llm):
+    """A finding about three places has three pieces of evidence. The first is the result's
+    quote — each is a continuous span, so the one a report shows stands on its own — and the
+    rest travel as a metric rather than being concatenated into something the course does
+    not contain contiguously."""
+    fake_llm(
+        closing_integrates=[verdict_json(GROUNDED_CLOSING, "You have built a page")],
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.quote == GROUNDED_CLOSING
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["evidence_closing_integrates"] == [GROUNDED_CLOSING, "You have built a page"]
+
+
+def test_quotes_stitched_with_an_ellipsis_are_told_what_to_do_instead(fake_llm):
+    """The failure that killed a calibration run: every fragment was real, the join was not.
+    Told only "not verbatim", the model answered the same thing three times — so the
+    feedback now names the rule rather than the symptom."""
+    client = fake_llm(
+        closing_integrates=[
+            verdict_json(f"{GROUNDED_CLOSING} ... You have built a page"),
+            verdict_json(GROUNDED_CLOSING, "You have built a page"),
+        ]
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed
+    feedback = client.calls[1]["messages"][-1]["content"]
+    assert "joins separate passages with an ellipsis" in feedback
+    assert "split it into several entries" in feedback
+
+
+def test_a_quote_across_a_line_break_is_grounded_and_stored_as_the_source_writes_it(fake_llm):
+    """Whitespace is not content: a model quoting across an indented line renders the indent
+    as one space, which is not a finding about the course. What gets stored is the source's
+    own span, so a report shows the course's text and not the model's rendering."""
+    flattened = "You have built a page, styled it and published it: the three pieces"
+    fake_llm(closing_integrates=[verdict_json(flattened.replace(" ", "  "))])
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed
+    assert result.quote == flattened  # the corpus's spacing, not the answer's
+    assert result.quote in CLOSING_BODY
+
+
+def test_repeating_the_same_answer_stops_instead_of_spending_the_budget(fake_llm):
+    """At temperature 0 the same conversation gives the same answer, so a model that
+    repeats itself after feedback will repeat itself again. Calibration spent three
+    identical attempts learning this."""
+    client = fake_llm(closing_integrates=[verdict_json("invented")] * 3)
+
+    with pytest.raises(AssessorExecutionError, match="repeated its previous answer verbatim"):
+        run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert len(client.calls) == 2  # not the full budget of three
 
 
 def test_arc_character_is_judged_over_both_frame_lessons(fake_llm):
     """Its pass condition asserts about the pair, so it reads both bodies in one question
     rather than sharing the single-lesson judgements — an executor receives only its own
     spec, and a shared question would have to retype a sibling criterion's words."""
-    client = fake_llm(arc_character=[verdict_json(GROUNDED_CLOSING, True)])
+    client = fake_llm(arc_character=[verdict_json(GROUNDED_CLOSING)])
 
     result = run_judged("cr-arc-character", judged_profile())
 
@@ -660,7 +738,7 @@ def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
                 ("obj-2", "Which tag opens a document?", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json("Build a page from this brief.", True)],
+        assessment_verification_match=[verdict_json("Build a page from this brief.")],
     )
     data = judged_profile()
 
@@ -685,7 +763,7 @@ def test_the_verification_judge_is_shown_only_the_objectives_it_is_about(fake_ll
                 ("obj-2", "Which tag opens a document?", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json("Build a page from this brief.", True)],
+        assessment_verification_match=[verdict_json("Build a page from this brief.")],
     )
 
     run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
@@ -877,14 +955,14 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
             )
         ],
         trajectory=[trajectory_json(dict(zip(core_ids, rising, strict=True)))],
-        opening_connects_backwards=[verdict_json(grounded, True)],
-        closing_integrates=[verdict_json(grounded_closing, True)],
-        closing_projects_forward=[verdict_json(grounded_closing, True)],
-        arc_character=[verdict_json(grounded_closing, True)],
+        opening_connects_backwards=[verdict_json(grounded)],
+        closing_integrates=[verdict_json(grounded_closing)],
+        closing_projects_forward=[verdict_json(grounded_closing)],
+        arc_character=[verdict_json(grounded_closing)],
         assessment_mapping=[
             mapping_json(*((objective_id, first_question, [0]) for objective_id in objective_ids))
         ],
-        assessment_verification_match=[verdict_json(first_question, True)],
+        assessment_verification_match=[verdict_json(first_question)],
         # Items 3 and 4 sit in lesson 03.2 and are answered to draw on two earlier lessons
         # from other modules; the rest test only their own.
         assessment_reach=[

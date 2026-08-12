@@ -1,6 +1,19 @@
-"""`drafts-hybrid` v3 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v4 — the `course-drafts-qa` lineage's LLM-carrying assessor.
 
-v3 takes the first seven criteria whose verdict is the MODEL's. Everything before it kept
+v4 fixes what the first calibration runs of v3 found: the evidence contract asked for ONE
+continuous quote from judgements that rest on several places in the text, so a correct
+verdict was rejected for how it was cited. Three changes, all of them identity. `evidence`
+is now a LIST, one entry per place, each still a continuous span. Grounding tolerates
+whitespace differences when MATCHING while storing the source's own span, because a model
+that quotes across an indented line renders the indent as a space and that is not a finding
+about the course. And the feedback names the rule that was broken rather than the symptom,
+because told only "not verbatim" the model answered the same thing three times — a case the
+retry loop now stops on, since at temperature 0 an identical answer is a fixed answer and
+the remaining budget buys nothing. Same prompts otherwise, same models, same decision
+constants; the bump is what keeps v3's calibration from transferring to a judge that is
+asked for its evidence differently.
+
+v3 took the first seven criteria whose verdict is the MODEL's. Everything before it kept
 the model on the supply side — it extracted or classified, and code decided — because that
 half was cheaper and because a decision rule in code is a decision rule anyone can read.
 The sixteen abstentions marked "requires semantic judgment" have no mechanical proxy at
@@ -69,7 +82,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "3"
+VERSION = "4"
 INSTRUMENT_ID = "course-drafts-qa"
 
 

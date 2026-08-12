@@ -369,19 +369,34 @@ def _judged(
     usage: LlmUsage,
     extra_metrics: tuple[ComputedMetric, ...] = (),
 ) -> ExecutorResult:
-    """One judged criterion as an `ExecutorResult`: the judge's own quote is the evidence.
+    """One judged criterion as an `ExecutorResult`: the judge's own quotes are the evidence.
 
     The reason travels as a metric rather than as the quote: a report's quote must be
     something a reader can find in the course (ADR-0009), and the reason is the judge's
     prose about it.
+
+    A judgement may rest on several passages, and `ExecutorResult` carries one quote. The
+    FIRST is the quote — each is already a continuous span of the source, so the one a
+    report shows is verifiable on its own — and the rest travel as a metric rather than
+    being concatenated into something the course does not contain contiguously.
     """
     metrics = (
         _usage_metric(task_id, usage),
         ComputedMetric(f"judgment_{task_id}", verdict.reason),
+        *(
+            (ComputedMetric(f"evidence_{task_id}", list(verdict.evidence)),)
+            if verdict.evidence
+            else ()
+        ),
         *extra_metrics,
     )
     return _result(
-        entry, verdict.passed, spec, verdict.failure_mode_index, metrics, quote=verdict.evidence
+        entry,
+        verdict.passed,
+        spec,
+        verdict.failure_mode_index,
+        metrics,
+        quote=verdict.evidence[0] if verdict.evidence else None,
     )
 
 
@@ -466,7 +481,7 @@ def every_objective_has_an_assessment_item(
             entry,
             judgments.Verdict(
                 reason=unmeasured[0].reason,
-                evidence=unmeasured[0].evidence,
+                evidence=(unmeasured[0].evidence,) if unmeasured[0].evidence else (),
                 passed=False,
                 failure_mode_index=0,
             ),

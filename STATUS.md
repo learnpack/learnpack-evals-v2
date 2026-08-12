@@ -163,9 +163,9 @@ requires `learning_objectives` (the datum the executor actually reads in a forma
 declares objectives structurally) instead of the bodies where an older format left them
 implicit. Ids and claims are verbatim v2.
 
-**The first judged criteria (`drafts-hybrid:3`).** Careful with the numbering here: the
-*instrument* `course-drafts-qa` is also at v3, and the two are unrelated artifacts that
-happen to share a number. Everything before this kept the model
+**The first judged criteria (`drafts-hybrid:4`).** Careful with the numbering here: the
+*instrument* `course-drafts-qa` is at v3 and the assessor is at v4; they are unrelated
+artifacts and their numbers do not track each other. Everything before this kept the model
 on the supply side — it extracted or classified and code decided — because that half was
 cheaper and because a decision rule in code is one anyone can read. v3 takes the first
 **seven criteria whose verdict is the model's**, chosen not by how interesting they are but
@@ -210,6 +210,41 @@ sampling) and costs three times as much in money and latency; the bottleneck tod
 fast a human can read what the judge answered, and a judgment nobody has reviewed is not
 improved by being made three times. Raising it is a version bump, not a tuning knob.
 
+**What the first three calibration runs found, and why there is a v4.** The judged criteria
+met the real model three times: two runs finished, one died. All three failures were the
+same thing, and none of them was the model judging badly. Asked for **one** continuous
+quote, the model answered findings that rest on **several** places in the text by stitching
+passages together with `...` — and the grounding check rejected an answer whose verdict was
+right. In the run that died, `assessment_verification_match` had correctly spotted that
+three objectives declaring a performance ("apply CSS until it matches this screenshot",
+"create a navigation bar with Flexbox") were measured only by multiple-choice and
+fill-in-the-blank items — the criterion's failure mode 0, exactly. It was refused three
+times for how it cited that, and the three answers were **byte-identical**: at temperature 0
+the same conversation gives the same reply, and the feedback named the symptom ("not
+verbatim") rather than the rule, so the model had nothing to change. The other run survived
+the same way by luck — `arc_character` stitched twice and produced a continuous span on its
+third and last attempt. The six single-lesson judgements across the three runs never failed
+once: the criteria whose corpus is a **set** (`arc_character` reads two lessons,
+`assessment_verification_match` reads N objective blocks) are exactly the ones the contract
+did not fit.
+
+v4 is that contract corrected, three changes and all of them identity. **`evidence` is a
+list**, one entry per place in the text, each still a continuous span — the quote shape now
+matches the shape of a finding. **Grounding tolerates whitespace when matching and stores
+the source's own span**: a model quoting across an indented line renders the indent as a
+space, and three of the six rejected fragments failed for that alone, which is not a finding
+about the course; what a report shows is still the course's text, never the model's
+rendering, so ADR-0009 is untouched. **The feedback names the broken rule** ("do not join
+passages with an ellipsis — split them into separate entries"), and the retry loop now stops
+when an answer repeats verbatim instead of buying two more copies of a fixed reply. Replayed
+against v4, the answer that killed the run gets the actionable message, and all six of its
+fragments ground.
+
+The first `ExecutorResult` quote is the first passage rather than a concatenation of them,
+with the rest carried as a metric: each entry stands on its own as something a reader can
+find in the course, and joining them would put text in a report that the course does not
+contain contiguously.
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
@@ -227,10 +262,11 @@ target exactly which elements to style…"* as `is_observable: false`, on the ve
 the instrument's own rule doing exactly what it says, and precisely the kind of call that
 has to be reviewed before a study pins this version. Every prompt and raw answer is on the
 page and in the trace file (see *Observability of the LLM half*), so the review can be done
-against what actually happened rather than against a summary. **The seven judged criteria
-of v3 have not been calibrated against the real model at all**, and they are the ones where
-reading matters most: nothing in the suite can tell whether a verdict is right, only that
-it was asked, quoted and labelled correctly.
+against what actually happened rather than against a summary. **The seven judged criteria have met the real model three times** (see *What the first
+three calibration runs found*), but only to prove the plumbing: every failure there was
+about how a verdict was cited, not about whether it was right. **v4's judgements have not
+been read by anyone**, and they are where reading matters most — nothing in the suite can
+tell whether a verdict is correct, only that it was asked, quoted and labelled correctly.
 
 Three kinds of finding come out of such a review and they have different destinations, so
 it is worth separating them while reading: *the model extracted or judged badly* → the
@@ -243,8 +279,8 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 `drafts-hybrid` is a new identity that inherits nothing from the previous one's
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
-`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 3
---instrument-version-id course-drafts-qa-v3 --email <admin>`. Ratifying v3 before its seven
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 4
+--instrument-version-id course-drafts-qa-v3 --email <admin>`. Ratifying v4 before its seven
 judged criteria have been read would persist verdicts nobody has checked, which is the one
 thing the calibration loop exists to prevent.
 
@@ -494,7 +530,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 808 tests** against local Postgres (~65 s). Requires
+- **Backend suite green: 812 tests** against local Postgres (~60 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -510,6 +546,15 @@ the data in the package).
   verification AND have an item, and answers a vacuous pass with no call at all when none
   do; the reach count admits only lesson identifiers the plan declares. The frozen
   LearnpackV2 fixture now partitions 29 outcomes with 19 executed over **ten** questions.
+- **The evidence contract pinned on the cases that broke it** (suite): a judgement resting
+  on several passages keeps them separate, the first being the result's quote and the rest a
+  metric; a quote stitched with an ellipsis is answered with the rule rather than the
+  symptom; a quote crossing a line break grounds and is stored **as the source spells it**;
+  and an answer repeated verbatim after feedback stops the loop at two calls instead of
+  three. Checked against the real failure too, not only over fixtures: the answer that
+  killed the second calibration run was replayed through v4 — it now receives the actionable
+  message, and all six of the fragments it had stitched ground individually, including the
+  three that byte-comparison had rejected over an indent.
 - **`drafts-hybrid` pinned end to end** (suite): coverage is a disjoint union over v3's 29
   criteria (and decides v1/v2, so any published version of the lineage can ratify); the
   five semantic executors calibrated on synthetic sequences (falls-back vs consolidation
@@ -695,6 +740,17 @@ the data in the package).
   itself: mint `declared_difficulty` (instrument bump + adapter version + re-acceptance),
   so its absence derives `no_evidence` mechanically instead of forcing a verdict against a
   null anchor.
+- **Equal coverage stops being sufficient once criteria are judged.** ADR-0023 §7 lets the
+  GA compare fitness only within equal coverage, and coverage is computed by criterion
+  **id** — which does not move when a criterion's `pass_condition` is reworded. For a
+  code executor that was harmless: the wording changed and the executor kept computing the
+  same thing. For a judged criterion the wording **is** the question, so two populations
+  with identical coverage may have been asked different things. Nothing is wrong today
+  because a study pins exactly one instrument version and cross-study comparison
+  (`CompareStudies`) is not built; the condition to add when it is built is **equal
+  criterion text**, not merely equal ids. Recorded here because that comparison is the one
+  place the omission would be invisible and would silently favour whichever wording is
+  easier to satisfy.
 - **The provider that serves a model is not pinned, and it decides part of the answer.**
   ADR-0034 §3 puts the transport on the environment side with the rule that it "may alter
   whether and when an answer arrives, never which answer arrives". That rule does not hold

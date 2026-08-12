@@ -80,10 +80,18 @@ SAMPLES = 1
 
 @dataclass(frozen=True)
 class Verdict:
-    """One judged criterion: what the judge decided, and the passage it decided it on."""
+    """One judged criterion: what the judge decided, and the passages it decided it on.
+
+    `evidence` is a LIST because a finding often rests on several places in the text — three
+    objectives measured by the wrong kind of item is three pieces of evidence, not one. The
+    first calibration runs proved the point the hard way: asked for a single quote, the
+    model stitched six passages together with "..." and the grounding check rejected an
+    answer whose judgement was correct, three times in a row, identically. The quote shape
+    has to match the shape of the finding.
+    """
 
     reason: str
-    evidence: str
+    evidence: tuple[str, ...]
     passed: bool
     failure_mode_index: int | None
 
@@ -129,6 +137,78 @@ def _memoized(
     return _cache[key]
 
 
+# --- grounding: finding the model's quote in the source ----------------------------------
+
+
+def locate(corpus: str, quote: str) -> str | None:
+    """The corpus's OWN span matching `quote` up to whitespace, or `None` if it is not there.
+
+    Two decisions, both learnt from calibration runs that failed on quotes whose judgement
+    was fine:
+
+    - **Whitespace is not content.** A corpus built by this module puts items on their own
+      indented lines, and a model that quotes across one renders the newline and indent as a
+      single space. Comparing byte for byte rejected that, which is a false negative about
+      the course. Runs of whitespace are equal to each other for the purpose of finding the
+      passage.
+    - **What is returned is the SOURCE's text, never the model's.** Tolerating a difference
+      when matching is not the same as storing the difference: the quote that ends up in a
+      report is the span as the course writes it, so ADR-0009 stays exact.
+    """
+    flat_corpus, offsets = _flatten(corpus)
+    flat_quote, _ = _flatten(quote)
+    if not flat_quote:
+        return None
+    at = flat_corpus.find(flat_quote)
+    if at < 0:
+        return None
+    return corpus[offsets[at] : offsets[at + len(flat_quote) - 1] + 1]
+
+
+def _flatten(text: str) -> tuple[str, list[int]]:
+    """`text` with whitespace runs collapsed to one space and stripped, plus, per character
+    kept, the index it came from — which is what lets a match map back to the original."""
+    kept: list[str] = []
+    offsets: list[int] = []
+    after_space = True
+    for index, char in enumerate(text):
+        if char.isspace():
+            if not after_space:
+                kept.append(" ")
+                offsets.append(index)
+                after_space = True
+            continue
+        kept.append(char)
+        offsets.append(index)
+        after_space = False
+    if kept and kept[-1] == " ":
+        kept.pop()
+        offsets.pop()
+    return "".join(kept), offsets
+
+
+def _grounding_violations(label: str, quote: str, corpus: str) -> list[str]:
+    """Why this quote is not evidence — naming the RULE that was broken, not just the fact.
+
+    The generic "not verbatim" message cost a whole evaluation: the model had joined real
+    passages with "..." and, told only that its quote was not verbatim, answered the same
+    thing three times, because from where it stood every fragment WAS copied. Feedback has
+    to name what to do differently.
+    """
+    if locate(corpus, quote) is not None:
+        return []
+    if "..." in quote or "…" in quote:
+        return [
+            f"{label} joins separate passages with an ellipsis. Each entry of "
+            '"evidence" must be ONE CONTINUOUS passage copied from the text: split it '
+            "into several entries instead, one per place in the text."
+        ]
+    return [
+        f"{label} is not a passage from the text shown — copy it character-for-character "
+        f"(got: {quote.strip()[:120]!r})"
+    ]
+
+
 # --- the generic judge --------------------------------------------------------------------
 
 
@@ -165,10 +245,14 @@ def judge(
             reasoning=tasks.REASONING,
         )
         raw_mode = payload.get("failureMode")
+        # Each quote is stored as the SOURCE spells it, not as the model rendered it.
+        located = tuple(
+            span for quote in payload["evidence"] if (span := locate(corpus, str(quote)))
+        )
         return (
             Verdict(
                 reason=str(payload["reason"]).strip(),
-                evidence=str(payload["evidence"]).strip(),
+                evidence=located,
                 passed=bool(payload["verdict"]),
                 failure_mode_index=int(raw_mode) if isinstance(raw_mode, int) else None,
             ),
@@ -191,14 +275,16 @@ def _validate_verdict(answer: Any, corpus: str, failure_mode_count: int) -> list
     if not isinstance(reason, str) or not reason.strip():
         violations.append('"reason" must be a non-empty string')
     evidence = answer.get("evidence")
-    if not isinstance(evidence, str) or not evidence.strip():
-        violations.append('"evidence" must be a non-empty string')
-    elif evidence.strip() not in corpus:
-        # The grounding rule: a citation that is not in the source is not evidence.
-        violations.append(
-            '"evidence" is not a verbatim quote from the text shown — copy the passage '
-            f"character-for-character (got: {evidence.strip()[:120]!r})"
-        )
+    if not isinstance(evidence, list) or not evidence:
+        violations.append('"evidence" must be a non-empty array of quoted passages')
+    else:
+        for position, quote in enumerate(evidence):
+            label = f'"evidence"[{position}]'
+            if not isinstance(quote, str) or not quote.strip():
+                violations.append(f"{label} must be a non-empty string")
+                continue
+            # The grounding rule: a citation that is not in the source is not evidence.
+            violations.extend(_grounding_violations(label, quote, corpus))
     verdict = answer.get("verdict")
     if not isinstance(verdict, bool):
         violations.append('"verdict" must be true or false')
@@ -305,7 +391,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             ObjectiveMapping(
                 objective_id=objective_id,
                 reason=str(by_id[objective_id]["reason"]).strip(),
-                evidence=str(by_id[objective_id]["evidence"]).strip(),
+                evidence=locate(corpus, str(by_id[objective_id]["evidence"])) or "",
                 item_indices=tuple(int(i) for i in by_id[objective_id]["itemIndices"]),
             )
             for objective_id in objective_ids
@@ -343,11 +429,8 @@ def _validate_mapping(
         evidence = entry.get("evidence")
         if not isinstance(evidence, str) or not evidence.strip():
             violations.append(f"{label}.evidence must be a non-empty string")
-        elif evidence.strip() not in corpus:
-            violations.append(
-                f"{label}.evidence is not a verbatim quote from the text shown — copy it "
-                f"character-for-character (got: {evidence.strip()[:120]!r})"
-            )
+        else:
+            violations.extend(_grounding_violations(f"{label}.evidence", evidence, corpus))
         indices = entry.get("itemIndices")
         if not isinstance(indices, list):
             violations.append(f"{label}.itemIndices must be an array")

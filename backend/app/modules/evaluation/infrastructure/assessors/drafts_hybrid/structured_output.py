@@ -63,6 +63,7 @@ def request_structured_output(
     calls = tokens_in = tokens_out = latency_ms = 0
     model_used = model
     violations: list[str] = []
+    answered: set[str] = set()
     for _ in range(MAX_SCHEMA_ATTEMPTS):
         try:
             completion = client.complete(
@@ -97,6 +98,18 @@ def request_structured_output(
                 tokens_out=tokens_out,
                 latency_ms=latency_ms,
             )
+        # A model that answers the same thing again has not understood the feedback and
+        # will not on the next round either: at temperature 0 the same conversation gives
+        # the same answer, so the remaining budget would buy a fixed reply. Calibration
+        # spent three identical attempts on this before it was a rule.
+        if completion.text.strip() in answered:
+            raise AssessorExecutionError(
+                f"task '{task_id}': the model repeated its previous answer verbatim after "
+                f"being told what was wrong with it, so the remaining attempts would ask "
+                f"the same question and get the same reply. Violations: "
+                f"{'; '.join(violations)}"
+            )
+        answered.add(completion.text.strip())
         messages = [
             *messages,
             {"role": "assistant", "content": completion.text},

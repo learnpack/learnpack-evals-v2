@@ -150,13 +150,18 @@ $failure_modes
 
 Answer with this JSON shape, in this field order:
 {"reason": "<one sentence saying what the text does, in your own words>",
-"evidence": "<a passage copied verbatim from the text below>",
+"evidence": ["<one continuous passage copied verbatim from the text below>", "..."],
 "verdict": <true if the criterion is satisfied, false if it is not>,
 "failureMode": <when the verdict is false, the number of the failure above that this text
 shows; null when the verdict is true>}
 
+"evidence" is a LIST because a finding often rests on more than one place in the text. Give
+one entry per place. Every entry must be ONE CONTINUOUS passage copied from the text below:
+never join separate passages into a single entry with "..." or any other separator — put
+them in separate entries instead.
+
 Decide from the criterion's own words. A draft that partly satisfies it does not satisfy
-it: answer false and quote the passage that shows where it falls short.
+it: answer false and quote the passages that show where it falls short.
 
 <source>
 $corpus
