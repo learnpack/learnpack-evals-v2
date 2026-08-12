@@ -64,7 +64,7 @@ AUTOMATED_ASSESSORS: dict[tuple[str, str], AssessorPackage] = {
             executors=drafts_hybrid.EXECUTORS,
             coverage=drafts_hybrid.COVERAGE,
             source_config=drafts_hybrid.SOURCE_CONFIG,
-            reset_caches=drafts_hybrid.tasks.clear_task_cache,
+            reset_caches=drafts_hybrid.clear_caches,
         ),
     )
 }
