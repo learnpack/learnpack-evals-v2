@@ -276,13 +276,62 @@ content, is still caught. **No assessor version was bumped**: the judge is hande
 `drafts-hybrid:4` is untouched. It sits as a **draft** — publication is a human act, and a dry
 run accepts drafts, so calibrating against it needs nothing else.
 
-**What v4 does not settle.** Whether the corrected text removes the oscillation is an open
-measurement: three runs of the HTML draft against v4 answer it. What is left over after that
-is real judge variance, and the answer to it is sampling — **`k=2` with a tie-breaking third**,
-which yields exactly the verdict a k=3 majority would (two agreeing samples cannot be
-overturned by a third) at ~2.2 calls instead of 3, and reports the split as a dispersion
-signal. Deliberately not built yet: building it before measuring would pay for noise the
-wording may already have removed.
+**Measured against v4: the wording was most of it.** Six more runs, three per draft, all
+against v4. The HTML draft — the one both wobbles came from — is now **5 of 5 criteria
+unanimous across three repeats**, and both reworded criteria settled on the reading their new
+text implies. Pairwise agreement over identical input went from **16/20 (80 %) to 28/30
+(93 %)**, and the whole residue is a single (draft, criterion) pair.
+
+**That residue is the useful part: `cr-closing-lesson-projects-forward` on the CSS draft is a
+coin flip, and its text was never touched.** Its `pass_condition` is byte-identical in v3 and
+v4 (checked against the prompts as sent, not the YAML), so its six observations are six
+answers to one question about one closing: **three `pass`, three `fail`**. What makes it
+diagnostic rather than merely noisy is *how* they split — all six quote the same single
+passage and describe the same facts in nearly the same words ("summarises what was learned and
+says the learner can now style any webpage… *practice and new properties*"), and then divide
+on whether those facts clear the bar. One answer states both readings before choosing:
+"projecting onto future practice and new properties, **but** does not explicitly situate it in
+a learning or professional path beyond that." The model agrees on the facts every time and
+disagrees only on the threshold — which is a criterion that does not say where its threshold
+is, not a judge that cannot read. The open question is whether "more practice of the same
+skill" counts as *what comes next*; either answer is defensible and the text picks neither.
+It is not cosmetic: this criterion and `cr-closing-lesson-integrates` evidence the same claim
+under conjunctive sufficiency, so for that draft the **claim itself** is a coin flip.
+
+**What this leaves for the next increment**, in the order the evidence puts them:
+
+1. **The `cr-closing-lesson-projects-forward` threshold** — an instrument edit, and worth
+   making even though chasing every borderline instance with a rewrite is not: this one fixes
+   a threshold once and reuses it, rather than patching a course.
+2. **Markdown tolerance in the grounding check** — a false rejection that already cost a
+   retry: the draft writes `**markup language**` and the model quoted `markup language`,
+   which is formatting rather than content, exactly the argument that made whitespace
+   tolerable. (The other retry of those runs was a true rejection — a quote silently
+   shortened from "everything the user sees on the page" to "everything the user sees" — and
+   is the check doing its job.)
+3. **Sampling: `k=2` with a tie-breaking third**, which yields exactly the verdict a k=3
+   majority would (two agreeing samples cannot be overturned by a third) at ~2.2 calls
+   instead of 3. Still needed after the wording fixes, because borderline instances surface
+   **one per draft**: two drafts have now produced three different oscillating criteria, one
+   each, so there is no enumerable list of "hard criteria" to sample selectively. The vote
+   split is worth as much as the verdict — a 2-1 is the detector for an underspecified
+   criterion, which is how this one was found.
+
+**Four things these fourteen runs settled**, recorded because they generalize beyond this
+lineage:
+
+- **Fixing the text pays more than sampling would.** Two sentences moved one draft from 73 %
+  to 100 % self-agreement; no amount of voting would have done that, because voting reduces
+  variance and this was ambiguity.
+- **Borderline instances belong to (draft, criterion) pairs, not to criteria.** Each draft
+  surfaced a different one, and a criterion unanimous on five observations turned out to be
+  a coin flip on the sixth.
+- **Where the model disagrees tells you whose defect it is.** Same facts, different verdict →
+  the criterion's threshold is unwritten, and prose fixes it. Different facts → the judge, and
+  only then are prompts or sampling the answer.
+- **Making the judge quote its evidence is what makes any of this visible.** Every diagnosis
+  above came from comparing quotes across runs; a bare verdict would have shown only a
+  number moving.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
@@ -302,10 +351,11 @@ the instrument's own rule doing exactly what it says, and precisely the kind of 
 has to be reviewed before a study pins this version. Every prompt and raw answer is on the
 page and in the trace file (see *Observability of the LLM half*), so the review can be done
 against what actually happened rather than against a summary. The seven judged criteria
-have now met the real model eight times, and what those runs settled is the plumbing and the
-wording — not the verdicts. **Nobody has yet read whether a judgement is RIGHT**, which is
-where reading matters most: nothing in the suite can tell, only that a verdict was asked,
-quoted and labelled correctly.
+have now met the real model fourteen times, and what those runs settled is the plumbing, then
+the wording — never the verdicts. **Nobody has yet read whether a judgement is RIGHT**, which
+is where reading matters most: neither the suite nor a self-agreement rate can tell, only that
+a verdict was asked, quoted and labelled correctly, and that repeats of it agree. A criterion
+can be perfectly stable and stably wrong.
 
 Three kinds of finding come out of such a review and they have different destinations, so
 it is worth separating them while reading: *the model extracted or judged badly* → the
