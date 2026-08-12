@@ -167,7 +167,9 @@ the suite pins the decision rules over a faked transport, so what the actual
 `deepseek/deepseek-v4-flash-0731` answers has only been exercised by hand, and the loop
 needs `LLM_API_KEY` set (each dry run spends ~3 calls). What the calibration should watch:
 whether the extracted outcomes and the Bloom/sophistication classifications read sane
-against the packages, before any real study pins this version.
+against the packages, before any real study pins this version. Both doors now report
+progress and keep every prompt and raw answer (see *Observability of the LLM half*), so
+what the model actually did is readable while doing it.
 
 **The calibration page (`/admin/calibration`).** The dry-run loop no longer requires
 chaining CLI commands with UUIDs by hand: the console now has a guided page — pick a
@@ -175,14 +177,18 @@ profiled content (profile status joined in; a missing profile shows the exact
 `profile-content` command instead of a dead end), pick the instrument version (drafts
 included) and the assessor package (with its lineage, coverage counts and an LLM-cost
 warning), run, and read the partition chips, the per-criterion table with quotes and
-failure modes, the claim statuses and the LLM spend. It sits on two new admin endpoints:
-`GET /admin/assessor-packages` (the in-code registry as data — identity and coverage,
-never the executors) and `POST /admin/evaluations/preview`, which exposes the existing
-`PreviewEvaluation` use case exactly as the CLI wires it — accepts drafts, needs no
-ratification, **persists nothing** (the response says `persisted: false`; the suite pins
-zero writes). Error mapping: unknown assessor/instrument 404 · content without an `ok`
-profile 409 · `AssessorExecutionError` 502 with "nothing persisted, retry is safe"
-(ADR-0034). Deliberately NOT on the page: triggering profiling (a deliberate act,
+failure modes, the claim statuses and the LLM spend. It sits on `GET
+/admin/assessor-packages` (the in-code registry as data — identity and coverage, never
+the executors) and on the dry-run, which is **started, not awaited**: `POST
+/admin/evaluations/preview` returns a run id (202), `GET
+/admin/evaluations/preview/{run_id}` reads it while it advances, and `…/trace` returns
+every LLM attempt whole. Same `PreviewEvaluation` use case the CLI wires — accepts
+drafts, needs no ratification, **persists nothing** (the response says
+`persisted: false`; the suite pins zero writes), and the runs themselves live in memory
+(last 20), forgotten on restart. Only the assessor is validated in the request (404);
+a missing profile, an unknown instrument version and an `AssessorExecutionError`
+(ADR-0034) become the run's own named error, each shown with its remedy.
+Deliberately NOT on the page: triggering profiling (a deliberate act,
 CLI-only — the profiling module's stance holds) and registering local folders
 (`register-package --source <dir>`); registering by http(s) source stays on the Courses
 page. `evaluate --dry-run` remains the scriptable path — the page and the CLI share the
@@ -192,6 +198,22 @@ run, per quality and rolled up per dimension, labelled as an orientation for cal
 the real fitness stays a per-study read from persisted judgments. The grouping comes from
 `GET /admin/reference/qualities` (live `quality → dimension` reference data, on purpose:
 the map frozen at publish protects published studies, and a preview is neither).
+
+**Observability of the LLM half (calibration).** Running an instrument against the real
+model used to be opaque in three ways at once: a spinner for minutes, no way to see the
+prompt a task sent or the raw text it got back, and failures arriving as a toast that
+vanished. One stream now answers all three. `app/platform/observability.py` carries one
+record per **attempt** — messages as sent, raw answer, `finish_reason`, the upstream
+provider that served it, tokens and latency — emitted by the transport to whoever is
+listening; the run reads it live (a step per executed criterion and per attempt) and
+`LLM_TRACE_DIR` writes it as JSONL, one file per run, untruncated. Both doors write one:
+the page's runs under their id, `evaluate --dry-run` under `cli-<id>`, which also prints
+each step to stderr and the trace path when it ends. None of this re-versions an
+assessor: recording an answer does not change which answer arrives (ADR-0034 §1). What it
+is **not** yet: `finish_reason=length` is recorded, not acted on; the timeout is now
+`LLM_TIMEOUT_SECONDS` (access, not identity) but its default is unchanged. Those are the
+next decisions, and they are meant to be taken with measured runs in hand, not from the
+code alone — see `notes/observabilidad-y-robustez-calibracion.md`.
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -366,11 +388,16 @@ the data in the package).
   29-outcome partition over the frozen LearnpackV2 fixture; ratification stores the
   semantic identity (models + prompts fingerprint) whole.
 - **The calibration endpoints pinned** (suite): the registry listing carries coverage and
-  `uses_llm` and leaks nothing else; the preview runs a draft against the frozen course
-  with **zero writes** (evaluations, judgments and events counted before and after), the
-  real numbering-drift finding comes through executed with its quote, and the error paths
-  answer 403/404/409/502 — the 502 through a package whose executors raise
-  `AssessorExecutionError`, per ADR-0034. Frontend typecheck clean.
+  `uses_llm` and leaks nothing else; a run over a draft against the frozen course does
+  **zero writes** (evaluations, judgments and events counted before and after), the real
+  numbering-drift finding comes through executed with its quote, the steps match exactly
+  the criteria that were executed, and each way a run can end — missing profile, unknown
+  instrument version, an assessor that raises `AssessorExecutionError` (ADR-0034) — ends
+  it with its cause named. 403 on both doors, 404 for a run nobody remembers.
+- **The trace pinned** (suite): one record per attempt including the retries and the hard
+  failures; a 2xx nobody can use leaves its raw body in the record; a broken listener
+  never breaks the call; the run's attempts come back whole through `…/trace`, and the
+  same records reach the live steps. Frontend typecheck clean.
 - **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
   a wrong echo is refused again and the right one registers; and against the store alone, two
   lineages differing only in casing or padding cannot coexist. Migration 0017's fold is pinned
@@ -458,6 +485,12 @@ the data in the package).
   reading the old `GET /admin/generators` breaks; nothing outside this repo's console reads it.
   One error detail is now an **object** rather than a string — the near-miss 409 carries
   `{message, similarTo}`, because the name to echo back is contract, not prose.
+  **`POST /admin/evaluations/preview` no longer returns the dry run**: it answers **202
+  `{run_id}`** and the result is read from `GET /admin/evaluations/preview/{run_id}`
+  (`{status, steps, result, error}`), with the attempts at `…/trace`. The 409 and 502 it
+  used to answer are gone — those endings are now the run's `error.kind`
+  (`profile_missing` / `assessor_failed`), because a request that returns before the work
+  starts cannot report how the work went. Only this repo's console calls it.
 - **`GeneratorArtifact` retired (ADR-0030).** The entity, the `generator_artifacts` table
   (migration 0016), the event, both endpoints and the console form are gone. It was built
   under the "register yes, extract no" mark and never read by anything: no policy subscribed,
