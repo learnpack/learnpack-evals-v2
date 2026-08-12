@@ -207,6 +207,48 @@ def test_a_provider_failure_is_recorded_with_who_failed():
     assert "response_format violated" in (calls[0].error or "")
 
 
+def test_an_answer_the_reasoning_ate_says_so():
+    """The real shape of every failed calibration run: a reasoning model bills its
+    thinking as output tokens, spends the whole budget on it, and stops having written
+    nothing. "content is empty" describes that identically to a dozen other faults."""
+    body = {
+        "provider": "GMICloud",
+        "choices": [
+            {
+                "finish_reason": "length",
+                "message": {"role": "assistant", "content": None, "reasoning": "…" * 3000},
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 654,
+            "completion_tokens": 2048,
+            "completion_tokens_details": {"reasoning_tokens": 2048},
+        },
+    }
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=body)
+
+    client, sleeps = client_with(handler)
+    with pytest.raises(LlmResponseError) as raised:
+        client.complete(model="m", messages=MESSAGES)
+
+    message = str(raised.value)
+    assert "2048 completion tokens of which 2048 were reasoning" in message
+    assert "max_tokens" in message and "reasoning off" in message
+    # Not retried: the limit produces the same answer every time, and retrying would
+    # hide a misconfiguration behind a delay.
+    assert len(seen) == 1 and not sleeps
+
+
+def test_an_empty_answer_with_no_limit_to_blame_stays_generic():
+    client, _ = client_with(lambda request: httpx.Response(200, json=ok_body(content="   ")))
+    with pytest.raises(LlmResponseError, match="empty or not text"):
+        client.complete(model="m", messages=MESSAGES)
+
+
 def test_a_missing_key_fails_before_touching_the_network():
     seen: list[httpx.Request] = []
 

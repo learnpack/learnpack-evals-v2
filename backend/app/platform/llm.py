@@ -293,6 +293,28 @@ def _upstream_error(body: Any) -> tuple[int, str] | None:
     return None
 
 
+def _empty_content_error(body: Any) -> str:
+    """Why there is no answer — named, because the cure differs per cause.
+
+    A reasoning model bills its thinking as output tokens, so `max_tokens` is a budget
+    the reasoning can spend entirely: it stops at the limit having written nothing. The
+    generic wording ("content is empty") describes that identically to a dozen unrelated
+    faults, and it is what made four calibration runs unreadable. Retrying is not the
+    remedy here and the message says so — the limit produces the same answer every time.
+    """
+    usage = (body.get("usage") if isinstance(body, dict) else None) or {}
+    spent = int(usage.get("completion_tokens") or 0)
+    reasoning = int((usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0)
+    if _finish_reason(body) == "length":
+        return (
+            f"the model stopped at the token limit without emitting an answer "
+            f"(finish_reason=length, {spent} completion tokens of which {reasoning} were "
+            f"reasoning): the budget was spent before the answer began. Retrying will not "
+            f"help — raise the task's max_tokens, or turn the model's reasoning off."
+        )
+    return "response content is empty or not text"
+
+
 def _completion(body: Any, requested_model: str, latency_ms: int) -> LlmCompletion:
     choice = _choice(body)
     try:
@@ -300,7 +322,7 @@ def _completion(body: Any, requested_model: str, latency_ms: int) -> LlmCompleti
     except (KeyError, IndexError, TypeError) as exc:
         raise LlmResponseError(f"response carries no message content: {str(body)[:500]}") from exc
     if not isinstance(content, str) or not content.strip():
-        raise LlmResponseError("response content is empty or not text")
+        raise LlmResponseError(_empty_content_error(body))
     usage = body.get("usage") or {}
     model = body.get("model")
     return LlmCompletion(
