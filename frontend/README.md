@@ -74,7 +74,8 @@ src/
     evaluations/                   # evaluator flow (list + 3-step wizard)
     admin/                         # admin console: contents, generators, briefs,
                                    # instruments (with Publish), profiles (extraction
-                                   # viewer), campaigns, reports
+                                   # viewer), assessors (with Ratify), calibration,
+                                   # studies, campaigns, reports
   components/
     ui/                            # UI kit (button, card, table, dialog, select…)
     evaluator/                     # consume-content (iframe+fallback), score-form
@@ -122,6 +123,24 @@ the course version bumped (a registered version is immutable, ADR-0005), and an 
 registered** course whose generator is unknown cannot be fixed by registering it again —
 re-registering an unchanged package is a no-op, so the row offers the attribution act instead
 (ADR-0024).
+
+## The two acts the console performs on the automated path
+
+Both are deliberate, irreversible and recorded with their author, so both sit behind a
+dialog that states what is being committed to rather than asking whether you are sure.
+
+**Publish an instrument version** (`/admin/instruments`) freezes it: from there any change
+is a new version.
+
+**Ratify an assessor** (`/admin/assessors`) is what lets an automated assessor's judgments
+be *persisted* against one published instrument version (ADR-0019, ADR-0036). Two things
+about that page read oddly until you know the domain. Ratification is per
+`(assessor, instrument version)`, so a package shows a table of its lineage's versions
+rather than a yes/no; and a **draft** is listed with no Ratify button, because its remedy
+is publishing it, not ratifying it. When executed criteria have changed since the last
+version the assessor ratified, the act comes back asking for a decision **per criterion** —
+the dialog lists each one with the `pass_condition` you are confirming the executor still
+realizes. That is not a formality: changing an executor is a new assessor version.
 
 ## Demo happy path
 

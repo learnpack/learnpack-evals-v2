@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-11._
+_Last updated: 2026-08-12._
 
 ## Where we are
 
@@ -183,8 +183,31 @@ against what actually happened rather than against a summary.
 ratification, but a **persisted** judgment does (ADR-0019), and `drafts-hybrid:2` is a new
 identity that inherits nothing from v1's ratification — which is the point of the bump. So
 **no semantic criterion of this lineage has yet produced a persisted judgment**, and doing
-so starts with `ratify-assessor --name drafts-hybrid --version 2 --instrument-version-id
+so is now one button on `/admin/assessors` (below) or, unchanged,
+`ratify-assessor --name drafts-hybrid --version 2 --instrument-version-id
 course-drafts-qa-v3 --email <admin>`.
+
+**The assessors page (`/admin/assessors`, ADR-0036).** Ratification used to be readable
+only from the database and performable only from a terminal, which is what had been
+standing between a calibrated `drafts-hybrid:2` and a study. The console now answers *who
+can judge, and against which version*: assessors grouped by kind — automated by default,
+humans optional, both — and, per automated package, its coverage plus every version of its
+lineage with whether it may judge with it, who decided and when. The automated rows come
+from the package registry rather than from the `assessors` table on purpose: a package
+nobody has ratified has **no row at all**, and that is exactly the one worth acting on.
+The act sits behind a dialog that states what is being committed to — this is what lets
+judgments persist, it records an author, nothing undoes it, it does not carry over to a
+future version of the assessor, and what it checks is coverage and never quality. When
+executed criteria have changed since the last ratified version, the endpoint answers
+**409 carrying them**, and the dialog turns into a second step listing each criterion with
+the `pass_condition` being confirmed and its own checkbox — the ADR-0019 §3 decision,
+taken where it can actually be read, rather than an id retyped from an error message.
+Behind both gates there is one use case (`RatifyAssessor` + Identity's
+`RegisterAutomatedAssessor`), so the CLI and the console cannot drift; the HTTP handler
+lives in `app/platform/ratification_router.py` because the act spans two modules and only
+the composition root may name two modules' adapters. Deliberately **not** moved to the
+console: `profile-content`, `accept-extraction` and a real `evaluate`, each for a reason
+named in the ADR. Deliberately **not built**: un-ratifying.
 
 **The calibration page (`/admin/calibration`).** The dry-run loop no longer requires
 chaining CLI commands with UUIDs by hand: the console now has a guided page — pick a
@@ -366,7 +389,8 @@ accepted for the old version says nothing about what the adapter reads now. Sinc
 so `register-package` auto-profiles exactly like the admin form.
 
 **Third pending input from the team (block 6):** once the instrument is published, **ratify it**
-for the first automated assessor (`python -m app.cli ratify-assessor --name structural
+for the first automated assessor (the Ratify button on `/admin/assessors`, or
+`python -m app.cli ratify-assessor --name structural
 --version 1 --instrument-version-id learnpack-course-qa-v1 --email <admin>` — ADR-0019; the
 initial registration is the first ratification) and evaluate with
 `python -m app.cli evaluate --content-id <id> --instrument-version-id <id>`. As long as the
@@ -409,7 +433,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 689 tests** against local Postgres (~45 s). Requires
+- **Backend suite green: 791 tests** against local Postgres (~55 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -421,6 +445,34 @@ the data in the package).
   five criteria); a hallucinated quote is fed back and, persistent, aborts; the exact
   29-outcome partition over the frozen LearnpackV2 fixture; ratification stores the
   semantic identity (models + prompts fingerprint) whole.
+- **Ratification pinned at both gates** (suite). The CLI tests are untouched and are the
+  regression net for the rules having moved into a use case: the same exit codes and the
+  same stderr, including `--confirm <id>` and `bump VERSION`. Against the use case
+  directly, the delta names each criterion, how it changed, how it was decided and the
+  text being confirmed — an abstained one never demands a decision, a criterion the
+  coverage does not decide is refused before anyone is asked. Over HTTP: 403 for a
+  non-admin, 404 for an unknown package, a 422 per cause (unknown version, draft, foreign
+  lineage, undecided criterion, drifted `source_config`) each leaving **no assessor row
+  behind**, the 409 carrying exactly the executed criterion that changed with its
+  `pass_condition`, and the same call with it confirmed going through. Ratifying twice
+  reports that neither the registration nor the ratification happened again, and inserts
+  nothing.
+- **The registry's ratification state pinned** (suite): a package declared in code lists
+  its lineage's versions with no identity row at all; after the act, exactly that version
+  flips and carries who and when; a draft is listed and never ratified.
+- **The ratification surface checked against the dev database by hand**, not only over
+  fixtures: `/admin/assessors` returns both kinds with `kind` set; the registry reports
+  `drafts-hybrid:2` and `drafts-structural:1` with no identity row over the three published
+  `course-drafts-qa` versions, and `structural:1` ratifying `learnpack-course-qa-v1` (by
+  Admin, 08-Aug) — the state STATUS describes, read from the endpoint. The refusals answer
+  there too (404 unknown package, 422 unknown version, 422 foreign lineage, 403 for an
+  evaluator) and **leave no assessor row behind**. The success path against that database
+  was deliberately not taken: ratifying `drafts-hybrid:2` is the team's pending act, and
+  there is no un-ratify.
+- **Frontend**: typecheck and production build clean, `/admin/assessors` among the built
+  routes. The page has **not** been exercised in a browser — no browser was available in
+  the session that wrote it, and the repo has no frontend tests. The toggle, the dialog and
+  the per-criterion confirmation step are unverified visually.
 - **The calibration endpoints pinned** (suite): the registry listing carries coverage and
   `uses_llm` and leaks nothing else; a run over a draft against the frozen course does
   **zero writes** (evaluations, judgments and events counted before and after), the real
@@ -484,7 +536,6 @@ the data in the package).
   (the reset also wipes ratifications, studies and generator versions), `/me` and
   `/dev/identities` responding with `X-Dev-User`, and the frontend compiling **without any
   Clerk key**.
-- **Frontend typecheck** clean (`npx tsc --noEmit`).
 - **Clerk identity end-to-end**: JWT template with `email`/`name`, invite-only, admin and
   evaluator entering with the correct role. The `backend/README.md` runbook has already been run
   in the development environment.
@@ -533,6 +584,14 @@ the data in the package).
   used to answer are gone — those endings are now the run's `error.kind`
   (`profile_missing` / `assessor_failed`), because a request that returns before the work
   starts cannot report how the work went. Only this repo's console calls it.
+  Since **ADR-0036** `GET /admin/assessors` carries `kind` (`human | automated`) and, for
+  the automated ones, `automated: {name, version, instrument_id}`; `GET
+  /admin/assessor-packages` carries `assessor_id` (null while nothing has ratified the
+  package) and `lineage_versions`; and `POST
+  /admin/assessor-packages/{name}/{version}/ratify` exists — **409** carries an object
+  (`{message, previous_version_id, criteria: [{criterion_id, change, pass_condition}]}`),
+  everything else it refuses is a 422 whose `detail` is the cause. All three are additive
+  for existing clients.
 - **`GeneratorArtifact` retired (ADR-0030).** The entity, the `generator_artifacts` table
   (migration 0016), the event, both endpoints and the console form are gone. It was built
   under the "register yes, extract no" mark and never read by anything: no policy subscribed,
