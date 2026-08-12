@@ -70,6 +70,27 @@ def test_a_usable_answer_comes_back_with_its_usage():
     assert payload["temperature"] == 0.0
 
 
+def test_what_the_caller_pins_travels_and_cannot_overwrite_the_call():
+    """The assessor pins semantic wire fields (`reasoning`); the transport forwards them
+    without reading them, and without letting one smuggle in another model."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=ok_body())
+
+    client, _ = client_with(handler)
+    client.complete(
+        model="provider/model",
+        messages=MESSAGES,
+        extra_body={"reasoning": {"effort": "none"}, "model": "someone/else"},
+    )
+
+    payload = json.loads(seen[0].content)
+    assert payload["reasoning"] == {"effort": "none"}
+    assert payload["model"] == "provider/model"
+
+
 def test_a_rate_limit_is_retried_honoring_retry_after():
     responses = iter(
         [

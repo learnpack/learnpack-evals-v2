@@ -105,9 +105,17 @@ class ChatCompletionsClient:
         temperature: float = 0.0,
         max_tokens: int | None = None,
         response_format: Mapping[str, Any] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
         task_id: str | None = None,
     ) -> LlmCompletion:
-        """`task_id` names the caller's question in the trace; it never reaches the wire."""
+        """`task_id` names the caller's question in the trace; it never reaches the wire.
+
+        `extra_body` is wire fields the CALLER pins — `reasoning`, `provider` routing,
+        whatever the endpoint understands. They are forwarded verbatim and never read
+        here: what they mean is the assessor's identity, and a transport that interpreted
+        them would be deciding something (ADR-0034 §1). They cannot overwrite the fields
+        this method owns, so nothing can smuggle in another `model`.
+        """
         if not self._api_key:
             raise LlmConfigurationError(
                 "no LLM API key configured — set LLM_API_KEY (the key is environment, "
@@ -122,6 +130,8 @@ class ChatCompletionsClient:
             payload["max_tokens"] = max_tokens
         if response_format is not None:
             payload["response_format"] = dict(response_format)
+        for field, value in (extra_body or {}).items():
+            payload.setdefault(field, value)
 
         sent = observability.messages_of(messages)
         started = time.monotonic()
