@@ -345,7 +345,23 @@ That misfire is worth keeping as a note about the machine, not just about this b
 instrument version takes effect the moment it is imported, an assessor version takes effect
 when the process restarts, and the console shows which assessor is actually loaded.
 
-**The next run died, and on a defect of the same family.** A corpus that a task demands
+**Then a run took ten minutes to die, on the half of the problem the cap could not
+reach.** `MAX_EVIDENCE` bounds what a judgement may CONTAIN and is checked once the answer
+has arrived, so it stops garbage being stored, not minutes being paid. A second sample of
+`cr-closing-lesson-projects-forward` repeated one sentence into the evidence array until it
+ran to the 8000-token budget — 32 000 characters — and since a truncated answer is a
+violation, it was fed back and did it twice more. Three attempts, 24 000 output tokens, 558
+seconds, no result. Two bounds close it. A judging call now gets **1500** output tokens
+rather than the extraction tasks' 8000: judged answers that completed run a median of 153
+tokens and a maximum of 773 across every run so far, so the budget is about twice the widest
+real answer and cuts a loop off in seconds. And **an answer stopped at the limit is no longer
+retried** — the same lesson v1 taught about `finish_reason: length`, which had never once
+been recovered by asking again; the exception names the budget and the spend instead. Only
+when the answer is unusable: one that hits the limit and still parses and validates is
+returned, since a usable answer is a usable answer. That failed run would have cost one
+attempt, ~1500 tokens and ~35 seconds.
+
+**The run before it died on a defect of the same family.** A corpus that a task demands
 verbatim quotes from was being built with `json.dumps`, so an assessment item reading
 `class="title"` reached the model as `class=\"title\"`. The model quoted what it could read
 — the course's actual text — and the grounding check refused a citation that was correct.
@@ -660,7 +676,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 820 tests** against local Postgres (~60 s). Requires
+- **Backend suite green: 822 tests** against local Postgres (~60 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -677,6 +693,9 @@ the data in the package).
   do; the reach count admits only lesson identifiers the plan declares. The frozen
   LearnpackV2 fixture partitions 29 outcomes with 19 executed over **fifteen** calls — five
   judged criteria voted on twice each, two sharing one extraction and two one mapping.
+- **Both bounds pinned** (suite): a judging call is issued with the smaller budget, and an
+  answer the provider stopped at the limit raises on the first attempt instead of spending
+  the schema budget on a reply that cannot change.
 - **The corpora pinned as plain text** (suite): an item whose question contains HTML with
   quoted attributes is shown to the model exactly as the course writes it, and a quote of it
   grounds on the first answer — no retry, no abort. Replayed against the run that died, the

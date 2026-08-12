@@ -98,6 +98,19 @@ def request_structured_output(
                 tokens_out=tokens_out,
                 latency_ms=latency_ms,
             )
+        # An answer cut off at the token budget is not a mistake feedback can correct: the
+        # model ran to the limit, so the same conversation runs to it again. Every such stop
+        # seen so far has been a degeneration — a phrase repeated until the budget was gone —
+        # and every one was retried to exhaustion for nothing, the last of them for nine
+        # minutes. The remedy is the task's budget, or the prompt that let the answer sprawl.
+        if completion.finish_reason == "length":
+            raise AssessorExecutionError(
+                f"task '{task_id}': the model ran to its {max_tokens}-token budget without "
+                f"finishing the answer, so what came back cannot be read "
+                f"({completion.tokens_out} tokens emitted). Retrying spends the budget on "
+                f"the same reply — raise the task's budget or narrow what it asks for. "
+                f"First violation: {violations[0]}"
+            )
         # A model that answers the same thing again has not understood the feedback and
         # will not on the next round either: at temperature 0 the same conversation gives
         # the same answer, so the remaining budget would buy a fixed reply. Calibration

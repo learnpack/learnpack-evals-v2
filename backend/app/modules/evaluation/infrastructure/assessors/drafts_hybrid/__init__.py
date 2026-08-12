@@ -19,12 +19,17 @@ quoting a sentence that carries `**bold**` drops the markers about as often as i
 and byte comparison called that a hallucination. Emphasis is invisible to the match now, the
 same way whitespace already was, and the stored quote is still the source's own span.
 
-**And the evidence list has a ceiling.** v4 made it a list because findings rest on several
-places at once; unbounded, it turned out to be a way to spend the whole output budget on
-nothing — one answer looped a nine-quote cycle until the token limit cut it off at 191
-entries, 18 of them distinct, three quarters of that evaluation's whole output. A vote pays
-for such an answer twice. The cap is checked before the quotes are, so what goes back is one
-readable complaint rather than one per entry.
+**And a judgement is bounded twice over, because one bound was not enough.** v4 made the
+evidence a list, since findings rest on several places at once; unbounded, that turned out to
+be a way to spend the whole output budget on nothing — one answer looped a nine-quote cycle
+until the token limit cut it off at 191 entries, 18 of them distinct. `MAX_EVIDENCE` caps what
+a judgement may CONTAIN, checked before the quotes are so the complaint that goes back is one
+line rather than one per entry. But it is checked after the answer arrives, so it stops the
+garbage being stored and not the minutes being paid: the next degeneration repeated a single
+sentence into the array, ran to the 8000-token budget three times over, and cost nine minutes
+before the evaluation died. `JUDGE_MAX_OUTPUT_TOKENS` is the other half — a judging call is
+given roughly twice the widest real answer rather than the extraction tasks' budget, so a
+model that starts looping is cut off in seconds. A vote pays for all of this twice.
 
 v4 fixed what the first calibration runs of v3 found: the evidence contract asked for ONE
 continuous quote from judgements that rest on several places in the text, so a correct
@@ -221,6 +226,9 @@ SOURCE_CONFIG = {
         # Declared for the same reason: it bounds what an answer may contain, and the
         # prompt states it, so it shapes what comes back rather than merely how it travels.
         "maxEvidence": judgments.MAX_EVIDENCE,
+        # A judging call gets its own, much smaller budget than the extraction tasks: what
+        # an answer may cost is as much a part of what comes back as what it may contain.
+        "judgeMaxOutputTokens": judgments.JUDGE_MAX_OUTPUT_TOKENS,
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,

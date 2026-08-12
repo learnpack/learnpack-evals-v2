@@ -717,6 +717,34 @@ def test_a_quote_that_drops_markdown_emphasis_still_grounds(fake_llm):
     assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
 
 
+def test_an_answer_cut_off_at_the_budget_is_not_retried(fake_llm):
+    """The failure the cap could not prevent: a model repeating one sentence into the
+    evidence array runs to the budget, so the JSON never even parses. Feedback cannot correct
+    a limit — three such attempts once cost nine minutes and bought nothing."""
+
+    client = fake_llm(closing_integrates=['{"reason": "cut off here'] * 3)
+    answer = client.complete
+    client.complete = lambda **kwargs: dataclasses.replace(  # type: ignore[method-assign]
+        answer(**kwargs), finish_reason="length"
+    )
+
+    with pytest.raises(AssessorExecutionError, match="without finishing the answer"):
+        run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert len(client.calls) == 1  # not the full schema budget
+
+
+def test_a_judging_call_gets_a_tighter_budget_than_the_extraction_tasks(fake_llm):
+    """What an answer may cost bounds degeneration where the evidence cap cannot: the cap is
+    checked after the answer arrives, the budget while it is being written."""
+    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
+
+    run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert client.calls[0]["max_tokens"] == judgments.JUDGE_MAX_OUTPUT_TOKENS
+    assert judgments.JUDGE_MAX_OUTPUT_TOKENS < tasks.MAX_OUTPUT_TOKENS
+
+
 def test_a_runaway_evidence_list_is_refused_with_one_complaint(fake_llm):
     """The degeneration the cap exists for: a real answer looped a nine-quote cycle until
     the token limit cut it off at 191 entries. The complaint that goes back names the rule

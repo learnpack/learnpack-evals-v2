@@ -98,6 +98,18 @@ MAX_SAMPLES = 3
 # stop degeneration, not to enforce parsimony.
 MAX_EVIDENCE = 12
 
+# What a judging call may emit. `MAX_EVIDENCE` bounds what a judgement may CONTAIN, and it
+# is checked after the answer arrives — which stops garbage being stored but not from being
+# paid for. Only the budget stops that, and 8000 (the figure the extraction tasks need,
+# inherited from v2's reasoning problem) buys about three minutes of a model repeating one
+# sentence into the evidence array. Judged answers that completed run a median of 153 output
+# tokens and a maximum of 773 across every run so far, so 1500 is roughly twice the widest
+# real answer and cuts a degeneration off in seconds instead of minutes.
+#
+# The extraction tasks keep the larger budget: their output scales with how many objectives
+# or items a draft declares, and neither has ever degenerated.
+JUDGE_MAX_OUTPUT_TOKENS = 1500
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -320,7 +332,7 @@ def _ask(
         ),
         validate=lambda answer: _validate_verdict(answer, corpus, len(spec.failure_modes)),
         temperature=tasks.TEMPERATURE,
-        max_tokens=tasks.MAX_OUTPUT_TOKENS,
+        max_tokens=JUDGE_MAX_OUTPUT_TOKENS,
         reasoning=tasks.REASONING,
     )
     raw_mode = payload.get("failureMode")
