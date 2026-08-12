@@ -340,8 +340,8 @@ one JSON object per line, per run:
 
 ```
 {"task_id": "...", "attempt": 1, "model_requested": "...", "model_answered": "...",
- "provider": "...", "messages": [...], "response_text": "...", "finish_reason": "...",
- "tokens_in": 0, "tokens_out": 0, "latency_ms": 0, "error": null}
+ "provider": "...", "sampling": {...}, "messages": [...], "response_text": "...",
+ "finish_reason": "...", "tokens_in": 0, "tokens_out": 0, "latency_ms": 0, "error": null}
 ```
 
 One record per **attempt**, not per successful call: a task that took three rounds to
@@ -351,6 +351,11 @@ cannot be compared against the one that produced a different answer, which is th
 reason to read this.
 
 What each field settles:
+
+- `sampling` — what was asked for besides the conversation: temperature, the output
+  budget, the response format, whether the model may reason. It decides the answer as
+  much as the prompt does, so it is recorded next to it; `drafts-hybrid:1` failed every
+  run on this half with its prompts intact.
 
 - `finish_reason: "length"` with **no content** — the model stopped at the token limit
   having written nothing. A reasoning model bills its thinking as output tokens, so

@@ -318,6 +318,32 @@ def test_a_record_carries_what_was_sent_and_what_came_back():
     assert (call.tokens_in, call.tokens_out) == (10, 5)
 
 
+def test_a_record_carries_how_the_model_was_sampled():
+    """The other half of the question. A wrong answer is traced to it as often as to the
+    prompt — v1 of `drafts-hybrid` failed every run on sampling, with prompts intact."""
+    client, _ = client_with(lambda request: httpx.Response(200, json=ok_body()))
+
+    calls, sink = observability.recording()
+    with observability.collecting(sink):
+        client.complete(
+            model="provider/model",
+            messages=MESSAGES,
+            max_tokens=8000,
+            response_format={"type": "json_object"},
+            extra_body={"reasoning": {"effort": "none"}},
+        )
+
+    (call,) = calls
+    assert call.sampling == {
+        "temperature": 0.0,
+        "max_tokens": 8000,
+        "response_format": {"type": "json_object"},
+        "reasoning": {"effort": "none"},
+    }
+    # The conversation and the model are fields of their own; this is what is left.
+    assert "messages" not in call.sampling and "model" not in call.sampling
+
+
 def test_a_truncated_answer_is_recorded_as_such():
     """`length` is recorded, not acted upon — naming it is what allows the diagnosis."""
     body = ok_body(content='{"outcomes": [', finish_reason="length")

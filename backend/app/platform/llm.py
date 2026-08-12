@@ -73,6 +73,28 @@ class LlmCompletion:
     provider: str | None = None
 
 
+@dataclass(frozen=True)
+class _Asked:
+    """What the question is, unchanged across the attempts it takes to get an answer."""
+
+    task_id: str | None
+    model: str
+    messages: tuple[Mapping[str, str], ...]
+    sampling: Mapping[str, Any]
+
+    def attempt(self, number: int) -> "_Attempt":
+        return _Attempt(asked=self, number=number, started=time.monotonic())
+
+
+@dataclass(frozen=True)
+class _Attempt:
+    """One try at it — the question plus when this try began."""
+
+    asked: _Asked
+    number: int
+    started: float
+
+
 class ChatCompletionsClient:
     """POST `{base_url}/chat/completions`, retrying what is transient, typing what is not.
 
@@ -133,11 +155,21 @@ class ChatCompletionsClient:
         for field, value in (extra_body or {}).items():
             payload.setdefault(field, value)
 
-        sent = observability.messages_of(messages)
+        # Everything the request carries except the conversation and the model, both of
+        # which every record already names. This is the half of "what was asked" that
+        # used to be invisible.
+        named_elsewhere = ("messages", "model")
+        sampling = {key: value for key, value in payload.items() if key not in named_elsewhere}
+        asked = _Asked(
+            task_id=task_id,
+            model=model,
+            messages=observability.messages_of(messages),
+            sampling=sampling,
+        )
         started = time.monotonic()
         last_transient = ""
         for attempt in range(1, MAX_TRANSPORT_ATTEMPTS + 1):
-            attempt_started = time.monotonic()
+            here = asked.attempt(attempt)
             try:
                 response = self._http.post(
                     "/chat/completions",
@@ -146,21 +178,13 @@ class ChatCompletionsClient:
                 )
             except httpx.HTTPError as exc:
                 last_transient = f"{type(exc).__name__}: {exc}"
-                _observe(task_id, attempt, model, sent, attempt_started, error=last_transient)
+                _observe(here, error=last_transient)
                 self._backoff(attempt, retry_after=None, cause=last_transient)
                 continue
 
             if response.status_code in RETRYABLE_STATUS:
                 last_transient = f"HTTP {response.status_code}"
-                _observe(
-                    task_id,
-                    attempt,
-                    model,
-                    sent,
-                    attempt_started,
-                    response_text=response.text,
-                    error=last_transient,
-                )
+                _observe(here, response_text=response.text, error=last_transient)
                 self._backoff(
                     attempt, retry_after=response.headers.get("Retry-After"), cause=last_transient
                 )
@@ -169,15 +193,7 @@ class ChatCompletionsClient:
                 # A hard 4xx is not transient: retrying an unknown model or a bad request
                 # would spend the budget re-asking a question with a fixed answer.
                 detail = f"HTTP {response.status_code} from {response.url}: {response.text[:500]}"
-                _observe(
-                    task_id,
-                    attempt,
-                    model,
-                    sent,
-                    attempt_started,
-                    response_text=response.text,
-                    error=detail,
-                )
+                _observe(here, response_text=response.text, error=detail)
                 raise LlmResponseError(detail)
             latency_ms = int((time.monotonic() - started) * 1000)
             try:
@@ -185,15 +201,7 @@ class ChatCompletionsClient:
             except LlmResponseError as exc:
                 # A 2xx nobody can use is still an answer the trace must carry: it is the
                 # only place the unusable body can be read afterwards.
-                _observe(
-                    task_id,
-                    attempt,
-                    model,
-                    sent,
-                    attempt_started,
-                    response_text=response.text,
-                    error=str(exc),
-                )
+                _observe(here, response_text=response.text, error=str(exc))
                 raise
 
             upstream = _upstream_error(body)
@@ -201,11 +209,7 @@ class ChatCompletionsClient:
                 code, message = upstream
                 detail = f"upstream error {code}: {message}"
                 _observe(
-                    task_id,
-                    attempt,
-                    model,
-                    sent,
-                    attempt_started,
+                    here,
                     response_text=response.text,
                     error=detail,
                     provider=_provider(body),
@@ -221,18 +225,14 @@ class ChatCompletionsClient:
                 completion = _completion(body, requested_model=model, latency_ms=latency_ms)
             except LlmResponseError as exc:
                 _observe(
-                    task_id,
-                    attempt,
-                    model,
-                    sent,
-                    attempt_started,
+                    here,
                     response_text=response.text,
                     error=str(exc),
                     provider=_provider(body),
                     finish_reason=_finish_reason(body),
                 )
                 raise
-            _observe(task_id, attempt, model, sent, attempt_started, completion=completion)
+            _observe(here, completion=completion)
             return completion
 
         raise LlmTransportError(
@@ -347,11 +347,7 @@ def _completion(body: Any, requested_model: str, latency_ms: int) -> LlmCompleti
 
 
 def _observe(
-    task_id: str | None,
-    attempt: int,
-    model: str,
-    messages: tuple[Mapping[str, str], ...],
-    started: float,
+    attempt: _Attempt,
     *,
     completion: LlmCompletion | None = None,
     response_text: str | None = None,
@@ -366,11 +362,12 @@ def _observe(
     """
     observability.emit(
         observability.LlmCall(
-            task_id=task_id,
-            attempt=attempt,
-            model_requested=model,
-            messages=messages,
-            latency_ms=int((time.monotonic() - started) * 1000),
+            task_id=attempt.asked.task_id,
+            attempt=attempt.number,
+            model_requested=attempt.asked.model,
+            messages=attempt.asked.messages,
+            sampling=attempt.asked.sampling,
+            latency_ms=int((time.monotonic() - attempt.started) * 1000),
             model_answered=completion.model if completion is not None else None,
             provider=completion.provider if completion is not None else provider,
             response_text=completion.text if completion is not None else response_text,

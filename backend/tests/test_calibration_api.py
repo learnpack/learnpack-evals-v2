@@ -318,6 +318,7 @@ def test_the_trace_carries_every_llm_attempt_of_the_run(
                     attempt=attempt,
                     model_requested="vendor/model",
                     messages=({"role": "user", "content": prompt},),
+                    sampling={"temperature": 0.0, "reasoning": {"effort": "none"}},
                     latency_ms=12,
                     model_answered=None if error else "vendor/model",
                     provider=None if error else "TheOneThatAnswered",
@@ -353,6 +354,8 @@ def test_the_trace_carries_every_llm_attempt_of_the_run(
     assert succeeded["provider"] == "TheOneThatAnswered"
     assert succeeded["response_text"] == '{"objectives": []}'
     assert succeeded["messages"][0]["content"] == prompt  # whole, not abridged
+    # How it was sampled travels too: it decides the answer as much as the prompt does.
+    assert succeeded["sampling"] == {"temperature": 0.0, "reasoning": {"effort": "none"}}
 
     # The same records are the live progress the page reads while it waits.
     llm_steps = [step for step in run["steps"] if step["kind"] == "llm_call"]

@@ -22,7 +22,7 @@ import logging
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,11 @@ class LlmCall:
     model_requested: str
     messages: tuple[Mapping[str, str], ...]
     latency_ms: int
+    # What was asked for besides the conversation: temperature, the output budget, the
+    # response format, whatever else the caller pinned. Sampling decides the answer as
+    # much as the prompt does — a trace without it cannot tell a bad prompt from a badly
+    # sampled model, which is exactly the question that took four runs to settle once.
+    sampling: Mapping[str, Any] = field(default_factory=dict)
     model_answered: str | None = None
     # Which upstream provider served the request. OpenRouter routes one model id to
     # several of them, and they do not honor `response_format` alike — so "who answered"
@@ -64,6 +69,7 @@ class LlmCall:
             "model_requested": self.model_requested,
             "model_answered": self.model_answered,
             "provider": self.provider,
+            "sampling": dict(self.sampling),
             "messages": [dict(message) for message in self.messages],
             "response_text": self.response_text,
             "finish_reason": self.finish_reason,

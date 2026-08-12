@@ -347,6 +347,9 @@ class LlmCallResponse(BaseModel):
     model_requested: str
     model_answered: str | None
     provider: str | None
+    # Temperature, output budget, response format, whatever the assessor pinned: the half
+    # of "what was asked" that is not the conversation, and decides the answer just as much.
+    sampling: dict[str, Any]
     messages: list[dict[str, str]]
     response_text: str | None
     finish_reason: str | None
