@@ -1,16 +1,16 @@
-# Notas de trabajo (working docs) — efímeras por diseño.
-# Si algo de acá tiene que sobrevivir a la tarea, se promueve: ADR, reference o docs/design/.
-# Ver "Documentación" en CLAUDE.md.
+# Working notes — ephemeral by design.
+# If something here must outlive the task, promote it: ADR, reference, or docs/design/.
+# See "Documentation" in CLAUDE.md.
 notes/*
 !notes/README.md
 
-# Cursos locales a evaluar (ADR-0027) — contenido descargado, nunca versionado.
-# Estructura: courses/<generador>@<version>/<curso>/ · ver courses/README.md.
+# Local courses under evaluation (ADR-0027) — downloaded content, never versioned.
+# Layout: courses/<generator>@<version>/<course>/ · see courses/README.md.
 courses/*
 !courses/README.md
 
-# Trazas de las corridas con LLM (LLM_TRACE_DIR) — prompts y respuestas crudas de una
-# máquina concreta, nunca versionadas. Ver "Reading a calibration trace" en backend/README.md.
+# Traces from LLM runs (LLM_TRACE_DIR) — raw prompts and responses from a
+# specific machine, never versioned. See "Reading a calibration trace" in backend/README.md.
 backend/runs/
 
 # OS
