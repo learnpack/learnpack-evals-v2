@@ -38,7 +38,20 @@ CONCEPT_TRAJECTORY_MODEL = "deepseek/deepseek-v4-flash-0731"
 
 # Deterministic-as-the-provider-allows: these are classification tasks, not writing tasks.
 TEMPERATURE = 0.0
-MAX_OUTPUT_TOKENS = 2048
+
+# No thinking out loud. A reasoning model bills its thinking as output tokens, so it
+# competes with the answer for `MAX_OUTPUT_TOKENS` — and on these tasks it wins: the
+# calibration runs of v1 recorded 2048–2325 reasoning tokens and no answer at all,
+# every time. `effort: "none"` is the field that disables it; `exclude: true` would only
+# hide the thinking from the response while still generating and paying for it, which is
+# the same failure with less evidence.
+REASONING = {"effort": "none"}
+
+# Room for the answer even where reasoning happens anyway (not every provider honors
+# `effort`). Extraction over one lesson body answers in the low hundreds of tokens, so
+# this is a ceiling, not a spend: what is not emitted is not billed. The old 2048 was
+# below what the thinking alone consumed.
+MAX_OUTPUT_TOKENS = 8000
 
 # Revised Bloom, in demand order — rank 1 is `remember`, rank 6 is `create`.
 BLOOM_LEVELS = ("remember", "understand", "apply", "analyze", "evaluate", "create")
@@ -141,6 +154,7 @@ def outcomes_extraction(profile: ProfileData) -> tuple[list[OutcomeStatement], L
             validate=lambda answer: _validate_outcomes(answer, body),
             temperature=TEMPERATURE,
             max_tokens=MAX_OUTPUT_TOKENS,
+            reasoning=REASONING,
         )
         outcomes = [
             OutcomeStatement(
@@ -211,6 +225,7 @@ def objectives_classification(
             validate=lambda answer: _validate_objectives(answer, expected=len(texts)),
             temperature=TEMPERATURE,
             max_tokens=MAX_OUTPUT_TOKENS,
+            reasoning=REASONING,
         )
         by_index = {int(item["index"]): item for item in payload["objectives"]}
         classified = [
@@ -300,6 +315,7 @@ def concept_trajectory(profile: ProfileData) -> tuple[list[LessonSophistication]
             validate=lambda answer: _validate_trajectory(answer, expected_ids=core_ids),
             temperature=TEMPERATURE,
             max_tokens=MAX_OUTPUT_TOKENS,
+            reasoning=REASONING,
         )
         by_id = {str(item["lessonId"]): int(item["level"]) for item in payload["lessons"]}
         trajectory = [

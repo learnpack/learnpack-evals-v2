@@ -1,4 +1,4 @@
-"""`drafts-hybrid` v1 — the semantic executors over a fake transport, the coverage vs the
+"""`drafts-hybrid` v2 — the semantic executors over a fake transport, the coverage vs the
 real v3 YAML, the whole package against the frozen LearnpackV2 fixture, and ratification.
 
 The fake replaces the TRANSPORT only (the seam is `runtime.get_client`, ADR-0034):
@@ -39,7 +39,7 @@ from app.platform.db import SessionLocal
 from app.platform.llm import LlmCompletion, LlmTransportError
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "1")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "2")]
 
 _V3_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v3.yaml").read_text(encoding="utf-8")
@@ -81,14 +81,24 @@ class FakeLlmClient:
         self.calls: list[dict] = []
 
     def complete(
-        self, *, model, messages, temperature, max_tokens, response_format=None, task_id=None
+        self,
+        *,
+        model,
+        messages,
+        temperature,
+        max_tokens,
+        response_format=None,
+        extra_body=None,
+        task_id=None,
     ):
         self.calls.append(
             {
                 "model": model,
                 "messages": list(messages),
                 "temperature": temperature,
+                "max_tokens": max_tokens,
                 "response_format": response_format,
+                "extra_body": extra_body,
                 "task_id": task_id,
             }
         )
@@ -246,6 +256,10 @@ def test_source_config_declares_the_semantic_identity():
         "concept_trajectory",
     }
     assert llm["temperature"] == 0.0
+    # The two v2 exists for: no thinking out loud, and room for the answer if it happens
+    # anyway. Both decide what comes back, so both are declared, not left to the wire.
+    assert llm["reasoning"] == {"effort": "none"}
+    assert llm["maxOutputTokens"] == 8000
     fingerprint = llm["promptsFingerprint"]
     assert isinstance(fingerprint, str) and len(fingerprint) == 64
     from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts
@@ -270,6 +284,9 @@ def test_objectives_observable_verbs(fake_llm):
     metric_ids = {m.metric_id for m in verdict.metrics}
     assert metric_ids == {"llm_objectives_classification", "objective_bloom_levels"}
     assert client.calls[0]["temperature"] == 0.0
+    # What v1 lost every run to: the thinking is off and the budget has room either way.
+    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none"}}
+    assert client.calls[0]["max_tokens"] == 8000
 
     tasks.clear_task_cache()
     fake_llm(objectives=[objectives_json(("apply", True), ("analyze", True))])
@@ -589,11 +606,16 @@ def test_ratifying_v3_stores_the_semantic_identity(
     admin_id, email = admin
 
     v3_id = publish_instrument(cleanup, hybrid_copy_spec(unique), admin_id)
-    assert run_ratify_assessor(patched_hybrid_package.name, "1", v3_id, email, []) == 0
-    track_automated(cleanup, patched_hybrid_package.name)
+    ratified = run_ratify_assessor(
+        patched_hybrid_package.name, patched_hybrid_package.version, v3_id, email, []
+    )
+    assert ratified == 0
+    track_automated(cleanup, patched_hybrid_package.name, patched_hybrid_package.version)
 
     with SessionLocal() as session:
-        row = SqlAlchemyAssessorRepository(session).get_automated(patched_hybrid_package.name, "1")
+        row = SqlAlchemyAssessorRepository(session).get_automated(
+            patched_hybrid_package.name, patched_hybrid_package.version
+        )
     assert row is not None
     assert row.source_config == patched_hybrid_package.source_config
     assert row.source_config["llm"]["promptsFingerprint"]

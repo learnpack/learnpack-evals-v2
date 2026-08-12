@@ -63,9 +63,9 @@ def test_assessor_packages_list_the_registry_without_its_internals(admin):
     assert response.status_code == 200, response.text
     by_key = {(p["name"], p["version"]): p for p in response.json()}
 
-    hybrid = by_key[("drafts-hybrid", "1")]
+    hybrid = by_key[("drafts-hybrid", "2")]
     assert hybrid["instrument_id"] == "course-drafts-qa"
-    assert hybrid["display_name"] == "drafts-hybrid v1"
+    assert hybrid["display_name"] == "drafts-hybrid v2"
     assert hybrid["uses_llm"] is True
     assert len(hybrid["executes"]) == 12 and len(hybrid["abstains"]) == 17
     # Abstention reasons are data the page shows; executors and source_config are not.
@@ -236,7 +236,7 @@ def test_preview_with_an_unknown_assessor_is_404_and_names_the_registry(admin, p
         },
     )
     assert response.status_code == 404
-    assert "drafts-hybrid:1" in response.json()["detail"]  # the known list, like the CLI
+    assert "drafts-hybrid:2" in response.json()["detail"]  # the known list, like the CLI
 
 
 def test_an_unknown_instrument_fails_the_run(admin, patched_package, profiled_course):
