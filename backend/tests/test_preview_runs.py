@@ -181,6 +181,14 @@ def test_a_trace_file_is_written_only_where_a_machine_asked_for_one(monkeypatch,
     assert observability.trace_path("a-run") == tmp_path / "a-run.jsonl"
 
 
+def test_the_suite_itself_never_writes_a_trace_file():
+    """Once a fake attempt is sitting in a developer's trace folder it is indistinguishable
+    from a real one — the run id in the filename says nothing about who wrote it, and the
+    tests here emit calls that look exactly like a model's. conftest turns the setting off
+    for the whole suite; this is that guarantee, pinned."""
+    assert observability.trace_path("would-be-a-run") is None
+
+
 def test_each_attempt_is_one_json_line_kept_whole(tmp_path):
     path = tmp_path / "run.jsonl"
     sink = observability.jsonl_sink(path)
