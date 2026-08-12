@@ -226,9 +226,11 @@ SOURCE_CONFIG = {
         # Declared for the same reason: it bounds what an answer may contain, and the
         # prompt states it, so it shapes what comes back rather than merely how it travels.
         "maxEvidence": judgments.MAX_EVIDENCE,
-        # A judging call gets its own, much smaller budget than the extraction tasks: what
-        # an answer may cost is as much a part of what comes back as what it may contain.
+        # What an answer may cost is as much a part of what comes back as what it may
+        # contain. Judging and the two extraction tasks are bounded apart, because their
+        # honest sizes differ by an order of magnitude.
         "judgeMaxOutputTokens": judgments.JUDGE_MAX_OUTPUT_TOKENS,
+        "extractionMaxOutputTokens": judgments.EXTRACTION_MAX_OUTPUT_TOKENS,
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,

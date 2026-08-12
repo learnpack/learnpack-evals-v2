@@ -345,7 +345,27 @@ That misfire is worth keeping as a note about the machine, not just about this b
 instrument version takes effect the moment it is imported, an assessor version takes effect
 when the process restarts, and the console shows which assessor is actually loaded.
 
-**Then a run took ten minutes to die, on the half of the problem the cap could not
+**Degeneration turned out not to be a property of judging.** The judge's budget was cut
+first, on the reasoning that only judging had ever looped; the next pair of runs falsified
+it. One died in `assessment_reach`, whose `referencesLessonIds` filled with repeated and then
+invented lesson ids until the 8000-token budget was gone — 124 seconds for nothing. What
+invites a loop is a **free-length array in an output schema**, and the two extraction tasks
+here have one each. Both are now bounded the same two ways: their own output budget (2500,
+about five times the measured maxima of 424 and 518, so a draft several times larger still
+fits) and a **no-duplicates rule in every free-length array** — evidence quotes, matched item
+indices, referenced lesson ids. Repetition is exactly the shape a degenerating answer takes,
+and refusing it also bounds each list by what the draft contains: a mapping cannot name more
+items than exist, a reach more lessons than the plan has. `tasks.py`'s three extraction tasks
+keep the shared budget on purpose — none has degenerated, and `concept_trajectory` has
+legitimately spent 2412 tokens on a long plan.
+
+**A provider signal worth recording, not yet acted on.** Every `finish_reason: length` seen
+across this campaign — six of them — was served by the same upstream, while fourteen others
+produced none. It is suggestive rather than conclusive at that sample size, and it is the
+pinning question ADR-0034 §3 leaves open, now with evidence attached. Deliberately not fixed
+here.
+
+**Before that, a run took ten minutes to die, on the half of the problem the cap could not
 reach.** `MAX_EVIDENCE` bounds what a judgement may CONTAIN and is checked once the answer
 has arrived, so it stops garbage being stored, not minutes being paid. A second sample of
 `cr-closing-lesson-projects-forward` repeated one sentence into the evidence array until it
@@ -676,7 +696,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 822 tests** against local Postgres (~60 s). Requires
+- **Backend suite green: 824 tests** against local Postgres (~55 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -693,6 +713,9 @@ the data in the package).
   do; the reach count admits only lesson identifiers the plan declares. The frozen
   LearnpackV2 fixture partitions 29 outcomes with 19 executed over **fifteen** calls — five
   judged criteria voted on twice each, two sharing one extraction and two one mapping.
+- **Repetition refused in every free-length array** (suite): a reach answer naming one
+  lesson twice is fed back and the corrected one lands, and the extraction tasks are issued
+  with their own bounded budget.
 - **Both bounds pinned** (suite): a judging call is issued with the smaller budget, and an
   answer the provider stopped at the limit raises on the first attempt instead of spending
   the schema budget on a reply that cannot change.

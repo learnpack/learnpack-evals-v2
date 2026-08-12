@@ -106,9 +106,23 @@ MAX_EVIDENCE = 12
 # tokens and a maximum of 773 across every run so far, so 1500 is roughly twice the widest
 # real answer and cuts a degeneration off in seconds instead of minutes.
 #
-# The extraction tasks keep the larger budget: their output scales with how many objectives
-# or items a draft declares, and neither has ever degenerated.
 JUDGE_MAX_OUTPUT_TOKENS = 1500
+
+# The two extraction tasks here get a bound of their own. They were left on the shared 8000
+# on the reasoning that only judging had ever degenerated — which the next run falsified:
+# `assessment_reach` filled `referencesLessonIds` with repeated and then invented lesson ids
+# until the budget was gone, 124 seconds for nothing. Degeneration is not a property of
+# judging; it is what any FREE-LENGTH ARRAY in an output schema invites, and both of these
+# have one.
+#
+# Their output does scale with the draft — one entry per objective, one per item — so the
+# bound is set well above the measured maxima (424 tokens for the mapping, 518 for the reach)
+# rather than close to them: roughly five times, which is a draft several times larger than
+# any measured, and still cuts a loop off in a third of the time.
+#
+# `tasks.py`'s three extraction tasks keep the shared budget on purpose: none has degenerated,
+# and `concept_trajectory` has legitimately spent 2412 tokens on a long plan.
+EXTRACTION_MAX_OUTPUT_TOKENS = 2500
 
 
 @dataclass(frozen=True)
@@ -398,11 +412,18 @@ def _validate_verdict(answer: Any, corpus: str, failure_mode_count: int) -> list
             "judgement may rest on. Quote only the places that decide it, once each."
         )
     else:
+        seen: set[str] = set()
         for position, quote in enumerate(evidence):
             label = f'"evidence"[{position}]'
             if not isinstance(quote, str) or not quote.strip():
                 violations.append(f"{label} must be a non-empty string")
                 continue
+            # Repeating a passage does not make it more evidence, and repetition IS the
+            # shape a degenerating answer takes — one quote emitted until the budget ends.
+            if quote.strip() in seen:
+                violations.append(f"{label} repeats a passage already quoted; quote each once")
+                continue
+            seen.add(quote.strip())
             # The grounding rule: a citation that is not in the source is not evidence.
             violations.extend(_grounding_violations(label, quote, corpus))
     verdict = answer.get("verdict")
@@ -510,7 +531,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             user_prompt=prompts.ASSESSMENT_MAPPING_USER.substitute(corpus=corpus),
             validate=lambda answer: _validate_mapping(answer, corpus, objective_ids, len(items)),
             temperature=tasks.TEMPERATURE,
-            max_tokens=tasks.MAX_OUTPUT_TOKENS,
+            max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
         )
         by_id = {str(entry["objectiveId"]): entry for entry in payload["objectives"]}
@@ -562,6 +583,9 @@ def _validate_mapping(
         if not isinstance(indices, list):
             violations.append(f"{label}.itemIndices must be an array")
         else:
+            # No duplicates, which also bounds the list: it cannot be longer than the number
+            # of items, so a repeating answer is refused instead of growing without end.
+            listed: set[int] = set()
             for value in indices:
                 if not isinstance(value, int) or isinstance(value, bool):
                     violations.append(f"{label}.itemIndices must hold integers (got {value!r})")
@@ -570,6 +594,10 @@ def _validate_mapping(
                         f"{label}.itemIndices holds {value}, which is not an item index "
                         f"(0 to {item_count - 1})"
                     )
+                elif value in listed:
+                    violations.append(f"{label}.itemIndices lists item {value} more than once")
+                else:
+                    listed.add(value)
     if not violations and seen != expected:
         violations.append(f"missing an entry for objective id(s): {sorted(expected - seen)}")
     return violations
@@ -630,7 +658,7 @@ def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
             user_prompt=prompts.ASSESSMENT_REACH_USER.substitute(corpus=corpus),
             validate=lambda answer: _validate_reach(answer, lesson_ids, len(items)),
             temperature=tasks.TEMPERATURE,
-            max_tokens=tasks.MAX_OUTPUT_TOKENS,
+            max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
         )
         by_index = {int(entry["index"]): entry for entry in payload["items"]}
@@ -672,6 +700,10 @@ def _validate_reach(answer: Any, lesson_ids: Sequence[str], item_count: int) -> 
         if not isinstance(references, list):
             violations.append(f"{label}.referencesLessonIds must be an array")
         else:
+            # Membership plus no duplicates bounds the list at the size of the plan. This is
+            # the array that once filled with repeated and then invented ids until the whole
+            # budget was gone; either half alone would have let it run.
+            drawn: set[str] = set()
             for value in references:
                 # The closed-set equivalent of the grounding rule: a lesson the plan does
                 # not declare is an invented one, and the executor would count it.
@@ -680,6 +712,12 @@ def _validate_reach(answer: Any, lesson_ids: Sequence[str], item_count: int) -> 
                         f"{label}.referencesLessonIds holds {value!r}, which is not a lesson "
                         "identifier from the plan"
                     )
+                elif value in drawn:
+                    violations.append(
+                        f"{label}.referencesLessonIds names lesson {value!r} more than once"
+                    )
+                else:
+                    drawn.add(value)
     if not violations and len(seen) != item_count:
         violations.append(
             f"missing an entry for item index(es): {sorted(set(range(item_count)) - seen)}"

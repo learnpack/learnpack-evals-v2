@@ -745,6 +745,38 @@ def test_a_judging_call_gets_a_tighter_budget_than_the_extraction_tasks(fake_llm
     assert judgments.JUDGE_MAX_OUTPUT_TOKENS < tasks.MAX_OUTPUT_TOKENS
 
 
+def test_repetition_is_refused_in_every_free_length_array(fake_llm):
+    """Repetition is the shape a degenerating answer takes, and it is not confined to
+    judging: the reach list once filled with repeated and then invented lesson ids until the
+    budget was gone. Refusing duplicates also bounds each list by what the draft contains —
+    a mapping cannot name more items than exist, a reach more lessons than the plan has."""
+    data = judged_profile()
+    fake_llm(
+        assessment_reach=[
+            reach_json((0, ["00.0", "00.0", "01.0"]), (1, ["01.0"])),
+            reach_json((0, ["00.0", "01.0"]), (1, ["01.1"])),
+        ],
+    )
+    client = runtime.get_client()
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", data)
+
+    assert result.passed
+    feedback = client.calls[1]["messages"][-1]["content"]
+    assert "more than once" in feedback
+
+
+def test_the_extraction_tasks_are_bounded_too(fake_llm):
+    client = fake_llm(
+        assessment_reach=[reach_json((0, ["00.0", "01.0"]), (1, ["01.1"]))],
+    )
+
+    run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert client.calls[0]["max_tokens"] == judgments.EXTRACTION_MAX_OUTPUT_TOKENS
+    assert judgments.EXTRACTION_MAX_OUTPUT_TOKENS < tasks.MAX_OUTPUT_TOKENS
+
+
 def test_a_runaway_evidence_list_is_refused_with_one_complaint(fake_llm):
     """The degeneration the cap exists for: a real answer looped a nine-quote cycle until
     the token limit cut it off at 191 entries. The complaint that goes back names the rule
@@ -765,7 +797,16 @@ def test_a_runaway_evidence_list_is_refused_with_one_complaint(fake_llm):
 def test_the_cap_leaves_room_for_the_widest_answer_seen(fake_llm):
     """Eight passages is what the criterion that reads one block per declared objective
     produces on a real draft; the cap is set above the spread, not against it."""
-    wide = verdict_json(*([GROUNDED_CLOSING, "You have built a page"] * 4))
+    wide = verdict_json(
+        "Wrap up",
+        "You have built a page",
+        "styled it and published it",
+        GROUNDED_CLOSING,
+        "into one workflow",
+        "Next you will meet JavaScript",
+        "which makes it move",
+        "built a page, styled",
+    )
     fake_llm(closing_integrates=[wide] * 2)
 
     assert run_judged("cr-closing-lesson-integrates", judged_profile()).passed
