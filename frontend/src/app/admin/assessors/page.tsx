@@ -4,7 +4,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Dialog } from "@/components/ui/dialog";
 import {
   Table,
@@ -127,35 +128,43 @@ const STATUS_VARIANT = {
 
 function PackageCard({ pkg }: { pkg: AssessorPackageResponse }) {
   const [target, setTarget] = useState<LineageVersion | null>(null);
-  const ratifiedCount = pkg.lineage_versions.filter((v) => v.ratified).length;
+  const ratified = pkg.lineage_versions.filter((v) => v.ratified).length;
+  const awaiting = pkg.lineage_versions.filter(
+    (v) => !v.ratified && v.status === "published",
+  ).length;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle>{pkg.display_name}</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              <code>
-                {pkg.name}:{pkg.version}
-              </code>{" "}
-              · lineage <code>{pkg.instrument_id}</code>
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+    <>
+      {/* Collapsed by default: the list is read to find the package that needs something,
+          not to study one. What the closed row has to answer is exactly that — hence
+          `awaiting`, the count of published versions with a Ratify button waiting inside. */}
+      <CollapsibleSection
+        defaultOpen={false}
+        title={pkg.display_name}
+        badge={
+          <>
+            <code>
+              {pkg.name}:{pkg.version}
+            </code>{" "}
+            · lineage <code>{pkg.instrument_id}</code>
+          </>
+        }
+        meta={
+          <span className="flex flex-wrap items-center gap-2">
             {pkg.uses_llm ? <Badge variant="warning">LLM</Badge> : null}
             <Badge variant="secondary">
               {pkg.executes.length} executed · {Object.keys(pkg.abstains).length} abstained
             </Badge>
-            {/* Registered means "has an identity row", which only the first ratification
-                creates — so it is a summary of the table below, not a separate fact. */}
-            <Badge variant={ratifiedCount > 0 ? "success" : "outline"}>
-              {ratifiedCount > 0 ? `ratifies ${ratifiedCount}` : "never ratified"}
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
+            {awaiting > 0 ? (
+              <Badge variant="warning">{awaiting} to ratify</Badge>
+            ) : ratified > 0 ? (
+              <Badge variant="success">ratifies {ratified}</Badge>
+            ) : (
+              <Badge variant="outline">never ratified</Badge>
+            )}
+          </span>
+        }
+      >
         {pkg.lineage_versions.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No version of this lineage exists yet. Import one with{" "}
@@ -207,9 +216,11 @@ function PackageCard({ pkg }: { pkg: AssessorPackageResponse }) {
             </TableBody>
           </Table>
         )}
-      </CardContent>
+      </CollapsibleSection>
+      {/* Outside the disclosure: a dialog that unmounts when its section collapses would
+          take an in-flight act with it. */}
       <RatifyDialog pkg={pkg} version={target} onClose={() => setTarget(null)} />
-    </Card>
+    </>
   );
 }
 
