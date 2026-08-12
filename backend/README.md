@@ -729,7 +729,7 @@ One file per version, `../docs/seed/instruments/{instrument_id}-{version}.yaml`.
 | `claims` | `statement`, one `qualities` entry, `warrants`, `sufficiency`, `alternative_explanations` |
 | `criteria` | `statement`, `pass_condition`, `failure_modes`, `claims`, `requires`, `on_missing_evidence`, `eligible_sources` |
 
-Two fields that are easy to write carelessly:
+Four things that are easy to write carelessly:
 
 - **`alternative_explanations`** on a claim is the discipline that keeps a `fail` honest: what
   else could produce this evidence besides the defect you are asserting? Write the ones a
@@ -738,6 +738,20 @@ Two fields that are easy to write carelessly:
   says the absence **is** the finding (ADR-0021 records it as derived, with no quote);
   `no_evidence` says absence settles nothing. Choosing `fail` is a claim in itself — make it
   deliberately.
+- **`pass_condition` and `failure_modes` are read by more than people.** An assessor that
+  judges with an LLM puts them **verbatim into the model's prompt**, so they have to stand on
+  their own: no criterion ids, no file names, no "that is handled elsewhere". A model has no
+  referent for those and, told about a neighbouring concern, will reason about the thing it
+  was asked not to judge. State an exclusion in its own terms — *"naming what comes next is
+  not teaching it"* — and stop there; the cross-reference belongs in a YAML comment, which
+  never reaches the model.
+- **The criteria of one claim must not contradict each other.** `sufficiency: conjunctive`
+  means every criterion has to pass, so if one passage can fail one criterion for being
+  present and another for being absent, that claim is **unsatisfiable** for that shape of
+  content — and no evidence will ever fix it. Read a claim's criteria together, against a
+  real example, before publishing. This is not hypothetical: `cl-course-closes-by-integrating`
+  shipped with exactly that defect and it took an LLM oscillating between the two readings to
+  make it visible.
 
 `sufficiency` today has one built rule: `conjunctive`. `existential` and `m_of_n` are
 documented vocabulary, not behavior — do not author against them yet.

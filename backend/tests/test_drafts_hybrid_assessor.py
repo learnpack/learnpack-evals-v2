@@ -1,5 +1,5 @@
 """`drafts-hybrid` v4 — the semantic and judged executors over a fake transport, the
-coverage vs the real v3 YAML, the whole package against the frozen LearnpackV2 fixture,
+coverage vs the real v4 YAML, the whole package against the frozen LearnpackV2 fixture,
 and ratification.
 
 The fake replaces the TRANSPORT only (the seam is `runtime.get_client`, ADR-0034):
@@ -53,10 +53,10 @@ from tests.conftest import INSTRUMENTS_DIR
 
 PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "4")]
 
-_V3_SPEC = yaml.safe_load(
-    (INSTRUMENTS_DIR / "course-drafts-qa-v3.yaml").read_text(encoding="utf-8")
+_V4_SPEC = yaml.safe_load(
+    (INSTRUMENTS_DIR / "course-drafts-qa-v4.yaml").read_text(encoding="utf-8")
 )
-_V3_CRITERIA = {
+_V4_CRITERIA = {
     raw["id"]: CriterionSpec(
         criterion_id=raw["id"],
         pass_condition=raw["pass_condition"],
@@ -66,7 +66,7 @@ _V3_CRITERIA = {
         on_missing_evidence=raw.get("on_missing_evidence", "no_evidence"),
         condition=raw.get("condition"),
     )
-    for raw in _V3_SPEC["criteria"]
+    for raw in _V4_SPEC["criteria"]
 }
 
 
@@ -238,18 +238,19 @@ def outcomes_profile() -> ProfileData:
 # --- coverage vs the shipped instrument ------------------------------------------------
 
 
-def test_coverage_is_a_disjoint_union_over_v3():
-    declared = {raw["id"] for raw in _V3_SPEC["criteria"]}
+def test_coverage_is_a_disjoint_union_over_v4():
+    declared = {raw["id"] for raw in _V4_SPEC["criteria"]}
     assert PACKAGE.coverage.declared == declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
-    assert PACKAGE.instrument_id == _V3_SPEC["instrument_id"]
+    assert PACKAGE.instrument_id == _V4_SPEC["instrument_id"]
     assert len(PACKAGE.coverage.executes) == 19
 
 
-def test_coverage_also_decides_every_criterion_of_v1_and_v2():
-    """Criterion ids are stable across the lineage (v3 changed one criterion's `requires`,
-    no ids), so the one artifact can ratify any published version (ADR-0019)."""
-    for version in ("v1", "v2"):
+def test_coverage_also_decides_every_criterion_of_the_older_versions():
+    """Criterion ids are stable across the lineage (v3 changed one criterion's `requires`
+    and v4 two pass conditions, neither touching an id), so the one artifact can ratify any
+    published version (ADR-0019)."""
+    for version in ("v1", "v2", "v3"):
         spec = yaml.safe_load(
             (INSTRUMENTS_DIR / f"course-drafts-qa-{version}.yaml").read_text(encoding="utf-8")
         )
@@ -264,7 +265,7 @@ def test_every_executed_failure_index_exists_in_the_real_instrument():
     }
     for criterion_id in PACKAGE.coverage.executes:
         needed = 2 if criterion_id in two_mode else 1
-        assert len(_V3_CRITERIA[criterion_id].failure_modes) >= needed
+        assert len(_V4_CRITERIA[criterion_id].failure_modes) >= needed
 
 
 def test_source_config_declares_the_semantic_identity():
@@ -298,7 +299,7 @@ def test_source_config_declares_the_semantic_identity():
 
 
 def test_objectives_observable_verbs(fake_llm):
-    spec = _V3_CRITERIA["cr-objectives-observable-verbs"]
+    spec = _V4_CRITERIA["cr-objectives-observable-verbs"]
     run = PACKAGE.executors["cr-objectives-observable-verbs"]
     data = profile(learning_objectives=["build an API", "understand HTTP deeply"])
 
@@ -321,7 +322,7 @@ def test_objectives_observable_verbs(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_falls_back(fake_llm):
-    spec = _V3_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _V4_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
     data = profile(learning_objectives=["analyze systems", "recall terms", "apply patterns"])
 
@@ -335,7 +336,7 @@ def test_objectives_non_decreasing_demand_falls_back(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
-    spec = _V3_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _V4_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
 
     flat_texts = [f"understand topic {n}" for n in range(4)]
@@ -353,7 +354,7 @@ def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
 
 
 def test_outcomes_present(fake_llm):
-    spec = _V3_CRITERIA["cr-outcomes-present"]
+    spec = _V4_CRITERIA["cr-outcomes-present"]
     run = PACKAGE.executors["cr-outcomes-present"]
 
     fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
@@ -371,7 +372,7 @@ def test_outcomes_present(fake_llm):
 
 
 def test_outcomes_observable_verbs(fake_llm):
-    spec = _V3_CRITERIA["cr-outcomes-observable-verbs"]
+    spec = _V4_CRITERIA["cr-outcomes-observable-verbs"]
     run = PACKAGE.executors["cr-outcomes-observable-verbs"]
 
     internal = "you will be able to build a complete web page"
@@ -386,7 +387,7 @@ def test_outcomes_observable_verbs(fake_llm):
 
 
 def test_cognitive_demand_trajectory_rules(fake_llm):
-    spec = _V3_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _V4_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
 
     inventory = [lesson(f"0{n}.0", n) for n in range(7)]  # 00.0 .. 06.0; core = 5 lessons
@@ -415,7 +416,7 @@ def test_cognitive_demand_trajectory_rules(fake_llm):
 
 
 def test_a_short_course_has_no_trajectory_to_judge(fake_llm):
-    spec = _V3_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _V4_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
     client = fake_llm()  # no canned answers: any call would fail the test
 
@@ -434,16 +435,16 @@ def test_paired_criteria_share_one_extraction(fake_llm):
     client = fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
     data = outcomes_profile()
 
-    present = PACKAGE.executors["cr-outcomes-present"](_V3_CRITERIA["cr-outcomes-present"], data)
+    present = PACKAGE.executors["cr-outcomes-present"](_V4_CRITERIA["cr-outcomes-present"], data)
     verbs = PACKAGE.executors["cr-outcomes-observable-verbs"](
-        _V3_CRITERIA["cr-outcomes-observable-verbs"], data
+        _V4_CRITERIA["cr-outcomes-observable-verbs"], data
     )
 
     assert present.passed and verbs.passed
     assert len(client.calls) == 1  # the second criterion read the memoized extraction
 
 
-# --- the judged criteria (v3): the verdict is the model's, the vocabulary is not --------
+# --- the judged criteria: the verdict is the model's, the vocabulary is not -------------
 
 
 CLOSING_BODY = (
@@ -521,7 +522,7 @@ def judged_profile() -> ProfileData:
 
 
 def run_judged(criterion_id: str, data: ProfileData):
-    return PACKAGE.executors[criterion_id](_V3_CRITERIA[criterion_id], data)
+    return PACKAGE.executors[criterion_id](_V4_CRITERIA[criterion_id], data)
 
 
 def test_the_judge_answers_with_reason_before_verdict():
@@ -546,7 +547,7 @@ def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm
 def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
     """The normative text is never retyped into the assessor: it travels from the spec."""
     client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)])
-    spec = _V3_CRITERIA["cr-closing-lesson-integrates"]
+    spec = _V4_CRITERIA["cr-closing-lesson-integrates"]
 
     run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -562,7 +563,7 @@ def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_
             verdict_json("You have built a page", verdict=False, failure_mode=1)
         ]
     )
-    spec = _V3_CRITERIA["cr-closing-lesson-projects-forward"]
+    spec = _V4_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
 
@@ -814,7 +815,7 @@ def test_assessment_that_only_tests_its_own_module_fails(fake_llm):
     assert not result.passed
     assert (
         result.failure_mode
-        == _V3_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
+        == _V4_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
     )
 
 
@@ -909,17 +910,17 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v3",
-        instrument_id=_V3_SPEC["instrument_id"],
+        instrument_version_id="course-drafts-qa-v4",
+        instrument_id=_V4_SPEC["instrument_id"],
         status="published",
-        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V3_SPEC["claims"]),
-        criteria=tuple(_V3_CRITERIA[raw["id"]] for raw in _V3_SPEC["criteria"]),
+        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V4_SPEC["claims"]),
+        criteria=tuple(_V4_CRITERIA[raw["id"]] for raw in _V4_SPEC["criteria"]),
         bindings=tuple(
             BindingSpec(
                 package_format=raw["package_format"],
                 task_variables=raw.get("task_variables", {}),
             )
-            for raw in _V3_SPEC["bindings"]
+            for raw in _V4_SPEC["bindings"]
         ),
     )
 
@@ -1055,12 +1056,12 @@ def patched_hybrid_package(unique, monkeypatch):
 
 
 def hybrid_copy_spec(unique: str) -> dict:
-    spec = copy.deepcopy(_V3_SPEC)
+    spec = copy.deepcopy(_V4_SPEC)
     spec["instrument_id"] = f"qa-hybrid-{unique}"
     return spec
 
 
-def test_ratifying_v3_stores_the_semantic_identity(
+def test_ratifying_stores_the_semantic_identity(
     cleanup, unique, namespace, admin, patched_hybrid_package
 ):
     """The registration act persists SOURCE_CONFIG whole — models, temperature and the
@@ -1068,9 +1069,9 @@ def test_ratifying_v3_stores_the_semantic_identity(
     ratification (ADR-0034 clause 1)."""
     admin_id, email = admin
 
-    v3_id = publish_instrument(cleanup, hybrid_copy_spec(unique), admin_id)
+    version_id = publish_instrument(cleanup, hybrid_copy_spec(unique), admin_id)
     ratified = run_ratify_assessor(
-        patched_hybrid_package.name, patched_hybrid_package.version, v3_id, email, []
+        patched_hybrid_package.name, patched_hybrid_package.version, version_id, email, []
     )
     assert ratified == 0
     track_automated(cleanup, patched_hybrid_package.name, patched_hybrid_package.version)

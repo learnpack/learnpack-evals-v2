@@ -245,6 +245,94 @@ with the rest carried as a metric: each entry stands on its own as something a r
 find in the course, and joining them would put text in a report that the course does not
 contain contiguously.
 
+**What five clean runs then measured: the judge is 80 % consistent, and the missing 20 % was
+the instrument.** With the contract fixed, `drafts-hybrid:4` ran five times without a single
+retry — three times over one draft (HTML) and twice over another (CSS), which is what makes
+the numbers mean something: repeats of the **same** input are the only way to separate "the
+judge varies" from "the courses differ". Pairwise agreement over identical input was **16 of
+20**. Three of the five judged criteria were unanimous everywhere; the CSS draft was 5 of 5
+stable; every disagreement landed on two criteria of the HTML draft.
+
+Reading the traces, neither wobble was the model being unreliable. In
+`cr-opening-lesson-connects-backwards` the three runs quoted **the same two passages** and
+read them opposite ways — one run even naming the evidence and ruling against it ("despite
+mentioning everyday web pages and a blueprint analogy…"). The condition admits "everyday
+experience" and the draft appeals to it; what it never said is whether an **analogy** counts
+as relating the new material to the familiar. And `cr-closing-lesson-integrates` was worse
+than ambiguous: it and `cr-closing-lesson-projects-forward` evidence the **same claim** under
+`conjunctive` sufficiency, so both must pass — while the same sentence ("CSS adds the paint,
+JavaScript adds the lights") is rewarded by one for naming what comes next and failed by the
+other for "introducing new material". **That claim was unsatisfiable for that shape of
+closing**, and no amount of evidence would have fixed it. The oscillation was the judge
+finding both readings because both were written.
+
+**`course-drafts-qa` v4 is those two sentences, and nothing else** (`bump-instrument` → edit →
+`import-instrument`; ids, claims and `requires` verbatim v3). The opening criterion now says
+an explaining analogy counts as relating; the closing criterion's fail clause now says
+**teaches** new material instead of consolidating, and says outright that naming what comes
+next is not teaching it — so the defect it was written to catch, a wrap-up that smuggles in
+content, is still caught. **No assessor version was bumped**: the judge is handed the
+`pass_condition` from the `CriterionSpec`, so the instrument decides the question and
+`drafts-hybrid:4` is untouched. It sits as a **draft** — publication is a human act, and a dry
+run accepts drafts, so calibrating against it needs nothing else.
+
+**Measured against v4: the wording was most of it.** Six more runs, three per draft, all
+against v4. The HTML draft — the one both wobbles came from — is now **5 of 5 criteria
+unanimous across three repeats**, and both reworded criteria settled on the reading their new
+text implies. Pairwise agreement over identical input went from **16/20 (80 %) to 28/30
+(93 %)**, and the whole residue is a single (draft, criterion) pair.
+
+**That residue is the useful part: `cr-closing-lesson-projects-forward` on the CSS draft is a
+coin flip, and its text was never touched.** Its `pass_condition` is byte-identical in v3 and
+v4 (checked against the prompts as sent, not the YAML), so its six observations are six
+answers to one question about one closing: **three `pass`, three `fail`**. What makes it
+diagnostic rather than merely noisy is *how* they split — all six quote the same single
+passage and describe the same facts in nearly the same words ("summarises what was learned and
+says the learner can now style any webpage… *practice and new properties*"), and then divide
+on whether those facts clear the bar. One answer states both readings before choosing:
+"projecting onto future practice and new properties, **but** does not explicitly situate it in
+a learning or professional path beyond that." The model agrees on the facts every time and
+disagrees only on the threshold — which is a criterion that does not say where its threshold
+is, not a judge that cannot read. The open question is whether "more practice of the same
+skill" counts as *what comes next*; either answer is defensible and the text picks neither.
+It is not cosmetic: this criterion and `cr-closing-lesson-integrates` evidence the same claim
+under conjunctive sufficiency, so for that draft the **claim itself** is a coin flip.
+
+**What this leaves for the next increment**, in the order the evidence puts them:
+
+1. **The `cr-closing-lesson-projects-forward` threshold** — an instrument edit, and worth
+   making even though chasing every borderline instance with a rewrite is not: this one fixes
+   a threshold once and reuses it, rather than patching a course.
+2. **Markdown tolerance in the grounding check** — a false rejection that already cost a
+   retry: the draft writes `**markup language**` and the model quoted `markup language`,
+   which is formatting rather than content, exactly the argument that made whitespace
+   tolerable. (The other retry of those runs was a true rejection — a quote silently
+   shortened from "everything the user sees on the page" to "everything the user sees" — and
+   is the check doing its job.)
+3. **Sampling: `k=2` with a tie-breaking third**, which yields exactly the verdict a k=3
+   majority would (two agreeing samples cannot be overturned by a third) at ~2.2 calls
+   instead of 3. Still needed after the wording fixes, because borderline instances surface
+   **one per draft**: two drafts have now produced three different oscillating criteria, one
+   each, so there is no enumerable list of "hard criteria" to sample selectively. The vote
+   split is worth as much as the verdict — a 2-1 is the detector for an underspecified
+   criterion, which is how this one was found.
+
+**Four things these fourteen runs settled**, recorded because they generalize beyond this
+lineage:
+
+- **Fixing the text pays more than sampling would.** Two sentences moved one draft from 73 %
+  to 100 % self-agreement; no amount of voting would have done that, because voting reduces
+  variance and this was ambiguity.
+- **Borderline instances belong to (draft, criterion) pairs, not to criteria.** Each draft
+  surfaced a different one, and a criterion unanimous on five observations turned out to be
+  a coin flip on the sixth.
+- **Where the model disagrees tells you whose defect it is.** Same facts, different verdict →
+  the criterion's threshold is unwritten, and prose fixes it. Different facts → the judge, and
+  only then are prompts or sampling the answer.
+- **Making the judge quote its evidence is what makes any of this visible.** Every diagnosis
+  above came from comparing quotes across runs; a bare verdict would have shown only a
+  number moving.
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
@@ -262,17 +350,19 @@ target exactly which elements to style…"* as `is_observable: false`, on the ve
 the instrument's own rule doing exactly what it says, and precisely the kind of call that
 has to be reviewed before a study pins this version. Every prompt and raw answer is on the
 page and in the trace file (see *Observability of the LLM half*), so the review can be done
-against what actually happened rather than against a summary. **The seven judged criteria have met the real model three times** (see *What the first
-three calibration runs found*), but only to prove the plumbing: every failure there was
-about how a verdict was cited, not about whether it was right. **v4's judgements have not
-been read by anyone**, and they are where reading matters most — nothing in the suite can
-tell whether a verdict is correct, only that it was asked, quoted and labelled correctly.
+against what actually happened rather than against a summary. The seven judged criteria
+have now met the real model fourteen times, and what those runs settled is the plumbing, then
+the wording — never the verdicts. **Nobody has yet read whether a judgement is RIGHT**, which
+is where reading matters most: neither the suite nor a self-agreement rate can tell, only that
+a verdict was asked, quoted and labelled correctly, and that repeats of it agree. A criterion
+can be perfectly stable and stably wrong.
 
 Three kinds of finding come out of such a review and they have different destinations, so
 it is worth separating them while reading: *the model extracted or judged badly* → the
 prompt → a bump of the assessor · *the data is right but the verdict is not* → a decision
 constant → also a bump of the assessor · *the criterion itself is badly worded* → a bump of
-the **instrument**, which is a different artifact and a different act.
+the **instrument**, which is a different artifact and a different act. The first review
+already produced two of the third kind, and they are `course-drafts-qa` v4.
 
 **Not needed for that, needed for a study:** the dry run accepts drafts and requires no
 ratification, but a **persisted** judgment does (ADR-0019), and each version of
@@ -280,9 +370,10 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
 `/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 4
---instrument-version-id course-drafts-qa-v3 --email <admin>`. Ratifying v4 before its seven
-judged criteria have been read would persist verdicts nobody has checked, which is the one
-thing the calibration loop exists to prevent.
+--instrument-version-id <version> --email <admin>`. Which version is part of the act: v3 is
+published, v4 is the draft with the two corrected criteria, and a ratification names one.
+Ratifying before the seven judged criteria have been read would persist verdicts nobody has
+checked, which is the one thing the calibration loop exists to prevent.
 
 **The assessors page (`/admin/assessors`, ADR-0036).** Ratification used to be readable
 only from the database and performable only from a terminal, which is what had been
