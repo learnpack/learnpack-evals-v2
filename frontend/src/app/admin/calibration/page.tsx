@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -22,9 +22,10 @@ import {
   useAssessorPackages,
   useContents,
   useInstruments,
-  usePreviewEvaluation,
+  usePreviewRun,
   useProfiles,
   useQualityReference,
+  useStartPreviewRun,
 } from "@/lib/api/hooks";
 import type {
   AssessorPackageResponse,
@@ -32,6 +33,9 @@ import type {
   PreviewEvaluationResponse,
   PreviewMetric,
   PreviewOutcome,
+  PreviewRun,
+  PreviewRunError,
+  PreviewRunStep,
   QualityReferenceResponse,
   Uuid,
 } from "@/lib/api/types";
@@ -58,17 +62,18 @@ export default function CalibrationPage() {
   const instruments = useInstruments();
   const packages = useAssessorPackages();
   const qualityReference = useQualityReference();
-  const preview = usePreviewEvaluation();
+  const start = useStartPreviewRun();
 
   const [contentId, setContentId] = useState<Uuid | "">("");
   const [instrumentVersionId, setInstrumentVersionId] = useState("");
   const [assessorKey, setAssessorKey] = useState(""); // "name:version"
-  // The instrument travels with the result: the fitness projection must read the version
+  // The instrument travels with the run: the fitness projection must read the version
   // that actually ran, not whatever the select points at afterwards.
-  const [run, setRun] = useState<{
-    result: PreviewEvaluationResponse;
+  const [started, setStarted] = useState<{
+    runId: Uuid;
     instrument: InstrumentResponse;
   } | null>(null);
+  const run = usePreviewRun(started?.runId ?? null);
 
   /** Whether a content has an `ok` profile — the dry-run's one hard prerequisite. */
   const profileStatus = useMemo(() => {
@@ -99,12 +104,24 @@ export default function CalibrationPage() {
   }, [packages.data, selectedInstrument]);
 
   const selectedPackage = sortedPackages.find((p) => `${p.name}:${p.version}` === assessorKey);
-  const ready = contentId && instrumentVersionId && selectedPackage && !preview.isPending;
+  const running = start.isPending || run.data?.status === "running";
+  const ready = contentId && instrumentVersionId && selectedPackage && !running;
+
+  // The card carries the outcome; the toast is only for someone looking elsewhere.
+  const status = run.data?.status;
+  useEffect(() => {
+    if (status === "done") {
+      toast.success("Dry run finished.", { description: "Nothing was persisted." });
+    } else if (status === "failed") {
+      toast.error("The dry run failed.", { description: "The reason stays on the page." });
+    }
+  }, [status]);
 
   function runPreview() {
     if (!contentId || !instrumentVersionId || !selectedPackage || !selectedInstrument) return;
     const instrument = selectedInstrument;
-    preview.mutate(
+    setStarted(null);
+    start.mutate(
       {
         content_id: contentId,
         instrument_version_id: instrumentVersionId,
@@ -112,24 +129,12 @@ export default function CalibrationPage() {
         assessor_version: selectedPackage.version,
       },
       {
-        onSuccess: (data) => {
-          setRun({ result: data, instrument });
-          toast.success("Dry run finished.", { description: "Nothing was persisted." });
-        },
-        onError: (err) => {
-          const e = err as ApiError;
-          if (e.status === 409) {
-            toast.error("This content has no ok profile.", {
-              description: `Profile it first: uv run python -m app.cli profile-content --content-id ${contentId}`,
-            });
-          } else if (e.status === 502) {
-            toast.error("The assessor could not produce a verdict.", {
-              description: `${e.message} — if it was transient (LLM hiccup), just run it again.`,
-            });
-          } else {
-            toast.error("The dry run failed.", { description: e.message });
-          }
-        },
+        // Only the assessor is validated before the run exists; every other way this can
+        // end is the run's own error, and lands in the card below.
+        onSuccess: (data) => setStarted({ runId: data.run_id, instrument }),
+        onError: (err) => toast.error("The dry run could not be started.", {
+          description: (err as ApiError).message,
+        }),
       },
     );
   }
@@ -318,19 +323,31 @@ export default function CalibrationPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <Button onClick={runPreview} disabled={!ready}>
-              {preview.isPending ? <Spinner className="mr-2" /> : null}
-              {preview.isPending ? "Running — LLM criteria take a while…" : "Run dry evaluation"}
+              {running ? <Spinner className="mr-2" /> : null}
+              {running ? "Running — LLM criteria take a while…" : "Run dry evaluation"}
             </Button>
             <p className="text-xs text-muted-foreground">
               Nothing is persisted: no evaluation, no judgment, no events.
             </p>
           </div>
-          {run ? (
-            <PreviewResults
-              result={run.result}
-              instrument={run.instrument}
-              qualityReference={qualityReference.data ?? []}
-            />
+
+          {/* The run is read, not awaited: a lost 404 here means the backend restarted
+              and forgot it — the runs live in memory, on purpose. */}
+          {run.error ? <ErrorState message={(run.error as ApiError).message} /> : null}
+          {run.data ? (
+            <>
+              <RunProgress run={run.data} />
+              {run.data.error ? (
+                <RunFailure error={run.data.error} contentId={contentId} />
+              ) : null}
+              {run.data.result && started ? (
+                <PreviewResults
+                  result={run.data.result}
+                  instrument={started.instrument}
+                  qualityReference={qualityReference.data ?? []}
+                />
+              ) : null}
+            </>
           ) : null}
         </CardContent>
       </Card>
@@ -343,6 +360,110 @@ function packageLabel(assessorPackage: AssessorPackageResponse): string {
     assessorPackage.executes.length + Object.keys(assessorPackage.abstains).length;
   const llm = assessorPackage.uses_llm ? " · LLM" : "";
   return `${assessorPackage.display_name} — ${assessorPackage.instrument_id} (executes ${assessorPackage.executes.length}/${total}${llm})`;
+}
+
+// ------------------------------------------------------------------------ progress
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+/** What the run is doing, while it does it.
+ *
+ * One line per executed criterion and per LLM attempt — which is where the minutes
+ * actually go. The elapsed time comes from the server, so the page never has to
+ * reconcile two clocks. */
+function RunProgress({ run }: { run: PreviewRun }) {
+  const heading =
+    run.status === "running" ? "Running" : run.status === "done" ? "Finished" : "Failed";
+  return (
+    <div className="rounded-lg border bg-muted/20">
+      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-sm">
+        {run.status === "running" ? <Spinner /> : null}
+        <span className="font-medium">{heading}</span>
+        <span className="tabular-nums text-muted-foreground">{seconds(run.elapsed_ms)}</span>
+        <span className="text-xs text-muted-foreground">
+          · {run.steps.length} step{run.steps.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {run.steps.length === 0 ? (
+        <p className="px-4 py-3 text-xs text-muted-foreground">
+          {run.status === "running"
+            ? "Nothing to report yet — the first LLM task can take a while to answer."
+            : "The run ended before executing anything."}
+        </p>
+      ) : (
+        <ul className="max-h-72 space-y-0.5 overflow-y-auto px-4 py-2 font-mono text-xs">
+          {run.steps.map((step, index) => (
+            <StepLine key={index} step={step} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function StepLine({ step }: { step: PreviewRunStep }) {
+  return (
+    <li className={cn("flex gap-2", !step.ok && "text-destructive")}>
+      <span className="shrink-0 tabular-nums text-muted-foreground">
+        {(step.at_ms / 1000).toFixed(1).padStart(6)}s
+      </span>
+      <span className={cn("shrink-0", step.kind === "llm_call" && "text-muted-foreground")}>
+        {step.label}
+      </span>
+      <span className="break-all text-muted-foreground">{step.detail}</span>
+    </li>
+  );
+}
+
+// -------------------------------------------------------------------------- failure
+
+/** A named cause, because each one has a different remedy — and it stays on the page,
+ *  unlike the toast that used to be the only thing carrying it. */
+function RunFailure({
+  error,
+  contentId,
+}: {
+  error: PreviewRunError;
+  contentId: Uuid | "";
+}) {
+  const titles: Record<PreviewRunError["kind"], string> = {
+    profile_missing: "This content has no ok profile.",
+    instrument_missing: "That instrument version is not there.",
+    assessor_failed: "The assessor could not produce a verdict.",
+    unexpected: "The run failed unexpectedly.",
+  };
+  return (
+    <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm">
+      <p className="font-medium text-destructive">{titles[error.kind]}</p>
+      <p className="break-words text-muted-foreground">{error.message}</p>
+      {error.kind === "profile_missing" && contentId ? (
+        <p className="text-xs text-muted-foreground">
+          Profile it first:{" "}
+          <code className="rounded bg-muted px-1">
+            uv run python -m app.cli profile-content --content-id {contentId}
+          </code>
+        </p>
+      ) : null}
+      {error.kind === "instrument_missing" ? (
+        <p className="text-xs text-muted-foreground">
+          Re-import the YAML and pick the version again — this page runs drafts on purpose.
+        </p>
+      ) : null}
+      {error.kind === "assessor_failed" ? (
+        <p className="text-xs text-muted-foreground">
+          Nothing was persisted (ADR-0034): the run is the retry. If it keeps happening, the
+          trace below has the prompt each task sent and the raw text it got back.
+        </p>
+      ) : null}
+      {error.kind === "unexpected" ? (
+        <p className="text-xs text-muted-foreground">
+          Nothing was persisted. The backend log has the traceback.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 // ------------------------------------------------------------------------- results

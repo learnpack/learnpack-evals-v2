@@ -32,7 +32,8 @@ import type {
   OpenCampaignRequest,
   PinStudyInstrumentRequest,
   PreviewEvaluationRequest,
-  PreviewEvaluationResponse,
+  PreviewRun,
+  PreviewRunStarted,
   ProfileCapabilitiesResponse,
   ProfileResponse,
   ProgressReport,
@@ -85,6 +86,7 @@ export const queryKeys = {
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
   assessors: ["admin", "assessors"] as const,
   assessorPackages: ["admin", "assessor-packages"] as const,
+  previewRun: (id: Uuid | string) => ["admin", "evaluations", "preview", id] as const,
   qualityReference: ["admin", "reference", "qualities"] as const,
   scores: ["admin", "reports", "scores"] as const,
   progress: ["admin", "progress"] as const,
@@ -413,14 +415,32 @@ export function useQualityReference() {
   });
 }
 
-/** The dry-run over HTTP: accepts drafts, needs no ratification, persists nothing.
- *  Never retried — an LLM-carrying assessor spends real calls per attempt. */
-export function usePreviewEvaluation() {
+/** Starts the dry-run and hands back its id: accepts drafts, needs no ratification,
+ *  persists nothing. Never retried — an LLM-carrying assessor spends real calls per
+ *  attempt, and a second start would be a second bill, not a recovery. */
+export function useStartPreviewRun() {
   const api = useApi();
   return useMutation({
     retry: false,
     mutationFn: (body: PreviewEvaluationRequest) =>
-      api<PreviewEvaluationResponse>("/admin/evaluations/preview", { method: "POST", body }),
+      api<PreviewRunStarted>("/admin/evaluations/preview", { method: "POST", body }),
+  });
+}
+
+/** The run as it stands, polled while it advances and left alone once it ends.
+ *
+ * A finished run is not stale data: it is the record of what happened, and refetching it
+ * on a window focus would only risk a 404 once the server has forgotten it. */
+export function usePreviewRun(runId: Uuid | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.previewRun(runId ?? ""),
+    queryFn: () => api<PreviewRun>(`/admin/evaluations/preview/${runId}`),
+    enabled: runId !== null,
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 1000 : false),
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    retry: false,
   });
 }
 

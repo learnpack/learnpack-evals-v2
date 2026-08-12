@@ -717,3 +717,45 @@ export interface PreviewEvaluationResponse {
   /** Always false — the contract states what the page claims (dry run). */
   persisted: false;
 }
+
+// A dry run is started, not awaited: with LLM criteria it takes minutes, so the request
+// hands back an id and the run is read while it advances.
+
+export interface PreviewRunStarted {
+  run_id: Uuid;
+}
+
+export interface PreviewRunStep {
+  /** `criterion` — an executor landed a verdict; `llm_call` — one attempt at a model. */
+  kind: "criterion" | "llm_call";
+  label: string;
+  detail: string;
+  /** False only when something malfunctioned: a `fail` is a verdict, not a malfunction. */
+  ok: boolean;
+  duration_ms: number;
+  /** Milliseconds from the start of the run — measured on the server. */
+  at_ms: number;
+}
+
+/** Named, not merely described: each kind maps to the remedy that fixes it. */
+export type PreviewRunErrorKind =
+  | "profile_missing"
+  | "instrument_missing"
+  | "assessor_failed"
+  | "unexpected";
+
+export interface PreviewRunError {
+  kind: PreviewRunErrorKind;
+  message: string;
+}
+
+export interface PreviewRun {
+  run_id: Uuid;
+  status: "running" | "done" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  elapsed_ms: number;
+  steps: PreviewRunStep[];
+  result: PreviewEvaluationResponse | null;
+  error: PreviewRunError | null;
+}
