@@ -18,9 +18,12 @@ from test_automated_evaluation_flow import (  # noqa: F401 — fixtures resolved
     copy_spec,
     patched_package,
     profiled_course,
+    publish_instrument,
+    track_automated,
 )
 from test_instrument_authoring_api import import_spec
 
+from app.cli import run_ratify_assessor
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.platform import observability
@@ -78,10 +81,51 @@ def test_assessor_packages_list_the_registry_without_its_internals(admin):
         "executes",
         "abstains",
         "uses_llm",
+        "assessor_id",
+        "lineage_versions",
     }
 
     assert by_key[("structural", "1")]["uses_llm"] is False
     assert by_key[("drafts-structural", "1")]["uses_llm"] is False
+
+
+def test_assessor_packages_report_what_each_has_ratified(admin, cleanup, unique, patched_package):
+    """The state the assessors page reads: a package declared in code with no identity row
+    yet, and the one version of its lineage that a human has since made evaluable."""
+    admin_id = admin.get("/me").json()["assessor_id"]
+    published = publish_instrument(cleanup, copy_spec(unique), admin_id)
+    draft = import_spec(cleanup, copy_spec(unique, version="v2"))
+
+    def package_row() -> dict:
+        listing = admin.get("/admin/assessor-packages")
+        assert listing.status_code == 200, listing.text
+        return next(p for p in listing.json() if p["name"] == patched_package.name)
+
+    before = package_row()
+    # No row at all until somebody ratifies: registration IS the first ratification.
+    assert before["assessor_id"] is None
+    assert {v["instrument_version_id"]: v["ratified"] for v in before["lineage_versions"]} == {
+        published: False,
+        draft: False,
+    }
+
+    assert (
+        run_ratify_assessor(patched_package.name, "1", published, f"admin-{unique}@example.com", [])
+        == 0
+    )
+    track_automated(cleanup, patched_package.name)
+
+    after = package_row()
+    assert after["assessor_id"] is not None
+    versions = {v["instrument_version_id"]: v for v in after["lineage_versions"]}
+    assert versions[published]["ratified"] is True
+    assert versions[published]["ratified_at"] is not None
+    # The act has an author, and the page names them.
+    assert versions[published]["ratified_by_name"] == "Admin"
+    # A draft is listed and never ratified: its remedy is publishing, not ratifying.
+    assert versions[draft]["status"] == "draft"
+    assert versions[draft]["ratified"] is False
+    assert versions[draft]["ratified_by_name"] is None
 
 
 # -------------------------------------------------------------------- quality reference

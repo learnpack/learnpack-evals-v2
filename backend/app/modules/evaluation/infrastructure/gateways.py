@@ -57,6 +57,15 @@ class DesignInstrumentGateway:
             ),
         )
 
+    def list_version_ids(self, instrument_id: str) -> tuple[str, ...]:
+        """The lineage's versions, ids only — ratification asks which of them came before,
+        and answers that against `assessor_ratifications`, not against their contents."""
+        return tuple(
+            snapshot.instrument_version_id
+            for snapshot in self._queries.list_instruments()
+            if snapshot.instrument_id == instrument_id
+        )
+
 
 class ProfilingGateway:
     """`ProfileGatewayPort`: the content's most recent `ok` profile, or None."""

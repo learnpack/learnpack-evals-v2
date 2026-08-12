@@ -2,6 +2,7 @@
 
 import json
 from collections import defaultdict
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -490,7 +491,7 @@ class SqlAlchemyRatificationRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT assessor_id, instrument_version_id, ratified_at
+                    SELECT assessor_id, instrument_version_id, ratified_at, ratified_by
                       FROM assessor_ratifications
                      WHERE instrument_version_id = :id
                      ORDER BY ratified_at
@@ -501,14 +502,39 @@ class SqlAlchemyRatificationRepository:
             .mappings()
             .all()
         )
-        return [
-            RatificationDTO(
-                assessor_id=row["assessor_id"],
-                instrument_version_id=row["instrument_version_id"],
-                ratified_at=row["ratified_at"],
+        return [self._to_dto(row) for row in rows]
+
+    def list_for_assessors(self, assessor_ids: list[UUID]) -> list[RatificationDTO]:
+        """Everything those assessors have ratified. Batch (ADR-0006): the console asks
+        about the whole registry at once, and one query is the difference between a page
+        and a page per package."""
+        if not assessor_ids:
+            return []
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT assessor_id, instrument_version_id, ratified_at, ratified_by
+                      FROM assessor_ratifications
+                     WHERE assessor_id = ANY(:ids)
+                     ORDER BY ratified_at
+                    """
+                ),
+                {"ids": assessor_ids},
             )
-            for row in rows
-        ]
+            .mappings()
+            .all()
+        )
+        return [self._to_dto(row) for row in rows]
+
+    @staticmethod
+    def _to_dto(row: Any) -> RatificationDTO:  # SQLAlchemy row mapping
+        return RatificationDTO(
+            assessor_id=row["assessor_id"],
+            instrument_version_id=row["instrument_version_id"],
+            ratified_at=row["ratified_at"],
+            ratified_by=row["ratified_by"],
+        )
 
     def latest_ratified(self, assessor_id: UUID, instrument_version_ids: list[str]) -> str | None:
         """Most recently ratified among the candidates (the caller resolves the lineage

@@ -57,11 +57,16 @@ class QualityJudgmentDTO:
 
 @dataclass(frozen=True)
 class RatificationDTO:
-    """One ADR-0019 act: this assessor may evaluate with that instrument version."""
+    """One ADR-0019 act: this assessor may evaluate with that instrument version.
+
+    The act has an author, and the console shows it: a ratification is a decision somebody
+    made, not a state the system reached.
+    """
 
     assessor_id: UUID
     instrument_version_id: str
     ratified_at: datetime
+    ratified_by: UUID
 
 
 @dataclass(frozen=True)

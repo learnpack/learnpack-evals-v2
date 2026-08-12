@@ -48,6 +48,7 @@ from app.platform.db import get_session
 from app.platform.dev_router import router as dev_router
 from app.platform.events import dispatcher
 from app.platform.policies import register_all_policies
+from app.platform.ratification_router import router as ratification_router
 from app.platform.security import CurrentAssessor
 
 settings = get_settings()
@@ -113,6 +114,7 @@ app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)
 app.include_router(evaluation_router)
 app.include_router(evaluation_admin_router)
+app.include_router(ratification_router)  # spans Identity + Evaluation (ADR-0036 §3)
 app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local

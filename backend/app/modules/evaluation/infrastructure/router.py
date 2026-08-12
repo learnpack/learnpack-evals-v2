@@ -9,10 +9,16 @@ command: the assignment becomes `submitted` because the completion policy hears
 Note what is *not* imported here: no repository or adapter of another module — only their
 `public.py` (ARCHITECTURE.md §3).
 
-`admin_router` is the automated path's admin surface: the assessor-package registry and
-the dry-run (`PreviewEvaluation`) exposed for the calibration page. The dry-run is pure
-computation — it persists nothing, so exposing it is not a command reaching a page; the
-deliberate acts (profile, accept, ratify, evaluate for real) stay in the CLI.
+`admin_router` is the automated path's admin surface: the assessor-package registry — with
+what each package has ratified — and the dry-run (`PreviewEvaluation`) exposed for the
+calibration page. Both are reads; the dry-run persists nothing, so exposing it is not a
+command reaching a page.
+
+The **ratification act** now has an HTTP surface too (ADR-0036), but it is not here: it
+spans Identity and Evaluation, so it lives in the composition root
+(`app/platform/ratification_router.py`), which is the one place allowed to name two
+modules' adapters — the same standing `cli.py` has. The other deliberate acts (profile,
+accept, evaluate for real) stay in the CLI, each for a reason of its own (ADR-0036 §6).
 
 The dry-run is started, not awaited: with LLM-carried criteria it takes minutes, and a
 request that long can only report at the end. `POST …/preview` returns a run id, and the
@@ -41,7 +47,14 @@ from app.modules.evaluation.domain.evaluation import InvalidEvaluation
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
 from app.modules.evaluation.infrastructure.preview_runs import KEEP_RUNS, RunView, preview_runs
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
-from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
+from app.modules.evaluation.public import EvaluationQueries, get_evaluation_queries
+from app.modules.evaluation_design.public import (
+    InstrumentQueries,
+    RubricQueries,
+    get_instrument_queries,
+    get_rubric_queries,
+)
+from app.modules.identity.public import IdentityQueries, get_identity_queries
 from app.modules.orchestration.public import OrchestrationQueries, get_orchestration_queries
 from app.platform.security import AdminAssessor, CurrentAssessor
 from app.platform.uow import UnitOfWork, get_uow
@@ -52,6 +65,9 @@ admin_router = APIRouter(prefix="/admin", tags=["automated-evaluation"])
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_queries)]
 Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
+Instruments = Annotated[InstrumentQueries, Depends(get_instrument_queries)]
+Identities = Annotated[IdentityQueries, Depends(get_identity_queries)]
+Evaluations = Annotated[EvaluationQueries, Depends(get_evaluation_queries)]
 
 
 class ScoreRequest(BaseModel):
@@ -140,8 +156,25 @@ def submit_evaluation(
 # --------------------------------------------------- the automated path's admin surface
 
 
+class LineageVersionResponse(BaseModel):
+    """One version of the package's lineage, and whether this package may evaluate with it.
+
+    Ratification is per `(assessor, instrument version)` (ADR-0019), so the answer is a
+    matrix, never a flag. A draft appears too, and is never ratified: it is the version
+    whose remedy is publishing it, not ratifying it.
+    """
+
+    instrument_version_id: str
+    status: str
+    ratified: bool
+    ratified_at: datetime | None = None
+    ratified_by_name: str | None = None
+
+
 class AssessorPackageResponse(BaseModel):
-    """One registry entry — identity and coverage, never the executors (callables)."""
+    """One registry entry — identity and coverage, never the executors (callables) —
+    plus what the store knows about it: whether it has an identity row at all, and what
+    it has ratified."""
 
     name: str
     version: str
@@ -152,9 +185,18 @@ class AssessorPackageResponse(BaseModel):
     # Whether the package carries LLM tasks: the page warns about cost and the backend's
     # LLM_API_KEY. Environment concern only — the identity is in the code (ADR-0034).
     uses_llm: bool
+    # Null until the first ratification mints the row (ADR-0019 §2). A package declared in
+    # code and never ratified is a real state, and the one the console exists to act on.
+    assessor_id: UUID | None = None
+    lineage_versions: list[LineageVersionResponse] = []
 
     @classmethod
-    def from_package(cls, package: AssessorPackage) -> "AssessorPackageResponse":
+    def from_package(
+        cls,
+        package: AssessorPackage,
+        assessor_id: UUID | None = None,
+        lineage_versions: list[LineageVersionResponse] | None = None,
+    ) -> "AssessorPackageResponse":
         return cls(
             name=package.name,
             version=package.version,
@@ -163,6 +205,8 @@ class AssessorPackageResponse(BaseModel):
             executes=sorted(package.coverage.executes),
             abstains=dict(sorted(package.coverage.abstains.items())),
             uses_llm="llm" in package.source_config,
+            assessor_id=assessor_id,
+            lineage_versions=lineage_versions or [],
         )
 
 
@@ -267,12 +311,67 @@ class PreviewEvaluationResponse(BaseModel):
 
 
 @admin_router.get("/assessor-packages", response_model=list[AssessorPackageResponse])
-def list_assessor_packages(admin: AdminAssessor) -> list[AssessorPackageResponse]:
-    """The in-code registry, as data: what can judge, over which lineage, at what cost."""
-    return [
-        AssessorPackageResponse.from_package(package)
-        for _, package in sorted(AUTOMATED_ASSESSORS.items())
-    ]
+def list_assessor_packages(
+    admin: AdminAssessor,
+    identities: Identities,
+    instruments: Instruments,
+    evaluations: Evaluations,
+) -> list[AssessorPackageResponse]:
+    """The in-code registry, as data: what can judge, over which lineage, at what cost —
+    and, per lineage version, whether it may judge with it yet.
+
+    Composed here rather than in one module because it spans three: the registry is code,
+    the identity row is Identity's, the versions are Design's and the ratifications are
+    this module's. A router is where composition belongs, and every piece arrives through
+    a public surface (ARCHITECTURE.md §3).
+    """
+    rows = {
+        (a.automated.name, a.automated.version): a
+        for a in identities.list_all_assessors()
+        if a.automated is not None
+    }
+    ratifications = evaluations.list_ratifications_by_assessors(
+        [a.assessor_id for a in rows.values()]
+    )
+    ratified: dict[UUID, dict[str, Any]] = {}
+    for act in ratifications:
+        ratified.setdefault(act.assessor_id, {})[act.instrument_version_id] = act
+    ratifiers = identities.list_assessors([r.ratified_by for r in ratifications])
+
+    versions_by_lineage: dict[str, list[Any]] = {}
+    for snapshot in instruments.list_instruments():
+        versions_by_lineage.setdefault(snapshot.instrument_id, []).append(snapshot)
+
+    packages = []
+    for _, package in sorted(AUTOMATED_ASSESSORS.items()):
+        row = rows.get((package.name, package.version))
+        mine = ratified.get(row.assessor_id, {}) if row is not None else {}
+        lineage_versions = []
+        for snapshot in sorted(
+            versions_by_lineage.get(package.instrument_id, []),
+            key=lambda s: (s.version, s.instrument_version_id),
+        ):
+            ratification = mine.get(snapshot.instrument_version_id)
+            ratifier = ratifiers.get(ratification.ratified_by) if ratification else None
+            lineage_versions.append(
+                LineageVersionResponse(
+                    instrument_version_id=snapshot.instrument_version_id,
+                    status=snapshot.status,
+                    ratified=ratification is not None,
+                    ratified_at=ratification.ratified_at if ratification else None,
+                    ratified_by_name=(
+                        (ratifier.display_name or ratifier.email) if ratifier else None
+                    ),
+                )
+            )
+        packages.append(
+            AssessorPackageResponse.from_package(
+                package,
+                assessor_id=row.assessor_id if row is not None else None,
+                lineage_versions=lineage_versions,
+            )
+        )
+    return packages
 
 
 class PreviewRunStepResponse(BaseModel):

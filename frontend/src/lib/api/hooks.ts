@@ -39,6 +39,8 @@ import type {
   ProfileResponse,
   ProgressReport,
   QualityReferenceResponse,
+  RatifyAssessorRequest,
+  RatifyAssessorResponse,
   RegisterBriefRequest,
   RegisterBySourceRequest,
   RegisterBySourceResponse,
@@ -400,12 +402,34 @@ export function useAssessors() {
   });
 }
 
-/** The in-code registry of automated assessor packages (ADR-0016), as data. */
+/** The in-code registry of automated assessor packages (ADR-0016), as data — with what
+ *  each of them has ratified, which is what makes it evaluable at all (ADR-0019). */
 export function useAssessorPackages() {
   const api = useApi();
   return useQuery({
     queryKey: queryKeys.assessorPackages,
     queryFn: () => api<AssessorPackageResponse[]>("/admin/assessor-packages"),
+  });
+}
+
+/** The ADR-0019 act at its second gate (ADR-0036): irreversible, and never retried.
+ *
+ * A 409 is not a failure to retry blindly — it carries the criteria whose decision the act
+ * is waiting for, and the caller resubmits with them confirmed. */
+export function useRatifyAssessor() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: ({ name, version, ...body }: RatifyAssessorRequest) =>
+      api<RatifyAssessorResponse>(`/admin/assessor-packages/${name}/${version}/ratify`, {
+        method: "POST",
+        body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.assessorPackages });
+      qc.invalidateQueries({ queryKey: queryKeys.assessors });
+    },
   });
 }
 

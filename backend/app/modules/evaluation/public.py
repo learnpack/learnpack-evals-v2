@@ -177,6 +177,14 @@ class EvaluationQueries:
         """Who may evaluate with that version (ADR-0019) — readiness reads this."""
         return self._ratifications.list_for_instrument(instrument_version_id)
 
+    def list_ratifications_by_assessors(self, assessor_ids: list[UUID]) -> list[RatificationDTO]:
+        """The same relation read the other way: what those assessors have ratified.
+
+        The assessors page asks this — which versions of a package's lineage it may
+        already evaluate, and which are still waiting on the human act.
+        """
+        return self._ratifications.list_for_assessors(assessor_ids)
+
 
 def get_evaluation_queries(uow: Annotated[UnitOfWork, Depends(get_uow)]) -> EvaluationQueries:
     return EvaluationQueries(uow.session)

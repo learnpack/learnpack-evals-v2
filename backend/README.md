@@ -295,8 +295,22 @@ Two aggregation rules not to confuse:
   --instrument-version-id <id> --email <admin>` — the initial registration is the first
   ratification; against a later version of the same lineage the diff is computed
   mechanically and only changed/new **executed** criteria demand
-  `--confirm <criterion-id>`. Then `evaluate` without `--dry-run` persists the evaluation
+  `--confirm <criterion-id>`. The same act is available in the console, on
+  `/admin/assessors` (ADR-0036): the Ratify button, and a second step listing each changed
+  criterion with the `pass_condition` being confirmed where the CLI takes
+  `--confirm`. Both gates run one use case, so they cannot answer differently. Then
+  `evaluate` without `--dry-run` persists the evaluation
   (outcomes + raw metrics) and the judgment policy derives claims, coverage and findings.
+- **The assessors page** (`/admin/assessors`) is where that state is read: assessors
+  grouped by kind (automated by default, humans optional, both), and per automated package
+  its coverage plus every version of its lineage with whether it may judge with it, who
+  ratified it and when. The automated rows come from `GET /admin/assessor-packages` — the
+  in-code registry, now carrying that state — rather than from the `assessors` table, on
+  purpose: a package nobody has ratified has no row there at all, and it is the one worth
+  acting on. The act itself is `POST /admin/assessor-packages/{name}/{version}/ratify`
+  (409 with the criteria to decide, 422 with its cause named for everything else); it is
+  composed in `app/platform/ratification_router.py` because it spans Identity and
+  Evaluation.
 - **LLM-carrying assessors** (ADR-0034): `drafts-hybrid` extracts/classifies with an LLM
   and decides pass/fail in code. It needs `LLM_API_KEY` in the environment (see
   `.env.example`; `LLM_BASE_URL` points at any OpenAI-compatible endpoint, OpenRouter by
@@ -598,7 +612,8 @@ away.
    `GET /admin/instruments/{version}/matching?package_format=<name>` for the demand your
    format cannot meet — those criteria derive `not_applicable`, which is honest, not
    broken.
-4. **Ratify the assessor for the new instrument version** (ADR-0019, command under
+4. **Ratify the assessor for the new instrument version** (ADR-0019, command — or the
+   `/admin/assessors` button — under
    [Instruments and content profiling](#instruments-and-content-profiling-slice-2)).
    Criteria the assessor cannot execute derive `not_assessed` — the visible backlog, not
    a failure.
@@ -758,12 +773,15 @@ new version (`bump-instrument`).
 
 1. **Publish** — the act above. Nothing assistant-drafted reaches published without a human
    performing it.
-2. **Ratify the assessors** against this instrument version (ADR-0019). Within one lineage
+2. **Ratify the assessors** against this instrument version (ADR-0019), from the CLI or from
+   `/admin/assessors` (ADR-0036 — the page shows the text of each criterion whose decision
+   the act is waiting for). Within one lineage
    this is cheap — the diff against the previous version is computed mechanically and only
    changed or new executed criteria need `--confirm`. Across instruments it is not a diff at
    all: an assessor vouched for one argument has not been vouched for another, so a new
    instrument ratifies from scratch. Criteria no assessor can execute derive `not_assessed` —
-   the visible backlog, not a failure.
+   the visible backlog, not a failure. There is no un-ratify: if the decision was wrong, the
+   exits are a new assessor version or a new instrument version.
 
    One prerequisite the act cannot supply: a **new lineage** can ratify nothing until an
    assessor artifact declares itself against it — coverage is code, not an act. The
