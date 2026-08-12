@@ -1,5 +1,5 @@
-"""`drafts-hybrid` v4 — the semantic and judged executors over a fake transport, the
-coverage vs the real v4 YAML, the whole package against the frozen LearnpackV2 fixture,
+"""`drafts-hybrid` v5 — the semantic and judged executors over a fake transport, the
+coverage vs the real v5 YAML, the whole package against the frozen LearnpackV2 fixture,
 and ratification.
 
 The fake replaces the TRANSPORT only (the seam is `runtime.get_client`, ADR-0034):
@@ -51,12 +51,12 @@ from app.platform.db import SessionLocal
 from app.platform.llm import LlmCompletion, LlmTransportError
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "4")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "5")]
 
-_V4_SPEC = yaml.safe_load(
-    (INSTRUMENTS_DIR / "course-drafts-qa-v4.yaml").read_text(encoding="utf-8")
+_V5_SPEC = yaml.safe_load(
+    (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")
 )
-_V4_CRITERIA = {
+_V5_CRITERIA = {
     raw["id"]: CriterionSpec(
         criterion_id=raw["id"],
         pass_condition=raw["pass_condition"],
@@ -66,7 +66,7 @@ _V4_CRITERIA = {
         on_missing_evidence=raw.get("on_missing_evidence", "no_evidence"),
         condition=raw.get("condition"),
     )
-    for raw in _V4_SPEC["criteria"]
+    for raw in _V5_SPEC["criteria"]
 }
 
 
@@ -238,19 +238,19 @@ def outcomes_profile() -> ProfileData:
 # --- coverage vs the shipped instrument ------------------------------------------------
 
 
-def test_coverage_is_a_disjoint_union_over_v4():
-    declared = {raw["id"] for raw in _V4_SPEC["criteria"]}
+def test_coverage_is_a_disjoint_union_over_v5():
+    declared = {raw["id"] for raw in _V5_SPEC["criteria"]}
     assert PACKAGE.coverage.declared == declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
-    assert PACKAGE.instrument_id == _V4_SPEC["instrument_id"]
+    assert PACKAGE.instrument_id == _V5_SPEC["instrument_id"]
     assert len(PACKAGE.coverage.executes) == 19
 
 
 def test_coverage_also_decides_every_criterion_of_the_older_versions():
-    """Criterion ids are stable across the lineage (v3 changed one criterion's `requires`
-    and v4 two pass conditions, neither touching an id), so the one artifact can ratify any
-    published version (ADR-0019)."""
-    for version in ("v1", "v2", "v3"):
+    """Criterion ids are stable across the lineage (v3 changed one criterion's `requires`,
+    v4 two pass conditions and v5 a third, none of them touching an id), so the one
+    artifact can ratify any published version (ADR-0019)."""
+    for version in ("v1", "v2", "v3", "v4"):
         spec = yaml.safe_load(
             (INSTRUMENTS_DIR / f"course-drafts-qa-{version}.yaml").read_text(encoding="utf-8")
         )
@@ -265,7 +265,7 @@ def test_every_executed_failure_index_exists_in_the_real_instrument():
     }
     for criterion_id in PACKAGE.coverage.executes:
         needed = 2 if criterion_id in two_mode else 1
-        assert len(_V4_CRITERIA[criterion_id].failure_modes) >= needed
+        assert len(_V5_CRITERIA[criterion_id].failure_modes) >= needed
 
 
 def test_source_config_declares_the_semantic_identity():
@@ -283,7 +283,7 @@ def test_source_config_declares_the_semantic_identity():
     assert llm["temperature"] == 0.0
     # How many answers a judgement is decided by decides WHICH verdict survives, so it is
     # identity too — raising it to 3 is a version bump, not a tuning knob.
-    assert llm["samples"] == 1
+    assert llm["samples"] == {"asked": 2, "max": 3}
     # The two v2 exists for: no thinking out loud, and room for the answer if it happens
     # anyway. Both decide what comes back, so both are declared, not left to the wire.
     assert llm["reasoning"] == {"effort": "none"}
@@ -299,7 +299,7 @@ def test_source_config_declares_the_semantic_identity():
 
 
 def test_objectives_observable_verbs(fake_llm):
-    spec = _V4_CRITERIA["cr-objectives-observable-verbs"]
+    spec = _V5_CRITERIA["cr-objectives-observable-verbs"]
     run = PACKAGE.executors["cr-objectives-observable-verbs"]
     data = profile(learning_objectives=["build an API", "understand HTTP deeply"])
 
@@ -322,7 +322,7 @@ def test_objectives_observable_verbs(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_falls_back(fake_llm):
-    spec = _V4_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _V5_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
     data = profile(learning_objectives=["analyze systems", "recall terms", "apply patterns"])
 
@@ -336,7 +336,7 @@ def test_objectives_non_decreasing_demand_falls_back(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
-    spec = _V4_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _V5_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
 
     flat_texts = [f"understand topic {n}" for n in range(4)]
@@ -354,7 +354,7 @@ def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
 
 
 def test_outcomes_present(fake_llm):
-    spec = _V4_CRITERIA["cr-outcomes-present"]
+    spec = _V5_CRITERIA["cr-outcomes-present"]
     run = PACKAGE.executors["cr-outcomes-present"]
 
     fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
@@ -372,7 +372,7 @@ def test_outcomes_present(fake_llm):
 
 
 def test_outcomes_observable_verbs(fake_llm):
-    spec = _V4_CRITERIA["cr-outcomes-observable-verbs"]
+    spec = _V5_CRITERIA["cr-outcomes-observable-verbs"]
     run = PACKAGE.executors["cr-outcomes-observable-verbs"]
 
     internal = "you will be able to build a complete web page"
@@ -387,7 +387,7 @@ def test_outcomes_observable_verbs(fake_llm):
 
 
 def test_cognitive_demand_trajectory_rules(fake_llm):
-    spec = _V4_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _V5_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
 
     inventory = [lesson(f"0{n}.0", n) for n in range(7)]  # 00.0 .. 06.0; core = 5 lessons
@@ -416,7 +416,7 @@ def test_cognitive_demand_trajectory_rules(fake_llm):
 
 
 def test_a_short_course_has_no_trajectory_to_judge(fake_llm):
-    spec = _V4_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _V5_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
     client = fake_llm()  # no canned answers: any call would fail the test
 
@@ -435,9 +435,9 @@ def test_paired_criteria_share_one_extraction(fake_llm):
     client = fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
     data = outcomes_profile()
 
-    present = PACKAGE.executors["cr-outcomes-present"](_V4_CRITERIA["cr-outcomes-present"], data)
+    present = PACKAGE.executors["cr-outcomes-present"](_V5_CRITERIA["cr-outcomes-present"], data)
     verbs = PACKAGE.executors["cr-outcomes-observable-verbs"](
-        _V4_CRITERIA["cr-outcomes-observable-verbs"], data
+        _V5_CRITERIA["cr-outcomes-observable-verbs"], data
     )
 
     assert present.passed and verbs.passed
@@ -522,7 +522,7 @@ def judged_profile() -> ProfileData:
 
 
 def run_judged(criterion_id: str, data: ProfileData):
-    return PACKAGE.executors[criterion_id](_V4_CRITERIA[criterion_id], data)
+    return PACKAGE.executors[criterion_id](_V5_CRITERIA[criterion_id], data)
 
 
 def test_the_judge_answers_with_reason_before_verdict():
@@ -535,7 +535,7 @@ def test_the_judge_answers_with_reason_before_verdict():
 
 
 def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm):
-    fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)])
+    fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
 
     result = run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -546,8 +546,8 @@ def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm
 
 def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
     """The normative text is never retyped into the assessor: it travels from the spec."""
-    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)])
-    spec = _V4_CRITERIA["cr-closing-lesson-integrates"]
+    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
+    spec = _V5_CRITERIA["cr-closing-lesson-integrates"]
 
     run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -562,8 +562,9 @@ def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_
         closing_projects_forward=[
             verdict_json("You have built a page", verdict=False, failure_mode=1)
         ]
+        * 2
     )
-    spec = _V4_CRITERIA["cr-closing-lesson-projects-forward"]
+    spec = _V5_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
 
@@ -578,7 +579,7 @@ def test_a_failure_mode_the_criterion_never_declared_is_refused(fake_llm):
     client = fake_llm(
         closing_projects_forward=[
             out_of_range,
-            verdict_json("You have built a page", verdict=False, failure_mode=0),
+            *([verdict_json("You have built a page", verdict=False, failure_mode=0)] * 2),
         ]
     )
 
@@ -592,7 +593,7 @@ def test_an_ungrounded_verdict_quote_is_fed_back(fake_llm):
     client = fake_llm(
         closing_integrates=[
             verdict_json("this sentence is nowhere in the lesson"),
-            verdict_json(GROUNDED_CLOSING),
+            *([verdict_json(GROUNDED_CLOSING)] * 2),
         ]
     )
 
@@ -625,7 +626,7 @@ def test_a_judgement_may_rest_on_several_passages(fake_llm):
     rest travel as a metric rather than being concatenated into something the course does
     not contain contiguously."""
     fake_llm(
-        closing_integrates=[verdict_json(GROUNDED_CLOSING, "You have built a page")],
+        closing_integrates=[verdict_json(GROUNDED_CLOSING, "You have built a page")] * 2,
     )
 
     result = run_judged("cr-closing-lesson-integrates", judged_profile())
@@ -642,7 +643,7 @@ def test_quotes_stitched_with_an_ellipsis_are_told_what_to_do_instead(fake_llm):
     client = fake_llm(
         closing_integrates=[
             verdict_json(f"{GROUNDED_CLOSING} ... You have built a page"),
-            verdict_json(GROUNDED_CLOSING, "You have built a page"),
+            *([verdict_json(GROUNDED_CLOSING, "You have built a page")] * 2),
         ]
     )
 
@@ -659,7 +660,7 @@ def test_a_quote_across_a_line_break_is_grounded_and_stored_as_the_source_writes
     as one space, which is not a finding about the course. What gets stored is the source's
     own span, so a report shows the course's text and not the model's rendering."""
     flattened = "You have built a page, styled it and published it: the three pieces"
-    fake_llm(closing_integrates=[verdict_json(flattened.replace(" ", "  "))])
+    fake_llm(closing_integrates=[verdict_json(flattened.replace(" ", "  "))] * 2)
 
     result = run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -684,13 +685,94 @@ def test_arc_character_is_judged_over_both_frame_lessons(fake_llm):
     """Its pass condition asserts about the pair, so it reads both bodies in one question
     rather than sharing the single-lesson judgements — an executor receives only its own
     spec, and a shared question would have to retype a sibling criterion's words."""
-    client = fake_llm(arc_character=[verdict_json(GROUNDED_CLOSING)])
+    client = fake_llm(arc_character=[verdict_json(GROUNDED_CLOSING)] * 2)
 
     result = run_judged("cr-arc-character", judged_profile())
 
     asked = "\n".join(m["content"] for m in client.calls[0]["messages"])
     assert result.passed
     assert GROUNDED_OUTCOME in asked and GROUNDED_CLOSING in asked
+
+
+# --- v5: markdown is formatting, and a judgement is a vote ------------------------------
+
+
+def test_a_quote_that_drops_markdown_emphasis_still_grounds(fake_llm):
+    """Lesson bodies are markdown and a model quoting `**bold**` drops the markers about as
+    often as it keeps them. Byte comparison called that a hallucination; it is formatting.
+    What gets stored is still the course's own span, asterisks included."""
+    data = judged_profile()
+    data.entries["lesson_bodies"].value[3]["body"] = (
+        "# Wrap up\n\nYou have built a **complete page**, and the pieces fit together.\n"
+    )
+    fake_llm(closing_integrates=[verdict_json("You have built a complete page")] * 2)
+
+    result = run_judged("cr-closing-lesson-integrates", data)
+
+    assert result.passed
+    # The span runs from the first matched character to the last, so markers INSIDE it are
+    # kept and a marker run sitting on the boundary is not. Still verbatim in the source,
+    # which is all ADR-0009 asks of a quote.
+    assert result.quote == "You have built a **complete page"
+    assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
+
+
+def test_two_agreeing_samples_settle_a_judgement(fake_llm):
+    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed
+    assert len(client.calls) == 2  # no third: two agreeing samples cannot be overturned
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["judgment_agreement_closing_integrates"] == {"samples": 2, "agreed": 2}
+
+
+def test_a_split_buys_a_third_sample_and_the_majority_wins(fake_llm):
+    """The tie-break, and the split reported: a 2-1 is the signal that the criterion never
+    said where its threshold is, which is how every under-specified one has been found."""
+    client = fake_llm(
+        closing_integrates=[
+            verdict_json(GROUNDED_CLOSING),
+            verdict_json("You have built a page", verdict=False, failure_mode=0),
+            verdict_json("the three pieces fit together"),
+        ]
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed  # two of three
+    assert len(client.calls) == 3
+    # the winning side's own words, not a synthesis of the three
+    assert result.quote == GROUNDED_CLOSING
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["judgment_agreement_closing_integrates"] == {"samples": 3, "agreed": 2}
+
+
+def test_a_losing_majority_carries_the_failing_side_s_mode(fake_llm):
+    fake_llm(
+        closing_projects_forward=[
+            verdict_json("You have built a page", verdict=False, failure_mode=1),
+            verdict_json("the three pieces fit together"),
+            verdict_json("styled it and published it", verdict=False, failure_mode=1),
+        ]
+    )
+    spec = _V5_CRITERIA["cr-closing-lesson-projects-forward"]
+
+    result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
+
+    assert not result.passed
+    assert result.failure_mode == spec.failure_modes[1]
+
+
+def test_the_vote_reports_what_the_whole_judgement_spent(fake_llm):
+    fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    spent = {m.metric_id: m.value for m in result.metrics}["llm_closing_integrates"]
+    assert spent["calls"] == 2  # summed across the samples, not one of them
+    assert spent["tokens_in"] == 200
 
 
 # --- the assessment pair: one mapping, one judgement, two criteria ----------------------
@@ -739,7 +821,7 @@ def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
                 ("obj-2", "Which tag opens a document?", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json("Build a page from this brief.")],
+        assessment_verification_match=[verdict_json("Build a page from this brief.")] * 2,
     )
     data = judged_profile()
 
@@ -750,6 +832,8 @@ def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
     # one mapping + one judgement: the second criterion did not pay for the mapping again
     assert [call["task_id"] for call in client.calls] == [
         "assessment_mapping",
+        # two samples that agree; the mapping was not paid for twice
+        "assessment_verification_match",
         "assessment_verification_match",
     ]
 
@@ -764,7 +848,7 @@ def test_the_verification_judge_is_shown_only_the_objectives_it_is_about(fake_ll
                 ("obj-2", "Which tag opens a document?", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json("Build a page from this brief.")],
+        assessment_verification_match=[verdict_json("Build a page from this brief.")] * 2,
     )
 
     run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
@@ -815,7 +899,7 @@ def test_assessment_that_only_tests_its_own_module_fails(fake_llm):
     assert not result.passed
     assert (
         result.failure_mode
-        == _V4_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
+        == _V5_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
     )
 
 
@@ -910,17 +994,17 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v4",
-        instrument_id=_V4_SPEC["instrument_id"],
+        instrument_version_id="course-drafts-qa-v5",
+        instrument_id=_V5_SPEC["instrument_id"],
         status="published",
-        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V4_SPEC["claims"]),
-        criteria=tuple(_V4_CRITERIA[raw["id"]] for raw in _V4_SPEC["criteria"]),
+        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V5_SPEC["claims"]),
+        criteria=tuple(_V5_CRITERIA[raw["id"]] for raw in _V5_SPEC["criteria"]),
         bindings=tuple(
             BindingSpec(
                 package_format=raw["package_format"],
                 task_variables=raw.get("task_variables", {}),
             )
-            for raw in _V4_SPEC["bindings"]
+            for raw in _V5_SPEC["bindings"]
         ),
     )
 
@@ -956,14 +1040,14 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
             )
         ],
         trajectory=[trajectory_json(dict(zip(core_ids, rising, strict=True)))],
-        opening_connects_backwards=[verdict_json(grounded)],
-        closing_integrates=[verdict_json(grounded_closing)],
-        closing_projects_forward=[verdict_json(grounded_closing)],
-        arc_character=[verdict_json(grounded_closing)],
+        opening_connects_backwards=[verdict_json(grounded)] * 2,
+        closing_integrates=[verdict_json(grounded_closing)] * 2,
+        closing_projects_forward=[verdict_json(grounded_closing)] * 2,
+        arc_character=[verdict_json(grounded_closing)] * 2,
         assessment_mapping=[
             mapping_json(*((objective_id, first_question, [0]) for objective_id in objective_ids))
         ],
-        assessment_verification_match=[verdict_json(first_question)],
+        assessment_verification_match=[verdict_json(first_question)] * 2,
         # Items 3 and 4 sit in lesson 03.2 and are answered to draw on two earlier lessons
         # from other modules; the rest test only their own.
         assessment_reach=[
@@ -1013,9 +1097,9 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
     assert all(not o.derived and o.quote for o in outcomes if o.outcome == "pass")
 
-    # Twelve criteria, ten questions: two share the outcomes extraction and two share the
-    # assessment mapping.
-    assert len(client.calls) == 10
+    # Twelve criteria, fifteen calls: five judged criteria are voted on twice each, while
+    # two share the outcomes extraction and two share the assessment mapping.
+    assert len(client.calls) == 15
 
     metric_values = {m.metric_id: m.value for m in metrics}
     assert metric_values["stated_outcomes_count"] == 1
@@ -1056,7 +1140,7 @@ def patched_hybrid_package(unique, monkeypatch):
 
 
 def hybrid_copy_spec(unique: str) -> dict:
-    spec = copy.deepcopy(_V4_SPEC)
+    spec = copy.deepcopy(_V5_SPEC)
     spec["instrument_id"] = f"qa-hybrid-{unique}"
     return spec
 

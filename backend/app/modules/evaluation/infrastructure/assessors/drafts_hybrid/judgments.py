@@ -67,15 +67,23 @@ JUDGE_MODEL = "deepseek/deepseek-v4-flash-0731"
 ASSESSMENT_MAPPING_MODEL = "deepseek/deepseek-v4-flash-0731"
 ASSESSMENT_REACH_MODEL = "deepseek/deepseek-v4-flash-0731"
 
-# How many independent answers a judgement is decided by. ONE, deliberately: the ensemble
-# literature is clear that k=3 recovers real accuracy (the variance survives temperature 0,
-# because it comes from how the server batches work rather than from sampling), and just as
-# clear that it costs k times as much in money and in latency. The bottleneck today is how
-# fast a human can READ what the judge answered, not how tight its variance is; a judgement
-# nobody has reviewed is not made better by being made three times. Raising this to 3 means
-# changing this number, adding the majority vote in `_decide`, and bumping VERSION —
-# calibration does not transfer across it, exactly as ADR-0016 requires.
-SAMPLES = 1
+# How many independent answers a judgement is decided by: ask two, and only pay for a third
+# when they disagree. The verdict this yields is EXACTLY the one a always-three majority
+# would give — two agreeing samples cannot be overturned by a third — at about 2.2 calls
+# instead of 3.
+#
+# Sampling at all is not a hedge: repeats of the same question over the same text do
+# disagree, because the variance outlives temperature 0 (it comes from how the server batches
+# work, not from how the tokens are drawn). Correcting an ambiguous criterion removes far more
+# disagreement than voting ever will — but only for the ambiguity someone has already found,
+# and borderline instances surface one per draft, so there is no enumerable list of "hard
+# criteria" to sample selectively.
+#
+# `MAX_SAMPLES` must stay strictly greater than `SAMPLES`, or a split would have nothing to
+# break the tie with. Both are identity: how many answers decide a verdict decides which
+# verdict survives, so moving either is a VERSION bump.
+SAMPLES = 2
+MAX_SAMPLES = 3
 
 
 @dataclass(frozen=True)
@@ -94,6 +102,22 @@ class Verdict:
     evidence: tuple[str, ...]
     passed: bool
     failure_mode_index: int | None
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """A criterion decided by a vote, and how close that vote was.
+
+    `agreed` out of `samples` is not a footnote: a criterion answered 2-1 is one whose
+    threshold the instrument never wrote down, and every such criterion found so far was
+    found exactly this way — the model agreeing on the facts and dividing on whether they
+    clear the bar. The split travels with the evaluation so that reading it is possible.
+    """
+
+    verdict: Verdict
+    usage: LlmUsage
+    agreed: int
+    samples: int
 
 
 @dataclass(frozen=True)
@@ -121,16 +145,17 @@ class ItemReach:
 # criteria reading one answer must not pay for it twice. Here it is the assessment mapping
 # that two criteria share.
 
-_cache: dict[tuple[str, UUID], tuple[Any, LlmUsage]] = {}
+_cache: dict[tuple[str, UUID], Any] = {}
 
 
 def clear_judgment_cache() -> None:
     _cache.clear()
 
 
-def _memoized(
-    task_id: str, profile: ProfileData, run: Callable[[], tuple[Any, LlmUsage]]
-) -> tuple[Any, LlmUsage]:
+def _memoized(task_id: str, profile: ProfileData, run: Callable[[], Any]) -> Any:
+    """Whatever `run` returns, once per (task, profile). Callers that also need the spend
+    return it inside the value — a `Judgement` carries its own, the extraction tasks pair
+    theirs with the data."""
     key = (task_id, profile.profile_id)
     if key not in _cache:
         _cache[key] = run()
@@ -151,9 +176,13 @@ def locate(corpus: str, quote: str) -> str | None:
       single space. Comparing byte for byte rejected that, which is a false negative about
       the course. Runs of whitespace are equal to each other for the purpose of finding the
       passage.
+    - **Neither is markdown emphasis.** Lesson bodies are markdown, so a sentence can carry
+      `**bold**` or backticks, and a model quoting it drops them about as often as it keeps
+      them. Same class of false negative, same answer: the markers are invisible to the match.
     - **What is returned is the SOURCE's text, never the model's.** Tolerating a difference
       when matching is not the same as storing the difference: the quote that ends up in a
-      report is the span as the course writes it, so ADR-0009 stays exact.
+      report is the span as the course writes it — emphasis markers included — so ADR-0009
+      stays exact.
     """
     flat_corpus, offsets = _flatten(corpus)
     flat_quote, _ = _flatten(quote)
@@ -165,13 +194,26 @@ def locate(corpus: str, quote: str) -> str | None:
     return corpus[offsets[at] : offsets[at + len(flat_quote) - 1] + 1]
 
 
+# Markdown emphasis, dropped when matching a quote against its source. Skipping `_` is the
+# one that can bite in the other direction: it makes `lesson_bodies` and `lessonbodies` equal
+# for the search. Accepted — it is a false positive in the direction we already chose to
+# tolerate, and reaching it needs the model to delete an underscore, which is a formatting
+# edit rather than an invention.
+_EMPHASIS = frozenset("*_`")
+
+
 def _flatten(text: str) -> tuple[str, list[int]]:
-    """`text` with whitespace runs collapsed to one space and stripped, plus, per character
-    kept, the index it came from — which is what lets a match map back to the original."""
+    """`text` with whitespace runs collapsed to one space, emphasis markers dropped and the
+    ends stripped, plus, per character kept, the index it came from — which is what lets a
+    match map back to the original."""
     kept: list[str] = []
     offsets: list[int] = []
     after_space = True
     for index, char in enumerate(text):
+        if char in _EMPHASIS:
+            # Not `continue`-ing through the space branch on purpose: an emphasis marker is
+            # invisible, so `**a** **b**` still flattens to `a b` rather than `ab`.
+            continue
         if char.isspace():
             if not after_space:
                 kept.append(" ")
@@ -219,48 +261,93 @@ def judge(
     task_id: str,
     source_description: str,
     corpus: str,
-) -> tuple[Verdict, LlmUsage]:
+) -> Judgement:
     """One criterion, judged against one corpus, with its evidence grounded in it.
+
+    Asks `SAMPLES` independent times and stops there when they agree; a split buys one more
+    answer and the majority wins. Each sample is a whole `request_structured_output` call, so
+    a sample that violates the output contract is fed back and retried on its own before it
+    ever counts as a vote.
 
     Memoized by (task_id, profile): the task id names the question, and no two criteria
     share one — a shared judgement would need the other criterion's normative text, which
     an executor never receives.
     """
 
-    def run() -> tuple[Verdict, LlmUsage]:
-        payload, usage = request_structured_output(
-            runtime.get_client(),
-            task_id=task_id,
-            model=JUDGE_MODEL,
-            system_prompt=prompts.JUDGE_SYSTEM,
-            user_prompt=prompts.JUDGE_USER.substitute(
-                source_description=source_description,
-                pass_condition=spec.pass_condition.strip(),
-                failure_modes=_numbered(spec.failure_modes),
-                corpus=corpus,
-            ),
-            validate=lambda answer: _validate_verdict(answer, corpus, len(spec.failure_modes)),
-            temperature=tasks.TEMPERATURE,
-            max_tokens=tasks.MAX_OUTPUT_TOKENS,
-            reasoning=tasks.REASONING,
-        )
-        raw_mode = payload.get("failureMode")
-        # Each quote is stored as the SOURCE spells it, not as the model rendered it.
-        located = tuple(
-            span for quote in payload["evidence"] if (span := locate(corpus, str(quote)))
-        )
-        return (
-            Verdict(
-                reason=str(payload["reason"]).strip(),
-                evidence=located,
-                passed=bool(payload["verdict"]),
-                failure_mode_index=int(raw_mode) if isinstance(raw_mode, int) else None,
-            ),
-            usage,
-        )
+    def run() -> Judgement:
+        verdicts: list[Verdict] = []
+        usages: list[LlmUsage] = []
+        while True:
+            verdict, usage = _ask(spec, task_id, source_description, corpus)
+            verdicts.append(verdict)
+            usages.append(usage)
+            answers = {v.passed for v in verdicts}
+            if len(verdicts) >= SAMPLES and (len(answers) == 1 or len(verdicts) >= MAX_SAMPLES):
+                return _decide(verdicts, usages)
 
-    result, usage = _memoized(task_id, profile, run)
-    return result, usage
+    judged: Judgement = _memoized(task_id, profile, run)
+    return judged
+
+
+def _ask(
+    spec: CriterionSpec, task_id: str, source_description: str, corpus: str
+) -> tuple[Verdict, LlmUsage]:
+    """One sample: one validated answer, or `AssessorExecutionError`."""
+    payload, usage = request_structured_output(
+        runtime.get_client(),
+        task_id=task_id,
+        model=JUDGE_MODEL,
+        system_prompt=prompts.JUDGE_SYSTEM,
+        user_prompt=prompts.JUDGE_USER.substitute(
+            source_description=source_description,
+            pass_condition=spec.pass_condition.strip(),
+            failure_modes=_numbered(spec.failure_modes),
+            corpus=corpus,
+        ),
+        validate=lambda answer: _validate_verdict(answer, corpus, len(spec.failure_modes)),
+        temperature=tasks.TEMPERATURE,
+        max_tokens=tasks.MAX_OUTPUT_TOKENS,
+        reasoning=tasks.REASONING,
+    )
+    raw_mode = payload.get("failureMode")
+    # Each quote is stored as the SOURCE spells it, not as the model rendered it.
+    located = tuple(span for quote in payload["evidence"] if (span := locate(corpus, str(quote))))
+    return (
+        Verdict(
+            reason=str(payload["reason"]).strip(),
+            evidence=located,
+            passed=bool(payload["verdict"]),
+            failure_mode_index=int(raw_mode) if isinstance(raw_mode, int) else None,
+        ),
+        usage,
+    )
+
+
+def _decide(verdicts: Sequence[Verdict], usages: Sequence[LlmUsage]) -> Judgement:
+    """The majority verdict, carrying the reason and quotes of a sample that voted for it.
+
+    The winning sample's own words are kept rather than merged: a report shows one judge's
+    account of one reading, which is checkable, instead of a synthesis nobody wrote.
+    """
+    answers = [verdict.passed for verdict in verdicts]
+    majority = answers.count(True) > answers.count(False)
+    return Judgement(
+        verdict=next(verdict for verdict in verdicts if verdict.passed == majority),
+        usage=_total(usages),
+        agreed=answers.count(majority),
+        samples=len(verdicts),
+    )
+
+
+def _total(usages: Sequence[LlmUsage]) -> LlmUsage:
+    """What the whole vote spent — the samples summed, so cost per criterion stays readable."""
+    return LlmUsage(
+        model=usages[0].model,
+        calls=sum(usage.calls for usage in usages),
+        tokens_in=sum(usage.tokens_in for usage in usages),
+        tokens_out=sum(usage.tokens_out for usage in usages),
+        latency_ms=sum(usage.latency_ms for usage in usages),
+    )
 
 
 def _numbered(failure_modes: Sequence[str]) -> str:

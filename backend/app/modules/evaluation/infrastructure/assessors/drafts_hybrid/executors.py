@@ -363,10 +363,9 @@ def cognitive_demand_rises_across_the_course(
 
 def _judged(
     entry: ProfileEntryData,
-    verdict: judgments.Verdict,
+    judged: judgments.Judgement,
     spec: CriterionSpec,
     task_id: str,
-    usage: LlmUsage,
     extra_metrics: tuple[ComputedMetric, ...] = (),
 ) -> ExecutorResult:
     """One judged criterion as an `ExecutorResult`: the judge's own quotes are the evidence.
@@ -379,9 +378,18 @@ def _judged(
     FIRST is the quote — each is already a continuous span of the source, so the one a
     report shows is verifiable on its own — and the rest travel as a metric rather than
     being concatenated into something the course does not contain contiguously.
+
+    How close the vote was travels too: a criterion answered 2-1 is one whose threshold the
+    instrument left unwritten, and that is worth as much to whoever reads the run as the
+    verdict itself.
     """
+    verdict = judged.verdict
     metrics = (
-        _usage_metric(task_id, usage),
+        _usage_metric(task_id, judged.usage),
+        ComputedMetric(
+            f"judgment_agreement_{task_id}",
+            {"samples": judged.samples, "agreed": judged.agreed},
+        ),
         ComputedMetric(f"judgment_{task_id}", verdict.reason),
         *(
             (ComputedMetric(f"evidence_{task_id}", list(verdict.evidence)),)
@@ -403,40 +411,40 @@ def _judged(
 def opening_lesson_connects_backwards(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
     """The opening relates the new material to what the learner already knows."""
     body, entry = tasks.opening_lesson_body(profile)
-    verdict, usage = judgments.judge(
+    judged = judgments.judge(
         profile,
         spec,
         task_id="opening_connects_backwards",
         source_description="the body of the FIRST lesson by declared position",
         corpus=body,
     )
-    return _judged(entry, verdict, spec, "opening_connects_backwards", usage)
+    return _judged(entry, judged, spec, "opening_connects_backwards")
 
 
 def closing_lesson_integrates(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
     """The closing relates what was learned across the course into a connected whole."""
     body, entry = judgments.closing_lesson_body(profile)
-    verdict, usage = judgments.judge(
+    judged = judgments.judge(
         profile,
         spec,
         task_id="closing_integrates",
         source_description="the body of the LAST lesson by declared position",
         corpus=body,
     )
-    return _judged(entry, verdict, spec, "closing_integrates", usage)
+    return _judged(entry, judged, spec, "closing_integrates")
 
 
 def closing_lesson_projects_forward(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
     """The closing says what the learner can now do and where it leads."""
     body, entry = judgments.closing_lesson_body(profile)
-    verdict, usage = judgments.judge(
+    judged = judgments.judge(
         profile,
         spec,
         task_id="closing_projects_forward",
         source_description="the body of the LAST lesson by declared position",
         corpus=body,
     )
-    return _judged(entry, verdict, spec, "closing_projects_forward", usage)
+    return _judged(entry, judged, spec, "closing_projects_forward")
 
 
 def arc_character(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
@@ -449,14 +457,14 @@ def arc_character(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
     retype a sibling criterion's normative text.
     """
     bodies = _entry(profile, "lesson_bodies")
-    verdict, usage = judgments.judge(
+    judged = judgments.judge(
         profile,
         spec,
         task_id="arc_character",
         source_description="the first and last lessons by declared position",
         corpus=judgments.arc_corpus(profile),
     )
-    return _judged(bodies, verdict, spec, "arc_character", usage)
+    return _judged(bodies, judged, spec, "arc_character")
 
 
 def every_objective_has_an_assessment_item(
@@ -477,18 +485,16 @@ def every_objective_has_an_assessment_item(
         ComputedMetric("objectives_unmeasured", [mapping.objective_id for mapping in unmeasured]),
     )
     if unmeasured:
-        return _judged(
+        # Built with `_result` rather than `_judged` on purpose: nothing here was voted on,
+        # so an agreement metric would report a vote that never happened.
+        offender = unmeasured[0]
+        return _result(
             entry,
-            judgments.Verdict(
-                reason=unmeasured[0].reason,
-                evidence=(unmeasured[0].evidence,) if unmeasured[0].evidence else (),
-                passed=False,
-                failure_mode_index=0,
-            ),
+            False,
             spec,
-            "assessment_mapping",
-            usage,
-            metrics[1:],
+            0,
+            (*metrics, ComputedMetric("judgment_assessment_mapping", offender.reason)),
+            quote=offender.evidence or None,
         )
     quote = mappings[0].evidence if mappings else entry.quote or ""
     return _result(entry, True, spec, metrics=metrics, quote=quote)
@@ -520,7 +526,7 @@ def assessment_matches_the_declared_verification(
                 ComputedMetric("verification_pairs_judged", 0),
             ),
         )
-    verdict, usage = judgments.judge(
+    judged = judgments.judge(
         profile,
         spec,
         task_id="assessment_verification_match",
@@ -530,10 +536,9 @@ def assessment_matches_the_declared_verification(
     )
     return _judged(
         entry,
-        verdict,
+        judged,
         spec,
         "assessment_verification_match",
-        usage,
         (_usage_metric("assessment_mapping", mapping_usage),),
     )
 

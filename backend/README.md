@@ -390,6 +390,40 @@ Both doors write one: the page's runs under their run id, `evaluate --dry-run` u
 — the traces of a machine, not of the repo. Leave `LLM_TRACE_DIR` empty and none are
 written.
 
+### What repeated runs tell you
+
+One trace shows whether a question was answered. Only **repeats of the same content** show
+whether the answer means anything, and they are the cheapest diagnostic available: run one
+draft three times and compare the verdicts criterion by criterion. Four things that
+measurement settles, none of them obvious from a single run.
+
+- **Where the model disagrees tells you whose defect it is.** If repeats quote the same
+  passages and describe the same facts, then split on the verdict, the criterion never said
+  where its threshold is — and the fix is prose in the instrument, not a better prompt. If
+  repeats disagree about *what the text says*, that is the judge, and only then are prompts,
+  models or sampling the answer. Read the reasons side by side before touching anything.
+- **Writing the missing threshold beats sampling.** Voting reduces variance, and an
+  under-specified criterion is not variance: it is two defensible readings of one sentence,
+  and a vote just picks one of them more consistently. Fixing the text removes the
+  disagreement instead of averaging it.
+- **Borderline instances belong to (content, criterion) pairs, not to criteria.** A criterion
+  can be unanimous on one draft and a coin flip on the next, and one that looked settled over
+  several observations can still turn. So there is no list of "hard criteria" to sample
+  selectively — sampling, when it is used, applies to all of them.
+- **A judgement is only diagnosable because it is quoted.** Every distinction above comes
+  from comparing the passages and reasons of different runs. A bare verdict shows a number
+  moving and nothing about why, which is the reason the output contract demands evidence at
+  all (ADR-0009).
+
+A judged criterion reports how close its vote was, as a
+`judgment_agreement_<task>` metric of `{samples, agreed}`. Treat a criterion that keeps coming
+back **2-1 as a bug report about the instrument**, not as noise to average away — that is the
+signature of the first case above.
+
+And the limit worth stating: self-agreement is not correctness. A criterion can be perfectly
+stable and stably wrong, and nothing in these runs would show it. Only a human reading the
+verdicts against the content can.
+
 ## Registering courses
 
 The canonical intake is **discovery** (ADR-0027): declare a package source and the system

@@ -298,40 +298,49 @@ skill" counts as *what comes next*; either answer is defensible and the text pic
 It is not cosmetic: this criterion and `cr-closing-lesson-integrates` evidence the same claim
 under conjunctive sufficiency, so for that draft the **claim itself** is a coin flip.
 
-**What this leaves for the next increment**, in the order the evidence puts them:
+**All three of those are now built, and the fourteen runs' four findings live in the
+runbook.** `course-drafts-qa` **v5** writes the missing threshold: projecting forward means
+naming something beyond the course, and telling the learner to keep practising what was
+already taught is not it. The permissive reading was available and was rejected on the
+ground that nearly every closing says *something* about the future, so admitting "keep
+practising" would leave the criterion passing almost everything. One `pass_condition`, ids
+and claims verbatim v4, imported as a **draft**.
 
-1. **The `cr-closing-lesson-projects-forward` threshold** — an instrument edit, and worth
-   making even though chasing every borderline instance with a rewrite is not: this one fixes
-   a threshold once and reuses it, rather than patching a course.
-2. **Markdown tolerance in the grounding check** — a false rejection that already cost a
-   retry: the draft writes `**markup language**` and the model quoted `markup language`,
-   which is formatting rather than content, exactly the argument that made whitespace
-   tolerable. (The other retry of those runs was a true rejection — a quote silently
-   shortened from "everything the user sees on the page" to "everything the user sees" — and
-   is the check doing its job.)
-3. **Sampling: `k=2` with a tie-breaking third**, which yields exactly the verdict a k=3
-   majority would (two agreeing samples cannot be overturned by a third) at ~2.2 calls
-   instead of 3. Still needed after the wording fixes, because borderline instances surface
-   **one per draft**: two drafts have now produced three different oscillating criteria, one
-   each, so there is no enumerable list of "hard criteria" to sample selectively. The vote
-   split is worth as much as the verdict — a 2-1 is the detector for an underspecified
-   criterion, which is how this one was found.
+`drafts-hybrid` **v5** carries the other two. **Grounding no longer rejects a quote over
+markdown**: lesson bodies are markdown, a model quoting a sentence that carries `**bold**`
+drops the markers about as often as it keeps them, and byte comparison called that a
+hallucination — the same false negative whitespace used to cause, with the same answer.
+Emphasis is invisible to the match; the stored quote is still the source's own span, so
+ADR-0009 is untouched. (The span runs from the first matched character to the last, so
+markers inside it survive and a marker run on the boundary does not — still verbatim, which
+is all a quote has to be.)
 
-**Four things these fourteen runs settled**, recorded because they generalize beyond this
-lineage:
+**And a judgement is now decided by a vote:** two samples, a third only when they split, the
+majority wins. That is exactly the verdict an always-three majority would give — two
+agreeing samples cannot be overturned — at ~2.2 calls instead of 3, which is why it is not
+simply k=3. Every judged criterion reports its split as a
+`judgment_agreement_<task>` metric of `{samples, agreed}`, and that number is the point as
+much as the verdict is: a criterion that keeps coming back **2-1 is a bug report about the
+instrument**, since that is the signature of a threshold nobody wrote down. Sampling stays
+necessary after the wording fixes because borderline instances surface **one per draft** —
+two drafts produced three different oscillating criteria, one each — so there is no
+enumerable list of "hard criteria" to sample selectively. `SAMPLES`/`MAX_SAMPLES` are
+declared in `SOURCE_CONFIG` for the same reason a model id is: how many answers decide a
+verdict decides which verdict survives.
 
-- **Fixing the text pays more than sampling would.** Two sentences moved one draft from 73 %
-  to 100 % self-agreement; no amount of voting would have done that, because voting reduces
-  variance and this was ambiguity.
-- **Borderline instances belong to (draft, criterion) pairs, not to criteria.** Each draft
-  surfaced a different one, and a criterion unanimous on five observations turned out to be
-  a coin flip on the sixth.
-- **Where the model disagrees tells you whose defect it is.** Same facts, different verdict →
-  the criterion's threshold is unwritten, and prose fixes it. Different facts → the judge, and
-  only then are prompts or sampling the answer.
-- **Making the judge quote its evidence is what makes any of this visible.** Every diagnosis
-  above came from comparing quotes across runs; a bare verdict would have shown only a
-  number moving.
+**The four findings are now reference, not status.** They were general enough to outlive the
+campaign that produced them, so they sit in `backend/README.md` under *What repeated runs
+tell you*, beside the section on reading a single trace: where the model disagrees tells you
+whose defect it is (same facts and a different verdict is the instrument's; different facts
+are the judge's) · writing the missing threshold beats voting, because ambiguity is not
+variance · borderline instances belong to (content, criterion) pairs, so selective sampling
+has nothing to select on · and none of it is diagnosable unless the judge quotes its
+evidence. With the caveat that belongs next to them: **self-agreement is not correctness**,
+and a criterion can be perfectly stable and stably wrong.
+
+**Not yet measured:** whether v5's threshold settles the criterion it was written for. Three
+runs of the CSS draft answer that, and one of the HTML draft confirms nothing that was
+already unanimous moved.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
@@ -621,7 +630,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 812 tests** against local Postgres (~60 s). Requires
+- **Backend suite green: 817 tests** against local Postgres (~55 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -636,7 +645,13 @@ the data in the package).
   one judgement); the verification judge is shown only the objectives that declare a
   verification AND have an item, and answers a vacuous pass with no call at all when none
   do; the reach count admits only lesson identifiers the plan declares. The frozen
-  LearnpackV2 fixture now partitions 29 outcomes with 19 executed over **ten** questions.
+  LearnpackV2 fixture partitions 29 outcomes with 19 executed over **fifteen** calls — five
+  judged criteria voted on twice each, two sharing one extraction and two one mapping.
+- **The vote and the markdown tolerance pinned** (suite): two agreeing samples settle a
+  judgement in two calls and report `agreed 2 of 2`; a split buys a third, the majority wins
+  carrying its own side's reason and quote, and the metric says `2 of 3`; the spend reported
+  per criterion is the samples summed rather than one of them; and a quote that drops
+  `**emphasis**` finds its passage while the stored span keeps the markers the source wrote.
 - **The evidence contract pinned on the cases that broke it** (suite): a judgement resting
   on several passages keeps them separate, the first being the result's quote and the rest a
   metric; a quote stitched with an ellipsis is answered with the rule rather than the
