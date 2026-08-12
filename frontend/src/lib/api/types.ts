@@ -157,11 +157,22 @@ export interface ProfileCapabilitiesResponse {
   accepted: boolean;
 }
 
+/** The identity of an automated assessor: the artifact, and the lineage it owes itself to. */
+export interface AutomatedIdentity {
+  name: string;
+  version: string;
+  instrument_id: string;
+}
+
 export interface AssessorResponse {
   assessor_id: Uuid;
   role: string;
   email: string | null;
   display_name: string | null;
+  /** The Source axis: the two kinds are structurally different (ADR-0016). */
+  kind: "human" | "automated";
+  /** Present exactly when `kind === "automated"`. */
+  automated: AutomatedIdentity | null;
 }
 
 export interface AssignmentResponse {
@@ -647,6 +658,18 @@ export interface QualityReferenceResponse {
   dimension_id: string | null;
 }
 
+/** One version of a package's lineage, and whether that package may judge with it.
+ *
+ * Ratification is per (assessor, instrument version) — ADR-0019 — so this is a matrix,
+ * never a flag. A draft is listed and never ratified: its remedy is publishing it. */
+export interface LineageVersion {
+  instrument_version_id: string;
+  status: "draft" | "published" | "deprecated";
+  ratified: boolean;
+  ratified_at: string | null;
+  ratified_by_name: string | null;
+}
+
 /** One automated assessor package from the in-code registry (ADR-0016). */
 export interface AssessorPackageResponse {
   name: string;
@@ -659,6 +682,31 @@ export interface AssessorPackageResponse {
   abstains: Record<string, string>;
   /** True when the package carries LLM tasks: real calls, needs the backend's LLM_API_KEY. */
   uses_llm: boolean;
+  /** Null until the first ratification mints the identity row (ADR-0019 §2). */
+  assessor_id: Uuid | null;
+  lineage_versions: LineageVersion[];
+}
+
+export interface RatifyAssessorRequest {
+  name: string;
+  version: string;
+  instrument_version_id: string;
+  /** One id per executed criterion whose normative text changed (ADR-0019 §3). */
+  confirmed: string[];
+}
+
+export interface RatifyAssessorResponse {
+  assessor_id: Uuid;
+  instrument_version_id: string;
+  newly_ratified: boolean;
+  newly_registered: boolean;
+}
+
+/** The 409 body when executed criteria changed: what has to be decided, one by one. */
+export interface RatificationDelta {
+  criterion_id: string;
+  change: "new" | "changed";
+  pass_condition: string;
 }
 
 export interface PreviewEvaluationRequest {
