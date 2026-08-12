@@ -345,6 +345,19 @@ That misfire is worth keeping as a note about the machine, not just about this b
 instrument version takes effect the moment it is imported, an assessor version takes effect
 when the process restarts, and the console shows which assessor is actually loaded.
 
+**The next run died, and on a defect of the same family.** A corpus that a task demands
+verbatim quotes from was being built with `json.dumps`, so an assessment item reading
+`class="title"` reached the model as `class=\"title\"`. The model quoted what it could read
+— the course's actual text — and the grounding check refused a citation that was correct.
+Then the answer came back byte-identical, because from where the model stood it HAD copied
+exactly, and the repeat detector did its job and ended the evaluation. Two mechanisms in a
+chain: a false rejection, and a correct stop on top of it. The two corpora that were
+serialized are now plain labelled lines, which removes the class rather than adding a third
+tolerance to `locate` after whitespace and emphasis — encoding a text and then demanding the
+decoded form back is the defect, not a matching subtlety. It is content-dependent, which is
+why it took this long to appear: of the two mapping corpora in the traces one carries two
+escaped quotes and the other none, so one draft triggered it and the other never could.
+
 **The four findings are now reference, not status.** They were general enough to outlive the
 campaign that produced them, so they sit in `backend/README.md` under *What repeated runs
 tell you*, beside the section on reading a single trace: where the model disagrees tells you
@@ -647,7 +660,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 819 tests** against local Postgres (~55 s). Requires
+- **Backend suite green: 820 tests** against local Postgres (~60 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -664,6 +677,10 @@ the data in the package).
   do; the reach count admits only lesson identifiers the plan declares. The frozen
   LearnpackV2 fixture partitions 29 outcomes with 19 executed over **fifteen** calls — five
   judged criteria voted on twice each, two sharing one extraction and two one mapping.
+- **The corpora pinned as plain text** (suite): an item whose question contains HTML with
+  quoted attributes is shown to the model exactly as the course writes it, and a quote of it
+  grounds on the first answer — no retry, no abort. Replayed against the run that died, the
+  quote that killed it is refused by the old corpus and accepted by the new one.
 - **The evidence ceiling pinned** (suite): an answer over the cap comes back with one
   complaint naming the rule rather than one per entry, and a compliant retry lands; the
   widest legitimate shape seen in the field still passes. Checked against the real

@@ -839,6 +839,28 @@ def test_an_unmeasured_objective_fails_and_is_named(fake_llm):
     assert metrics["objectives_measured_count"] == 1
 
 
+def test_an_item_quoting_html_is_shown_as_the_course_writes_it(fake_llm):
+    """The corpus a task demands verbatim quotes from must not be an ENCODED form of the
+    text. Serializing it put `class=\\"title\\"` in front of the model, which quoted what it
+    could read, and the grounding check refused a correct citation — then the answer repeated
+    and the run died on it. One real draft ships an item like this."""
+    question = 'If the HTML is <h1 class="title">Hello</h1>, what color will the heading be?'
+    data = judged_profile()
+    data.entries["lesson_assessment_items"].value[0]["prompt"] = question
+    client = fake_llm(
+        assessment_mapping=[
+            mapping_json(("obj-1", question, [0]), ("obj-2", "The learner can style a page", []))
+        ]
+    )
+
+    result = run_judged("cr-every-objective-has-an-assessment-item", data)
+
+    assert len(client.calls) == 1  # grounded on the first answer: no retry, no abort
+    corpus = "\n".join(m["content"] for m in client.calls[0]["messages"])
+    assert question in corpus  # shown unescaped, exactly as the course writes it
+    assert not result.passed  # obj-2 has no item, which is this criterion's finding
+
+
 def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
     client = fake_llm(
         assessment_mapping=[

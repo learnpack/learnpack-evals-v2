@@ -42,8 +42,7 @@ budget, the shape of the question and the grounding rule. Editing it is a new ve
 `drafts-hybrid`.
 """
 
-import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -448,31 +447,38 @@ def _objectives_and_items_corpus(profile: ProfileData) -> tuple[str, list[dict[s
 
     The indices are ours, assigned by position: the model answers with them, so a matched
     item resolves back to a row of the profile rather than to a name the model chose.
+
+    Written as plain labelled lines, never serialized. A corpus that a task will demand
+    VERBATIM quotes from must show the course's text exactly as the course writes it: JSON
+    escaping turned `class="title"` into `class=\\"title\\"`, the model quoted what it could
+    read, and the grounding check refused a citation that was correct — then the answer
+    repeated, and the run died on it. Encoding the text and then asking for the decoded form
+    back is the defect; another tolerance in `locate` would only have hidden it.
     """
     objectives = list(profile.entries["declared_objectives"].value)
     items = list(profile.entries["lesson_assessment_items"].value)
     objective_lines = "\n".join(
-        json.dumps(
-            {
-                "id": str(objective["id"]),
-                "outcome": objective["outcome"],
-                "verifiableBy": objective.get("verifiableBy"),
-            },
-            ensure_ascii=False,
-            sort_keys=True,
+        f"{objective['id']}: {objective['outcome']}"
+        + (
+            f"\n  declared verification: {objective['verifiableBy']}"
+            if isinstance(objective.get("verifiableBy"), str) and objective["verifiableBy"].strip()
+            else "\n  declared verification: none"
         )
         for objective in objectives
     )
-    item_lines = "\n".join(
-        json.dumps(
-            {"index": index, "kind": item.get("kind"), "question": item.get("prompt")},
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+    corpus = f"OBJECTIVES:\n{objective_lines}\n\nASSESSMENT ITEMS:\n{_item_lines(items)}"
+    return corpus, items
+
+
+def _item_lines(items: Sequence[Mapping[str, Any]], with_lesson: bool = False) -> str:
+    """One line per shipped item: our index, its kind, and its question as the course
+    writes it. `with_lesson` adds where the item sits, which the reach task needs."""
+    return "\n".join(
+        f"[{index}] {item.get('kind')}"
+        + (f" in lesson {item.get('lessonId')}" if with_lesson else "")
+        + f": {item.get('prompt')}"
         for index, item in enumerate(items)
     )
-    corpus = f"OBJECTIVES:\n{objective_lines}\n\nASSESSMENT ITEMS:\n{item_lines}"
-    return corpus, items
 
 
 # --- task: assessment mapping (extraction shared by two criteria) -------------------------
@@ -598,27 +604,12 @@ def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
         ordered = tasks.ordered_inventory(profile)
         items = list(profile.entries["lesson_assessment_items"].value)
         lesson_ids = [str(lesson["lessonId"]) for lesson in ordered]
-        plan_lines = "\n".join(
-            json.dumps(
-                {"lessonId": str(lesson["lessonId"]), "title": lesson.get("title")},
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-            for lesson in ordered
+        # Plain lines, not JSON: same reason as the mapping corpus above.
+        plan_lines = "\n".join(f"{lesson['lessonId']}: {lesson.get('title')}" for lesson in ordered)
+        corpus = (
+            f"LESSON PLAN IN DELIVERY ORDER:\n{plan_lines}\n\n"
+            f"ASSESSMENT ITEMS:\n{_item_lines(items, with_lesson=True)}"
         )
-        item_lines = "\n".join(
-            json.dumps(
-                {
-                    "index": index,
-                    "sitsInLessonId": str(item.get("lessonId")),
-                    "question": item.get("prompt"),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-            for index, item in enumerate(items)
-        )
-        corpus = f"LESSON PLAN IN DELIVERY ORDER:\n{plan_lines}\n\nASSESSMENT ITEMS:\n{item_lines}"
         payload, usage = request_structured_output(
             runtime.get_client(),
             task_id="assessment_reach",
