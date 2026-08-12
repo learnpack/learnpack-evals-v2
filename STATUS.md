@@ -328,6 +328,23 @@ enumerable list of "hard criteria" to sample selectively. `SAMPLES`/`MAX_SAMPLES
 declared in `SOURCE_CONFIG` for the same reason a model id is: how many answers decide a
 verdict decides which verdict survives.
 
+**And the evidence list gained a ceiling, found by a run that was not supposed to teach
+anything.** A calibration fired against instrument v5 with a server still holding v4 in
+memory — the instrument is data and reloads per request, the assessor registry is code and
+loads at import — so it exercised the new criterion wording under the old judge. What it
+exposed had nothing to do with either: `arc_character` looped a nine-quote cycle until the
+token limit cut it off at **191 evidence entries, 18 of them distinct**, spending 8000 output
+tokens, three quarters of that whole evaluation. The list v4 introduced to fix stitched
+quotes had no bound, and with a vote such an answer is paid for two or three times.
+`MAX_EVIDENCE = 12` is set against the observed spread — legitimate answers run 1 to 8
+passages, the 8 belonging to the criterion that reads one block per declared objective — and
+is checked before the quotes are, so a runaway list produces one readable complaint instead
+of one per entry. Replayed against the cap, the real 191-entry answer is refused by it.
+
+That misfire is worth keeping as a note about the machine, not just about this bug: an
+instrument version takes effect the moment it is imported, an assessor version takes effect
+when the process restarts, and the console shows which assessor is actually loaded.
+
 **The four findings are now reference, not status.** They were general enough to outlive the
 campaign that produced them, so they sit in `backend/README.md` under *What repeated runs
 tell you*, beside the section on reading a single trace: where the model disagrees tells you
@@ -630,7 +647,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 817 tests** against local Postgres (~55 s). Requires
+- **Backend suite green: 819 tests** against local Postgres (~55 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
@@ -647,6 +664,10 @@ the data in the package).
   do; the reach count admits only lesson identifiers the plan declares. The frozen
   LearnpackV2 fixture partitions 29 outcomes with 19 executed over **fifteen** calls — five
   judged criteria voted on twice each, two sharing one extraction and two one mapping.
+- **The evidence ceiling pinned** (suite): an answer over the cap comes back with one
+  complaint naming the rule rather than one per entry, and a compliant retry lands; the
+  widest legitimate shape seen in the field still passes. Checked against the real
+  degenerate answer too, not only over fixtures.
 - **The vote and the markdown tolerance pinned** (suite): two agreeing samples settle a
   judgement in two calls and report `agreed 2 of 2`; a split buys a third, the majority wins
   carrying its own side's reason and quote, and the metric says `2 of 3`; the spend reported

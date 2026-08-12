@@ -85,6 +85,20 @@ ASSESSMENT_REACH_MODEL = "deepseek/deepseek-v4-flash-0731"
 SAMPLES = 2
 MAX_SAMPLES = 3
 
+# How many passages one judgement may rest on. The list exists because a finding often rests
+# on several places in the text, and asking for exactly one was what made a correct verdict
+# get rejected — but unbounded, it is a way to spend the whole output budget: one calibration
+# answer looped a nine-quote cycle twenty times, emitted 191 entries of which 18 were
+# distinct, and stopped at `finish_reason: length` having consumed 8000 tokens, three
+# quarters of that whole evaluation's output. With a vote, such an answer is paid for two or
+# three times.
+#
+# 12 is chosen against the observed spread rather than by taste: across every judged answer
+# so far the legitimate ones run 1 to 8 quotes, the 8 belonging to the criterion that reads
+# one block per declared objective and therefore scales with the draft. The cap is there to
+# stop degeneration, not to enforce parsimony.
+MAX_EVIDENCE = 12
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -302,6 +316,7 @@ def _ask(
             source_description=source_description,
             pass_condition=spec.pass_condition.strip(),
             failure_modes=_numbered(spec.failure_modes),
+            max_evidence=MAX_EVIDENCE,
             corpus=corpus,
         ),
         validate=lambda answer: _validate_verdict(answer, corpus, len(spec.failure_modes)),
@@ -364,6 +379,13 @@ def _validate_verdict(answer: Any, corpus: str, failure_mode_count: int) -> list
     evidence = answer.get("evidence")
     if not isinstance(evidence, list) or not evidence:
         violations.append('"evidence" must be a non-empty array of quoted passages')
+    elif len(evidence) > MAX_EVIDENCE:
+        # Checked before the quotes themselves: a runaway list would otherwise produce one
+        # complaint per entry, and the feedback that goes back has to be readable.
+        violations.append(
+            f'"evidence" holds {len(evidence)} passages, more than the {MAX_EVIDENCE} a '
+            "judgement may rest on. Quote only the places that decide it, once each."
+        )
     else:
         for position, quote in enumerate(evidence):
             label = f'"evidence"[{position}]'

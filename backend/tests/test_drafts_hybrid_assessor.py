@@ -717,6 +717,32 @@ def test_a_quote_that_drops_markdown_emphasis_still_grounds(fake_llm):
     assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
 
 
+def test_a_runaway_evidence_list_is_refused_with_one_complaint(fake_llm):
+    """The degeneration the cap exists for: a real answer looped a nine-quote cycle until
+    the token limit cut it off at 191 entries. The complaint that goes back names the rule
+    once, rather than once per entry."""
+    looping = verdict_json(*([GROUNDED_CLOSING, "You have built a page"] * 40))
+    client = fake_llm(
+        closing_integrates=[looping, *([verdict_json(GROUNDED_CLOSING)] * 2)],
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed
+    feedback = client.calls[1]["messages"][-1]["content"]
+    assert f"more than the {judgments.MAX_EVIDENCE} a judgement may rest on" in feedback
+    assert feedback.count("- ") == 1  # one complaint, not eighty
+
+
+def test_the_cap_leaves_room_for_the_widest_answer_seen(fake_llm):
+    """Eight passages is what the criterion that reads one block per declared objective
+    produces on a real draft; the cap is set above the spread, not against it."""
+    wide = verdict_json(*([GROUNDED_CLOSING, "You have built a page"] * 4))
+    fake_llm(closing_integrates=[wide] * 2)
+
+    assert run_judged("cr-closing-lesson-integrates", judged_profile()).passed
+
+
 def test_two_agreeing_samples_settle_a_judgement(fake_llm):
     client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
 

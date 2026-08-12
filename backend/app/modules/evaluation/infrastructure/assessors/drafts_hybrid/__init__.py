@@ -19,6 +19,13 @@ quoting a sentence that carries `**bold**` drops the markers about as often as i
 and byte comparison called that a hallucination. Emphasis is invisible to the match now, the
 same way whitespace already was, and the stored quote is still the source's own span.
 
+**And the evidence list has a ceiling.** v4 made it a list because findings rest on several
+places at once; unbounded, it turned out to be a way to spend the whole output budget on
+nothing — one answer looped a nine-quote cycle until the token limit cut it off at 191
+entries, 18 of them distinct, three quarters of that evaluation's whole output. A vote pays
+for such an answer twice. The cap is checked before the quotes are, so what goes back is one
+readable complaint rather than one per entry.
+
 v4 fixed what the first calibration runs of v3 found: the evidence contract asked for ONE
 continuous quote from judgements that rest on several places in the text, so a correct
 verdict was rejected for how it was cited. Three changes, all of them identity. `evidence`
@@ -211,6 +218,9 @@ SOURCE_CONFIG = {
         # verdict IS, not merely how it travels: changing either number changes which
         # answers survive a disagreement.
         "samples": {"asked": judgments.SAMPLES, "max": judgments.MAX_SAMPLES},
+        # Declared for the same reason: it bounds what an answer may contain, and the
+        # prompt states it, so it shapes what comes back rather than merely how it travels.
+        "maxEvidence": judgments.MAX_EVIDENCE,
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
