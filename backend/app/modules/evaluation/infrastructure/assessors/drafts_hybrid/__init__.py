@@ -1,22 +1,40 @@
-"""`drafts-hybrid` v2 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v3 — the `course-drafts-qa` lineage's LLM-carrying assessor.
 
-v2 differs from v1 in sampling and nothing else: the model asks for no reasoning and the
+v3 takes the first seven criteria whose verdict is the MODEL's. Everything before it kept
+the model on the supply side — it extracted or classified, and code decided — because that
+half was cheaper and because a decision rule in code is a decision rule anyone can read.
+The sixteen abstentions marked "requires semantic judgment" have no mechanical proxy at
+all, and seven of them are reachable without reading every lesson: the two frame lessons,
+the objectives against the shipped assessment, and what that assessment draws on. Those
+seven cost one call each and take coverage from 12 of 29 to 19; the other nine need a call
+per lesson (or per pair, or per module) and are deliberately not taken here.
+
+What keeps a judged criterion reviewable is in `judgments.py` and holds for all seven: the
+question is the instrument's own `pass_condition`, quoted verbatim and never retyped into
+this package; the answer carries a passage checked to be verbatim in the text shown; and a
+`fail` names which of the criterion's DECLARED failure modes it saw. The judge decides,
+inside a vocabulary it did not write.
+
+Two of the seven are not judgements at all, and it is worth saying which: "every objective
+has an assessment item" is arithmetic over a mapping the model supplies, and "assessment
+reaches back" is a count over lesson references constrained to the identifiers the plan
+declares. They sit here because the mapping needs a model, not because the verdict does.
+
+v2 differed from v1 in sampling and nothing else: the model asks for no reasoning and the
 output budget has room for an answer. v1 could not finish a run — its 2048-token budget
 was spent entirely on the model's own thinking, so the semantic tasks came back empty
 every time (the calibration traces recorded 2048–2325 reasoning tokens and no content).
-Same prompts, same schemas, same decision constants, so the two are comparable in
-everything except being able to answer; the version bump is what ADR-0016 clause 2 asks
-for and what keeps a calibration from transferring across the change.
-
+That sampling is unchanged in v3, and the judging prompts get the effect of thinking a
+different way: they ask for the reason BEFORE the verdict, so the model works through the
+text in the answer it is billed for rather than in reasoning it is billed for twice.
 
 Hybrid in ADR-0016's own sense ("the hybrid is the norm"): one artifact, one identity,
 and per criterion whatever mechanism the criterion needs. Seven executors are pure code —
 a COPY of `drafts-structural` v1's, not an import, because shared code would tie the two
 identities together. Five are semantic: an LLM extracts or classifies (outcome statements
 and their verbs, Bloom levels of objectives, sophistication of the planned concepts) and
-the executor decides pass/fail deterministically over what came back — the
-extract-then-decide half of the abstention notes, built first because it is the cheap
-half. The model supplies data, never verdicts.
+the executor decides pass/fail deterministically over what came back. Seven are the v3
+additions above.
 
 It is ONE artifact rather than a separate LLM-only assessor because judgments do not
 combine across assessors: the report and the fitness read the most recent judgment per
@@ -45,13 +63,21 @@ instrument versions is not a change (ADR-0019).
 from app.modules.evaluation.domain.model import Coverage
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
     executors,
+    judgments,
     prompts,
     tasks,
 )
 
 NAME = "drafts-hybrid"
-VERSION = "2"
+VERSION = "3"
 INSTRUMENT_ID = "course-drafts-qa"
+
+
+def clear_caches() -> None:
+    """Both task caches, so a fresh run asks the model afresh (see `AssessorPackage`)."""
+    tasks.clear_task_cache()
+    judgments.clear_judgment_cache()
+
 
 EXECUTORS = {
     # The structural seven (copied from drafts-structural v1).
@@ -70,6 +96,18 @@ EXECUTORS = {
     "cr-cognitive-demand-rises-across-the-course": (
         executors.cognitive_demand_rises_across_the_course
     ),
+    # The judged seven (v3): one call each, no per-lesson fan-out.
+    "cr-opening-lesson-connects-backwards": executors.opening_lesson_connects_backwards,
+    "cr-closing-lesson-integrates": executors.closing_lesson_integrates,
+    "cr-closing-lesson-projects-forward": executors.closing_lesson_projects_forward,
+    "cr-arc-character": executors.arc_character,
+    "cr-every-objective-has-an-assessment-item": (executors.every_objective_has_an_assessment_item),
+    "cr-assessment-matches-the-declared-verification": (
+        executors.assessment_matches_the_declared_verification
+    ),
+    "cr-assessment-retrieves-earlier-taught-material": (
+        executors.assessment_retrieves_earlier_taught_material
+    ),
 }
 
 ABSTENTIONS = {
@@ -82,50 +120,36 @@ ABSTENTIONS = {
         "requires a declared difficulty this format supplies only sometimes; judging a "
         "band against a null anchor is not honest"
     ),
-    # Whole-course semantic judgment — the expensive half of the spectrum, deliberately
-    # left for a later version (or another artifact): these need the judgment itself over
-    # lesson bodies, not extraction followed by a count or an order check.
-    "cr-module-single-topic": "requires semantic judgment of topical focus",
-    "cr-arc-character": "requires semantic judgment of lesson bodies",
+    # What is left of the judgment backlog after v3, and it is one shape: every one of
+    # these reads EVERY lesson body — one call per lesson, per pair or per module, which
+    # takes an evaluation from ~10 calls to ~40-50 and makes an all-or-nothing run
+    # (ADR-0034 §4) a bad bet. Taking them is a later version, and the failure-isolation
+    # decision it needs is not made yet.
+    "cr-module-single-topic": "requires semantic judgment of topical focus, per module",
     "cr-new-instruction-is-preceded-by-a-problem": (
-        "requires semantic identification of new instructional material and of what motivates it"
-    ),
-    "cr-opening-lesson-connects-backwards": (
-        "requires semantic judgment of whether the opening activates prior knowledge"
-    ),
-    "cr-closing-lesson-integrates": "requires semantic judgment of whether the closing integrates",
-    "cr-closing-lesson-projects-forward": (
-        "requires semantic judgment of whether the closing projects the learner forward"
+        "requires semantic identification of new instructional material and of what "
+        "motivates it, per lesson"
     ),
     "cr-later-lessons-apply-earlier-concepts": (
-        "requires semantic judgment of whether an earlier concept is applied in a new context"
-    ),
-    "cr-assessment-retrieves-earlier-taught-material": (
-        "requires semantic matching of assessment items against earlier lessons"
+        "requires a concept map extracted from every lesson body"
     ),
     "cr-adjacent-pair-has-a-bridge": (
-        "requires semantic judgment of whether a lesson pair states its relation"
+        "requires semantic judgment of whether a lesson pair states its relation, per pair"
     ),
     "cr-concepts-introduced-before-use": (
-        "requires semantic extraction of where each concept is introduced and where it is used"
+        "requires a concept map extracted from every lesson body"
     ),
     "cr-every-objective-is-developed-somewhere": (
-        "requires semantic matching of each declared objective against what the lessons teach"
+        "requires semantic matching of each declared objective against every lesson body"
     ),
     "cr-every-substantive-lesson-serves-an-objective": (
-        "requires semantic matching of each lesson's content against the declared objectives"
+        "requires semantic matching of every lesson body against the declared objectives"
     ),
     "cr-lesson-works-at-the-level-its-objective-demands": (
-        "requires semantic classification of the cognitive level a lesson body works at"
-    ),
-    "cr-every-objective-has-an-assessment-item": (
-        "requires semantic matching of assessment items against the objectives they measure"
-    ),
-    "cr-assessment-matches-the-declared-verification": (
-        "requires semantic comparison of items against each objective's declared verification"
+        "requires semantic classification of the cognitive level each lesson body works at"
     ),
     "cr-skill-lessons-carry-a-worked-example": (
-        "requires semantic identification of introduced skills and of worked examples"
+        "requires semantic identification of introduced skills and of worked examples, per lesson"
     ),
 }
 
@@ -151,10 +175,16 @@ SOURCE_CONFIG = {
         # v1 lost every run to (ADR-0034 §1 — sampling is identity).
         "maxOutputTokens": tasks.MAX_OUTPUT_TOKENS,
         "reasoning": dict(tasks.REASONING),
+        # How many answers a judgement is decided by. Declared because it decides what the
+        # verdict is, not merely how it travels: raising it changes which answers survive.
+        "samples": judgments.SAMPLES,
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
             "concept_trajectory": tasks.CONCEPT_TRAJECTORY_MODEL,
+            "judge": judgments.JUDGE_MODEL,
+            "assessment_mapping": judgments.ASSESSMENT_MAPPING_MODEL,
+            "assessment_reach": judgments.ASSESSMENT_REACH_MODEL,
         },
         "promptsFingerprint": prompts.fingerprint(),
     },

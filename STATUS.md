@@ -14,7 +14,8 @@ Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 b
 plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
 projection the genetic-algorithm experiment reads), ADR-0027 (package intake by
 mechanical discovery) and ADR-0034 (LLM-carrying assessors, realized by
-`drafts-hybrid:2` — see below) on top of it.**
+`drafts-hybrid`, whose v3 takes the first criteria the model itself judges — see below) on
+top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -134,7 +135,9 @@ two meanings. `structural` v1 is untouched and keeps its metric name in its own 
 where nothing collides. With the registry past one package, `evaluate` now requires
 `--assessor <name>:<version>` explicitly — the single-package default is gone.
 
-**The first LLM-carrying assessor (`drafts-hybrid` v2, ADR-0034).** One hybrid artifact
+**The first LLM-carrying assessor (`drafts-hybrid:2`, ADR-0034 — superseded by
+`drafts-hybrid:3` below, and kept here because it is where the extract-then-decide half
+was decided).** One hybrid artifact
 for the `course-drafts-qa` lineage: the seven structural executors copied from
 `drafts-structural` plus **five semantic criteria** where an LLM extracts or classifies
 (outcome statements and their verbs from the opening lesson, Bloom levels per declared
@@ -160,6 +163,53 @@ requires `learning_objectives` (the datum the executor actually reads in a forma
 declares objectives structurally) instead of the bodies where an older format left them
 implicit. Ids and claims are verbatim v2.
 
+**The first judged criteria (`drafts-hybrid:3`).** Careful with the numbering here: the
+*instrument* `course-drafts-qa` is also at v3, and the two are unrelated artifacts that
+happen to share a number. Everything before this kept the model
+on the supply side — it extracted or classified and code decided — because that half was
+cheaper and because a decision rule in code is one anyone can read. v3 takes the first
+**seven criteria whose verdict is the model's**, chosen not by how interesting they are but
+by what they cost: these are the ones answerable **without reading every lesson**. Four
+judge the two frame lessons (`cr-opening-lesson-connects-backwards`,
+`cr-closing-lesson-integrates`, `cr-closing-lesson-projects-forward` and `cr-arc-character`,
+which reads both because its condition asserts about the pair); two read the declared
+objectives against the shipped assessment; one reads what that assessment draws on.
+Coverage goes **12 → 19 of the 29**, at one call per criterion — about ten LLM calls per
+evaluation, which is still cheap enough that a dry run can be read in a sitting. The nine
+that remain all share one shape: they read **every** lesson body, one call per lesson, per
+pair or per module, which is a different order of cost and a different decision.
+
+Two of the seven are not judgments at all, and the artifact says which: *every objective
+has an assessment item* is arithmetic over a mapping the model supplies, and *assessment
+reaches back* is a count over lesson references constrained to the identifiers the plan
+declares. They needed a model for the mapping, not for the verdict.
+
+What keeps a judged criterion reviewable is three rules, all in `judgments.py`. **The
+question is the instrument's own `pass_condition`**, passed in from the `CriterionSpec` the
+executor already receives and never retyped into the assessor — so there is one source of
+truth for what a criterion demands. **The answer carries a quote checked to be a verbatim
+substring of the text shown**, fed back on violation and fatal when persistent, so what a
+report displays is what the judge read (ADR-0009). And **a `fail` names which of the
+criterion's declared failure modes it saw**, validated to be in range: the judge decides
+inside a vocabulary it did not write, and an invented mode is a contract violation like any
+other. The answer's field order is `reason` → `evidence` → `verdict`, because JSON mode
+emits fields as the model writes them and a verdict-first shape would commit before
+reasoning — which is how v3 gets the effect of thinking while `reasoning` stays at
+`effort: "none"` and the budget that killed v1 stays spent on answers.
+
+One consequence is new and worth stating: **the text of the instrument now enters the
+question literally**, so bumping the *instrument* changes what the judge asks without moving
+the assessor's `promptsFingerprint`. That is governed rather than accidental — ratifying an
+assessor against a new instrument version is an explicit act (ADR-0019) — but it is the
+first time the two artifacts couple this way.
+
+`SAMPLES = 1`: one call per judgment, declared in `SOURCE_CONFIG` because how many answers
+a verdict is decided by decides which verdict survives. Voting k=3 recovers real accuracy
+(the variance outlives temperature 0 — it comes from how the server batches work, not from
+sampling) and costs three times as much in money and latency; the bottleneck today is how
+fast a human can read what the judge answered, and a judgment nobody has reviewed is not
+improved by being made three times. Raising it is a version bump, not a tuning knob.
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
@@ -177,19 +227,30 @@ target exactly which elements to style…"* as `is_observable: false`, on the ve
 the instrument's own rule doing exactly what it says, and precisely the kind of call that
 has to be reviewed before a study pins this version. Every prompt and raw answer is on the
 page and in the trace file (see *Observability of the LLM half*), so the review can be done
-against what actually happened rather than against a summary.
+against what actually happened rather than against a summary. **The seven judged criteria
+of v3 have not been calibrated against the real model at all**, and they are the ones where
+reading matters most: nothing in the suite can tell whether a verdict is right, only that
+it was asked, quoted and labelled correctly.
+
+Three kinds of finding come out of such a review and they have different destinations, so
+it is worth separating them while reading: *the model extracted or judged badly* → the
+prompt → a bump of the assessor · *the data is right but the verdict is not* → a decision
+constant → also a bump of the assessor · *the criterion itself is badly worded* → a bump of
+the **instrument**, which is a different artifact and a different act.
 
 **Not needed for that, needed for a study:** the dry run accepts drafts and requires no
-ratification, but a **persisted** judgment does (ADR-0019), and `drafts-hybrid:2` is a new
-identity that inherits nothing from v1's ratification — which is the point of the bump. So
-**no semantic criterion of this lineage has yet produced a persisted judgment**, and doing
-so is now one button on `/admin/assessors` (below) or, unchanged,
-`ratify-assessor --name drafts-hybrid --version 2 --instrument-version-id
-course-drafts-qa-v3 --email <admin>`.
+ratification, but a **persisted** judgment does (ADR-0019), and each version of
+`drafts-hybrid` is a new identity that inherits nothing from the previous one's
+ratification — which is the point of a bump. So **no semantic or judged criterion of this
+lineage has yet produced a persisted judgment**, and doing so is one button on
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 3
+--instrument-version-id course-drafts-qa-v3 --email <admin>`. Ratifying v3 before its seven
+judged criteria have been read would persist verdicts nobody has checked, which is the one
+thing the calibration loop exists to prevent.
 
 **The assessors page (`/admin/assessors`, ADR-0036).** Ratification used to be readable
 only from the database and performable only from a terminal, which is what had been
-standing between a calibrated `drafts-hybrid:2` and a study. The console now answers *who
+standing between a calibrated hybrid package and a study. The console now answers *who
 can judge, and against which version*: assessors grouped by kind — automated by default,
 humans optional, both — and, per automated package, its coverage plus every version of its
 lineage with whether it may judge with it, who decided and when. The automated rows come
@@ -433,16 +494,26 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 791 tests** against local Postgres (~55 s). Requires
+- **Backend suite green: 808 tests** against local Postgres (~65 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
   seam — prompts, validation, grounding, feedback retries and decision rules run for real.
+- **The judged criteria pinned around the verdict, never on it** (suite). The suite cannot
+  say whether a verdict is right — that is calibration's job — so it pins everything that
+  could break silently: the criterion's own `pass_condition` and its numbered failure modes
+  reach the prompt; the answer's shape asks for the reason before the verdict; an evidence
+  quote that is not verbatim in the text shown is fed back and, persistent, aborts; a
+  failure mode outside the criterion's declared list is refused and re-asked; `cr-arc-character`
+  is shown both frame bodies; the two assessment criteria share one mapping (one call, then
+  one judgement); the verification judge is shown only the objectives that declare a
+  verification AND have an item, and answers a vacuous pass with no call at all when none
+  do; the reach count admits only lesson identifiers the plan declares. The frozen
+  LearnpackV2 fixture now partitions 29 outcomes with 19 executed over **ten** questions.
 - **`drafts-hybrid` pinned end to end** (suite): coverage is a disjoint union over v3's 29
   criteria (and decides v1/v2, so any published version of the lineage can ratify); the
   five semantic executors calibrated on synthetic sequences (falls-back vs consolidation
-  dip, flat-at-length, early peak); one extraction shared by paired criteria (three calls,
-  five criteria); a hallucinated quote is fed back and, persistent, aborts; the exact
+  dip, flat-at-length, early peak); one extraction shared by paired criteria; a hallucinated quote is fed back and, persistent, aborts; the exact
   29-outcome partition over the frozen LearnpackV2 fixture; ratification stores the
   semantic identity (models + prompts fingerprint) whole.
 - **Ratification pinned at both gates** (suite). The CLI tests are untouched and are the
@@ -462,12 +533,12 @@ the data in the package).
   flips and carries who and when; a draft is listed and never ratified.
 - **The ratification surface checked against the dev database by hand**, not only over
   fixtures: `/admin/assessors` returns both kinds with `kind` set; the registry reports
-  `drafts-hybrid:2` and `drafts-structural:1` with no identity row over the three published
+  the hybrid package and `drafts-structural:1` with no identity row over the three published
   `course-drafts-qa` versions, and `structural:1` ratifying `learnpack-course-qa-v1` (by
   Admin, 08-Aug) — the state STATUS describes, read from the endpoint. The refusals answer
   there too (404 unknown package, 422 unknown version, 422 foreign lineage, 403 for an
   evaluator) and **leave no assessor row behind**. The success path against that database
-  was deliberately not taken: ratifying `drafts-hybrid:2` is the team's pending act, and
+  was deliberately not taken: ratifying the hybrid package is the team's pending act, and
   there is no un-ratify.
 - **Frontend**: typecheck and production build clean, `/admin/assessors` among the built
   routes. The page has **not** been exercised in a browser — no browser was available in
@@ -605,16 +676,43 @@ the data in the package).
   and the dialog renders whatever is stored. Rows were dropped, not migrated (no production DB
   yet); historical `events` rows stay, being past facts. `docs/design/09`, `12` and `13` still
   describe the entity — frozen snapshots, superseded by the ADR, not corrected.
-- **The judgment half of the drafts backlog.** `drafts-hybrid` took the
-  extraction/classification criteria — the cheap half its abstention notes named. The 16
-  judgment-shaped abstentions (whole-course reads: alignment matching, bridges, worked
-  examples, closing integration…) remain the visible backlog; taking any of them is a new
-  assessor version (or another artifact) with LLM-as-judge executors, and materially more
-  tokens per evaluation, since they read lesson bodies rather than lists.
+- **What is left of the drafts backlog: the nine that read every lesson.** v3 took the seven
+  judged criteria answerable without per-lesson fan-out. The nine that remain — the concept
+  map (`cr-concepts-introduced-before-use`, `cr-later-lessons-apply-earlier-concepts`), the
+  objectives-against-lesson-bodies matrix (three criteria), the per-lesson reads
+  (`cr-new-instruction-is-preceded-by-a-problem`, `cr-skill-lessons-carry-a-worked-example`),
+  the per-pair bridge and the per-module topic — all take an evaluation from ~10 calls to
+  ~40–50. Two things should be decided before building them rather than after. First,
+  **failure isolation**: ADR-0034 §4 aborts an evaluation whole when a task cannot answer,
+  which is a fair trade at ten calls and a bad one at fifty, and the shape the industry
+  converged on is checkpointed/resumable steps rather than partial evaluations — worth an
+  ADR written with the evidence of v3's runs, not before them. Second, for the
+  objectives-against-bodies matrix specifically, whether to decompose it at all: it is a
+  **completeness** task, and there is evidence that decomposing those into per-cell
+  judgments *loses* to a holistic read, because the decomposition fragments the reasoning
+  about what is missing. Worth measuring both ways in calibration rather than assuming.
   `cr-objectives-verb-level-band`'s exit is different and recorded in the abstention
   itself: mint `declared_difficulty` (instrument bump + adapter version + re-acceptance),
   so its absence derives `no_evidence` mechanically instead of forcing a verdict against a
   null anchor.
+- **The provider that serves a model is not pinned, and it decides part of the answer.**
+  ADR-0034 §3 puts the transport on the environment side with the rule that it "may alter
+  whether and when an answer arrives, never which answer arrives". That rule does not hold
+  for a router: OpenRouter picks an upstream per request, two upstreams can serve the same
+  model slug at different quantizations (fp8, fp4, int4) without the slug saying so, and the
+  backend alone is reported to move benchmark scores by double-digit percentage points. Our
+  own traces already show it — the seven calls of a v1 calibration drew seven different
+  upstreams. So two evaluations under one assessor identity may have been served by
+  different weights, which is the failure ADR-0034 §2 refused to allow for the model id,
+  arriving through the next door; it also weakens ADR-0023 §7's equal-coverage rule, since
+  two contents in one population can be judged by different weights. **Deliberately not
+  fixed here**, because the cheap fix (pin one provider, no fallbacks) buys consistency with
+  an availability risk that is worse than the variance right now. The shape when it is
+  taken: declare a **quantization floor plus a list of acceptable providers, with fallback
+  inside that list**, and decide separately whether that declaration is assessor identity —
+  which is an amendment to ADR-0034 and wants its own decision. Nothing is lost by waiting:
+  the trace already records which provider answered, so the size of the problem can be
+  measured from runs that have already happened.
 - **Rubric v1**: light review (anchors, definitions) pending before the first reference
   campaign (ADR-0015) — outside the first increment of slice 2.
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);

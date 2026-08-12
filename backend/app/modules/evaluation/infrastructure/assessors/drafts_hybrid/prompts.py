@@ -110,6 +110,129 @@ $plan
 </plan>"""
 )
 
+# --- the judging prompts (v3) -----------------------------------------------------------
+#
+# These ask for a VERDICT, which the extraction prompts above never do. Three rules shape
+# all of them and none is cosmetic:
+#
+# 1. The normative text is NOT written here. Each user prompt receives the criterion's own
+#    `pass_condition` and `failure_modes` from the instrument, so the judge is asked
+#    exactly what the published instrument says and there is one source of truth. The
+#    consequence is deliberate: bumping the INSTRUMENT changes what the judge asks without
+#    moving this file's fingerprint (ADR-0019 governs that act; see the module docstring
+#    of `judgments.py`).
+# 2. The answer's field order is `reason` -> `evidence` -> `verdict`, and the shape shown
+#    to the model says so. JSON mode emits fields in the order the model writes them, so a
+#    verdict-first shape would have it commit before reading its own reasoning; this order
+#    is what buys the effect of thinking without paying for reasoning tokens.
+# 3. Every verdict carries a verbatim quote, checked against the text shown (ADR-0009). The
+#    prompts say "copied character-for-character" because that is what the validator tests.
+
+JUDGE_SYSTEM = """\
+You judge drafts of educational courses against one explicit criterion at a time. You are
+strict and literal: you judge what the text does, not what it could plausibly have meant.
+Answer with a single JSON object and nothing else — no prose, no markdown fences.
+
+Every judgement must quote its evidence: a passage copied character-for-character from the
+text you were shown. Never paraphrase a quote, and never quote text that is not there — if
+you can find no passage supporting a positive verdict, the verdict is false."""
+
+JUDGE_USER = Template(
+    """\
+Below, between <source> tags, is $source_description of a draft course.
+
+Judge it against this criterion, and against nothing else:
+
+$pass_condition
+
+These are the ways this criterion is known to fail, numbered:
+$failure_modes
+
+Answer with this JSON shape, in this field order:
+{"reason": "<one sentence saying what the text does, in your own words>",
+"evidence": "<a passage copied verbatim from the text below>",
+"verdict": <true if the criterion is satisfied, false if it is not>,
+"failureMode": <when the verdict is false, the number of the failure above that this text
+shows; null when the verdict is true>}
+
+Decide from the criterion's own words. A draft that partly satisfies it does not satisfy
+it: answer false and quote the passage that shows where it falls short.
+
+<source>
+$corpus
+</source>"""
+)
+
+# --- assessment mapping (which items bear on which objective) ---------------------------
+#
+# Extraction, not judgement: which items measure which objective is a matter of fact about
+# the two lists, so no criterion text is injected and no verdict is asked. Two criteria
+# read it — one decides in code that every objective has an item, the other judges the
+# matched items against the objective's declared verification.
+
+ASSESSMENT_MAPPING_SYSTEM = """\
+You analyse the assessment of educational courses. Answer with a single JSON object and
+nothing else — no prose, no markdown fences. Every value described as verbatim must be
+copied character-for-character from the source text."""
+
+ASSESSMENT_MAPPING_USER = Template(
+    """\
+Below, between <mapping> tags, are the learning objectives a course declares and the
+assessment items it ships. Each objective has an id and the outcome it promises. Each item
+has an index and the question it asks.
+
+For EACH objective, report the indices of every item that bears on it — an item that
+measures what the objective promises. An objective may be measured by several items, an
+item may bear on several objectives, and an objective may have none: report an empty list
+rather than forcing a match.
+
+Answer with this JSON shape, one entry per objective, in this field order:
+{"objectives": [{"objectiveId": "<the objective's id, exactly as given>",
+"reason": "<one sentence on what measures this objective, or that nothing does>",
+"evidence": "<a passage copied verbatim from the text below: the question of one item that
+bears on this objective, or the objective's own outcome when none does>",
+"itemIndices": [<indices>]}]}
+
+Exactly one entry per objective.
+
+<mapping>
+$corpus
+</mapping>"""
+)
+
+# --- assessment reach (which lessons each item draws on) --------------------------------
+
+ASSESSMENT_REACH_SYSTEM = """\
+You analyse the assessment of educational courses. Answer with a single JSON object and
+nothing else — no prose, no markdown fences. Every value described as verbatim must be
+copied character-for-character from the source text."""
+
+ASSESSMENT_REACH_USER = Template(
+    """\
+Below, between <reach> tags, is a course's lesson plan in delivery order and the
+assessment items it ships. Each item names the lesson it sits in.
+
+For EACH item, report which lessons of the plan the learner must have studied in order to
+answer it — the lessons whose material the item draws on. Report the lesson identifiers
+exactly as the plan gives them. An item that only tests its own lesson reports just that
+lesson. Do not guess: report a lesson only when the item's question actually draws on what
+that lesson covers.
+
+This is an extraction task, not a judgement: report what the items draw on, nothing about
+whether the assessment is good.
+
+Answer with this JSON shape, one entry per item, in this field order:
+{"items": [{"index": <the item's index>,
+"reason": "<one sentence on what the item asks for>",
+"referencesLessonIds": ["<lesson identifiers from the plan>"]}]}
+
+Exactly one entry per item.
+
+<reach>
+$corpus
+</reach>"""
+)
+
 # --- the identity fingerprint -----------------------------------------------------------
 
 _ALL_TEMPLATES: dict[str, str] = {
@@ -119,6 +242,12 @@ _ALL_TEMPLATES: dict[str, str] = {
     "objectives_classification_user": OBJECTIVES_CLASSIFICATION_USER.template,
     "concept_trajectory_system": CONCEPT_TRAJECTORY_SYSTEM,
     "concept_trajectory_user": CONCEPT_TRAJECTORY_USER.template,
+    "judge_system": JUDGE_SYSTEM,
+    "judge_user": JUDGE_USER.template,
+    "assessment_mapping_system": ASSESSMENT_MAPPING_SYSTEM,
+    "assessment_mapping_user": ASSESSMENT_MAPPING_USER.template,
+    "assessment_reach_system": ASSESSMENT_REACH_SYSTEM,
+    "assessment_reach_user": ASSESSMENT_REACH_USER.template,
 }
 
 

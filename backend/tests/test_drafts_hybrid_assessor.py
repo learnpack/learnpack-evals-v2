@@ -1,10 +1,18 @@
-"""`drafts-hybrid` v2 — the semantic executors over a fake transport, the coverage vs the
-real v3 YAML, the whole package against the frozen LearnpackV2 fixture, and ratification.
+"""`drafts-hybrid` v3 — the semantic and judged executors over a fake transport, the
+coverage vs the real v3 YAML, the whole package against the frozen LearnpackV2 fixture,
+and ratification.
 
 The fake replaces the TRANSPORT only (the seam is `runtime.get_client`, ADR-0034):
 everything semantic — prompts, validation, grounding, feedback retries, the decision
 constants — runs for real. The structural seven are copies whose arithmetic is already
 pinned by the structural test files; here they appear through the whole-package run.
+
+For the judged criteria the suite cannot pin whether a verdict is RIGHT — that is what
+calibration against the real model and a human reading it are for. What it pins is
+everything around the verdict, which is where this design can break silently: that the
+question carries the instrument's own words, that the quote is checked against the text
+shown, that a failure mode outside the criterion's declared list is refused, and that two
+criteria reading one answer pay for it once.
 
 What the decision constants do is pinned here on synthetic sequences (the calibration of
 the RULES); what the real model answers is the manual `evaluate --dry-run` loop's
@@ -31,15 +39,19 @@ from app.modules.evaluation.domain.model import (
     ProfileData,
     ProfileEntryData,
 )
-from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
-from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import runtime, tasks
+from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, drafts_hybrid
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
+    judgments,
+    runtime,
+    tasks,
+)
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.db import SessionLocal
 from app.platform.llm import LlmCompletion, LlmTransportError
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "2")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "3")]
 
 _V3_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v3.yaml").read_text(encoding="utf-8")
@@ -62,7 +74,8 @@ _V3_CRITERIA = {
 
 
 class FakeLlmClient:
-    """Routes each call to a canned-answer queue by the task tag in the user prompt.
+    """Routes each call to a canned-answer queue: by `task_id` when the test named one,
+    otherwise by the task tag in the user prompt (how the v2 extraction tasks are fed).
 
     Queues hold raw response TEXTS so a test can feed one bad answer and then a good one —
     the feedback-retry loop runs for real against them."""
@@ -72,12 +85,14 @@ class FakeLlmClient:
         outcomes: list[str] | None = None,
         objectives: list[str] | None = None,
         trajectory: list[str] | None = None,
+        **by_task: list[str],
     ) -> None:
         self._queues = {
             "<lesson>": list(outcomes or []),
             "<objectives>": list(objectives or []),
             "<plan>": list(trajectory or []),
         }
+        self._by_task = {task_id: list(answers) for task_id, answers in by_task.items()}
         self.calls: list[dict] = []
 
     def complete(
@@ -102,6 +117,12 @@ class FakeLlmClient:
                 "task_id": task_id,
             }
         )
+        if task_id in self._by_task:
+            queue = self._by_task[task_id]
+            assert queue, f"fake transport has no answer left for task {task_id!r}"
+            return LlmCompletion(
+                text=queue.pop(0), model=model, tokens_in=100, tokens_out=40, latency_ms=7
+            )
         prompt_text = "\n".join(m["content"] for m in messages)
         for tag, queue in self._queues.items():
             if tag in prompt_text:
@@ -109,14 +130,14 @@ class FakeLlmClient:
                 return LlmCompletion(
                     text=queue.pop(0), model=model, tokens_in=100, tokens_out=40, latency_ms=7
                 )
-        raise AssertionError("no task tag found in the prompt")
+        raise AssertionError(f"no queue for task {task_id!r} and no task tag in the prompt")
 
 
 @pytest.fixture(autouse=True)
 def isolated_task_cache():
-    tasks.clear_task_cache()
+    drafts_hybrid.clear_caches()
     yield
-    tasks.clear_task_cache()
+    drafts_hybrid.clear_caches()
 
 
 @pytest.fixture
@@ -222,7 +243,7 @@ def test_coverage_is_a_disjoint_union_over_v3():
     assert PACKAGE.coverage.declared == declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
     assert PACKAGE.instrument_id == _V3_SPEC["instrument_id"]
-    assert len(PACKAGE.coverage.executes) == 12
+    assert len(PACKAGE.coverage.executes) == 19
 
 
 def test_coverage_also_decides_every_criterion_of_v1_and_v2():
@@ -254,8 +275,14 @@ def test_source_config_declares_the_semantic_identity():
         "outcomes_extraction",
         "objectives_classification",
         "concept_trajectory",
+        "judge",
+        "assessment_mapping",
+        "assessment_reach",
     }
     assert llm["temperature"] == 0.0
+    # How many answers a judgement is decided by decides WHICH verdict survives, so it is
+    # identity too — raising it to 3 is a version bump, not a tuning knob.
+    assert llm["samples"] == 1
     # The two v2 exists for: no thinking out loud, and room for the answer if it happens
     # anyway. Both decide what comes back, so both are declared, not left to the wire.
     assert llm["reasoning"] == {"effort": "none"}
@@ -416,6 +443,326 @@ def test_paired_criteria_share_one_extraction(fake_llm):
     assert len(client.calls) == 1  # the second criterion read the memoized extraction
 
 
+# --- the judged criteria (v3): the verdict is the model's, the vocabulary is not --------
+
+
+CLOSING_BODY = (
+    "# Wrap up\n\nYou have built a page, styled it and published it: the three pieces fit "
+    "together into one workflow. Next you will meet JavaScript, which makes it move.\n"
+)
+GROUNDED_CLOSING = "the three pieces fit together into one workflow"
+
+
+def verdict_json(evidence: str, verdict: bool, failure_mode: int | None = None) -> str:
+    return json.dumps(
+        {
+            "reason": "what the lesson does, in one sentence",
+            "evidence": evidence,
+            "verdict": verdict,
+            "failureMode": failure_mode,
+        }
+    )
+
+
+def mapping_json(*entries: tuple[str, str, list[int]]) -> str:
+    return json.dumps(
+        {
+            "objectives": [
+                {
+                    "objectiveId": objective_id,
+                    "reason": "what measures it",
+                    "evidence": evidence,
+                    "itemIndices": indices,
+                }
+                for objective_id, evidence, indices in entries
+            ]
+        }
+    )
+
+
+def reach_json(*entries: tuple[int, list[str]]) -> str:
+    return json.dumps(
+        {
+            "items": [
+                {"index": index, "reason": "what it asks", "referencesLessonIds": references}
+                for index, references in entries
+            ]
+        }
+    )
+
+
+def judged_profile() -> ProfileData:
+    return profile(
+        lesson_inventory=[
+            lesson("00.0", 0),
+            lesson("01.0", 1),
+            lesson("01.1", 2),
+            lesson("02.0", 3),
+        ],
+        lesson_bodies=[
+            body("00.0", OPENING_BODY),
+            body("01.0", "# Tags\n\nContent."),
+            body("01.1", "# More tags\n\nMore content."),
+            body("02.0", CLOSING_BODY),
+        ],
+        declared_objectives=[
+            {
+                "id": "obj-1",
+                "outcome": "The learner can build a page",
+                "verifiableBy": "Builds one",
+            },
+            {"id": "obj-2", "outcome": "The learner can style a page", "verifiableBy": None},
+        ],
+        lesson_assessment_items=[
+            {"lessonId": "02.0", "kind": "quiz", "prompt": "Which tag opens a document?"},
+            {"lessonId": "02.0", "kind": "quiz", "prompt": "Build a page from this brief."},
+        ],
+    )
+
+
+def run_judged(criterion_id: str, data: ProfileData):
+    return PACKAGE.executors[criterion_id](_V3_CRITERIA[criterion_id], data)
+
+
+def test_the_judge_answers_with_reason_before_verdict():
+    """The shape shown to the model puts the reasoning first on purpose: JSON mode emits
+    fields as the model writes them, so a verdict-first shape commits before reasoning."""
+    from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts
+
+    shape = prompts.JUDGE_USER.template
+    assert shape.index('"reason"') < shape.index('"evidence"') < shape.index('"verdict"')
+
+
+def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm):
+    fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING, True)])
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed
+    assert result.quote == GROUNDED_CLOSING  # what the judge read, not a canonical dump
+    assert result.failure_mode is None
+
+
+def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
+    """The normative text is never retyped into the assessor: it travels from the spec."""
+    client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING, True)])
+    spec = _V3_CRITERIA["cr-closing-lesson-integrates"]
+
+    run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    asked = "\n".join(m["content"] for m in client.calls[0]["messages"])
+    assert spec.pass_condition.strip() in asked
+    for index, mode in enumerate(spec.failure_modes):
+        assert f"{index}. {mode}" in asked
+
+
+def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_llm):
+    fake_llm(closing_projects_forward=[verdict_json("You have built a page", False, 1)])
+    spec = _V3_CRITERIA["cr-closing-lesson-projects-forward"]
+
+    result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
+
+    assert not result.passed
+    assert result.failure_mode == spec.failure_modes[1]
+
+
+def test_a_failure_mode_the_criterion_never_declared_is_refused(fake_llm):
+    """The judge decides inside a vocabulary it did not write: an out-of-range mode is a
+    contract violation like any other, fed back and fatal when persistent."""
+    out_of_range = verdict_json("You have built a page", False, 9)
+    client = fake_llm(
+        closing_projects_forward=[out_of_range, verdict_json("You have built a page", False, 0)]
+    )
+
+    result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
+
+    assert not result.passed
+    assert "not one of the listed failures" in client.calls[1]["messages"][-1]["content"]
+
+
+def test_an_ungrounded_verdict_quote_is_fed_back(fake_llm):
+    client = fake_llm(
+        closing_integrates=[
+            verdict_json("this sentence is nowhere in the lesson", True),
+            verdict_json(GROUNDED_CLOSING, True),
+        ]
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed and result.quote == GROUNDED_CLOSING
+    assert "verbatim" in client.calls[1]["messages"][-1]["content"]
+
+
+def test_a_judge_that_never_grounds_its_quote_aborts_the_evaluation(fake_llm):
+    fake_llm(closing_integrates=[verdict_json("invented", True)] * 3)
+
+    with pytest.raises(AssessorExecutionError, match="never satisfied the output contract"):
+        run_judged("cr-closing-lesson-integrates", judged_profile())
+
+
+def test_arc_character_is_judged_over_both_frame_lessons(fake_llm):
+    """Its pass condition asserts about the pair, so it reads both bodies in one question
+    rather than sharing the single-lesson judgements — an executor receives only its own
+    spec, and a shared question would have to retype a sibling criterion's words."""
+    client = fake_llm(arc_character=[verdict_json(GROUNDED_CLOSING, True)])
+
+    result = run_judged("cr-arc-character", judged_profile())
+
+    asked = "\n".join(m["content"] for m in client.calls[0]["messages"])
+    assert result.passed
+    assert GROUNDED_OUTCOME in asked and GROUNDED_CLOSING in asked
+
+
+# --- the assessment pair: one mapping, one judgement, two criteria ----------------------
+
+
+def test_every_objective_has_an_item_is_decided_in_code(fake_llm):
+    """The model supplies the mapping; "every objective has at least one" is arithmetic."""
+    fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", "Which tag opens a document?", [0]),
+            )
+        ]
+    )
+
+    result = run_judged("cr-every-objective-has-an-assessment-item", judged_profile())
+
+    assert result.passed
+
+
+def test_an_unmeasured_objective_fails_and_is_named(fake_llm):
+    fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", "The learner can style a page", []),
+            )
+        ]
+    )
+
+    result = run_judged("cr-every-objective-has-an-assessment-item", judged_profile())
+
+    assert not result.passed
+    assert result.quote == "The learner can style a page"
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["objectives_unmeasured"] == ["obj-2"]
+    assert metrics["objectives_measured_count"] == 1
+
+
+def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
+    client = fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", "Which tag opens a document?", [0]),
+            )
+        ],
+        assessment_verification_match=[verdict_json("Build a page from this brief.", True)],
+    )
+    data = judged_profile()
+
+    covered = run_judged("cr-every-objective-has-an-assessment-item", data)
+    matched = run_judged("cr-assessment-matches-the-declared-verification", data)
+
+    assert covered.passed and matched.passed
+    # one mapping + one judgement: the second criterion did not pay for the mapping again
+    assert [call["task_id"] for call in client.calls] == [
+        "assessment_mapping",
+        "assessment_verification_match",
+    ]
+
+
+def test_the_verification_judge_is_shown_only_the_objectives_it_is_about(fake_llm):
+    """Narrowed in code: the criterion excludes objectives with no declared verification,
+    and there is nothing to compare for an objective no item bears on."""
+    client = fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", "Which tag opens a document?", [0]),
+            )
+        ],
+        assessment_verification_match=[verdict_json("Build a page from this brief.", True)],
+    )
+
+    run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
+
+    asked = "\n".join(m["content"] for m in client.calls[1]["messages"])
+    assert "obj-1" in asked and "Builds one" in asked
+    assert "obj-2" not in asked  # declares no verification
+
+
+def test_verification_match_is_vacuous_when_nothing_declares_one(fake_llm):
+    data = judged_profile()
+    data.entries["declared_objectives"].value[0]["verifiableBy"] = None
+    client = fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", "Which tag opens a document?", [0]),
+            )
+        ]
+    )
+
+    result = run_judged("cr-assessment-matches-the-declared-verification", data)
+
+    assert result.passed
+    assert len(client.calls) == 1  # nothing worth asking a judge
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["verification_pairs_judged"] == 0
+
+
+# --- assessment reach: extraction, then a count -----------------------------------------
+
+
+def test_assessment_reach_counts_earlier_lessons_outside_the_item_s_module(fake_llm):
+    fake_llm(assessment_reach=[reach_json((0, ["00.0", "01.0"]), (1, ["01.1", "02.0"]))])
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert result.passed  # 00.0, 01.0 and 01.1 are earlier and outside module 02
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["assessment_reaches_back_to"] == ["00.0", "01.0", "01.1"]
+
+
+def test_assessment_that_only_tests_its_own_module_fails(fake_llm):
+    fake_llm(assessment_reach=[reach_json((0, ["02.0"]), (1, ["02.0"]))])
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert not result.passed
+    assert (
+        result.failure_mode
+        == _V3_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
+    )
+
+
+def test_one_earlier_lesson_is_not_enough(fake_llm):
+    fake_llm(assessment_reach=[reach_json((0, ["01.0"]), (1, ["02.0"]))])
+
+    assert not run_judged(
+        "cr-assessment-retrieves-earlier-taught-material", judged_profile()
+    ).passed
+
+
+def test_a_reach_answer_naming_a_lesson_the_plan_never_declared_is_refused(fake_llm):
+    """The closed-set form of the grounding rule: an invented lesson would be counted."""
+    client = fake_llm(
+        assessment_reach=[
+            reach_json((0, ["99.9"]), (1, ["02.0"])),
+            reach_json((0, ["00.0", "01.0"]), (1, ["01.1"])),
+        ]
+    )
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert result.passed
+    assert "not a lesson identifier from the plan" in client.calls[1]["messages"][-1]["content"]
+
+
 # --- the structured-output loop: feedback retry, grounding, abort -----------------------
 
 
@@ -501,12 +848,15 @@ def _instrument_spec() -> InstrumentSpec:
 
 def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     """The exact partition over the real draft, with the fake transport answering what a
-    well-behaved model would: the five semantic criteria EXECUTE (they no longer derive
-    `not_assessed`, which is this artifact's reason to exist), the structural results
-    match `drafts-structural`'s pinned run, and three LLM calls cover five criteria."""
+    well-behaved model would: the five semantic criteria and the seven judged ones EXECUTE
+    (they no longer derive `not_assessed`, which is this artifact's reason to exist), the
+    structural results match `drafts-structural`'s pinned run, and the memoization holds —
+    ten questions for twelve criteria."""
     fixture = _fixture_profile()
     opening_body, _ = tasks.opening_lesson_body(fixture)
+    closing_body, _ = judgments.closing_lesson_body(fixture)
     grounded = next(line for line in opening_body.splitlines() if line.strip()).strip()
+    grounded_closing = next(line for line in closing_body.splitlines() if line.strip()).strip()
     objective_count = len(fixture.entries["learning_objectives"].value)
     core_ids = [
         str(lesson["lessonId"])
@@ -515,6 +865,9 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         )
     ][1:-1]
     rising = [1 + (n * 4) // max(len(core_ids) - 1, 1) for n in range(len(core_ids))]
+    objective_ids = [str(o["id"]) for o in fixture.entries["declared_objectives"].value]
+    items = list(fixture.entries["lesson_assessment_items"].value)
+    first_question = str(items[0]["prompt"])
 
     client = fake_llm(
         outcomes=[outcomes_json((grounded, "build", True))],
@@ -524,6 +877,24 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
             )
         ],
         trajectory=[trajectory_json(dict(zip(core_ids, rising, strict=True)))],
+        opening_connects_backwards=[verdict_json(grounded, True)],
+        closing_integrates=[verdict_json(grounded_closing, True)],
+        closing_projects_forward=[verdict_json(grounded_closing, True)],
+        arc_character=[verdict_json(grounded_closing, True)],
+        assessment_mapping=[
+            mapping_json(*((objective_id, first_question, [0]) for objective_id in objective_ids))
+        ],
+        assessment_verification_match=[verdict_json(first_question, True)],
+        # Items 3 and 4 sit in lesson 03.2 and are answered to draw on two earlier lessons
+        # from other modules; the rest test only their own.
+        assessment_reach=[
+            reach_json(
+                *(
+                    (index, ["00.0", "01.0"] if index >= 3 else [str(item["lessonId"])])
+                    for index, item in enumerate(items)
+                )
+            )
+        ],
     )
 
     outcomes, metrics = derive_and_execute(
@@ -550,20 +921,34 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         "cr-outcomes-observable-verbs",
         "cr-objectives-non-decreasing-demand",
         "cr-cognitive-demand-rises-across-the-course",
+        # the judged seven, executed at last
+        "cr-opening-lesson-connects-backwards",
+        "cr-closing-lesson-integrates",
+        "cr-closing-lesson-projects-forward",
+        "cr-arc-character",
+        "cr-every-objective-has-an-assessment-item",
+        "cr-assessment-matches-the-declared-verification",
+        "cr-assessment-retrieves-earlier-taught-material",
     }
     assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains)
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
     assert all(not o.derived and o.quote for o in outcomes if o.outcome == "pass")
 
-    assert len(client.calls) == 3  # five criteria, three questions — memoization held
+    # Twelve criteria, ten questions: two share the outcomes extraction and two share the
+    # assessment mapping.
+    assert len(client.calls) == 10
 
     metric_values = {m.metric_id: m.value for m in metrics}
     assert metric_values["stated_outcomes_count"] == 1
     assert len(metric_values["objective_bloom_levels"]) == objective_count
     assert metric_values["concept_sophistication_levels"] == rising
+    assert metric_values["objectives_unmeasured"] == []
+    assert metric_values["assessment_reaches_back_to"] == ["00.0", "01.0"]
     for task_id in ("outcomes_extraction", "objectives_classification", "concept_trajectory"):
         spent = metric_values[f"llm_{task_id}"]
         assert spent["calls"] == 1 and spent["tokens_in"] > 0
+    # Every judged criterion travels with the judge's own words about what it read.
+    assert metric_values["judgment_arc_character"] == "what the lesson does, in one sentence"
 
 
 # --- the ratification act ---------------------------------------------------------------

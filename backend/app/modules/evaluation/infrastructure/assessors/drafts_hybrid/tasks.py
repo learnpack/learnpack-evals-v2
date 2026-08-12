@@ -110,7 +110,7 @@ def _memoized(
 # --- reading the profile (structure decided here, never by the model) -------------------
 
 
-def _ordered_inventory(profile: ProfileData) -> list[dict[str, Any]]:
+def ordered_inventory(profile: ProfileData) -> list[dict[str, Any]]:
     entry = profile.entries["lesson_inventory"]
     lessons = [dict(lesson) for lesson in entry.value]
 
@@ -124,7 +124,7 @@ def _ordered_inventory(profile: ProfileData) -> list[dict[str, Any]]:
 def opening_lesson_body(profile: ProfileData) -> tuple[str, ProfileEntryData]:
     """The body of the first lesson by declared position, and the entry it came from."""
     bodies = profile.entries["lesson_bodies"]
-    ordered = _ordered_inventory(profile)
+    ordered = ordered_inventory(profile)
     if not ordered:
         raise AssessorExecutionError("the lesson inventory is empty: no opening lesson to read")
     opening_id = str(ordered[0]["lessonId"])
@@ -281,7 +281,7 @@ def concept_trajectory(profile: ProfileData) -> tuple[list[LessonSophistication]
     in code, so the model never decides what counts as frame."""
 
     def run() -> tuple[list[LessonSophistication], LlmUsage]:
-        ordered = _ordered_inventory(profile)
+        ordered = ordered_inventory(profile)
         core = ordered[1:-1] if len(ordered) > 2 else []
         if len(core) < 2:
             # One core lesson is a point, not a trajectory: nothing to classify.

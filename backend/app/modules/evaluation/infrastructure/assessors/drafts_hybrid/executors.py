@@ -43,7 +43,11 @@ from app.modules.evaluation.domain.model import (
     ProfileData,
     ProfileEntryData,
 )
-from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import measures, tasks
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
+    judgments,
+    measures,
+    tasks,
+)
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
     LlmUsage,
 )
@@ -77,6 +81,12 @@ FLAT_MIN_CORE_LESSONS = 5
 # Fail-quote excerpts: enough opening-lesson text to verify "it states no outcomes"
 # without dumping a whole body into the report.
 _EXCERPT_CHARS = 300
+
+# "at least 2 distinct earlier lessons outside their own module" — the pass condition's own
+# number, not an empirical threshold. It lives here because an executor cannot read a
+# structured threshold off the instrument today; if that changes, this is one of the
+# constants that should be read rather than retyped.
+EARLIER_LESSONS_REACHED = 2
 
 
 def _entry(profile: ProfileData, data_requirement_id: str) -> ProfileEntryData:
@@ -340,3 +350,210 @@ def cognitive_demand_rises_across_the_course(
     if len(levels) >= FLAT_MIN_CORE_LESSONS and len(set(levels)) == 1:
         return _result(entry, False, spec, 1, metrics)
     return _result(entry, True, spec, metrics=metrics)
+
+
+# --- judged criteria: the model decides, grounded and against the instrument's words -----
+#
+# v3's addition. Unlike everything above, the verdict here IS the model's — these pass
+# conditions have no mechanical proxy. What keeps them reviewable is that the question is
+# the instrument's `pass_condition` verbatim (never retyped here), the answer carries a
+# quote checked against the text shown, and the failure mode is chosen from the criterion's
+# own declared list. See `judgments.py`.
+
+
+def _judged(
+    entry: ProfileEntryData,
+    verdict: judgments.Verdict,
+    spec: CriterionSpec,
+    task_id: str,
+    usage: LlmUsage,
+    extra_metrics: tuple[ComputedMetric, ...] = (),
+) -> ExecutorResult:
+    """One judged criterion as an `ExecutorResult`: the judge's own quote is the evidence.
+
+    The reason travels as a metric rather than as the quote: a report's quote must be
+    something a reader can find in the course (ADR-0009), and the reason is the judge's
+    prose about it.
+    """
+    metrics = (
+        _usage_metric(task_id, usage),
+        ComputedMetric(f"judgment_{task_id}", verdict.reason),
+        *extra_metrics,
+    )
+    return _result(
+        entry, verdict.passed, spec, verdict.failure_mode_index, metrics, quote=verdict.evidence
+    )
+
+
+def opening_lesson_connects_backwards(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """The opening relates the new material to what the learner already knows."""
+    body, entry = tasks.opening_lesson_body(profile)
+    verdict, usage = judgments.judge(
+        profile,
+        spec,
+        task_id="opening_connects_backwards",
+        source_description="the body of the FIRST lesson by declared position",
+        corpus=body,
+    )
+    return _judged(entry, verdict, spec, "opening_connects_backwards", usage)
+
+
+def closing_lesson_integrates(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """The closing relates what was learned across the course into a connected whole."""
+    body, entry = judgments.closing_lesson_body(profile)
+    verdict, usage = judgments.judge(
+        profile,
+        spec,
+        task_id="closing_integrates",
+        source_description="the body of the LAST lesson by declared position",
+        corpus=body,
+    )
+    return _judged(entry, verdict, spec, "closing_integrates", usage)
+
+
+def closing_lesson_projects_forward(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """The closing says what the learner can now do and where it leads."""
+    body, entry = judgments.closing_lesson_body(profile)
+    verdict, usage = judgments.judge(
+        profile,
+        spec,
+        task_id="closing_projects_forward",
+        source_description="the body of the LAST lesson by declared position",
+        corpus=body,
+    )
+    return _judged(entry, verdict, spec, "closing_projects_forward", usage)
+
+
+def arc_character(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """The first lesson introduces the course and the last one closes it.
+
+    Judged over BOTH frame bodies in one question because the criterion asserts about the
+    pair: an opening that frames and a course that simply stops is one finding, not two.
+    Its own call rather than a share of the two single-lesson judgements, because an
+    executor receives only its own `CriterionSpec` and a shared question would have to
+    retype a sibling criterion's normative text.
+    """
+    bodies = _entry(profile, "lesson_bodies")
+    verdict, usage = judgments.judge(
+        profile,
+        spec,
+        task_id="arc_character",
+        source_description="the first and last lessons by declared position",
+        corpus=judgments.arc_corpus(profile),
+    )
+    return _judged(bodies, verdict, spec, "arc_character", usage)
+
+
+def every_objective_has_an_assessment_item(
+    spec: CriterionSpec, profile: ProfileData
+) -> ExecutorResult:
+    """Every declared objective is measured by at least one shipped item.
+
+    The verdict is CODE's: the model supplies the mapping (which items bear on which
+    objective) and "every objective has at least one" is arithmetic over it. Only the
+    matching needed a judge.
+    """
+    entry = _entry(profile, "declared_objectives")
+    mappings, usage = judgments.assessment_mapping(profile)
+    unmeasured = [mapping for mapping in mappings if not mapping.item_indices]
+    metrics = (
+        _usage_metric("assessment_mapping", usage),
+        ComputedMetric("objectives_measured_count", len(mappings) - len(unmeasured)),
+        ComputedMetric("objectives_unmeasured", [mapping.objective_id for mapping in unmeasured]),
+    )
+    if unmeasured:
+        return _judged(
+            entry,
+            judgments.Verdict(
+                reason=unmeasured[0].reason,
+                evidence=unmeasured[0].evidence,
+                passed=False,
+                failure_mode_index=0,
+            ),
+            spec,
+            "assessment_mapping",
+            usage,
+            metrics[1:],
+        )
+    quote = mappings[0].evidence if mappings else entry.quote or ""
+    return _result(entry, True, spec, metrics=metrics, quote=quote)
+
+
+def assessment_matches_the_declared_verification(
+    spec: CriterionSpec, profile: ProfileData
+) -> ExecutorResult:
+    """The items measuring an objective ask for what its declared verification describes.
+
+    Reads the mapping the previous criterion paid for (memoized), narrows it in code to the
+    objectives the criterion is about — those that declare a `verifiableBy` AND have items
+    bearing on them — and judges that set in one question, which is how the pass condition
+    is phrased.
+    """
+    entry = _entry(profile, "declared_objectives")
+    mappings, mapping_usage = judgments.assessment_mapping(profile)
+    corpus = judgments.verification_corpus(profile, mappings)
+    if corpus is None:
+        # Nothing the criterion is about: no objective both declares a verification and has
+        # an item bearing on it. Vacuously satisfied — the objectives with no item at all
+        # are the previous criterion's finding, not this one's.
+        return _result(
+            entry,
+            True,
+            spec,
+            metrics=(
+                _usage_metric("assessment_mapping", mapping_usage),
+                ComputedMetric("verification_pairs_judged", 0),
+            ),
+        )
+    verdict, usage = judgments.judge(
+        profile,
+        spec,
+        task_id="assessment_verification_match",
+        source_description="the objectives that declare how they would be verified, with "
+        "the assessment items found to measure them",
+        corpus=corpus,
+    )
+    return _judged(
+        entry,
+        verdict,
+        spec,
+        "assessment_verification_match",
+        usage,
+        (_usage_metric("assessment_mapping", mapping_usage),),
+    )
+
+
+def assessment_retrieves_earlier_taught_material(
+    spec: CriterionSpec, profile: ProfileData
+) -> ExecutorResult:
+    """The items collectively draw on at least 2 earlier lessons outside their own module.
+
+    Extraction plus a count, not a judgement: the model reports which lessons each item
+    draws on (constrained to identifiers the plan declares, so it cannot invent one) and
+    the reach rule is arithmetic here, where it can be read.
+    """
+    entry = _entry(profile, "lesson_assessment_items")
+    reaches, usage = judgments.assessment_reach(profile)
+    items = list(entry.value)
+    ordered = tasks.ordered_inventory(profile)
+    position_by_id = {str(lesson["lessonId"]): index for index, lesson in enumerate(ordered)}
+
+    reached: set[str] = set()
+    for reach in reaches:
+        if reach.index >= len(items):
+            continue
+        own_id = str(items[reach.index].get("lessonId"))
+        own_position = position_by_id.get(own_id)
+        own_module = _module(own_id)
+        for referenced in reach.references:
+            referenced_position = position_by_id.get(referenced)
+            if own_position is None or referenced_position is None:
+                continue
+            if referenced_position < own_position and _module(referenced) != own_module:
+                reached.add(referenced)
+
+    metrics = (
+        _usage_metric("assessment_reach", usage),
+        ComputedMetric("assessment_reaches_back_to", sorted(reached)),
+    )
+    return _result(entry, len(reached) >= EARLIER_LESSONS_REACHED, spec, 0, metrics)
