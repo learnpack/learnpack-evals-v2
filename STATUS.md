@@ -160,20 +160,31 @@ requires `learning_objectives` (the datum the executor actually reads in a forma
 declares objectives structurally) instead of the bodies where an older format left them
 implicit. Ids and claims are verbatim v2.
 
-**Pending input from the team (drafts lineage):** review and **publish v3**
-(`python -m app.cli publish-instrument --id course-drafts-qa-v3 --email <admin>`), then
-**ratify** the new assessor (`ratify-assessor --name drafts-hybrid --version 2
---instrument-version-id course-drafts-qa-v3 --email <admin>`) and **calibrate against the
-real model** with `evaluate --dry-run --assessor drafts-hybrid:2` over the frozen corpus —
-the suite pins the decision rules over a faked transport, so what the actual
-`deepseek/deepseek-v4-flash-0731` answers has only been exercised by hand — and under v1
-it never answered at all (see *What the traces then found*), so **no semantic criterion of
-this lineage has yet produced a verdict from the real model**. The loop
-needs `LLM_API_KEY` set (each dry run spends ~3 calls). What the calibration should watch:
-whether the extracted outcomes and the Bloom/sophistication classifications read sane
-against the packages, before any real study pins this version. Both doors now report
-progress and keep every prompt and raw answer (see *Observability of the LLM half*), so
-what the model actually did is readable while doing it.
+**v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
+against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
+every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
+semantic tasks reaching the end — including `concept_trajectory`, which under v1 never ran
+at all because the run died before it. The suite pins the decision rules over a faked
+transport, so this is the only exercise the real
+`deepseek/deepseek-v4-flash-0731` gets; each dry run spends ~3 calls and needs
+`LLM_API_KEY`.
+
+**Pending input from the team (drafts lineage):** *reading* those answers. The runs prove
+the mechanism works, not that the judgments are right — whether the extracted outcomes and
+the Bloom/sophistication classifications read sane against the packages is the human call,
+and it has not been made. A concrete first case: the model marked *"You'll learn how to
+target exactly which elements to style…"* as `is_observable: false`, on the verb *learn* —
+the instrument's own rule doing exactly what it says, and precisely the kind of call that
+has to be reviewed before a study pins this version. Every prompt and raw answer is on the
+page and in the trace file (see *Observability of the LLM half*), so the review can be done
+against what actually happened rather than against a summary.
+
+**Not needed for that, needed for a study:** the dry run accepts drafts and requires no
+ratification, but a **persisted** judgment does (ADR-0019), and `drafts-hybrid:2` is a new
+identity that inherits nothing from v1's ratification — which is the point of the bump. So
+**no semantic criterion of this lineage has yet produced a persisted judgment**, and doing
+so starts with `ratify-assessor --name drafts-hybrid --version 2 --instrument-version-id
+course-drafts-qa-v3 --email <admin>`.
 
 **The calibration page (`/admin/calibration`).** The dry-run loop no longer requires
 chaining CLI commands with UUIDs by hand: the console now has a guided page — pick a
@@ -207,9 +218,10 @@ the map frozen at publish protects published studies, and a preview is neither).
 model used to be opaque in three ways at once: a spinner for minutes, no way to see the
 prompt a task sent or the raw text it got back, and failures arriving as a toast that
 vanished. One stream now answers all three. `app/platform/observability.py` carries one
-record per **attempt** — messages as sent, raw answer, `finish_reason`, the upstream
-provider that served it, tokens and latency — emitted by the transport to whoever is
-listening; the run reads it live (a step per executed criterion and per attempt) and
+record per **attempt** — messages as sent, **how the model was sampled** (temperature,
+output budget, response format, whether it may reason), raw answer, `finish_reason`, the
+upstream provider that served it, tokens and latency — emitted by the transport to whoever
+is listening; the run reads it live (a step per executed criterion and per attempt) and
 `LLM_TRACE_DIR` writes it as JSONL, one file per run, untruncated. Both doors write one:
 the page's runs under their id, `evaluate --dry-run` under `cli-<id>`, which also prints
 each step to stderr and the trace path when it ends. None of this re-versions an
@@ -227,7 +239,8 @@ calls drew seven upstreams, and the same one appears on both sides — DeepInfra
 in 331 tokens once and reasoned past the limit another time), and not something a retry
 fixes (`length` is deterministic, at 25–85 s an attempt). The fix is the budget, in
 `drafts-hybrid:2`: `reasoning: {effort: "none"}` and `MAX_OUTPUT_TOKENS` 8000, both
-declared in `SOURCE_CONFIG`. Three transport fixes ride along, none of them
+declared in `SOURCE_CONFIG` — and confirmed in the field, twelve calls for twelve answers
+(above). Three transport fixes ride along, none of them
 re-versioning anything: a 200 that carries the provider's own error (`choices[].error`)
 is read as the upstream failure it is and retried by its code instead of looking like an
 empty answer; an empty answer at the token limit says which tokens went where and that
