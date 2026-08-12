@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
@@ -23,6 +24,7 @@ import {
   useContents,
   useInstruments,
   usePreviewRun,
+  usePreviewRunTrace,
   useProfiles,
   useQualityReference,
   useStartPreviewRun,
@@ -30,12 +32,14 @@ import {
 import type {
   AssessorPackageResponse,
   InstrumentResponse,
+  LlmCallRecord,
   PreviewEvaluationResponse,
   PreviewMetric,
   PreviewOutcome,
   PreviewRun,
   PreviewRunError,
   PreviewRunStep,
+  PreviewRunTrace,
   QualityReferenceResponse,
   Uuid,
 } from "@/lib/api/types";
@@ -74,6 +78,10 @@ export default function CalibrationPage() {
     instrument: InstrumentResponse;
   } | null>(null);
   const run = usePreviewRun(started?.runId ?? null);
+  const trace = usePreviewRunTrace(
+    started?.runId ?? null,
+    run.data ? run.data.status !== "running" : false,
+  );
 
   /** Whether a content has an `ok` profile — the dry-run's one hard prerequisite. */
   const profileStatus = useMemo(() => {
@@ -340,6 +348,7 @@ export default function CalibrationPage() {
               {run.data.error ? (
                 <RunFailure error={run.data.error} contentId={contentId} />
               ) : null}
+              <RunTrace trace={trace.data ?? null} />
               {run.data.result && started ? (
                 <PreviewResults
                   result={run.data.result}
@@ -462,6 +471,101 @@ function RunFailure({
           Nothing was persisted. The backend log has the traceback.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------- trace
+
+/** The prompts and the raw answers, which is the only place they can be read.
+ *
+ * One entry per ATTEMPT: a task that needed three rounds to satisfy its output contract
+ * is three entries, and the second one's messages end with the validator's complaint
+ * about the first — the feedback loop, legible. */
+function RunTrace({ trace }: { trace: PreviewRunTrace | null }) {
+  if (trace === null || trace.calls.length === 0) return null;
+  const failed = trace.calls.filter((call) => call.error !== null).length;
+  return (
+    <CollapsibleSection
+      title="LLM calls"
+      badge={`${trace.calls.length} attempt${trace.calls.length === 1 ? "" : "s"}`}
+      defaultOpen={false}
+      meta={
+        failed > 0 ? (
+          <Badge variant="destructive">{failed} failed</Badge>
+        ) : (
+          <Badge variant="secondary">all answered</Badge>
+        )
+      }
+      className="bg-muted/20"
+    >
+      <div className="space-y-2">
+        {trace.calls.map((call, index) => (
+          <TraceCall key={index} call={call} />
+        ))}
+        {trace.trace_path ? (
+          <p className="pt-1 text-xs text-muted-foreground">
+            Also written to <code className="rounded bg-muted px-1">{trace.trace_path}</code>{" "}
+            — runs live in memory and are forgotten on restart; the file is not.
+          </p>
+        ) : null}
+      </div>
+    </CollapsibleSection>
+  );
+}
+
+function TraceCall({ call }: { call: LlmCallRecord }) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border px-3 py-2 text-xs",
+        call.error && "border-destructive/40 bg-destructive/5",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-medium">{call.task_id ?? "llm call"}</span>
+        <span className="text-muted-foreground">attempt {call.attempt}</span>
+        <span className="font-mono text-muted-foreground">
+          {call.model_answered ?? call.model_requested}
+        </span>
+        {call.provider ? (
+          // Which upstream answered: OpenRouter routes one model id to several, and they
+          // do not honor `response_format` alike.
+          <Badge variant="outline">{call.provider}</Badge>
+        ) : null}
+        {call.finish_reason && call.finish_reason !== "stop" ? (
+          <Badge variant="warning">finish_reason: {call.finish_reason}</Badge>
+        ) : null}
+        <span className="tabular-nums text-muted-foreground">
+          {call.tokens_in}→{call.tokens_out} tokens · {seconds(call.latency_ms)}
+        </span>
+      </div>
+      {call.error ? <p className="mt-1 break-words text-destructive">{call.error}</p> : null}
+      <div className="mt-1 flex flex-wrap gap-4">
+        <details>
+          <summary className="cursor-pointer text-muted-foreground">
+            Prompt ({call.messages.length} message{call.messages.length === 1 ? "" : "s"})
+          </summary>
+          <div className="mt-1 space-y-2">
+            {call.messages.map((message, index) => (
+              <div key={index}>
+                <p className="font-medium text-muted-foreground">{message.role}</p>
+                <pre className="whitespace-pre-wrap break-words font-mono text-muted-foreground">
+                  {message.content}
+                </pre>
+              </div>
+            ))}
+          </div>
+        </details>
+        {call.response_text !== null ? (
+          <details>
+            <summary className="cursor-pointer text-muted-foreground">Raw answer</summary>
+            <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-muted-foreground">
+              {call.response_text}
+            </pre>
+          </details>
+        ) : null}
+      </div>
     </div>
   );
 }

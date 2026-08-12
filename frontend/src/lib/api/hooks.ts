@@ -34,6 +34,7 @@ import type {
   PreviewEvaluationRequest,
   PreviewRun,
   PreviewRunStarted,
+  PreviewRunTrace,
   ProfileCapabilitiesResponse,
   ProfileResponse,
   ProgressReport,
@@ -87,6 +88,8 @@ export const queryKeys = {
   assessors: ["admin", "assessors"] as const,
   assessorPackages: ["admin", "assessor-packages"] as const,
   previewRun: (id: Uuid | string) => ["admin", "evaluations", "preview", id] as const,
+  previewRunTrace: (id: Uuid | string) =>
+    ["admin", "evaluations", "preview", id, "trace"] as const,
   qualityReference: ["admin", "reference", "qualities"] as const,
   scores: ["admin", "reports", "scores"] as const,
   progress: ["admin", "progress"] as const,
@@ -438,6 +441,23 @@ export function usePreviewRun(runId: Uuid | null) {
     queryFn: () => api<PreviewRun>(`/admin/evaluations/preview/${runId}`),
     enabled: runId !== null,
     refetchInterval: (query) => (query.state.data?.status === "running" ? 1000 : false),
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+/** Every LLM attempt of a run, whole — the prompts as sent and the raw answers.
+ *
+ * Fetched once the run has ended rather than alongside the polling: these payloads carry
+ * entire lesson bodies, and re-pulling them every second to watch a counter grow would
+ * cost more than it tells. */
+export function usePreviewRunTrace(runId: Uuid | null, ended: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.previewRunTrace(runId ?? ""),
+    queryFn: () => api<PreviewRunTrace>(`/admin/evaluations/preview/${runId}/trace`),
+    enabled: runId !== null && ended,
     refetchOnWindowFocus: false,
     staleTime: Infinity,
     retry: false,

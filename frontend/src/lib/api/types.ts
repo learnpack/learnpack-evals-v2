@@ -759,3 +759,31 @@ export interface PreviewRun {
   result: PreviewEvaluationResponse | null;
   error: PreviewRunError | null;
 }
+
+/** One ATTEMPT at one LLM call, whole: a task that needed three rounds to satisfy its
+ *  output contract left three of these, and the second one's `messages` end with the
+ *  validator's complaint about the first. */
+export interface LlmCallRecord {
+  task_id: string | null;
+  attempt: number;
+  model_requested: string;
+  model_answered: string | null;
+  /** Which upstream served it: OpenRouter routes one model id to several. */
+  provider: string | null;
+  messages: { role: string; content: string }[];
+  response_text: string | null;
+  /** `length` means the answer was cut off — it surfaces as "not valid JSON". */
+  finish_reason: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  latency_ms: number;
+  error: string | null;
+}
+
+export interface PreviewRunTrace {
+  run_id: Uuid;
+  status: string;
+  /** Where the same records were written, when the backend has LLM_TRACE_DIR set. */
+  trace_path: string | null;
+  calls: LlmCallRecord[];
+}
