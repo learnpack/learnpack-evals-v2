@@ -514,6 +514,15 @@ function RunTrace({ trace }: { trace: PreviewRunTrace | null }) {
   );
 }
 
+/** `temperature=0 · max_tokens=8000 · reasoning={"effort":"none"}` — whatever was sent. */
+function describeSampling(call: LlmCallRecord): string {
+  const entries = Object.entries(call.sampling ?? {});
+  if (entries.length === 0) return "no sampling recorded";
+  return entries
+    .map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : value}`)
+    .join(" · ");
+}
+
 function TraceCall({ call }: { call: LlmCallRecord }) {
   return (
     <div
@@ -540,6 +549,9 @@ function TraceCall({ call }: { call: LlmCallRecord }) {
           {call.tokens_in}→{call.tokens_out} tokens · {seconds(call.latency_ms)}
         </span>
       </div>
+      {/* Always visible, never folded away: it is short, and it is the half of the
+          question that a wrong answer is most often traced back to. */}
+      <p className="mt-1 break-all font-mono text-muted-foreground">{describeSampling(call)}</p>
       {call.error ? <p className="mt-1 break-words text-destructive">{call.error}</p> : null}
       <div className="mt-1 flex flex-wrap gap-4">
         <details>

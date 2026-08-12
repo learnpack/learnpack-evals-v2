@@ -285,7 +285,7 @@ Two aggregation rules not to confuse:
   (prints the five-state outcome table and the claim summary; persists nothing).
   `--assessor` is always explicit: the registry holds `structural:1` for
   `learnpack-course-qa` and, for `course-drafts-qa`, both `drafts-structural:1` (pure
-  code) and `drafts-hybrid:1` (its superset, with LLM-carried criteria) — an instrument
+  code) and `drafts-hybrid:2` (its superset, with LLM-carried criteria) — an instrument
   admits 0..N assessors (ADR-0016), and naming which one is doing the judging is part of
   the act. Mind that judgments do not combine across assessors: the report and the
   fitness read the most recent judgment per content, so within one study evaluate each
@@ -300,9 +300,13 @@ Two aggregation rules not to confuse:
 - **LLM-carrying assessors** (ADR-0034): `drafts-hybrid` extracts/classifies with an LLM
   and decides pass/fail in code. It needs `LLM_API_KEY` in the environment (see
   `.env.example`; `LLM_BASE_URL` points at any OpenAI-compatible endpoint, OpenRouter by
-  default) — the key is *access*; which model judges is pinned in the assessor's code and
-  declared in its `SOURCE_CONFIG`, prompts fingerprint included, so changing a model or a
-  prompt without a VERSION bump is refused at ratification. Every `evaluate` — dry run
+  default) — the key is *access*; which model judges, **how it is sampled** (temperature,
+  output budget, whether it may reason) and which prompts it is asked are pinned in the
+  assessor's code and declared in its `SOURCE_CONFIG`, prompts fingerprint included, so
+  changing any of them without a VERSION bump is refused at ratification. Sampling is
+  identity because it decides the answer: `drafts-hybrid:2` exists because v1 asked a
+  reasoning model for an answer inside a budget its thinking consumed whole, and got
+  nothing back — see *Reading a calibration trace*. Every `evaluate` — dry run
   included — spends real calls (a few per evaluation; tasks are memoized per profile, and
   tokens/latency come back as `llm_*` metrics with the outcomes). If the model
   irrecoverably fails (transport down, output contract never satisfied, an ungrounded
@@ -336,8 +340,8 @@ one JSON object per line, per run:
 
 ```
 {"task_id": "...", "attempt": 1, "model_requested": "...", "model_answered": "...",
- "provider": "...", "messages": [...], "response_text": "...", "finish_reason": "...",
- "tokens_in": 0, "tokens_out": 0, "latency_ms": 0, "error": null}
+ "provider": "...", "sampling": {...}, "messages": [...], "response_text": "...",
+ "finish_reason": "...", "tokens_in": 0, "tokens_out": 0, "latency_ms": 0, "error": null}
 ```
 
 One record per **attempt**, not per successful call: a task that took three rounds to
@@ -348,13 +352,24 @@ reason to read this.
 
 What each field settles:
 
-- `finish_reason: "length"` — the answer was cut off. It reaches the caller as *"the
-  answer is not valid JSON"*, which names the symptom; this names the cause.
-- `provider` — OpenRouter routes one model id to several upstreams and they do not honor
-  `response_format` alike, so two runs asking the same question can get different shapes
-  back. This is who answered.
+- `sampling` — what was asked for besides the conversation: temperature, the output
+  budget, the response format, whether the model may reason. It decides the answer as
+  much as the prompt does, so it is recorded next to it; `drafts-hybrid:1` failed every
+  run on this half with its prompts intact.
+
+- `finish_reason: "length"` with **no content** — the model stopped at the token limit
+  having written nothing. A reasoning model bills its thinking as output tokens, so
+  `max_tokens` is a budget the thinking can spend entirely; compare `completion_tokens`
+  against `completion_tokens_details.reasoning_tokens` in the raw body to see it. The
+  remedy is the task's budget or its `reasoning` setting, never a retry — the limit
+  produces the same answer every time. This is what `drafts-hybrid:1` lost every run to.
+- `provider` — OpenRouter routes one model id to several upstreams, and they differ in
+  whether they reason and in how they honor `response_format`, so two runs asking the
+  same question can get different shapes back. This is who answered.
 - `error` with no `response_text` — the request never landed (timeout, rate limit). The
   next line is the retry.
+- `error` mentioning **upstream** — the gateway answered 200 and the provider behind it
+  failed. Treated as transient: the next attempt usually lands somewhere else.
 
 Both doors write one: the page's runs under their run id, `evaluate --dry-run` under
 `cli-<id>`, printing the path when it finishes. The folder is gitignored and disposable

@@ -14,7 +14,7 @@ Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 b
 plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
 projection the genetic-algorithm experiment reads), ADR-0027 (package intake by
 mechanical discovery) and ADR-0034 (LLM-carrying assessors, realized by
-`drafts-hybrid:1` — see below) on top of it.**
+`drafts-hybrid:2` — see below) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -134,7 +134,7 @@ two meanings. `structural` v1 is untouched and keeps its metric name in its own 
 where nothing collides. With the registry past one package, `evaluate` now requires
 `--assessor <name>:<version>` explicitly — the single-package default is gone.
 
-**The first LLM-carrying assessor (`drafts-hybrid` v1, ADR-0034).** One hybrid artifact
+**The first LLM-carrying assessor (`drafts-hybrid` v2, ADR-0034).** One hybrid artifact
 for the `course-drafts-qa` lineage: the seven structural executors copied from
 `drafts-structural` plus **five semantic criteria** where an LLM extracts or classifies
 (outcome statements and their verbs from the opening lesson, Bloom levels per declared
@@ -143,7 +143,9 @@ checks, a trajectory rule with its constants pinned by tests. It is one artifact
 separate LLM-only assessor because judgments do not combine across assessors (the report
 and the fitness read the most recent judgment per content); within one study, evaluate
 each content with one assessor. The boundary ADR-0034 draws: models, prompts, temperature
-and decision constants are **identity**, pinned in code and declared in `SOURCE_CONFIG`
+and decision constants are **identity** — sampling included: the output budget and
+whether the model may reason are declared too, because they decide what comes back — pinned
+in code and declared in `SOURCE_CONFIG`
 (with a prompts fingerprint the ratification drift-guard checks), while the transport — a
 shared httpx client in `app/platform/llm.py`, OpenRouter by default via `LLM_API_KEY` /
 `LLM_BASE_URL` — is **environment** and re-versions nothing. Structured output with
@@ -160,11 +162,13 @@ implicit. Ids and claims are verbatim v2.
 
 **Pending input from the team (drafts lineage):** review and **publish v3**
 (`python -m app.cli publish-instrument --id course-drafts-qa-v3 --email <admin>`), then
-**ratify** the new assessor (`ratify-assessor --name drafts-hybrid --version 1
+**ratify** the new assessor (`ratify-assessor --name drafts-hybrid --version 2
 --instrument-version-id course-drafts-qa-v3 --email <admin>`) and **calibrate against the
-real model** with `evaluate --dry-run --assessor drafts-hybrid:1` over the frozen corpus —
+real model** with `evaluate --dry-run --assessor drafts-hybrid:2` over the frozen corpus —
 the suite pins the decision rules over a faked transport, so what the actual
-`deepseek/deepseek-v4-flash-0731` answers has only been exercised by hand, and the loop
+`deepseek/deepseek-v4-flash-0731` answers has only been exercised by hand — and under v1
+it never answered at all (see *What the traces then found*), so **no semantic criterion of
+this lineage has yet produced a verdict from the real model**. The loop
 needs `LLM_API_KEY` set (each dry run spends ~3 calls). What the calibration should watch:
 whether the extracted outcomes and the Bloom/sophistication classifications read sane
 against the packages, before any real study pins this version. Both doors now report
@@ -209,11 +213,28 @@ listening; the run reads it live (a step per executed criterion and per attempt)
 `LLM_TRACE_DIR` writes it as JSONL, one file per run, untruncated. Both doors write one:
 the page's runs under their id, `evaluate --dry-run` under `cli-<id>`, which also prints
 each step to stderr and the trace path when it ends. None of this re-versions an
-assessor: recording an answer does not change which answer arrives (ADR-0034 §1). What it
-is **not** yet: `finish_reason=length` is recorded, not acted on; the timeout is now
-`LLM_TIMEOUT_SECONDS` (access, not identity) but its default is unchanged. Those are the
-next decisions, and they are meant to be taken with measured runs in hand, not from the
-code alone — see `notes/observabilidad-y-robustez-calibracion.md`.
+assessor: recording an answer does not change which answer arrives (ADR-0034 §1). The
+timeout is now `LLM_TIMEOUT_SECONDS` (access, not identity), default unchanged.
+
+**What the traces then found, and why there is a v2.** Four calibration runs, seven LLM
+calls, four of them dead the same way: `completion_tokens` clamped at exactly 2048 — the
+task's whole budget — and 100 % of it spent on the model's own thinking, `content` empty.
+`outcomes_extraction` failed 3 of 3; the successes of `objectives_classification` were
+luck (one spent 1663 tokens on a 421-character answer and just fit). **The LLM half of
+`drafts-hybrid:1` could never finish a run**, which is what "pending calibration against
+the real model" had been hiding. Two things it is *not*: not a provider problem (seven
+calls drew seven upstreams, and the same one appears on both sides — DeepInfra answered
+in 331 tokens once and reasoned past the limit another time), and not something a retry
+fixes (`length` is deterministic, at 25–85 s an attempt). The fix is the budget, in
+`drafts-hybrid:2`: `reasoning: {effort: "none"}` and `MAX_OUTPUT_TOKENS` 8000, both
+declared in `SOURCE_CONFIG`. Three transport fixes ride along, none of them
+re-versioning anything: a 200 that carries the provider's own error (`choices[].error`)
+is read as the upstream failure it is and retried by its code instead of looking like an
+empty answer; an empty answer at the token limit says which tokens went where and that
+retrying will not help; and the trace records `provider` and `finish_reason` on the
+failing paths too, which is where they matter. What is still **not** decided: the dry run
+still aborts whole when a task cannot answer, so one bad call discards the structural
+criteria that already passed — worth its own ADR, not taken here.
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -398,6 +419,14 @@ the data in the package).
   failures; a 2xx nobody can use leaves its raw body in the record; a broken listener
   never breaks the call; the run's attempts come back whole through `…/trace`, and the
   same records reach the live steps. Frontend typecheck clean.
+- **The failures the real runs found, pinned as cases** (suite, over `httpx.MockTransport`
+  with the payloads copied verbatim from the traces): a 200 carrying
+  `choices[0].error` code 502 retries and the second attempt answers, while one with a
+  non-retryable code raises without spending the budget, and either way the record names
+  the upstream and its `finish_reason`; an empty answer at the token limit reports the
+  reasoning/completion split and is not retried; what an assessor pins as extra wire
+  fields reaches the payload and cannot overwrite the model; and `SOURCE_CONFIG` declares
+  the sampling that decides all of it.
 - **The lineage rules proven both halves** (suite): the near-miss refusal names its candidate,
   a wrong echo is refused again and the right one registers; and against the store alone, two
   lineages differing only in casing or padding cannot coexist. Migration 0017's fold is pinned
@@ -504,7 +533,7 @@ the data in the package).
   and the dialog renders whatever is stored. Rows were dropped, not migrated (no production DB
   yet); historical `events` rows stay, being past facts. `docs/design/09`, `12` and `13` still
   describe the entity — frozen snapshots, superseded by the ADR, not corrected.
-- **The judgment half of the drafts backlog.** `drafts-hybrid:1` took the
+- **The judgment half of the drafts backlog.** `drafts-hybrid` took the
   extraction/classification criteria — the cheap half its abstention notes named. The 16
   judgment-shaped abstentions (whole-course reads: alignment matching, bridges, worked
   examples, closing integration…) remain the visible backlog; taking any of them is a new

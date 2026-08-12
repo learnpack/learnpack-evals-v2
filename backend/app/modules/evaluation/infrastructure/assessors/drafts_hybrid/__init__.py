@@ -1,4 +1,13 @@
-"""`drafts-hybrid` v1 — the `course-drafts-qa` lineage's first LLM-carrying assessor.
+"""`drafts-hybrid` v2 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v2 differs from v1 in sampling and nothing else: the model asks for no reasoning and the
+output budget has room for an answer. v1 could not finish a run — its 2048-token budget
+was spent entirely on the model's own thinking, so the semantic tasks came back empty
+every time (the calibration traces recorded 2048–2325 reasoning tokens and no content).
+Same prompts, same schemas, same decision constants, so the two are comparable in
+everything except being able to answer; the version bump is what ADR-0016 clause 2 asks
+for and what keeps a calibration from transferring across the change.
+
 
 Hybrid in ADR-0016's own sense ("the hybrid is the norm"): one artifact, one identity,
 and per criterion whatever mechanism the criterion needs. Seven executors are pure code —
@@ -41,7 +50,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "1"
+VERSION = "2"
 INSTRUMENT_ID = "course-drafts-qa"
 
 EXECUTORS = {
@@ -137,6 +146,11 @@ SOURCE_CONFIG = {
     "llm": {
         "provider": "openrouter",
         "temperature": tasks.TEMPERATURE,
+        # Declared because they decide the answer, not merely how it travels: the budget
+        # is what the thinking competes for, and whether there is thinking at all is what
+        # v1 lost every run to (ADR-0034 §1 — sampling is identity).
+        "maxOutputTokens": tasks.MAX_OUTPUT_TOKENS,
+        "reasoning": dict(tasks.REASONING),
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,

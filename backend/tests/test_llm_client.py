@@ -70,6 +70,27 @@ def test_a_usable_answer_comes_back_with_its_usage():
     assert payload["temperature"] == 0.0
 
 
+def test_what_the_caller_pins_travels_and_cannot_overwrite_the_call():
+    """The assessor pins semantic wire fields (`reasoning`); the transport forwards them
+    without reading them, and without letting one smuggle in another model."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=ok_body())
+
+    client, _ = client_with(handler)
+    client.complete(
+        model="provider/model",
+        messages=MESSAGES,
+        extra_body={"reasoning": {"effort": "none"}, "model": "someone/else"},
+    )
+
+    payload = json.loads(seen[0].content)
+    assert payload["reasoning"] == {"effort": "none"}
+    assert payload["model"] == "provider/model"
+
+
 def test_a_rate_limit_is_retried_honoring_retry_after():
     responses = iter(
         [
@@ -135,6 +156,120 @@ def test_an_unusable_2xx_is_an_error_not_a_half_answer():
         client.complete(model="m", messages=MESSAGES)
 
 
+def upstream_error_body(code: int = 502, provider: str = "Sail Research") -> dict:
+    """A real OpenRouter 200 whose provider failed — copied from a calibration trace.
+
+    The gateway's own hop succeeded, so the status line says nothing is wrong; the verdict
+    is on the choice, next to a message with no content at all."""
+    return {
+        "provider": provider,
+        "model": "vendor/model",
+        "choices": [
+            {
+                "finish_reason": "error",
+                "native_finish_reason": None,
+                "error": {
+                    "code": code,
+                    "message": (
+                        f"Upstream error from {provider}: response_format violated: "
+                        "model emitted invalid JSON: expected value at line 1 column 1"
+                    ),
+                    "metadata": {"error_type": "provider_unavailable"},
+                },
+                "message": {"role": "assistant", "content": None, "reasoning": "…"},
+            }
+        ],
+        "usage": {"prompt_tokens": 654, "completion_tokens": 2325},
+    }
+
+
+def test_a_provider_failure_inside_a_200_is_transient():
+    """It is a 502 wearing a 200: retrying is exactly the right move, and the gateway
+    tends to route the second attempt somewhere else."""
+    responses = iter(
+        [
+            httpx.Response(200, json=upstream_error_body()),
+            httpx.Response(200, json=ok_body()),
+        ]
+    )
+    client, sleeps = client_with(lambda request: next(responses))
+
+    assert client.complete(model="m", messages=MESSAGES).text == "answer"
+    assert len(sleeps) == 1
+
+
+def test_a_provider_failure_with_no_retryable_code_is_not_retried():
+    """Without a code that says otherwise, re-asking a fixed question only spends the
+    budget — the same reason a hard 4xx is not retried."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=upstream_error_body(code=400))
+
+    client, sleeps = client_with(handler)
+    with pytest.raises(LlmResponseError, match="upstream error 400"):
+        client.complete(model="m", messages=MESSAGES)
+    assert len(seen) == 1 and not sleeps
+
+
+def test_a_provider_failure_is_recorded_with_who_failed():
+    client, _ = client_with(lambda request: httpx.Response(200, json=upstream_error_body()))
+
+    calls, sink = observability.recording()
+    with observability.collecting(sink):
+        with pytest.raises(LlmTransportError):
+            client.complete(model="m", messages=MESSAGES)
+
+    # Every attempt names the upstream and its verdict — the two fields that say why.
+    assert len(calls) == MAX_TRANSPORT_ATTEMPTS
+    assert calls[0].provider == "Sail Research"
+    assert calls[0].finish_reason == "error"
+    assert "response_format violated" in (calls[0].error or "")
+
+
+def test_an_answer_the_reasoning_ate_says_so():
+    """The real shape of every failed calibration run: a reasoning model bills its
+    thinking as output tokens, spends the whole budget on it, and stops having written
+    nothing. "content is empty" describes that identically to a dozen other faults."""
+    body = {
+        "provider": "GMICloud",
+        "choices": [
+            {
+                "finish_reason": "length",
+                "message": {"role": "assistant", "content": None, "reasoning": "…" * 3000},
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 654,
+            "completion_tokens": 2048,
+            "completion_tokens_details": {"reasoning_tokens": 2048},
+        },
+    }
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=body)
+
+    client, sleeps = client_with(handler)
+    with pytest.raises(LlmResponseError) as raised:
+        client.complete(model="m", messages=MESSAGES)
+
+    message = str(raised.value)
+    assert "2048 completion tokens of which 2048 were reasoning" in message
+    assert "max_tokens" in message and "reasoning off" in message
+    # Not retried: the limit produces the same answer every time, and retrying would
+    # hide a misconfiguration behind a delay.
+    assert len(seen) == 1 and not sleeps
+
+
+def test_an_empty_answer_with_no_limit_to_blame_stays_generic():
+    client, _ = client_with(lambda request: httpx.Response(200, json=ok_body(content="   ")))
+    with pytest.raises(LlmResponseError, match="empty or not text"):
+        client.complete(model="m", messages=MESSAGES)
+
+
 def test_a_missing_key_fails_before_touching_the_network():
     seen: list[httpx.Request] = []
 
@@ -181,6 +316,32 @@ def test_a_record_carries_what_was_sent_and_what_came_back():
     assert call.response_text == "answer"
     assert call.finish_reason == "stop"
     assert (call.tokens_in, call.tokens_out) == (10, 5)
+
+
+def test_a_record_carries_how_the_model_was_sampled():
+    """The other half of the question. A wrong answer is traced to it as often as to the
+    prompt — v1 of `drafts-hybrid` failed every run on sampling, with prompts intact."""
+    client, _ = client_with(lambda request: httpx.Response(200, json=ok_body()))
+
+    calls, sink = observability.recording()
+    with observability.collecting(sink):
+        client.complete(
+            model="provider/model",
+            messages=MESSAGES,
+            max_tokens=8000,
+            response_format={"type": "json_object"},
+            extra_body={"reasoning": {"effort": "none"}},
+        )
+
+    (call,) = calls
+    assert call.sampling == {
+        "temperature": 0.0,
+        "max_tokens": 8000,
+        "response_format": {"type": "json_object"},
+        "reasoning": {"effort": "none"},
+    }
+    # The conversation and the model are fields of their own; this is what is left.
+    assert "messages" not in call.sampling and "model" not in call.sampling
 
 
 def test_a_truncated_answer_is_recorded_as_such():

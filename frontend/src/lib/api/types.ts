@@ -770,6 +770,12 @@ export interface LlmCallRecord {
   model_answered: string | null;
   /** Which upstream served it: OpenRouter routes one model id to several. */
   provider: string | null;
+  /**
+   * What was asked for besides the conversation — temperature, output budget, response
+   * format, whether the model may reason. It decides the answer as much as the prompt
+   * does: `drafts-hybrid:1` failed every run on this half, not on its prompts.
+   */
+  sampling: Record<string, unknown>;
   messages: { role: string; content: string }[];
   response_text: string | null;
   /** `length` means the answer was cut off — it surfaces as "not valid JSON". */

@@ -53,6 +53,7 @@ def request_structured_output(
     validate: Validator,
     temperature: float,
     max_tokens: int,
+    reasoning: Mapping[str, Any],
 ) -> tuple[Any, LlmUsage]:
     """One validated JSON payload, or `AssessorExecutionError` — never a half answer."""
     messages: list[Mapping[str, str]] = [
@@ -70,6 +71,10 @@ def request_structured_output(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
+                # Whether the judge thinks before answering is part of what it is asked,
+                # so it is pinned here and declared in SOURCE_CONFIG, never in the
+                # transport (ADR-0034 §1).
+                extra_body={"reasoning": dict(reasoning)},
                 # Names this question in the trace and nothing else — it never reaches the
                 # wire, so it is not part of what the judge is asked (ADR-0034 §5).
                 task_id=task_id,

@@ -135,6 +135,14 @@ if USING_LOCAL_TEST_DB:
     os.environ["DATABASE_URL"] = _TEST_URL
     get_settings.cache_clear()
 
+# The suite writes no trace files. `LLM_TRACE_DIR` is a developer's folder for reading what
+# the real model was asked, and a fake attempt from a test is indistinguishable from a real
+# one once it is sitting there next to them — the run id in the filename says nothing about
+# who wrote it. What writes those files is pinned directly, against `tmp_path`, in
+# `test_preview_runs.py`.
+os.environ["LLM_TRACE_DIR"] = ""
+get_settings.cache_clear()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _prepare_database() -> None:
