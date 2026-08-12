@@ -120,10 +120,41 @@ def test_list_assessors_includes_admins_and_evaluators(admin, evaluator, unique)
     assert ada["role"] == "evaluator"
     assert ada["display_name"] == "ada"
     assert ada["email"] == f"ada-{unique}@example.com"
+    assert ada["kind"] == "human"
+    assert ada["automated"] is None
 
     # The admin who made the request is in the roster too, as an admin.
     admin_id = admin.get("/me").json()["assessor_id"]
     assert by_id[admin_id]["role"] == "admin"
+
+
+def test_list_assessors_names_the_automated_kind(admin, cleanup, session, unique):
+    """The two kinds are structurally different (ADR-0016): a list that mixes them has to
+    say which is which, and an automated one carries its artifact identity."""
+    from app.modules.identity.application.register_automated_assessor import (
+        RegisterAutomatedAssessor,
+        RegisterAutomatedAssessorCommand,
+    )
+    from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+
+    name, lineage = f"structural-{unique}", f"qa-copy-{unique}"
+    registered = RegisterAutomatedAssessor(SqlAlchemyAssessorRepository(session))(
+        RegisterAutomatedAssessorCommand(
+            name=name,
+            version="1",
+            display_name=f"Structural {unique}",
+            source_config={"name": name, "version": "1", "instrumentId": lineage},
+        )
+    )
+    session.commit()
+    assessor_id = str(registered.assessor.assessor_id)
+    cleanup["assessors"].append(assessor_id)
+
+    row = next(a for a in admin.get("/admin/assessors").json() if a["assessor_id"] == assessor_id)
+    assert row["kind"] == "automated"
+    assert row["automated"] == {"name": name, "version": "1", "instrument_id": lineage}
+    # No external credential, and the role it is created with says nothing about it.
+    assert row["email"] is None
 
 
 def test_list_assessors_requires_admin(evaluator):

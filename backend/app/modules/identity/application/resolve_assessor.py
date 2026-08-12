@@ -60,6 +60,9 @@ class ResolveAssessor:
             role=str(assessor.role),
             email=assessor.email,
             display_name=assessor.display_name,
+            # Always `human` on this path — an automated assessor has no credential to
+            # arrive with (ADR-0016) — but stated rather than defaulted.
+            kind=str(assessor.kind),
         )
 
     def _initial_role(self, email: str | None) -> Role:
