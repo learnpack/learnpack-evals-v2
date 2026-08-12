@@ -42,8 +42,7 @@ budget, the shape of the question and the grounding rule. Editing it is a new ve
 `drafts-hybrid`.
 """
 
-import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -67,15 +66,63 @@ JUDGE_MODEL = "deepseek/deepseek-v4-flash-0731"
 ASSESSMENT_MAPPING_MODEL = "deepseek/deepseek-v4-flash-0731"
 ASSESSMENT_REACH_MODEL = "deepseek/deepseek-v4-flash-0731"
 
-# How many independent answers a judgement is decided by. ONE, deliberately: the ensemble
-# literature is clear that k=3 recovers real accuracy (the variance survives temperature 0,
-# because it comes from how the server batches work rather than from sampling), and just as
-# clear that it costs k times as much in money and in latency. The bottleneck today is how
-# fast a human can READ what the judge answered, not how tight its variance is; a judgement
-# nobody has reviewed is not made better by being made three times. Raising this to 3 means
-# changing this number, adding the majority vote in `_decide`, and bumping VERSION —
-# calibration does not transfer across it, exactly as ADR-0016 requires.
-SAMPLES = 1
+# How many independent answers a judgement is decided by: ask two, and only pay for a third
+# when they disagree. The verdict this yields is EXACTLY the one a always-three majority
+# would give — two agreeing samples cannot be overturned by a third — at about 2.2 calls
+# instead of 3.
+#
+# Sampling at all is not a hedge: repeats of the same question over the same text do
+# disagree, because the variance outlives temperature 0 (it comes from how the server batches
+# work, not from how the tokens are drawn). Correcting an ambiguous criterion removes far more
+# disagreement than voting ever will — but only for the ambiguity someone has already found,
+# and borderline instances surface one per draft, so there is no enumerable list of "hard
+# criteria" to sample selectively.
+#
+# `MAX_SAMPLES` must stay strictly greater than `SAMPLES`, or a split would have nothing to
+# break the tie with. Both are identity: how many answers decide a verdict decides which
+# verdict survives, so moving either is a VERSION bump.
+SAMPLES = 2
+MAX_SAMPLES = 3
+
+# How many passages one judgement may rest on. The list exists because a finding often rests
+# on several places in the text, and asking for exactly one was what made a correct verdict
+# get rejected — but unbounded, it is a way to spend the whole output budget: one calibration
+# answer looped a nine-quote cycle twenty times, emitted 191 entries of which 18 were
+# distinct, and stopped at `finish_reason: length` having consumed 8000 tokens, three
+# quarters of that whole evaluation's output. With a vote, such an answer is paid for two or
+# three times.
+#
+# 12 is chosen against the observed spread rather than by taste: across every judged answer
+# so far the legitimate ones run 1 to 8 quotes, the 8 belonging to the criterion that reads
+# one block per declared objective and therefore scales with the draft. The cap is there to
+# stop degeneration, not to enforce parsimony.
+MAX_EVIDENCE = 12
+
+# What a judging call may emit. `MAX_EVIDENCE` bounds what a judgement may CONTAIN, and it
+# is checked after the answer arrives — which stops garbage being stored but not from being
+# paid for. Only the budget stops that, and 8000 (the figure the extraction tasks need,
+# inherited from v2's reasoning problem) buys about three minutes of a model repeating one
+# sentence into the evidence array. Judged answers that completed run a median of 153 output
+# tokens and a maximum of 773 across every run so far, so 1500 is roughly twice the widest
+# real answer and cuts a degeneration off in seconds instead of minutes.
+#
+JUDGE_MAX_OUTPUT_TOKENS = 1500
+
+# The two extraction tasks here get a bound of their own. They were left on the shared 8000
+# on the reasoning that only judging had ever degenerated — which the next run falsified:
+# `assessment_reach` filled `referencesLessonIds` with repeated and then invented lesson ids
+# until the budget was gone, 124 seconds for nothing. Degeneration is not a property of
+# judging; it is what any FREE-LENGTH ARRAY in an output schema invites, and both of these
+# have one.
+#
+# Their output does scale with the draft — one entry per objective, one per item — so the
+# bound is set well above the measured maxima (424 tokens for the mapping, 518 for the reach)
+# rather than close to them: roughly five times, which is a draft several times larger than
+# any measured, and still cuts a loop off in a third of the time.
+#
+# `tasks.py`'s three extraction tasks keep the shared budget on purpose: none has degenerated,
+# and `concept_trajectory` has legitimately spent 2412 tokens on a long plan.
+EXTRACTION_MAX_OUTPUT_TOKENS = 2500
 
 
 @dataclass(frozen=True)
@@ -94,6 +141,22 @@ class Verdict:
     evidence: tuple[str, ...]
     passed: bool
     failure_mode_index: int | None
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """A criterion decided by a vote, and how close that vote was.
+
+    `agreed` out of `samples` is not a footnote: a criterion answered 2-1 is one whose
+    threshold the instrument never wrote down, and every such criterion found so far was
+    found exactly this way — the model agreeing on the facts and dividing on whether they
+    clear the bar. The split travels with the evaluation so that reading it is possible.
+    """
+
+    verdict: Verdict
+    usage: LlmUsage
+    agreed: int
+    samples: int
 
 
 @dataclass(frozen=True)
@@ -121,16 +184,17 @@ class ItemReach:
 # criteria reading one answer must not pay for it twice. Here it is the assessment mapping
 # that two criteria share.
 
-_cache: dict[tuple[str, UUID], tuple[Any, LlmUsage]] = {}
+_cache: dict[tuple[str, UUID], Any] = {}
 
 
 def clear_judgment_cache() -> None:
     _cache.clear()
 
 
-def _memoized(
-    task_id: str, profile: ProfileData, run: Callable[[], tuple[Any, LlmUsage]]
-) -> tuple[Any, LlmUsage]:
+def _memoized(task_id: str, profile: ProfileData, run: Callable[[], Any]) -> Any:
+    """Whatever `run` returns, once per (task, profile). Callers that also need the spend
+    return it inside the value — a `Judgement` carries its own, the extraction tasks pair
+    theirs with the data."""
     key = (task_id, profile.profile_id)
     if key not in _cache:
         _cache[key] = run()
@@ -151,9 +215,13 @@ def locate(corpus: str, quote: str) -> str | None:
       single space. Comparing byte for byte rejected that, which is a false negative about
       the course. Runs of whitespace are equal to each other for the purpose of finding the
       passage.
+    - **Neither is markdown emphasis.** Lesson bodies are markdown, so a sentence can carry
+      `**bold**` or backticks, and a model quoting it drops them about as often as it keeps
+      them. Same class of false negative, same answer: the markers are invisible to the match.
     - **What is returned is the SOURCE's text, never the model's.** Tolerating a difference
       when matching is not the same as storing the difference: the quote that ends up in a
-      report is the span as the course writes it, so ADR-0009 stays exact.
+      report is the span as the course writes it — emphasis markers included — so ADR-0009
+      stays exact.
     """
     flat_corpus, offsets = _flatten(corpus)
     flat_quote, _ = _flatten(quote)
@@ -165,13 +233,26 @@ def locate(corpus: str, quote: str) -> str | None:
     return corpus[offsets[at] : offsets[at + len(flat_quote) - 1] + 1]
 
 
+# Markdown emphasis, dropped when matching a quote against its source. Skipping `_` is the
+# one that can bite in the other direction: it makes `lesson_bodies` and `lessonbodies` equal
+# for the search. Accepted — it is a false positive in the direction we already chose to
+# tolerate, and reaching it needs the model to delete an underscore, which is a formatting
+# edit rather than an invention.
+_EMPHASIS = frozenset("*_`")
+
+
 def _flatten(text: str) -> tuple[str, list[int]]:
-    """`text` with whitespace runs collapsed to one space and stripped, plus, per character
-    kept, the index it came from — which is what lets a match map back to the original."""
+    """`text` with whitespace runs collapsed to one space, emphasis markers dropped and the
+    ends stripped, plus, per character kept, the index it came from — which is what lets a
+    match map back to the original."""
     kept: list[str] = []
     offsets: list[int] = []
     after_space = True
     for index, char in enumerate(text):
+        if char in _EMPHASIS:
+            # Not `continue`-ing through the space branch on purpose: an emphasis marker is
+            # invisible, so `**a** **b**` still flattens to `a b` rather than `ab`.
+            continue
         if char.isspace():
             if not after_space:
                 kept.append(" ")
@@ -219,48 +300,94 @@ def judge(
     task_id: str,
     source_description: str,
     corpus: str,
-) -> tuple[Verdict, LlmUsage]:
+) -> Judgement:
     """One criterion, judged against one corpus, with its evidence grounded in it.
+
+    Asks `SAMPLES` independent times and stops there when they agree; a split buys one more
+    answer and the majority wins. Each sample is a whole `request_structured_output` call, so
+    a sample that violates the output contract is fed back and retried on its own before it
+    ever counts as a vote.
 
     Memoized by (task_id, profile): the task id names the question, and no two criteria
     share one — a shared judgement would need the other criterion's normative text, which
     an executor never receives.
     """
 
-    def run() -> tuple[Verdict, LlmUsage]:
-        payload, usage = request_structured_output(
-            runtime.get_client(),
-            task_id=task_id,
-            model=JUDGE_MODEL,
-            system_prompt=prompts.JUDGE_SYSTEM,
-            user_prompt=prompts.JUDGE_USER.substitute(
-                source_description=source_description,
-                pass_condition=spec.pass_condition.strip(),
-                failure_modes=_numbered(spec.failure_modes),
-                corpus=corpus,
-            ),
-            validate=lambda answer: _validate_verdict(answer, corpus, len(spec.failure_modes)),
-            temperature=tasks.TEMPERATURE,
-            max_tokens=tasks.MAX_OUTPUT_TOKENS,
-            reasoning=tasks.REASONING,
-        )
-        raw_mode = payload.get("failureMode")
-        # Each quote is stored as the SOURCE spells it, not as the model rendered it.
-        located = tuple(
-            span for quote in payload["evidence"] if (span := locate(corpus, str(quote)))
-        )
-        return (
-            Verdict(
-                reason=str(payload["reason"]).strip(),
-                evidence=located,
-                passed=bool(payload["verdict"]),
-                failure_mode_index=int(raw_mode) if isinstance(raw_mode, int) else None,
-            ),
-            usage,
-        )
+    def run() -> Judgement:
+        verdicts: list[Verdict] = []
+        usages: list[LlmUsage] = []
+        while True:
+            verdict, usage = _ask(spec, task_id, source_description, corpus)
+            verdicts.append(verdict)
+            usages.append(usage)
+            answers = {v.passed for v in verdicts}
+            if len(verdicts) >= SAMPLES and (len(answers) == 1 or len(verdicts) >= MAX_SAMPLES):
+                return _decide(verdicts, usages)
 
-    result, usage = _memoized(task_id, profile, run)
-    return result, usage
+    judged: Judgement = _memoized(task_id, profile, run)
+    return judged
+
+
+def _ask(
+    spec: CriterionSpec, task_id: str, source_description: str, corpus: str
+) -> tuple[Verdict, LlmUsage]:
+    """One sample: one validated answer, or `AssessorExecutionError`."""
+    payload, usage = request_structured_output(
+        runtime.get_client(),
+        task_id=task_id,
+        model=JUDGE_MODEL,
+        system_prompt=prompts.JUDGE_SYSTEM,
+        user_prompt=prompts.JUDGE_USER.substitute(
+            source_description=source_description,
+            pass_condition=spec.pass_condition.strip(),
+            failure_modes=_numbered(spec.failure_modes),
+            max_evidence=MAX_EVIDENCE,
+            corpus=corpus,
+        ),
+        validate=lambda answer: _validate_verdict(answer, corpus, len(spec.failure_modes)),
+        temperature=tasks.TEMPERATURE,
+        max_tokens=JUDGE_MAX_OUTPUT_TOKENS,
+        reasoning=tasks.REASONING,
+    )
+    raw_mode = payload.get("failureMode")
+    # Each quote is stored as the SOURCE spells it, not as the model rendered it.
+    located = tuple(span for quote in payload["evidence"] if (span := locate(corpus, str(quote))))
+    return (
+        Verdict(
+            reason=str(payload["reason"]).strip(),
+            evidence=located,
+            passed=bool(payload["verdict"]),
+            failure_mode_index=int(raw_mode) if isinstance(raw_mode, int) else None,
+        ),
+        usage,
+    )
+
+
+def _decide(verdicts: Sequence[Verdict], usages: Sequence[LlmUsage]) -> Judgement:
+    """The majority verdict, carrying the reason and quotes of a sample that voted for it.
+
+    The winning sample's own words are kept rather than merged: a report shows one judge's
+    account of one reading, which is checkable, instead of a synthesis nobody wrote.
+    """
+    answers = [verdict.passed for verdict in verdicts]
+    majority = answers.count(True) > answers.count(False)
+    return Judgement(
+        verdict=next(verdict for verdict in verdicts if verdict.passed == majority),
+        usage=_total(usages),
+        agreed=answers.count(majority),
+        samples=len(verdicts),
+    )
+
+
+def _total(usages: Sequence[LlmUsage]) -> LlmUsage:
+    """What the whole vote spent — the samples summed, so cost per criterion stays readable."""
+    return LlmUsage(
+        model=usages[0].model,
+        calls=sum(usage.calls for usage in usages),
+        tokens_in=sum(usage.tokens_in for usage in usages),
+        tokens_out=sum(usage.tokens_out for usage in usages),
+        latency_ms=sum(usage.latency_ms for usage in usages),
+    )
 
 
 def _numbered(failure_modes: Sequence[str]) -> str:
@@ -277,12 +404,26 @@ def _validate_verdict(answer: Any, corpus: str, failure_mode_count: int) -> list
     evidence = answer.get("evidence")
     if not isinstance(evidence, list) or not evidence:
         violations.append('"evidence" must be a non-empty array of quoted passages')
+    elif len(evidence) > MAX_EVIDENCE:
+        # Checked before the quotes themselves: a runaway list would otherwise produce one
+        # complaint per entry, and the feedback that goes back has to be readable.
+        violations.append(
+            f'"evidence" holds {len(evidence)} passages, more than the {MAX_EVIDENCE} a '
+            "judgement may rest on. Quote only the places that decide it, once each."
+        )
     else:
+        seen: set[str] = set()
         for position, quote in enumerate(evidence):
             label = f'"evidence"[{position}]'
             if not isinstance(quote, str) or not quote.strip():
                 violations.append(f"{label} must be a non-empty string")
                 continue
+            # Repeating a passage does not make it more evidence, and repetition IS the
+            # shape a degenerating answer takes — one quote emitted until the budget ends.
+            if quote.strip() in seen:
+                violations.append(f"{label} repeats a passage already quoted; quote each once")
+                continue
+            seen.add(quote.strip())
             # The grounding rule: a citation that is not in the source is not evidence.
             violations.extend(_grounding_violations(label, quote, corpus))
     verdict = answer.get("verdict")
@@ -339,31 +480,38 @@ def _objectives_and_items_corpus(profile: ProfileData) -> tuple[str, list[dict[s
 
     The indices are ours, assigned by position: the model answers with them, so a matched
     item resolves back to a row of the profile rather than to a name the model chose.
+
+    Written as plain labelled lines, never serialized. A corpus that a task will demand
+    VERBATIM quotes from must show the course's text exactly as the course writes it: JSON
+    escaping turned `class="title"` into `class=\\"title\\"`, the model quoted what it could
+    read, and the grounding check refused a citation that was correct — then the answer
+    repeated, and the run died on it. Encoding the text and then asking for the decoded form
+    back is the defect; another tolerance in `locate` would only have hidden it.
     """
     objectives = list(profile.entries["declared_objectives"].value)
     items = list(profile.entries["lesson_assessment_items"].value)
     objective_lines = "\n".join(
-        json.dumps(
-            {
-                "id": str(objective["id"]),
-                "outcome": objective["outcome"],
-                "verifiableBy": objective.get("verifiableBy"),
-            },
-            ensure_ascii=False,
-            sort_keys=True,
+        f"{objective['id']}: {objective['outcome']}"
+        + (
+            f"\n  declared verification: {objective['verifiableBy']}"
+            if isinstance(objective.get("verifiableBy"), str) and objective["verifiableBy"].strip()
+            else "\n  declared verification: none"
         )
         for objective in objectives
     )
-    item_lines = "\n".join(
-        json.dumps(
-            {"index": index, "kind": item.get("kind"), "question": item.get("prompt")},
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+    corpus = f"OBJECTIVES:\n{objective_lines}\n\nASSESSMENT ITEMS:\n{_item_lines(items)}"
+    return corpus, items
+
+
+def _item_lines(items: Sequence[Mapping[str, Any]], with_lesson: bool = False) -> str:
+    """One line per shipped item: our index, its kind, and its question as the course
+    writes it. `with_lesson` adds where the item sits, which the reach task needs."""
+    return "\n".join(
+        f"[{index}] {item.get('kind')}"
+        + (f" in lesson {item.get('lessonId')}" if with_lesson else "")
+        + f": {item.get('prompt')}"
         for index, item in enumerate(items)
     )
-    corpus = f"OBJECTIVES:\n{objective_lines}\n\nASSESSMENT ITEMS:\n{item_lines}"
-    return corpus, items
 
 
 # --- task: assessment mapping (extraction shared by two criteria) -------------------------
@@ -383,7 +531,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             user_prompt=prompts.ASSESSMENT_MAPPING_USER.substitute(corpus=corpus),
             validate=lambda answer: _validate_mapping(answer, corpus, objective_ids, len(items)),
             temperature=tasks.TEMPERATURE,
-            max_tokens=tasks.MAX_OUTPUT_TOKENS,
+            max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
         )
         by_id = {str(entry["objectiveId"]): entry for entry in payload["objectives"]}
@@ -435,6 +583,9 @@ def _validate_mapping(
         if not isinstance(indices, list):
             violations.append(f"{label}.itemIndices must be an array")
         else:
+            # No duplicates, which also bounds the list: it cannot be longer than the number
+            # of items, so a repeating answer is refused instead of growing without end.
+            listed: set[int] = set()
             for value in indices:
                 if not isinstance(value, int) or isinstance(value, bool):
                     violations.append(f"{label}.itemIndices must hold integers (got {value!r})")
@@ -443,6 +594,10 @@ def _validate_mapping(
                         f"{label}.itemIndices holds {value}, which is not an item index "
                         f"(0 to {item_count - 1})"
                     )
+                elif value in listed:
+                    violations.append(f"{label}.itemIndices lists item {value} more than once")
+                else:
+                    listed.add(value)
     if not violations and seen != expected:
         violations.append(f"missing an entry for objective id(s): {sorted(expected - seen)}")
     return violations
@@ -489,27 +644,12 @@ def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
         ordered = tasks.ordered_inventory(profile)
         items = list(profile.entries["lesson_assessment_items"].value)
         lesson_ids = [str(lesson["lessonId"]) for lesson in ordered]
-        plan_lines = "\n".join(
-            json.dumps(
-                {"lessonId": str(lesson["lessonId"]), "title": lesson.get("title")},
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-            for lesson in ordered
+        # Plain lines, not JSON: same reason as the mapping corpus above.
+        plan_lines = "\n".join(f"{lesson['lessonId']}: {lesson.get('title')}" for lesson in ordered)
+        corpus = (
+            f"LESSON PLAN IN DELIVERY ORDER:\n{plan_lines}\n\n"
+            f"ASSESSMENT ITEMS:\n{_item_lines(items, with_lesson=True)}"
         )
-        item_lines = "\n".join(
-            json.dumps(
-                {
-                    "index": index,
-                    "sitsInLessonId": str(item.get("lessonId")),
-                    "question": item.get("prompt"),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-            for index, item in enumerate(items)
-        )
-        corpus = f"LESSON PLAN IN DELIVERY ORDER:\n{plan_lines}\n\nASSESSMENT ITEMS:\n{item_lines}"
         payload, usage = request_structured_output(
             runtime.get_client(),
             task_id="assessment_reach",
@@ -518,7 +658,7 @@ def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
             user_prompt=prompts.ASSESSMENT_REACH_USER.substitute(corpus=corpus),
             validate=lambda answer: _validate_reach(answer, lesson_ids, len(items)),
             temperature=tasks.TEMPERATURE,
-            max_tokens=tasks.MAX_OUTPUT_TOKENS,
+            max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
         )
         by_index = {int(entry["index"]): entry for entry in payload["items"]}
@@ -560,6 +700,10 @@ def _validate_reach(answer: Any, lesson_ids: Sequence[str], item_count: int) -> 
         if not isinstance(references, list):
             violations.append(f"{label}.referencesLessonIds must be an array")
         else:
+            # Membership plus no duplicates bounds the list at the size of the plan. This is
+            # the array that once filled with repeated and then invented ids until the whole
+            # budget was gone; either half alone would have let it run.
+            drawn: set[str] = set()
             for value in references:
                 # The closed-set equivalent of the grounding rule: a lesson the plan does
                 # not declare is an invented one, and the executor would count it.
@@ -568,6 +712,12 @@ def _validate_reach(answer: Any, lesson_ids: Sequence[str], item_count: int) -> 
                         f"{label}.referencesLessonIds holds {value!r}, which is not a lesson "
                         "identifier from the plan"
                     )
+                elif value in drawn:
+                    violations.append(
+                        f"{label}.referencesLessonIds names lesson {value!r} more than once"
+                    )
+                else:
+                    drawn.add(value)
     if not violations and len(seen) != item_count:
         violations.append(
             f"missing an entry for item index(es): {sorted(set(range(item_count)) - seen)}"

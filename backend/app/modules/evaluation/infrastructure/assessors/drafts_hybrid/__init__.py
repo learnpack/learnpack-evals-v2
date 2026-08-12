@@ -1,6 +1,37 @@
-"""`drafts-hybrid` v4 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v5 — the `course-drafts-qa` lineage's LLM-carrying assessor.
 
-v4 fixes what the first calibration runs of v3 found: the evidence contract asked for ONE
+v5 answers what repeated runs of v4 measured, in two places that have nothing to do with
+each other except that the same campaign found both.
+
+**A judgement is now decided by a vote.** Repeats of one question over one text disagree:
+the variance outlives temperature 0, because it comes from how the server batches work
+rather than from how tokens are drawn. Two samples are asked, a third only when they split,
+and the majority wins — which is exactly the verdict an always-three majority would give,
+since two agreeing samples cannot be overturned. The split itself is reported per criterion
+and is worth as much as the verdict: every under-specified criterion found so far was found
+by noticing the model agree on the facts and divide on whether they clear the bar. Voting is
+not the main remedy for that — writing the missing threshold into the instrument is, and it
+removes far more disagreement than sampling ever will — but borderline instances surface one
+per draft, so there is no list of "hard criteria" to sample selectively instead.
+
+**Grounding stopped rejecting quotes over markdown.** Lesson bodies are markdown; a model
+quoting a sentence that carries `**bold**` drops the markers about as often as it keeps them,
+and byte comparison called that a hallucination. Emphasis is invisible to the match now, the
+same way whitespace already was, and the stored quote is still the source's own span.
+
+**And a judgement is bounded twice over, because one bound was not enough.** v4 made the
+evidence a list, since findings rest on several places at once; unbounded, that turned out to
+be a way to spend the whole output budget on nothing — one answer looped a nine-quote cycle
+until the token limit cut it off at 191 entries, 18 of them distinct. `MAX_EVIDENCE` caps what
+a judgement may CONTAIN, checked before the quotes are so the complaint that goes back is one
+line rather than one per entry. But it is checked after the answer arrives, so it stops the
+garbage being stored and not the minutes being paid: the next degeneration repeated a single
+sentence into the array, ran to the 8000-token budget three times over, and cost nine minutes
+before the evaluation died. `JUDGE_MAX_OUTPUT_TOKENS` is the other half — a judging call is
+given roughly twice the widest real answer rather than the extraction tasks' budget, so a
+model that starts looping is cut off in seconds. A vote pays for all of this twice.
+
+v4 fixed what the first calibration runs of v3 found: the evidence contract asked for ONE
 continuous quote from judgements that rest on several places in the text, so a correct
 verdict was rejected for how it was cited. Three changes, all of them identity. `evidence`
 is now a LIST, one entry per place, each still a continuous span. Grounding tolerates
@@ -82,7 +113,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "4"
+VERSION = "5"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
@@ -189,8 +220,17 @@ SOURCE_CONFIG = {
         "maxOutputTokens": tasks.MAX_OUTPUT_TOKENS,
         "reasoning": dict(tasks.REASONING),
         # How many answers a judgement is decided by. Declared because it decides what the
-        # verdict is, not merely how it travels: raising it changes which answers survive.
-        "samples": judgments.SAMPLES,
+        # verdict IS, not merely how it travels: changing either number changes which
+        # answers survive a disagreement.
+        "samples": {"asked": judgments.SAMPLES, "max": judgments.MAX_SAMPLES},
+        # Declared for the same reason: it bounds what an answer may contain, and the
+        # prompt states it, so it shapes what comes back rather than merely how it travels.
+        "maxEvidence": judgments.MAX_EVIDENCE,
+        # What an answer may cost is as much a part of what comes back as what it may
+        # contain. Judging and the two extraction tasks are bounded apart, because their
+        # honest sizes differ by an order of magnitude.
+        "judgeMaxOutputTokens": judgments.JUDGE_MAX_OUTPUT_TOKENS,
+        "extractionMaxOutputTokens": judgments.EXTRACTION_MAX_OUTPUT_TOKENS,
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
