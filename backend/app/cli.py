@@ -120,6 +120,16 @@ from app.modules.evaluation.application.preview_evaluation import (
     PreviewEvaluation,
     PreviewEvaluationCommand,
 )
+from app.modules.evaluation.application.ratify_assessor import (
+    CoverageIncomplete,
+    CriterionDelta,
+    ForeignLineage,
+    InstrumentVersionNotPublished,
+    InstrumentVersionUnknown,
+    RatificationNeedsConfirmation,
+    RatifyAssessor,
+    RatifyAssessorCommand,
+)
 from app.modules.evaluation.domain.model import InvalidAutomatedEvaluation
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
@@ -200,7 +210,12 @@ from app.modules.evaluation_studies.infrastructure.repository import (
     SqlAlchemyStudyReportRepository,
     SqlAlchemyStudyRepository,
 )
-from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Kind, Role
+from app.modules.identity.application.register_automated_assessor import (
+    AutomatedAssessorDrifted,
+    RegisterAutomatedAssessor,
+    RegisterAutomatedAssessorCommand,
+)
+from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
     AssignContent,
@@ -651,10 +666,24 @@ def _assessor_package(name: str, version: str) -> AssessorPackage | None:
     return package
 
 
+def _print_decided_deltas(deltas: tuple[CriterionDelta, ...], email: str) -> None:
+    """The half of the diff that needed no decision from the caller, as it was decided."""
+    for delta in deltas:
+        if delta.disposition == "abstained":
+            print(f"  {delta.change:8} {delta.criterion_id}: abstained (no confirm needed)")
+        elif delta.disposition == "confirmed":
+            print(f"  {delta.change:8} {delta.criterion_id}: confirmed by {email}")
+
+
 def run_ratify_assessor(
     name: str, version: str, instrument_version_id: str, email: str, confirmed: list[str]
 ) -> int:
     """The ADR-0019 act: make one instrument version evaluable by one assessor.
+
+    Composition only (ADR-0036 §3): Identity mints the assessor row, Evaluation records
+    the ratification, both in this session's transaction. The rules live in the two use
+    cases, which the console calls too; what belongs here is turning each refusal into the
+    line and the exit code a terminal expects.
 
     Initial registration IS the first ratification. Against a later version of the same
     lineage, the diff is computed mechanically (literal pass_condition + required_data):
@@ -666,104 +695,86 @@ def run_ratify_assessor(
         return 1
 
     with SessionLocal() as session:
-        admin = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        assessors = SqlAlchemyAssessorRepository(session)
+        admin = assessors.get_by_email(email)
         if admin is None:
             print(f"no assessor with email {email!r}", file=sys.stderr)
             return 1
 
-        instruments = SqlAlchemyInstrumentRepository(session)
-        target = instruments.get(instrument_version_id)
-        if target is None:
-            print(f"instrument version {instrument_version_id} not found", file=sys.stderr)
+        try:
+            registered = RegisterAutomatedAssessor(assessors)(
+                RegisterAutomatedAssessorCommand(
+                    name=package.name,
+                    version=package.version,
+                    display_name=package.display_name,
+                    source_config=package.source_config,
+                )
+            )
+        except AutomatedAssessorDrifted as exc:
+            print(str(exc), file=sys.stderr)
             return 1
-        if target.instrument_id != package.instrument_id:
+
+        ratify = RatifyAssessor(
+            instruments=DesignInstrumentGateway(session),
+            ratifications=SqlAlchemyRatificationRepository(session),
+            uow=UnitOfWork(session),
+        )
+        try:
+            result = ratify(
+                RatifyAssessorCommand(
+                    assessor_id=registered.assessor.assessor_id,
+                    instrument_id=package.instrument_id,
+                    instrument_version_id=instrument_version_id,
+                    coverage=package.coverage,
+                    ratified_by=admin.id,
+                    confirmed=frozenset(confirmed),
+                )
+            )
+        except InstrumentVersionUnknown as exc:
+            print(f"instrument version {exc.instrument_version_id} not found", file=sys.stderr)
+            return 1
+        except ForeignLineage as exc:
             print(
-                f"{name}:{version} owes itself to lineage '{package.instrument_id}', "
-                f"not '{target.instrument_id}' (ADR-0019)",
+                f"{name}:{version} owes itself to lineage '{exc.expected_instrument_id}', "
+                f"not '{exc.actual_instrument_id}' (ADR-0019)",
                 file=sys.stderr,
             )
             return 1
-        if not target.is_published:
+        except InstrumentVersionNotPublished as exc:
             print(
-                f"{instrument_version_id} is {target.status}: ratification requires a "
+                f"{exc.instrument_version_id} is {exc.status}: ratification requires a "
                 "published version - calibrate drafts with `evaluate --dry-run`",
                 file=sys.stderr,
             )
             return 1
-
-        # Coverage restricted to this version must decide every criterion (ADR-0018).
-        version_criteria = {c.criterion_id for c in target.criteria}
-        undecided = version_criteria - package.coverage.declared
-        if undecided:
+        except CoverageIncomplete as exc:
             print(
                 "coverage does not decide every criterion of the version: "
-                f"{', '.join(sorted(undecided))} - executing or abstaining is a change "
+                f"{', '.join(sorted(exc.undecided))} - executing or abstaining is a change "
                 "of the artifact, i.e. a new assessor version (ADR-0016)",
                 file=sys.stderr,
             )
             return 1
-
-        assessors = SqlAlchemyAssessorRepository(session)
-        row = assessors.get_automated(name, version)
-        if row is None:
-            row = Assessor(
-                id=new_id(),
-                clerk_user_id=None,
-                display_name=package.display_name,
-                kind=Kind.AUTOMATED,
-                source_config=package.source_config,
-            )
-            assessors.add(row)
-            print(f"registered automated assessor {package.display_name} ({row.id})")
-        elif row.source_config != package.source_config:
+        except RatificationNeedsConfirmation as exc:
+            _print_decided_deltas(exc.deltas, email)
             print(
-                f"stored source_config of {name}:{version} differs from the code - the "
-                "artifact changed without a version bump; bump VERSION (ADR-0016)",
+                "executed criteria changed since the last ratified version "
+                f"({exc.previous_version_id}) - confirm the executor still realizes each "
+                "text with: " + " ".join(f"--confirm {d.criterion_id}" for d in exc.pending),
                 file=sys.stderr,
             )
             return 1
 
-        ratifications = SqlAlchemyRatificationRepository(session)
-        siblings = [
-            i.id
-            for i in instruments.list_all()
-            if i.instrument_id == package.instrument_id and i.id != target.id
-        ]
-        previous_id = ratifications.latest_ratified(row.id, siblings)
-        if previous_id is not None:
-            previous = instruments.get(previous_id)
-            assert previous is not None  # ratifications FK to instrument_versions
-            before = {c.criterion_id: c for c in previous.criteria}
-            needs_confirmation: list[str] = []
-            for criterion in target.criteria:
-                prior = before.get(criterion.criterion_id)
-                unchanged = (
-                    prior is not None
-                    and prior.pass_condition == criterion.pass_condition
-                    and prior.required_data == criterion.required_data
-                )
-                if unchanged:
-                    continue
-                label = "new" if prior is None else "changed"
-                if criterion.criterion_id in package.coverage.abstains:
-                    print(f"  {label:8} {criterion.criterion_id}: abstained (no confirm needed)")
-                elif criterion.criterion_id in confirmed:
-                    print(f"  {label:8} {criterion.criterion_id}: confirmed by {email}")
-                else:
-                    needs_confirmation.append(criterion.criterion_id)
-            if needs_confirmation:
-                print(
-                    "executed criteria changed since the last ratified version "
-                    f"({previous_id}) - confirm the executor still realizes each text "
-                    "with: " + " ".join(f"--confirm {c}" for c in needs_confirmation),
-                    file=sys.stderr,
-                )
-                return 1
+        # Printed once the act has gone through: nothing is committed until it does, so a
+        # registration announced beside a refusal would be announcing a row that is gone.
+        if registered.newly_registered:
+            print(
+                f"registered automated assessor {package.display_name} "
+                f"({registered.assessor.assessor_id})"
+            )
+        _print_decided_deltas(result.deltas, email)
 
-        newly = ratifications.insert(row.id, target.id, admin.id)
-        session.commit()
-
-    if not newly:
+    if not result.newly_ratified:
         print(f"{name}:{version} already ratified {instrument_version_id}")
     else:
         print(f"ratified {instrument_version_id} for {name}:{version} (by {email})")

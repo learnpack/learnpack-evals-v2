@@ -32,6 +32,10 @@ class InstrumentGatewayPort(Protocol):
 
     def get_instrument(self, instrument_version_id: str) -> InstrumentSpec | None: ...
 
+    def list_version_ids(self, instrument_id: str) -> tuple[str, ...]:
+        """Every version of one lineage — ratification asks which of them came before."""
+        ...
+
 
 class ProfileGatewayPort(Protocol):
     """The evidence base: the content's most recent `ok` profile (ADR-0015)."""
