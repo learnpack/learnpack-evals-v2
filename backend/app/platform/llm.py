@@ -10,6 +10,11 @@ change may alter whether and when an answer arrives, never which answer arrives.
 
 Environment supplies access, not identity: the API key and the base URL come from
 `Settings` at wiring time; the model id always arrives per call, from the assessor's code.
+
+Every attempt is announced to `app.platform.observability` — what was sent, what came
+back, what it cost — so a caller that wants a trace gets one without this module knowing
+who is listening. Announcing an answer does not change which answer arrives, so it
+re-versions no assessor either (ADR-0034 §1).
 """
 
 import logging
@@ -20,6 +25,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from app.platform import observability
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +64,11 @@ class LlmCompletion:
     tokens_in: int
     tokens_out: int
     latency_ms: int
+    # Recorded, not acted upon: a `length` here means the answer was cut off, which the
+    # caller currently meets as "the answer is not valid JSON". Naming it in the trace is
+    # what lets that diagnosis be made at all.
+    finish_reason: str | None = None
+    provider: str | None = None
 
 
 class ChatCompletionsClient:
@@ -91,7 +103,9 @@ class ChatCompletionsClient:
         temperature: float = 0.0,
         max_tokens: int | None = None,
         response_format: Mapping[str, Any] | None = None,
+        task_id: str | None = None,
     ) -> LlmCompletion:
+        """`task_id` names the caller's question in the trace; it never reaches the wire."""
         if not self._api_key:
             raise LlmConfigurationError(
                 "no LLM API key configured — set LLM_API_KEY (the key is environment, "
@@ -107,9 +121,11 @@ class ChatCompletionsClient:
         if response_format is not None:
             payload["response_format"] = dict(response_format)
 
+        sent = observability.messages_of(messages)
         started = time.monotonic()
         last_transient = ""
         for attempt in range(1, MAX_TRANSPORT_ATTEMPTS + 1):
+            attempt_started = time.monotonic()
             try:
                 response = self._http.post(
                     "/chat/completions",
@@ -118,11 +134,21 @@ class ChatCompletionsClient:
                 )
             except httpx.HTTPError as exc:
                 last_transient = f"{type(exc).__name__}: {exc}"
+                _observe(task_id, attempt, model, sent, attempt_started, error=last_transient)
                 self._backoff(attempt, retry_after=None, cause=last_transient)
                 continue
 
             if response.status_code in RETRYABLE_STATUS:
                 last_transient = f"HTTP {response.status_code}"
+                _observe(
+                    task_id,
+                    attempt,
+                    model,
+                    sent,
+                    attempt_started,
+                    response_text=response.text,
+                    error=last_transient,
+                )
                 self._backoff(
                     attempt, retry_after=response.headers.get("Retry-After"), cause=last_transient
                 )
@@ -130,11 +156,35 @@ class ChatCompletionsClient:
             if response.status_code >= 400:
                 # A hard 4xx is not transient: retrying an unknown model or a bad request
                 # would spend the budget re-asking a question with a fixed answer.
-                raise LlmResponseError(
-                    f"HTTP {response.status_code} from {response.url}: {response.text[:500]}"
+                detail = f"HTTP {response.status_code} from {response.url}: {response.text[:500]}"
+                _observe(
+                    task_id,
+                    attempt,
+                    model,
+                    sent,
+                    attempt_started,
+                    response_text=response.text,
+                    error=detail,
                 )
+                raise LlmResponseError(detail)
             latency_ms = int((time.monotonic() - started) * 1000)
-            return self._parse(response, requested_model=model, latency_ms=latency_ms)
+            try:
+                completion = self._parse(response, requested_model=model, latency_ms=latency_ms)
+            except LlmResponseError as exc:
+                # A 2xx nobody can use is still an answer the trace must carry: it is the
+                # only place the unusable body can be read afterwards.
+                _observe(
+                    task_id,
+                    attempt,
+                    model,
+                    sent,
+                    attempt_started,
+                    response_text=response.text,
+                    error=str(exc),
+                )
+                raise
+            _observe(task_id, attempt, model, sent, attempt_started, completion=completion)
+            return completion
 
         raise LlmTransportError(
             f"transport retry budget exhausted after {MAX_TRANSPORT_ATTEMPTS} attempts "
@@ -163,7 +213,8 @@ class ChatCompletionsClient:
         except ValueError as exc:
             raise LlmResponseError(f"2xx response is not JSON: {response.text[:200]}") from exc
         try:
-            content = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LlmResponseError(
                 f"response carries no message content: {str(body)[:500]}"
@@ -172,10 +223,44 @@ class ChatCompletionsClient:
             raise LlmResponseError("response content is empty or not text")
         usage = body.get("usage") or {}
         model = body.get("model")
+        finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+        provider = body.get("provider")
         return LlmCompletion(
             text=content,
             model=model if isinstance(model, str) else requested_model,
             tokens_in=int(usage.get("prompt_tokens") or 0),
             tokens_out=int(usage.get("completion_tokens") or 0),
             latency_ms=latency_ms,
+            finish_reason=finish_reason if isinstance(finish_reason, str) else None,
+            provider=provider if isinstance(provider, str) else None,
         )
+
+
+def _observe(
+    task_id: str | None,
+    attempt: int,
+    model: str,
+    messages: tuple[Mapping[str, str], ...],
+    started: float,
+    *,
+    completion: LlmCompletion | None = None,
+    response_text: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Announce one attempt — successful or not — to whoever is listening."""
+    observability.emit(
+        observability.LlmCall(
+            task_id=task_id,
+            attempt=attempt,
+            model_requested=model,
+            messages=messages,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            model_answered=completion.model if completion is not None else None,
+            provider=completion.provider if completion is not None else None,
+            response_text=completion.text if completion is not None else response_text,
+            finish_reason=completion.finish_reason if completion is not None else None,
+            tokens_in=completion.tokens_in if completion is not None else 0,
+            tokens_out=completion.tokens_out if completion is not None else 0,
+            error=error,
+        )
+    )

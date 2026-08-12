@@ -15,4 +15,8 @@ from app.platform.llm import ChatCompletionsClient
 @lru_cache
 def get_client() -> ChatCompletionsClient:
     settings = get_settings()
-    return ChatCompletionsClient(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+    return ChatCompletionsClient(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )

@@ -717,3 +717,73 @@ export interface PreviewEvaluationResponse {
   /** Always false — the contract states what the page claims (dry run). */
   persisted: false;
 }
+
+// A dry run is started, not awaited: with LLM criteria it takes minutes, so the request
+// hands back an id and the run is read while it advances.
+
+export interface PreviewRunStarted {
+  run_id: Uuid;
+}
+
+export interface PreviewRunStep {
+  /** `criterion` — an executor landed a verdict; `llm_call` — one attempt at a model. */
+  kind: "criterion" | "llm_call";
+  label: string;
+  detail: string;
+  /** False only when something malfunctioned: a `fail` is a verdict, not a malfunction. */
+  ok: boolean;
+  duration_ms: number;
+  /** Milliseconds from the start of the run — measured on the server. */
+  at_ms: number;
+}
+
+/** Named, not merely described: each kind maps to the remedy that fixes it. */
+export type PreviewRunErrorKind =
+  | "profile_missing"
+  | "instrument_missing"
+  | "assessor_failed"
+  | "unexpected";
+
+export interface PreviewRunError {
+  kind: PreviewRunErrorKind;
+  message: string;
+}
+
+export interface PreviewRun {
+  run_id: Uuid;
+  status: "running" | "done" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  elapsed_ms: number;
+  steps: PreviewRunStep[];
+  result: PreviewEvaluationResponse | null;
+  error: PreviewRunError | null;
+}
+
+/** One ATTEMPT at one LLM call, whole: a task that needed three rounds to satisfy its
+ *  output contract left three of these, and the second one's `messages` end with the
+ *  validator's complaint about the first. */
+export interface LlmCallRecord {
+  task_id: string | null;
+  attempt: number;
+  model_requested: string;
+  model_answered: string | null;
+  /** Which upstream served it: OpenRouter routes one model id to several. */
+  provider: string | null;
+  messages: { role: string; content: string }[];
+  response_text: string | null;
+  /** `length` means the answer was cut off — it surfaces as "not valid JSON". */
+  finish_reason: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  latency_ms: number;
+  error: string | null;
+}
+
+export interface PreviewRunTrace {
+  run_id: Uuid;
+  status: string;
+  /** Where the same records were written, when the backend has LLM_TRACE_DIR set. */
+  trace_path: string | null;
+  calls: LlmCallRecord[];
+}

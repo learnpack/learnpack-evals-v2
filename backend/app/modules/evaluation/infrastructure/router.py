@@ -13,21 +13,23 @@ Note what is *not* imported here: no repository or adapter of another module —
 the dry-run (`PreviewEvaluation`) exposed for the calibration page. The dry-run is pure
 computation — it persists nothing, so exposing it is not a command reaching a page; the
 deliberate acts (profile, accept, ratify, evaluate for real) stay in the CLI.
+
+The dry-run is started, not awaited: with LLM-carried criteria it takes minutes, and a
+request that long can only report at the end. `POST …/preview` returns a run id, and the
+run is read while it advances (`preview_runs`). Only the assessor is validated up front —
+everything else a run can hit becomes the run's own error, so the page reads every ending
+from one place.
 """
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.modules.evaluation.application.evaluate_content import (
-    InstrumentNotEvaluable,
-    ProfileNotAvailable,
-)
 from app.modules.evaluation.application.preview_evaluation import (
     Preview,
-    PreviewEvaluation,
     PreviewEvaluationCommand,
 )
 from app.modules.evaluation.application.submit_evaluation import (
@@ -37,11 +39,7 @@ from app.modules.evaluation.application.submit_evaluation import (
 )
 from app.modules.evaluation.domain.evaluation import InvalidEvaluation
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
-from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
-from app.modules.evaluation.infrastructure.gateways import (
-    DesignInstrumentGateway,
-    ProfilingGateway,
-)
+from app.modules.evaluation.infrastructure.preview_runs import KEEP_RUNS, RunView, preview_runs
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
 from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
 from app.modules.orchestration.public import OrchestrationQueries, get_orchestration_queries
@@ -277,14 +275,113 @@ def list_assessor_packages(admin: AdminAssessor) -> list[AssessorPackageResponse
     ]
 
 
-@admin_router.post("/evaluations/preview", response_model=PreviewEvaluationResponse)
-def preview_evaluation(
-    request: PreviewEvaluationRequest, admin: AdminAssessor, uow: Uow
-) -> PreviewEvaluationResponse:
-    """The dry-run over HTTP — the calibration page's engine.
+class PreviewRunStepResponse(BaseModel):
+    """One thing the run did, in the order it did it."""
 
-    Same construction as the CLI's `evaluate --dry-run`: accepts drafts, needs no
-    ratification, persists nothing. An LLM-carrying package spends real calls here."""
+    kind: str
+    label: str
+    detail: str
+    ok: bool
+    duration_ms: int
+    at_ms: int
+
+
+class PreviewRunErrorResponse(BaseModel):
+    # Named, not merely described: the page turns each kind into the remedy that fixes it.
+    kind: str
+    message: str
+
+
+class PreviewRunStartedResponse(BaseModel):
+    run_id: UUID
+
+
+class PreviewRunResponse(BaseModel):
+    run_id: UUID
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    # Measured on the server: the page never has to trust two clocks agreeing.
+    elapsed_ms: int
+    steps: list[PreviewRunStepResponse]
+    result: PreviewEvaluationResponse | None
+    error: PreviewRunErrorResponse | None
+
+    @classmethod
+    def from_view(cls, view: RunView) -> "PreviewRunResponse":
+        return cls(
+            run_id=view.run_id,
+            status=view.status,
+            started_at=view.started_at,
+            finished_at=view.finished_at,
+            elapsed_ms=view.elapsed_ms,
+            steps=[
+                PreviewRunStepResponse(
+                    kind=step.kind,
+                    label=step.label,
+                    detail=step.detail,
+                    ok=step.ok,
+                    duration_ms=step.duration_ms,
+                    at_ms=step.at_ms,
+                )
+                for step in view.steps
+            ],
+            result=(
+                PreviewEvaluationResponse.from_preview(view.preview, view.package)
+                if view.preview is not None
+                else None
+            ),
+            error=(
+                PreviewRunErrorResponse(kind=view.error.kind, message=view.error.message)
+                if view.error is not None
+                else None
+            ),
+        )
+
+
+class LlmCallResponse(BaseModel):
+    """One attempt, whole: what was asked, what came back, what it cost."""
+
+    task_id: str | None
+    attempt: int
+    model_requested: str
+    model_answered: str | None
+    provider: str | None
+    messages: list[dict[str, str]]
+    response_text: str | None
+    finish_reason: str | None
+    tokens_in: int
+    tokens_out: int
+    latency_ms: int
+    error: str | None
+
+
+class PreviewRunTraceResponse(BaseModel):
+    run_id: UUID
+    status: str
+    # Where the same records were written, when the machine asked for a trace file. Runs
+    # are forgotten on restart; the file is not.
+    trace_path: str | None
+    calls: list[LlmCallResponse]
+
+
+@admin_router.post(
+    "/evaluations/preview",
+    response_model=PreviewRunStartedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def start_preview_evaluation(
+    request: PreviewEvaluationRequest, admin: AdminAssessor
+) -> PreviewRunStartedResponse:
+    """Start the dry-run and hand back its id — the calibration page's engine.
+
+    Same use case as the CLI's `evaluate --dry-run`: accepts drafts, needs no
+    ratification, persists nothing. An LLM-carrying package spends real calls and takes
+    minutes, which is why this returns immediately and the run is read afterwards.
+
+    Only the assessor is validated here, because it is a lookup in the in-code registry.
+    A missing profile or an unknown instrument version is discovered by the run itself
+    and becomes its error, so every way a run can end is read from one place."""
     package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
     if package is None:
         known = ", ".join(f"{n}:{v}" for n, v in sorted(AUTOMATED_ASSESSORS))
@@ -295,31 +392,45 @@ def preview_evaluation(
                 f"(registry has: {known})"
             ),
         )
-    use_case = PreviewEvaluation(
-        instruments=DesignInstrumentGateway(uow.session),
-        profiles=ProfilingGateway(uow.session),
-        coverage=package.coverage,
-        executors=dict(package.executors),
+    run = preview_runs.start(
+        package,
+        PreviewEvaluationCommand(
+            content_id=request.content_id,
+            instrument_version_id=request.instrument_version_id,
+        ),
     )
-    try:
-        preview = use_case(
-            PreviewEvaluationCommand(
-                content_id=request.content_id,
-                instrument_version_id=request.instrument_version_id,
-            )
-        )
-    except InstrumentNotEvaluable as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ProfileNotAvailable as exc:
-        # 409: the state is wrong and the caller can fix it (profile the content first).
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except AssessorExecutionError as exc:
-        # ADR-0034 clause 4: the judge could not produce a verdict (LLM transport down, or
-        # the output contract was never satisfied). Nothing happened; retrying is running
-        # the preview again. 502 because the failing dependency is upstream of this API.
+    return PreviewRunStartedResponse(run_id=run.run_id)
+
+
+def _run_or_404(run_id: UUID) -> RunView:
+    view = preview_runs.get(run_id)
+    if view is None:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"the assessor could not produce a verdict: {exc} — "
-            "nothing persisted; fix the cause (or just retry, if it was transient)",
-        ) from exc
-    return PreviewEvaluationResponse.from_preview(preview, package)
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"no dry run {run_id} — runs live in memory and only the last "
+                f"{KEEP_RUNS} are kept, so a restart or enough newer runs forgets one"
+            ),
+        )
+    return view
+
+
+@admin_router.get("/evaluations/preview/{run_id}", response_model=PreviewRunResponse)
+def read_preview_run(run_id: UUID, admin: AdminAssessor) -> PreviewRunResponse:
+    """The run as it stands: its steps so far, and its result or its error once it ends."""
+    return PreviewRunResponse.from_view(_run_or_404(run_id))
+
+
+@admin_router.get("/evaluations/preview/{run_id}/trace", response_model=PreviewRunTraceResponse)
+def read_preview_run_trace(run_id: UUID, admin: AdminAssessor) -> PreviewRunTraceResponse:
+    """Every LLM attempt of the run, whole — the prompts as sent and the raw answers.
+
+    Untruncated on purpose: an abridged prompt cannot be compared against the one that
+    produced a different answer, which is the only reason to read this at all."""
+    view = _run_or_404(run_id)
+    return PreviewRunTraceResponse(
+        run_id=view.run_id,
+        status=view.status,
+        trace_path=str(view.trace_path) if view.trace_path is not None else None,
+        calls=[LlmCallResponse(**call.as_record()) for call in view.calls],
+    )

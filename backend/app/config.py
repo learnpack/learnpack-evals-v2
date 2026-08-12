@@ -107,6 +107,16 @@ class Settings(BaseSettings):
     # at another OpenAI-compatible endpoint moves the traffic, not the judge.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"
+    # Where each run's LLM attempts are written, one JSON object per attempt: the prompts
+    # as sent and the raw answers, which is the only way to tell a bad prompt from a bad
+    # model afterwards. Empty means no trace file — the setting is how a machine opts in,
+    # so a deployment that should not be writing prompts to disk simply never sets it.
+    llm_trace_dir: str = ""
+    # How long one call may wait before the transport treats it as a transient failure.
+    # Access, not identity: a slower or faster deadline changes WHETHER and WHEN an answer
+    # arrives, never which one (ADR-0034 §1). Raise it for a long prompt against a slow
+    # provider; the default matches the transport's own.
+    llm_timeout_seconds: float = 60.0
 
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":

@@ -6,7 +6,7 @@ identity, its coverage over the instrument lineage is declared here, and the CLI
 (ADR-0019). Adding an entry is adding an assessor; changing one is a new version.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +27,11 @@ class AssessorPackage:
     executors: Mapping[str, Executor]
     coverage: Coverage
     source_config: dict[str, Any]
+    # Drops whatever the package memoized across evaluations, if it memoizes anything.
+    # Not identity and not in `source_config`: what a package remembers between runs
+    # changes what it SPENDS, never what it answers — and a run that reuses last run's
+    # answers reports a spend it did not make and leaves an empty trace.
+    reset_caches: Callable[[], None] | None = None
 
     @property
     def display_name(self) -> str:
@@ -59,6 +64,7 @@ AUTOMATED_ASSESSORS: dict[tuple[str, str], AssessorPackage] = {
             executors=drafts_hybrid.EXECUTORS,
             coverage=drafts_hybrid.COVERAGE,
             source_config=drafts_hybrid.SOURCE_CONFIG,
+            reset_caches=drafts_hybrid.tasks.clear_task_cache,
         ),
     )
 }

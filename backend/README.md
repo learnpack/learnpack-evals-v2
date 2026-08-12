@@ -307,18 +307,59 @@ Two aggregation rules not to confuse:
   tokens/latency come back as `llm_*` metrics with the outcomes). If the model
   irrecoverably fails (transport down, output contract never satisfied, an ungrounded
   quote), the evaluation **aborts whole and persists nothing**; fix or just retry.
-  The test suite never touches the network: the transport is faked at the
-  `runtime.get_client` seam.
+  `LLM_TIMEOUT_SECONDS` bounds one call before the transport treats it as transient and
+  backs off — access like the key, so raising it for a long prompt against a slow provider
+  re-versions nothing. The test suite never touches the network: the transport is faked at
+  the `runtime.get_client` seam.
 - **The calibration page** (`/admin/calibration` in the console) is the guided way to run
   the dry-run loop: pick a profiled content, an instrument version (drafts included) and
   an assessor package, run, and read the outcome table with quotes, claim statuses and
-  LLM spend. It sits on two admin endpoints — `GET /admin/assessor-packages` (the in-code
-  registry as data) and `POST /admin/evaluations/preview` (the same `PreviewEvaluation`
-  use case the CLI wires; accepts drafts, needs no ratification, persists nothing). The
-  CLI (`evaluate --dry-run`) stays as the scriptable path. What the page deliberately
+  LLM spend. It sits on `GET /admin/assessor-packages` (the in-code registry as data) and
+  on the dry-run's three: `POST /admin/evaluations/preview` **starts** a run and returns
+  its id (202), `GET /admin/evaluations/preview/{run_id}` reads it while it advances —
+  one step per executed criterion and per LLM attempt, then the result or a named error —
+  and `.../trace` returns every LLM attempt whole, prompts and raw answers included. It
+  is the same `PreviewEvaluation` use case the CLI wires (accepts drafts, needs no
+  ratification, persists nothing); it is started rather than awaited because with
+  LLM-carried criteria it takes minutes. Runs live **in memory**, last few only: a
+  restart forgets them, which is the correct trade for a dry-run that persists nothing.
+  The CLI (`evaluate --dry-run`) stays as the scriptable path. What the page deliberately
   does **not** do: trigger profiling (a deliberate act, CLI-only — it shows the command
   instead) or register local folders (`register-package --source <dir>`). An
   LLM-carrying assessor spends real calls per run, on the backend's `LLM_API_KEY`.
+
+### Reading a calibration trace
+
+A semantic criterion's verdict is only as good as the question that produced it, and the
+question is a prompt nobody sees. `LLM_TRACE_DIR` is where every attempt gets written —
+one JSON object per line, per run:
+
+```
+{"task_id": "...", "attempt": 1, "model_requested": "...", "model_answered": "...",
+ "provider": "...", "messages": [...], "response_text": "...", "finish_reason": "...",
+ "tokens_in": 0, "tokens_out": 0, "latency_ms": 0, "error": null}
+```
+
+One record per **attempt**, not per successful call: a task that took three rounds to
+satisfy its output contract wrote three lines, and the second line's `messages` end with
+the validator's own complaint about the first. Nothing is truncated — an abridged prompt
+cannot be compared against the one that produced a different answer, which is the only
+reason to read this.
+
+What each field settles:
+
+- `finish_reason: "length"` — the answer was cut off. It reaches the caller as *"the
+  answer is not valid JSON"*, which names the symptom; this names the cause.
+- `provider` — OpenRouter routes one model id to several upstreams and they do not honor
+  `response_format` alike, so two runs asking the same question can get different shapes
+  back. This is who answered.
+- `error` with no `response_text` — the request never landed (timeout, rate limit). The
+  next line is the retry.
+
+Both doors write one: the page's runs under their run id, `evaluate --dry-run` under
+`cli-<id>`, printing the path when it finishes. The folder is gitignored and disposable
+— the traces of a machine, not of the repo. Leave `LLM_TRACE_DIR` empty and none are
+written.
 
 ## Registering courses
 
