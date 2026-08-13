@@ -59,7 +59,7 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "6")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "7")]
 
 _V5_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")
@@ -294,7 +294,10 @@ def test_source_config_declares_the_semantic_identity():
     assert llm["samples"] == {"asked": 2, "max": 3}
     # The two v2 exists for: no thinking out loud, and room for the answer if it happens
     # anyway. Both decide what comes back, so both are declared, not left to the wire.
-    assert llm["reasoning"] == {"effort": "none"}
+    # Both disable fields, on purpose (v7): OpenRouter documents `effort` for other model
+    # families, and the upstreams that reasoned anyway under v6 may only translate
+    # `enabled`. Saying it both ways is identity — it decides what is billed and returned.
+    assert llm["reasoning"] == {"effort": "none", "enabled": False}
     assert llm["maxOutputTokens"] == 8000
     # How a failing conversation is retried decides which answer finally arrives, so the
     # clean-retry allowance is identity too (ADR-0037 §7).
@@ -324,7 +327,7 @@ def test_objectives_observable_verbs(fake_llm):
     assert metric_ids == {"llm_objectives_classification", "objective_bloom_levels"}
     assert client.calls[0]["temperature"] == 0.0
     # What v1 lost every run to: the thinking is off and the budget has room either way.
-    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none"}}
+    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none", "enabled": False}}
     assert client.calls[0]["max_tokens"] == 8000
 
     tasks.clear_task_cache()

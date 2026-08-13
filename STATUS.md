@@ -451,8 +451,32 @@ exceeding the budget is the `assessor_failed` ending it always was.
 
 **With the three PRs merged, calibration is UNPAUSED.** The next act is the one the
 campaign was interrupted for: run the v5-threshold measurement (three runs of the CSS
-draft, one of the HTML draft) under `drafts-hybrid:6` — remembering v6 inherits no
-calibration from v5's fourteen runs, which is the point of the bump.
+draft, one of the HTML draft) under `drafts-hybrid:7` (below) — remembering a bump
+inherits no calibration, which is its point.
+
+**The first field exercise of ADR-0037, and why there is a v7.** Two calibration runs the
+day the three PRs merged: the CSS draft finished clean (31 calls, zero retries of any
+kind); the HTML draft finished **with one `execution_error` absorbed by the budget** —
+the machinery's first real save, where before ADR-0037 the whole run would have died at
+call 15 of 16. The failed call is instructive: AtlasCloud answered a 200 whose
+`message.content` is **null** while `message.reasoning` carries 9,652 characters of the
+model working the actual problem — in Chinese — with usage 0/0; the platform client
+correctly refused it (kind `response`, never retried) and the criterion degraded with its
+cause readable on the page. The same run's `objectives_classification` was served by
+Phala: a clean 60-token answer billed as **3,491 output tokens** after 36 seconds of
+invisible reasoning. Both anomalies are one phenomenon — **upstreams that ignore
+`reasoning: {effort: "none"}`** — and OpenRouter's own documentation shows why: `effort`
+is documented for OpenAI/Grok models, not this family, so for some upstreams it was never
+an instruction at all. **v7 says it both ways**: `{effort: "none", enabled: false}` —
+`enabled` being the boolean OpenRouter can translate more broadly. Belt and braces, not a
+guarantee: an upstream that ignores the whole `reasoning` object still ignores it, which
+is the open provider-pinning question (two more data points on its pile, providers named
+in the traces), not this bump's business. Not yet measured: whether v7 actually lowers
+the reasoning spend — read `tokens_out` per provider in the next traces against the two
+recorded today. A lateral note for the threshold reading:
+`cr-closing-lesson-projects-forward` settled 2-0 on the CSS draft (where it was the coin
+flip) and split 2-1 on the HTML draft (where it had been unanimous) — one run each, read
+the three HTML samples' reasons before concluding anything.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
@@ -490,9 +514,9 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 `drafts-hybrid` is a new identity that inherits nothing from the previous one's
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
-`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 6
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 7
 --instrument-version-id <version> --email <admin>`. Which version is part of the act: the
-registry's current artifact is **v6** (the corrected retry, ADR-0037), and each bump
+registry's current artifact is **v7** (reasoning disabled in both fields), and each bump
 inherited nothing from the previous version's runs. Ratifying before the seven judged
 criteria have been read would persist verdicts nobody has checked, which is the one thing
 the calibration loop exists to prevent.

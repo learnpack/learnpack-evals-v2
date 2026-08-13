@@ -42,10 +42,13 @@ TEMPERATURE = 0.0
 # No thinking out loud. A reasoning model bills its thinking as output tokens, so it
 # competes with the answer for `MAX_OUTPUT_TOKENS` — and on these tasks it wins: the
 # calibration runs of v1 recorded 2048–2325 reasoning tokens and no answer at all,
-# every time. `effort: "none"` is the field that disables it; `exclude: true` would only
-# hide the thinking from the response while still generating and paying for it, which is
-# the same failure with less evidence.
-REASONING = {"effort": "none"}
+# every time. Both disable fields are sent (v7) because upstreams honor different ones:
+# OpenRouter documents `effort` for OpenAI/Grok models, not this family, and the first
+# v6 calibration met two upstreams that reasoned anyway — one billed 3,491 output tokens
+# for a 60-token answer, the other returned its whole reasoning and a null answer.
+# `exclude: true` is deliberately NOT the tool: it would only hide the thinking from the
+# response while still generating and paying for it — the same failure with less evidence.
+REASONING = {"effort": "none", "enabled": False}
 
 # Room for the answer even where reasoning happens anyway (not every provider honors
 # `effort`). Extraction over one lesson body answers in the low hundreds of tokens, so
