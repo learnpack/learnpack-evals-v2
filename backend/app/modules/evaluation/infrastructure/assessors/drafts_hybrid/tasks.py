@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from app.modules.evaluation.domain.model import ProfileData, ProfileEntryData
+from app.modules.evaluation.domain.model import ExecutionFailure, ProfileData, ProfileEntryData
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts, runtime
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
     LlmUsage,
@@ -91,7 +91,7 @@ class LessonSophistication:
 
 # --- memoization ------------------------------------------------------------------------
 
-_cache: dict[tuple[str, UUID], tuple[Any, LlmUsage]] = {}
+_cache: dict[tuple[str, UUID], tuple[Any, LlmUsage] | ExecutionFailure] = {}
 
 
 def clear_task_cache() -> None:
@@ -101,10 +101,21 @@ def clear_task_cache() -> None:
 def _memoized(
     task_id: str, profile: ProfileData, run: Callable[[], tuple[Any, LlmUsage]]
 ) -> tuple[Any, LlmUsage]:
+    """Successes AND typed failures are cached: a task feeds several criteria, and all of
+    them must see the same answer — or the same failure, without re-asking the model a
+    question that just degenerated (ADR-0037 §2). Only `ExecutionFailure` is cached; a bug
+    propagates every time."""
     key = (task_id, profile.profile_id)
     if key not in _cache:
-        _cache[key] = run()
-    return _cache[key]
+        try:
+            _cache[key] = run()
+        except ExecutionFailure as exc:
+            _cache[key] = exc
+            raise
+    cached = _cache[key]
+    if isinstance(cached, ExecutionFailure):
+        raise cached
+    return cached
 
 
 # --- reading the profile (structure decided here, never by the model) -------------------
@@ -126,14 +137,17 @@ def opening_lesson_body(profile: ProfileData) -> tuple[str, ProfileEntryData]:
     bodies = profile.entries["lesson_bodies"]
     ordered = ordered_inventory(profile)
     if not ordered:
-        raise AssessorExecutionError("the lesson inventory is empty: no opening lesson to read")
+        raise AssessorExecutionError(
+            "the lesson inventory is empty: no opening lesson to read", kind="profile"
+        )
     opening_id = str(ordered[0]["lessonId"])
     for lesson in bodies.value:
         if str(lesson.get("lessonId")) == opening_id:
             return str(lesson["body"]), bodies
     raise AssessorExecutionError(
         f"the profile carries no body for the opening lesson '{opening_id}' — "
-        "a broken package, not a finding about its pedagogy"
+        "a broken package, not a finding about its pedagogy",
+        kind="profile",
     )
 
 

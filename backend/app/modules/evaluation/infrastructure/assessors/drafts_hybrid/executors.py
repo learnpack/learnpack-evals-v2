@@ -111,7 +111,10 @@ def _result(
 
 
 def _usage_metric(task_id: str, usage: LlmUsage) -> ComputedMetric:
-    """What the task spent, as evidence that travels with the evaluation (ADR-0034)."""
+    """What the task spent, as evidence that travels with the evaluation (ADR-0034).
+
+    `clean_retries` rides along because a verdict that needed a fresh conversation is a
+    shifted population, and calibration must be able to tell (ADR-0037 §7)."""
     return ComputedMetric(
         f"llm_{task_id}",
         {
@@ -120,6 +123,7 @@ def _usage_metric(task_id: str, usage: LlmUsage) -> ComputedMetric:
             "tokens_in": usage.tokens_in,
             "tokens_out": usage.tokens_out,
             "latency_ms": usage.latency_ms,
+            "clean_retries": usage.clean_retries,
         },
     )
 

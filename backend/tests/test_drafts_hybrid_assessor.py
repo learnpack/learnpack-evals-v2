@@ -1,6 +1,6 @@
-"""`drafts-hybrid` v5 — the semantic and judged executors over a fake transport, the
+"""`drafts-hybrid` v6 — the semantic and judged executors over a fake transport, the
 coverage vs the real v5 YAML, the whole package against the frozen LearnpackV2 fixture,
-and ratification.
+the three-way retry (ADR-0037 §7), and ratification.
 
 The fake replaces the TRANSPORT only (the seam is `runtime.get_client`, ADR-0034):
 everything semantic — prompts, validation, grounding, feedback retries, the decision
@@ -45,13 +45,21 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
     runtime,
     tasks,
 )
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
+    request_structured_output,
+)
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.db import SessionLocal
-from app.platform.llm import LlmCompletion, LlmTransportError
+from app.platform.llm import (
+    LlmCompletion,
+    LlmConfigurationError,
+    LlmResponseError,
+    LlmTransportError,
+)
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "5")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "6")]
 
 _V5_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")
@@ -288,6 +296,9 @@ def test_source_config_declares_the_semantic_identity():
     # anyway. Both decide what comes back, so both are declared, not left to the wire.
     assert llm["reasoning"] == {"effort": "none"}
     assert llm["maxOutputTokens"] == 8000
+    # How a failing conversation is retried decides which answer finally arrives, so the
+    # clean-retry allowance is identity too (ADR-0037 §7).
+    assert llm["cleanRetries"] == {"max": 1}
     fingerprint = llm["promptsFingerprint"]
     assert isinstance(fingerprint, str) and len(fingerprint) == 64
     from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts
@@ -669,16 +680,43 @@ def test_a_quote_across_a_line_break_is_grounded_and_stored_as_the_source_writes
     assert result.quote in CLOSING_BODY
 
 
-def test_repeating_the_same_answer_stops_instead_of_spending_the_budget(fake_llm):
+def test_repeating_the_same_answer_stops_the_conversation_and_a_second_degeneration_raises(
+    fake_llm,
+):
     """At temperature 0 the same conversation gives the same answer, so a model that
-    repeats itself after feedback will repeat itself again. Calibration spent three
-    identical attempts learning this."""
-    client = fake_llm(closing_integrates=[verdict_json("invented")] * 3)
+    repeats itself after feedback will repeat itself again — the conversation stops at two
+    calls, not the schema budget of three. Since v6 a degeneration buys ONE clean
+    conversation (ADR-0037 §7); when that one degenerates identically, it is the poison
+    case and raises."""
+    client = fake_llm(closing_integrates=[verdict_json("invented")] * 4)
 
-    with pytest.raises(AssessorExecutionError, match="repeated its previous answer verbatim"):
+    with pytest.raises(AssessorExecutionError, match="repeated its previous answer verbatim") as e:
         run_judged("cr-closing-lesson-integrates", judged_profile())
 
-    assert len(client.calls) == 2  # not the full budget of three
+    assert e.value.kind == "degeneration"
+    assert len(client.calls) == 4  # two conversations of two calls each, never three
+
+
+def test_a_degeneration_buys_one_clean_conversation_and_the_verdict_counts_its_cost(fake_llm):
+    """The broken round is never fed back — the retry conversation starts from scratch —
+    and the verdict that needed it reports `clean_retries`, because answers that arrive
+    after a retry are a shifted population (ADR-0037 §7)."""
+    client = fake_llm(
+        closing_integrates=[
+            verdict_json("invented"),  # grounding violation, fed back
+            verdict_json("invented"),  # identical -> degeneration -> clean retry
+            verdict_json(GROUNDED_CLOSING),  # fresh conversation answers well (sample 1)
+            verdict_json(GROUNDED_CLOSING),  # sample 2 of the vote
+        ]
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", judged_profile())
+
+    assert result.passed
+    roles = [m["role"] for m in client.calls[2]["messages"]]
+    assert roles == ["system", "user"]  # nothing of the broken round carried over
+    spent = {m.metric_id: m.value for m in result.metrics}["llm_closing_integrates"]
+    assert spent["clean_retries"] == 1
 
 
 def test_arc_character_is_judged_over_both_frame_lessons(fake_llm):
@@ -868,6 +906,127 @@ def test_the_vote_reports_what_the_whole_judgement_spent(fake_llm):
     spent = {m.metric_id: m.value for m in result.metrics}["llm_closing_integrates"]
     assert spent["calls"] == 2  # summed across the samples, not one of them
     assert spent["tokens_in"] == 200
+    assert spent["clean_retries"] == 0  # a first-answer verdict says so
+
+
+# --- v6: the three-way retry, one remedy per failure shape (ADR-0037 §7) ----------------
+
+
+class ScriptedClient:
+    """Feeds `request_structured_output` directly: each step is a completion to return or
+    an exception to raise, in order. The queue running dry IS the assertion that nothing
+    retried past the script."""
+
+    def __init__(self, *script):
+        self.script = list(script)
+        self.calls: list[dict] = []
+
+    def complete(self, *, model, messages, temperature, max_tokens, **_):
+        self.calls.append({"messages": list(messages)})
+        assert self.script, "the scripted transport was asked more than the test allows"
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+def completion(text: str, finish_reason: str | None = None) -> LlmCompletion:
+    return LlmCompletion(
+        text=text, model="m", tokens_in=10, tokens_out=5, latency_ms=1, finish_reason=finish_reason
+    )
+
+
+def ask(client: ScriptedClient):
+    return request_structured_output(
+        client,
+        task_id="probe",
+        model="m",
+        system_prompt="system",
+        user_prompt="user",
+        validate=lambda payload: [] if payload == {"ok": True} else ["the payload is not ok"],
+        temperature=0.0,
+        max_tokens=100,
+        reasoning={"effort": "none"},
+    )
+
+
+@pytest.mark.parametrize(
+    ("exception", "kind"),
+    [
+        (LlmConfigurationError("no key"), "configuration"),
+        (LlmTransportError("retry budget spent"), "transport"),
+        (LlmResponseError("hard 4xx"), "response"),
+    ],
+)
+def test_the_platform_taxonomy_survives_in_the_kind_and_is_never_clean_retried(exception, kind):
+    client = ScriptedClient(exception)
+
+    with pytest.raises(AssessorExecutionError) as e:
+        ask(client)
+
+    assert e.value.kind == kind
+    assert e.value.task == "probe"
+    assert len(client.calls) == 1  # the script would have failed a retry loudly
+
+
+def test_an_answer_cut_at_the_budget_is_kind_budget_and_never_retried():
+    """Deterministic: the same conversation runs to the same limit, and a clean one too."""
+    client = ScriptedClient(completion('{"ok": fal', finish_reason="length"))
+
+    with pytest.raises(AssessorExecutionError, match="token budget") as e:
+        ask(client)
+
+    assert e.value.kind == "budget"
+    assert len(client.calls) == 1
+
+
+def test_a_contract_never_satisfied_is_kind_contract_and_spends_only_its_conversation():
+    """Three DIFFERENT violating answers exhaust the schema budget: that is a model that
+    keeps missing, not one that froze — feedback was the right remedy and it lost."""
+    client = ScriptedClient(
+        completion('{"ok": false}'),
+        completion('{"ok": 0}'),
+        completion('{"ok": null}'),
+    )
+
+    with pytest.raises(AssessorExecutionError, match="never satisfied") as e:
+        ask(client)
+
+    assert e.value.kind == "contract"
+    assert len(client.calls) == 3
+
+
+def test_degeneration_is_dissolved_by_a_clean_conversation_at_the_unit_level():
+    client = ScriptedClient(
+        completion('{"ok": false}'),  # violation, fed back
+        completion('{"ok": false}'),  # identical -> degeneration
+        completion('{"ok": true}'),  # fresh conversation
+    )
+
+    payload, usage = ask(client)
+
+    assert payload == {"ok": True}
+    assert usage.clean_retries == 1
+    assert usage.calls == 3  # the failed round's spend is not forgotten
+    assert [m["role"] for m in client.calls[2]["messages"]] == ["system", "user"]
+
+
+def test_a_failed_task_is_memoized_so_sibling_criteria_degrade_together(fake_llm):
+    """The assessment mapping feeds two criteria (ADR-0037 §2): when it degenerates to
+    exhaustion, both see the SAME failure and the model is not re-asked a question that
+    just degenerated."""
+    client = fake_llm(assessment_mapping=["not json"] * 4)
+    data = judged_profile()
+
+    with pytest.raises(AssessorExecutionError) as first:
+        run_judged("cr-every-objective-has-an-assessment-item", data)
+    calls_after_first = len(client.calls)
+
+    with pytest.raises(AssessorExecutionError) as second:
+        run_judged("cr-assessment-matches-the-declared-verification", data)
+
+    assert second.value is first.value  # one failure, one cause, shared
+    assert len(client.calls) == calls_after_first  # not one more call
 
 
 # --- the assessment pair: one mapping, one judgement, two criteria ----------------------
