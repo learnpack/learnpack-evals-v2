@@ -44,6 +44,7 @@ from app.modules.orchestration.infrastructure.router import (
 )
 from app.modules.reporting.infrastructure.router import router as reporting_router
 from app.platform.auth_local import DEV_USER_HEADER
+from app.platform.batch_router import router as batch_router
 from app.platform.db import get_session
 from app.platform.dev_router import router as dev_router
 from app.platform.events import dispatcher
@@ -115,6 +116,7 @@ app.include_router(orchestration_evaluator_router)
 app.include_router(evaluation_router)
 app.include_router(evaluation_admin_router)
 app.include_router(ratification_router)  # spans Identity + Evaluation (ADR-0036 §3)
+app.include_router(batch_router)  # spans Evaluation Studies + Evaluation (ADR-0040 §8)
 app.include_router(golden_dataset_router)
 app.include_router(reporting_router)
 app.include_router(dev_router)  # 404s unless AUTH_MODE=local
