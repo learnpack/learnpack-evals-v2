@@ -469,6 +469,70 @@ export interface FitnessLevel {
   dimensions: Record<string, FitnessDimension>;
 }
 
+// --- Evaluating a study in batch (ADR-0040) ---------------------------------
+// Started and not awaited: `POST` hands back a run id and the run is read while it
+// advances, because an evaluation of twenty courses takes minutes.
+
+export type BatchRunStatus = "running" | "done" | "cancelled" | "refused";
+export type BatchCourseStatus = "evaluated" | "skipped" | "failed" | "cancelled";
+
+export interface BatchCourse {
+  content_id: Uuid;
+  external_id: string;
+  /** The fitness's grouping axis (ADR-0039): repeats of one commission read together. */
+  brief_id: Uuid | null;
+  status: BatchCourseStatus;
+  /** Filled exactly when something went wrong. */
+  cause: string | null;
+  duration_ms: number;
+  llm_calls: number;
+  evaluation_id: Uuid | null;
+}
+
+export interface BatchRun {
+  run_id: Uuid;
+  study_id: Uuid;
+  instrument_version_id: string;
+  assessor: string;
+  status: BatchRunStatus;
+  started_at: string;
+  finished_at: string | null;
+  elapsed_ms: number;
+  total: number;
+  done: number;
+  evaluated: number;
+  failed: number;
+  skipped: number;
+  /** `[typical, slowest]` in ms, from the courses this run has already timed — null until
+   *  it has timed one, because a promise from no measurements is a guess. */
+  remaining_ms_estimate: [number, number] | null;
+  current_activity: string | null;
+  error: string | null;
+  courses: BatchCourse[];
+}
+
+export interface StudyEvaluations {
+  study_id: Uuid;
+  instrument_version_id: string | null;
+  courses: number;
+  /** Read from the database, not from a run: it survives a restart and counts a batch
+   *  someone ran from the CLI. */
+  evaluated: number;
+  default_concurrency: number;
+  runs: BatchRun[];
+}
+
+export interface StartBatchRequest {
+  assessor_name: string;
+  assessor_version: string;
+  re_evaluate?: boolean;
+  concurrency?: number;
+}
+
+export interface BatchRunStarted {
+  run_id: Uuid;
+}
+
 /** A commission the study was computed over (ADR-0039): the id joins, the hash identifies
  *  it in any store, and the text is what a person recognises. Never a score — the brief
  *  groups the projection and nothing is pooled per brief. */
