@@ -59,7 +59,7 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "8")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "9")]
 
 _V5_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")
@@ -304,6 +304,9 @@ def test_source_config_declares_the_semantic_identity():
     # length-cut runaway is deterministic per PROVIDER, and a fresh conversation re-rolls
     # the router's provider draw.
     assert llm["cleanRetries"] == {"max": 1, "kinds": ["degeneration", "budget"]}
+    # Which upstreams may not serve a call decides which judge answers it (ADR-0038):
+    # the pool is identity, so the list is declared and guarded like the model ids.
+    assert llm["deniedProviders"] == ["sail-research", "atlas-cloud"]
     fingerprint = llm["promptsFingerprint"]
     assert isinstance(fingerprint, str) and len(fingerprint) == 64
     from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts
@@ -329,7 +332,11 @@ def test_objectives_observable_verbs(fake_llm):
     assert metric_ids == {"llm_objectives_classification", "objective_bloom_levels"}
     assert client.calls[0]["temperature"] == 0.0
     # What v1 lost every run to: the thinking is off and the budget has room either way.
-    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none", "enabled": False}}
+    assert client.calls[0]["extra_body"] == {
+        "reasoning": {"effort": "none", "enabled": False},
+        # The deny-list reaches the wire on every call (ADR-0038).
+        "provider": {"ignore": ["sail-research", "atlas-cloud"]},
+    }
     assert client.calls[0]["max_tokens"] == 8000
 
     tasks.clear_task_cache()
