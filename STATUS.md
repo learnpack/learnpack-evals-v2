@@ -118,6 +118,36 @@ after. The console's fitness panel gained a **By brief** block — one row per c
 per dimension, the commissions of the recipe with no course included — which is the only reading
 that makes a version's variability visible to a person.
 
+**Evaluating a study in batch (ADR-0040), the second piece built for the collaborator.** A
+generation is a study's worth of courses — ~16 LLM calls each today, ~40 once the criteria that
+read every lesson exist — and nothing ran any of it concurrently, so a generation was hours.
+`evaluate-study` (CLI) is now one **run** in the shape `preview_runs.py` established, with three
+differences that matter for real work: it persists (each course is a plain `EvaluateContent`, its
+own session, its own transaction — batch is a loop over the existing use case), it uses several
+workers, and it can be stopped. **The ceiling on requests in flight is not its business at all**:
+`LLM_MAX_CONCURRENCY` (default 4) is enforced by a semaphore in the shared transport client,
+which is the only place that sees every call however many levels of fan-out sit above it — so the
+lesson-level fan-out, when it arrives, nests inside this loop without reopening the question. The
+slot is released before any backoff, the reactive half (429 + `Retry-After`) is untouched, and
+concurrency is **access, not identity** (ADR-0034), so no assessor was bumped. **The unit is the
+course:** ADR-0037 decides what happens inside one evaluation, this decides what happens between
+them — a failure is one row of the summary and the batch carries on, except for a `configuration`
+failure or a coverage bug (properties of the wiring, so the first one ends it) and three
+consecutive transport deaths (the endpoint is gone; any course that completes clears the streak).
+Everything refusable is refused before a call is paid for: study not open, no instrument pinned,
+empty dataset, assessor unregistered or unratified. **Re-running resumes** — what this assessor
+already evaluated is skipped — and **Ctrl-C stops starting**: what finished stays, what was in
+flight writes nothing, and the summary still prints. Progress goes to stderr and one JSON
+document to stdout, per course with its `briefId` (ADR-0039), which is what a GA script reads to
+know a generation is done. Cancellation is a `ContextVar` token the transport checks before each
+request — a call not issued is money not spent — and `Cancelled` derives from `BaseException`, so
+no `except Exception` can turn a stop into a persisted evaluation of `execution_error`s. One
+present defect was fixed on the way, and it is what makes any of this safe: `drafts-hybrid`
+memoized its tasks in **module-level dicts** cleared at each dry run, so two overlapping
+calibrations emptied each other's answers and, over one profile, one could be served the other's
+— two repeats silently collapsing into one measurement. The caches are now scoped to one
+evaluation; within a run nothing changed, so **no version was bumped**.
+
 **After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
 declaration** — a generator version or an explicit `unknown` — at every entry point (form,
 API, canonical bulk import, `register-package`), so the accidental null that

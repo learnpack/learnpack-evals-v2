@@ -7,6 +7,7 @@ identity, its coverage over the instrument lineage is declared here, and the CLI
 """
 
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,11 +28,12 @@ class AssessorPackage:
     executors: Mapping[str, Executor]
     coverage: Coverage
     source_config: dict[str, Any]
-    # Drops whatever the package memoized across evaluations, if it memoizes anything.
-    # Not identity and not in `source_config`: what a package remembers between runs
-    # changes what it SPENDS, never what it answers — and a run that reuses last run's
-    # answers reports a spend it did not make and leaves an empty trace.
-    reset_caches: Callable[[], None] | None = None
+    # Scopes whatever the package memoizes to ONE evaluation, if it memoizes anything.
+    # Entered by whoever runs an evaluation. Not identity and not in `source_config`: what
+    # a package remembers changes what it SPENDS, never what it answers — and a run that
+    # reused the previous run's answers would report a spend it did not make, leave an
+    # empty trace, and quietly turn two repeats of a content into one answer read twice.
+    cache_scope: Callable[[], AbstractContextManager[None]] | None = None
 
     @property
     def display_name(self) -> str:
@@ -64,7 +66,7 @@ AUTOMATED_ASSESSORS: dict[tuple[str, str], AssessorPackage] = {
             executors=drafts_hybrid.EXECUTORS,
             coverage=drafts_hybrid.COVERAGE,
             source_config=drafts_hybrid.SOURCE_CONFIG,
-            reset_caches=drafts_hybrid.clear_caches,
+            cache_scope=drafts_hybrid.cache_scope,
         ),
     )
 }

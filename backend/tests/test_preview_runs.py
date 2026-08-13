@@ -153,10 +153,10 @@ def test_a_worker_never_dies_silently():
     """A thread has nowhere to raise: an unhandled failure must end the run, not leave the
     page polling forever."""
 
-    def explode() -> None:
+    def explode():
         raise RuntimeError("something nobody predicted")
 
-    run = a_run(package={"reset_caches": explode})
+    run = a_run(package={"cache_scope": explode})
 
     execute(run)
 

@@ -15,12 +15,11 @@ contract survives being asynchronous: no evaluation row, no event, no judgment �
 run table either. A restarted process forgets its runs; that is the correct trade for a
 calibration tool, and a trace file is what outlives the process.
 
-The task memoization is cleared at the start of every run. It is keyed by profile and
-lives as long as the process, so without this a second run over the same profile would
-report the first run's `llm_*` spend as if it had paid it, and would show an empty trace.
-Runs are assumed not to overlap in the calibration loop; two concurrent ones over the
-same profile would re-ask rather than reuse, which costs calls but decides nothing
-differently.
+Each run opens its own task memoization scope, in its own worker thread. The memoization is
+keyed by profile, so without a scope a second run over the same profile would report the
+first run's `llm_*` spend as if it had paid it and would show an empty trace — and two
+concurrent runs would stop being two samples, which is the measurement the repeats exist
+for. Runs no longer have to be assumed not to overlap.
 """
 
 import dataclasses
@@ -29,6 +28,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -265,9 +265,11 @@ def execute(run: PreviewRun) -> None:
     if run.trace_path is not None:
         sink = observability.fan_out(sink, observability.jsonl_sink(run.trace_path))
     try:
-        if run.package.reset_caches is not None:
-            run.package.reset_caches()
-        with observability.collecting(sink), SessionLocal() as session:
+        # This run's own memory of what it asked, entered here — in the worker's thread, so
+        # concurrent runs cannot see each other's answers and a second run over one profile
+        # is a second sample rather than the first one read again.
+        scope = run.package.cache_scope() if run.package.cache_scope else nullcontext()
+        with scope, observability.collecting(sink), SessionLocal() as session:
             use_case = PreviewEvaluation(
                 instruments=DesignInstrumentGateway(session),
                 profiles=ProfilingGateway(session),

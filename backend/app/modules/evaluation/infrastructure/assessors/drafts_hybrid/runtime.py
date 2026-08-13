@@ -19,4 +19,9 @@ def get_client() -> ChatCompletionsClient:
         base_url=settings.llm_base_url,
         api_key=settings.llm_api_key,
         timeout_seconds=settings.llm_timeout_seconds,
+        # Cached, so every caller in this process shares one client and therefore one gate.
+        # That is the point: the ceiling on requests in flight has to be the process's, not
+        # each caller's, or two callers would each observe their own limit and the endpoint
+        # would see the sum.
+        max_concurrency=settings.llm_max_concurrency,
     )

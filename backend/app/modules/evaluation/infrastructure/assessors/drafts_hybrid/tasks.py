@@ -10,20 +10,19 @@ parameters, the validation contracts. `SOURCE_CONFIG` carries the model ids, so 
 one without a VERSION bump is refused at ratification. Changing a model IS a version bump
 by design — calibration does not transfer between judges.
 
-Tasks are memoized per profile: two criteria deliberately read one extraction (the
-instrument writes them as separate criteria over the same datum), profiles are immutable,
-and paying twice for one question would be pure waste. `clear_task_cache()` exists for
-tests and for long-lived processes that want the memory back.
+Tasks are memoized per profile, for the length of one evaluation (`memo.py`): two criteria
+deliberately read one extraction (the instrument writes them as separate criteria over the
+same datum), profiles are immutable, and paying twice for one question would be pure waste.
 """
 
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
 
-from app.modules.evaluation.domain.model import ExecutionFailure, ProfileData, ProfileEntryData
+from app.modules.evaluation.domain.model import ProfileData, ProfileEntryData
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts, runtime
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.memo import TaskMemo
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
     LlmUsage,
     request_structured_output,
@@ -93,32 +92,26 @@ class LessonSophistication:
 
 
 # --- memoization ------------------------------------------------------------------------
+#
+# Scoped to the evaluation, not to the process (`memo.py`): a task feeds several criteria
+# and all of them must see the same answer — or the same failure, without re-asking a
+# question that just degenerated (ADR-0037 §2) — while two evaluations must share nothing.
 
-_cache: dict[tuple[str, UUID], tuple[Any, LlmUsage] | ExecutionFailure] = {}
+_memo = TaskMemo("drafts_hybrid_tasks")
+
+
+cache_scope = _memo.scope
 
 
 def clear_task_cache() -> None:
-    _cache.clear()
+    _memo.clear()
 
 
 def _memoized(
     task_id: str, profile: ProfileData, run: Callable[[], tuple[Any, LlmUsage]]
 ) -> tuple[Any, LlmUsage]:
-    """Successes AND typed failures are cached: a task feeds several criteria, and all of
-    them must see the same answer — or the same failure, without re-asking the model a
-    question that just degenerated (ADR-0037 §2). Only `ExecutionFailure` is cached; a bug
-    propagates every time."""
-    key = (task_id, profile.profile_id)
-    if key not in _cache:
-        try:
-            _cache[key] = run()
-        except ExecutionFailure as exc:
-            _cache[key] = exc
-            raise
-    cached = _cache[key]
-    if isinstance(cached, ExecutionFailure):
-        raise cached
-    return cached
+    remembered: tuple[Any, LlmUsage] = _memo.memoized(task_id, profile, run)
+    return remembered
 
 
 # --- reading the profile (structure decided here, never by the model) -------------------

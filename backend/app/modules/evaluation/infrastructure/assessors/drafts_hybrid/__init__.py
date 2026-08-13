@@ -179,6 +179,9 @@ abstention — is a NEW VERSION and a new identity (ADR-0016 clause 2); ratifyin
 instrument versions is not a change (ADR-0019).
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from app.modules.evaluation.domain.model import Coverage
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
     executors,
@@ -193,8 +196,20 @@ VERSION = "10"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
+@contextmanager
+def cache_scope() -> Iterator[None]:
+    """One evaluation's memory of what it asked, forgotten on the way out (`memo.py`).
+
+    Entered by whoever runs an evaluation, so two of them — sequential in one thread or
+    concurrent in several — never see each other's answers. That isolation is what makes
+    two runs over one content two samples instead of one answer read twice.
+    """
+    with tasks.cache_scope(), judgments.cache_scope():
+        yield
+
+
 def clear_caches() -> None:
-    """Both task caches, so a fresh run asks the model afresh (see `AssessorPackage`)."""
+    """Empty both caches of the CURRENT scope, without leaving it."""
     tasks.clear_task_cache()
     judgments.clear_judgment_cache()
 

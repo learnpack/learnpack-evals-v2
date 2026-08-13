@@ -8,6 +8,7 @@ generator level, name the other in the caveat, and surface the real numbering-dr
 finding ('05'/'06') with its quote.
 """
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -25,6 +26,7 @@ from app.cli import (
     DEMO_PACKAGES_DIR,
     run_attribute_generator,
     run_evaluate,
+    run_evaluate_study,
     run_ratify_assessor,
 )
 from app.modules.content_profiling.application.profile_content import ProfileContentCommand
@@ -38,6 +40,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
+from app.modules.evaluation.infrastructure.repository import SqlAlchemyJudgmentRepository
 from app.modules.evaluation_studies.application.compose_dataset import (
     ComposeDataset,
     ComposeDatasetCommand,
@@ -416,3 +419,87 @@ def test_an_attributed_content_enters_generator_level_accumulation(
     assert [g["generatorVersionId"] for g in report["generatorLevel"]] == [str(generator_id)]
     assert report["generatorLevel"][0]["contentsCounted"] == 1
     assert report["caveats"]["unknownExclusions"]["contentIds"] == []
+
+
+def test_a_batch_evaluates_the_whole_study_and_reports_it(
+    cleanup,
+    unique,
+    session,
+    namespace,
+    admin,
+    patched_package,
+    register_generator_version,
+    capsys,
+):
+    """The batch door: one command, every course of an open study, one JSON summary.
+
+    Batch is a loop over the same `EvaluateContent` a single course goes through, so what
+    this proves is the layer above it — that every course of the dataset is reached, that
+    each one persists its own evaluation and judgment, and that the summary a script reads
+    names them with the brief they answer.
+    """
+    admin_id, email = admin
+    generator_id = register_generator_version(f"batch-generator-{unique}")
+    first = _register_course(cleanup, unique, "batch-one", generator_version_id=generator_id)
+    second = _register_course(cleanup, unique, "batch-two", generator_version_id=generator_id)
+    assert first.brief_id == second.brief_id  # same syllabus, paired by hash (ADR-0022)
+
+    version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
+    assert run_ratify_assessor(patched_package.name, "1", version_id, email, []) == 0
+    track_automated(cleanup, patched_package.name)
+
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        study = DeclareStudy(studies, uow.events, uow)(
+            DeclareStudyCommand(purpose=f"Batch round ({unique})")
+        )
+    cleanup["studies"].append(study.id)
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        PinInstrument(studies, DesignGateway(s), uow.events, uow)(
+            PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
+        )
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        ComposeDataset(studies, RegistryGateway(s), uow)(
+            ComposeDatasetCommand(study_id=study.id, brief_ids=[first.brief_id])
+        )
+
+    # A study that is not open is refused before anything is paid for: the dataset it would
+    # evaluate can still change.
+    assert run_evaluate_study(study.id, f"{patched_package.name}:1", 2, False) == 1
+
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        OpenStudy(studies, uow.events, uow)(OpenStudyCommand(study_id=study.id))
+
+    capsys.readouterr()  # the summary is the ONLY thing on stdout, so read from here
+    assert run_evaluate_study(study.id, f"{patched_package.name}:1", 2, False) == 0
+    summary = json.loads(capsys.readouterr().out)
+
+    assert summary["status"] == "done"
+    assert summary["totals"] == {
+        **summary["totals"],
+        "courses": 2,
+        "evaluated": 2,
+        "failed": 0,
+        "cancelled": 0,
+    }
+    by_course = {c["externalId"]: c for c in summary["courses"]}
+    assert set(by_course) == {first.external_id, second.external_id}
+    assert all(c["briefId"] == str(first.brief_id) for c in summary["courses"])
+    assert all(c["evaluationId"] for c in summary["courses"])
+
+    # Persisted for real, both of them: an evaluation each, and the judgment its policy
+    # derived — which is what makes the study's report and fitness readable afterwards.
+    judgments = SqlAlchemyJudgmentRepository(session).list_for_contents(
+        [first.id, second.id], version_id
+    )
+    assert {j.content_id for j in judgments} == {first.id, second.id}
+
+    # Running it again does the expensive half zero times: what this assessor already
+    # evaluated is skipped, which is what makes an interrupted batch resumable.
+    capsys.readouterr()
+    assert run_evaluate_study(study.id, f"{patched_package.name}:1", 2, False) == 0
+    resumed = json.loads(capsys.readouterr().out)
+    assert resumed["totals"]["skipped"] == 2 and resumed["totals"]["evaluated"] == 0

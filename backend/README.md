@@ -350,6 +350,50 @@ Two aggregation rules not to confuse:
   instead) or register local folders (`register-package --source <dir>`). An
   LLM-carrying assessor spends real calls per run, on the backend's `LLM_API_KEY`.
 
+### Evaluating a study in batch
+
+A generation of the optimization experiment is a whole study's worth of courses, which is
+one command (ADR-0040):
+
+```
+uv run python -m app.cli evaluate-study --study-id <id> --assessor <name>:<version>
+                                        [--concurrency N] [--re-evaluate]
+```
+
+**Progress goes to stderr, the summary to stdout** — one JSON document naming every course
+with its `briefId`, its status, its duration and what it spent, which is what a script reads
+to know how a generation went. The statuses mean:
+
+| status | what happened |
+|---|---|
+| `evaluated` | the course was judged and its evaluation persisted |
+| `skipped` | this assessor had already evaluated it under this instrument version |
+| `failed` | this course could not be judged; `cause` says why, and the others carried on |
+| `cancelled` | the run stopped before reaching it; nothing was written for it |
+
+**It refuses before it spends.** A study that is not open, no instrument pinned, an empty
+dataset, an assessor that is unregistered or has not ratified the pinned version: each would
+fail identically for every course, so the command ends with the cause named and nothing paid
+for. The same reasoning applies while it runs — a configuration failure or a coverage bug
+ends the batch on the first course, and three consecutive transport deaths end it too (any
+course that completes clears that streak).
+
+**Re-running resumes it.** What this assessor already evaluated is skipped, so a batch
+interrupted at course twelve of twenty is continued by running the same command again.
+`--re-evaluate` asks for all of them regardless.
+
+**Ctrl-C stops it**, and stopping means *stop starting*: courses that finished stay
+persisted, the ones in flight stop at their next call, and the summary still prints. Nothing
+needs undoing — an evaluation that does not reach its end writes nothing.
+
+**How much it asks for at once.** `--concurrency` is how many **courses** run at a time
+(default `LLM_MAX_CONCURRENCY`). How many **requests** may be in flight is bounded by
+`LLM_MAX_CONCURRENCY` at the transport itself, whatever the callers do, so nested fan-outs
+can never multiply into a burst nobody chose. Default 4; raising it past ~7 also needs the
+database pool raised, since each worker uses up to two sessions. If the endpoint pushes
+back, the transport already backs off on 429 honouring `Retry-After` — the first real batch
+is how the account's actual limit gets measured, rather than guessed.
+
 ### Reading a calibration trace
 
 A semantic criterion's verdict is only as good as the question that produced it, and the
@@ -667,8 +711,9 @@ away.
 ### Step 7 — Verify end to end
 
 `register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
-instrument is a draft → `declare-study | pin-study | compose-dataset | open-study |
-publish-study` → `show-report` / `show-fitness`.
+instrument is a draft → `declare-study | pin-study | compose-dataset | open-study` →
+`evaluate-study` (the whole dataset in one run) → `publish-study` → `show-report` /
+`show-fitness`.
 
 ### What you never touch
 
@@ -858,7 +903,8 @@ can read what your criteria actually do against real content before freezing the
 the **only** way to exercise an instrument whose lineage has no assessor yet: the dry run does
 not compare lineages, so any registered package's executors can be pointed at any version.
 Then the study path:
-`declare-study | pin-study | compose-dataset | open-study | publish-study` → `show-report`.
+`declare-study | pin-study | compose-dataset | open-study` → `evaluate-study` →
+`publish-study` → `show-report`.
 
 ### What you never touch
 
