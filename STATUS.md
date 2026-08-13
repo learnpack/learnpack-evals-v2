@@ -521,6 +521,34 @@ campaign. The recurring 2-1s were the warning; the flip is the bug report: the H
 closing sits ON the v5 threshold, and deciding it belongs to the instrument's next
 wording, not to more sampling.
 
+**`course-drafts-qa` v6 is that wording, and nothing else** (`bump-instrument` → edit →
+`import-instrument`; ids, claims and `requires` verbatim v5; drafts-hybrid untouched — the
+judge reads the `pass_condition` from the spec, which is the property built for this).
+Fifteen samples of the HTML closing quoted the same two passages and divided only on
+whether *naming* CSS/JavaScript counts as *projecting*; v6 writes the threshold: a named
+technology projects forward **when the closing offers it to the learner** — connects what
+they can now do or build with the thing it names — and does not when it appears only as
+background about other tools. The stricter reading (demanding an explicit "go study X
+next") was rejected: the criterion's purpose is orientation, not curriculum prescription,
+and "named and offered" still refuses generic futurology and the keep-practising closing
+v5 was written against. The second edit closes the opening criterion's residual 2-1 the
+same way: addressing the learner's everyday experience **of the subject** ("every web page
+you have ever visited") counts as referring to what they already know, stated outright.
+Sits as a **draft**. **Verified over five runs (3 HTML + 1 CSS + 1 GitHub):** the opening
+criterion is fixed — unanimous *pass* where it had split 2-1 twice — and the closing
+collapsed **onto fail** (3-0, 2-0, one residual 2-1): the judges read "offered to the
+learner" as unmet by a closing that describes CSS/JavaScript without making them the
+learner's next step. That direction was the opposite of the prediction the wording shipped
+with, and the team reviewed the closing against it and **agreed with the fail** — the
+criterion is now decidable and decided; nothing unanimous moved on CSS or GitHub. One
+finding rode along, of a new class: a cross-run verdict flip on
+`cr-assessment-matches-the-declared-verification` traced to **mapping variance upstream**,
+not to the judge — one run's mapping gave obj-1 items (so its declared verification was
+judged, and failed), the other's gave it none (so the corpus narrowed in code to an
+objective whose item matches, and passed). Two different questions, both answered
+correctly: chained-task sensitivity, recorded as a candidate for tightening the mapping
+prompt (assessor identity), not the instrument.
+
 **v9 — the provider deny-list (ADR-0038).** The §3 question ADR-0034 left open, answered
 with the measurement it asked for: behind one model id, `sail-research` served **every
 capped runaway of the campaign (seven of seven)** — reasoning past both disable flags into
