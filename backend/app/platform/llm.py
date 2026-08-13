@@ -21,8 +21,10 @@ re-versions no assessor either (ADR-0034 §1).
 
 import logging
 import random
+import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,6 +35,10 @@ from app.platform import observability
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 60.0
+# One request in flight — the behaviour every caller had before there was a gate at all.
+# The real ceiling is a setting; this default is what keeps a client built without one
+# indistinguishable from the sequential client that preceded it.
+DEFAULT_MAX_CONCURRENCY = 1
 # 4 attempts ~ three backoffs; enough for a rate-limit burst, short enough that a dead
 # endpoint fails in well under two minutes.
 MAX_TRANSPORT_ATTEMPTS = 4
@@ -108,16 +114,36 @@ class ChatCompletionsClient:
         base_url: str,
         api_key: str,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         transport: httpx.BaseTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._api_key = api_key
         self._sleep = sleep
+        # The gate. One per client, and the client is shared per process, so this is the
+        # ceiling on everything: however many levels of fan-out a caller stacks, the number
+        # of requests actually in flight is this one. A cap per level would not compose —
+        # 5 courses times 8 lessons asks for 40 and nobody decided 40.
+        self._slots = threading.BoundedSemaphore(max(1, max_concurrency))
         self._http = httpx.Client(
             base_url=base_url.rstrip("/"),
             timeout=timeout_seconds,
             transport=transport,
         )
+
+    @contextmanager
+    def _slot(self) -> Iterator[None]:
+        """Held around the request itself and released before any waiting.
+
+        A slot held during a backoff would be an idle slot: the point of the gate is to
+        bound what the endpoint is being asked to do at once, and a caller that is sleeping
+        is asking for nothing.
+        """
+        self._slots.acquire()
+        try:
+            yield
+        finally:
+            self._slots.release()
 
     def complete(
         self,
@@ -171,11 +197,12 @@ class ChatCompletionsClient:
         for attempt in range(1, MAX_TRANSPORT_ATTEMPTS + 1):
             here = asked.attempt(attempt)
             try:
-                response = self._http.post(
-                    "/chat/completions",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                )
+                with self._slot():
+                    response = self._http.post(
+                        "/chat/completions",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                    )
             except httpx.HTTPError as exc:
                 last_transient = f"{type(exc).__name__}: {exc}"
                 _observe(here, error=last_transient)

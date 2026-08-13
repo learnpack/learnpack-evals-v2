@@ -11,6 +11,9 @@ listener — changing the answer the caller receives.
 """
 
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
@@ -36,13 +39,16 @@ def ok_body(content: str = "answer", finish_reason: str = "stop") -> dict:
     }
 
 
-def client_with(handler, api_key: str = "key") -> tuple[ChatCompletionsClient, list[float]]:
+def client_with(
+    handler, api_key: str = "key", max_concurrency: int = 1, sleep=None
+) -> tuple[ChatCompletionsClient, list[float]]:
     sleeps: list[float] = []
     client = ChatCompletionsClient(
         base_url="https://test.example/v1",
         api_key=api_key,
+        max_concurrency=max_concurrency,
         transport=httpx.MockTransport(handler),
-        sleep=sleeps.append,
+        sleep=sleeps.append if sleep is None else sleep,
     )
     return client, sleeps
 
@@ -416,3 +422,65 @@ def test_the_recorded_conversation_is_a_snapshot():
         client.complete(model="m", messages=messages)
 
     assert len(calls[0].messages) == 1 and len(calls[1].messages) == 2
+
+
+# --- the gate ---------------------------------------------------------------------------
+#
+# What is pinned here is a ceiling on requests IN FLIGHT, which is the half of rate limiting
+# that backing off cannot provide: `Retry-After` recovers from having asked for too much, and
+# nothing recovers the cost of having asked. It lives on the client because the client is
+# shared per process, so callers that know nothing about each other still share one ceiling.
+
+
+def test_no_more_requests_are_in_flight_than_the_gate_allows():
+    """Eight callers, three slots: the endpoint never sees a fourth at once.
+
+    The assertion is about the ONLY number that matters when several fan-outs are stacked —
+    a batch over courses, a fan-out over lessons inside each — since no per-level cap bounds
+    their product.
+    """
+    lock = threading.Lock()
+    in_flight = 0
+    high_water = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, high_water
+        with lock:
+            in_flight += 1
+            high_water = max(high_water, in_flight)
+        time.sleep(0.02)  # long enough that callers genuinely overlap
+        with lock:
+            in_flight -= 1
+        return httpx.Response(200, json=ok_body())
+
+    client, _ = client_with(handler, max_concurrency=3)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        answers = [
+            future.result()
+            for future in [
+                pool.submit(client.complete, model="m", messages=MESSAGES) for _ in range(8)
+            ]
+        ]
+
+    assert high_water == 3  # not 8, and not 1: the gate is a ceiling, not a serializer
+    assert [answer.text for answer in answers] == ["answer"] * 8
+
+
+def test_a_slot_is_not_held_while_backing_off():
+    """A slot held during a backoff is an idle slot, and with one slot it would serialize
+    every caller behind one sleeper. What the gate bounds is what the endpoint is being
+    asked to do, and a caller that is waiting is asking for nothing."""
+    free_during_backoff: list[bool] = []
+    answers = iter([httpx.Response(429, text="slow down"), httpx.Response(200, json=ok_body())])
+
+    def probe(_delay: float) -> None:
+        # Non-blocking on purpose: a held slot must fail the assertion, never hang the suite.
+        taken = client._slots.acquire(blocking=False)
+        free_during_backoff.append(taken)
+        if taken:
+            client._slots.release()
+
+    client, _ = client_with(lambda request: next(answers), max_concurrency=1, sleep=probe)
+
+    assert client.complete(model="m", messages=MESSAGES).text == "answer"
+    assert free_during_backoff == [True]

@@ -117,6 +117,17 @@ class Settings(BaseSettings):
     # arrives, never which one (ADR-0034 §1). Raise it for a long prompt against a slow
     # provider; the default matches the transport's own.
     llm_timeout_seconds: float = 60.0
+    # How many requests may be IN FLIGHT at once, across everything this process runs. A
+    # ceiling on concurrency, not a rate: the transport already survives a rate limit by
+    # backing off on 429 with `Retry-After`, and what no reactive half can undo is asking
+    # for far more than the account allows in the first place. Access, not identity, on the
+    # same reasoning as the timeout: it changes when an answer arrives, never which one.
+    # It lives at the transport because that is the only place that sees every call however
+    # many levels of fan-out sit above it — a batch over courses today, a fan-out over
+    # lessons inside each one tomorrow, whose product no per-level cap could bound.
+    # Above ~7 the database pool becomes the next limit (5 + 10 overflow, two sessions per
+    # worker), so raising this past that means raising the pool too.
+    llm_max_concurrency: int = 4
 
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":
