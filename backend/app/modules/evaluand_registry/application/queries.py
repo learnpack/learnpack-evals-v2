@@ -104,7 +104,12 @@ def _to_generator_version_dto(version: GeneratorVersion, name: str) -> Generator
 
 
 def _to_brief_dto(brief: GenerationBrief) -> BriefDTO:
-    return BriefDTO(brief_id=brief.id, brief=brief.brief, fields=brief.fields)
+    return BriefDTO(
+        brief_id=brief.id,
+        brief=brief.brief,
+        fields=brief.fields,
+        brief_hash=brief.brief_hash,
+    )
 
 
 def list_generators(generators: GeneratorRepositoryPort) -> list[GeneratorDTO]:
