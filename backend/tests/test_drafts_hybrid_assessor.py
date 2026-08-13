@@ -59,7 +59,7 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "6")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "8")]
 
 _V5_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")
@@ -294,11 +294,16 @@ def test_source_config_declares_the_semantic_identity():
     assert llm["samples"] == {"asked": 2, "max": 3}
     # The two v2 exists for: no thinking out loud, and room for the answer if it happens
     # anyway. Both decide what comes back, so both are declared, not left to the wire.
-    assert llm["reasoning"] == {"effort": "none"}
+    # Both disable fields, on purpose (v7): OpenRouter documents `effort` for other model
+    # families, and the upstreams that reasoned anyway under v6 may only translate
+    # `enabled`. Saying it both ways is identity — it decides what is billed and returned.
+    assert llm["reasoning"] == {"effort": "none", "enabled": False}
     assert llm["maxOutputTokens"] == 8000
     # How a failing conversation is retried decides which answer finally arrives, so the
-    # clean-retry allowance is identity too (ADR-0037 §7).
-    assert llm["cleanRetries"] == {"max": 1}
+    # clean-retry allowance is identity too (ADR-0037 §7). Budget joined in v8: a
+    # length-cut runaway is deterministic per PROVIDER, and a fresh conversation re-rolls
+    # the router's provider draw.
+    assert llm["cleanRetries"] == {"max": 1, "kinds": ["degeneration", "budget"]}
     fingerprint = llm["promptsFingerprint"]
     assert isinstance(fingerprint, str) and len(fingerprint) == 64
     from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts
@@ -324,7 +329,7 @@ def test_objectives_observable_verbs(fake_llm):
     assert metric_ids == {"llm_objectives_classification", "objective_bloom_levels"}
     assert client.calls[0]["temperature"] == 0.0
     # What v1 lost every run to: the thinking is off and the budget has room either way.
-    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none"}}
+    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none", "enabled": False}}
     assert client.calls[0]["max_tokens"] == 8000
 
     tasks.clear_task_cache()
@@ -755,10 +760,10 @@ def test_a_quote_that_drops_markdown_emphasis_still_grounds(fake_llm):
     assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
 
 
-def test_an_answer_cut_off_at_the_budget_is_not_retried(fake_llm):
-    """The failure the cap could not prevent: a model repeating one sentence into the
-    evidence array runs to the budget, so the JSON never even parses. Feedback cannot correct
-    a limit — three such attempts once cost nine minutes and bought nothing."""
+def test_an_answer_cut_off_at_the_budget_is_never_fed_back_and_re_rolls_once(fake_llm):
+    """Feedback cannot correct a limit — three such attempts once cost nine minutes and
+    bought nothing. What a limit CAN get since v8 is one clean conversation (the router
+    draws a provider per request); when that one is cut the same way, it raises."""
 
     client = fake_llm(closing_integrates=['{"reason": "cut off here'] * 3)
     answer = client.complete
@@ -766,10 +771,12 @@ def test_an_answer_cut_off_at_the_budget_is_not_retried(fake_llm):
         answer(**kwargs), finish_reason="length"
     )
 
-    with pytest.raises(AssessorExecutionError, match="without finishing the answer"):
+    with pytest.raises(AssessorExecutionError, match="without finishing the answer") as e:
         run_judged("cr-closing-lesson-integrates", judged_profile())
 
-    assert len(client.calls) == 1  # not the full schema budget
+    assert e.value.kind == "budget"
+    # One call per conversation (a limit is never fed back), two conversations in all.
+    assert len(client.calls) == 2
 
 
 def test_a_judging_call_gets_a_tighter_budget_than_the_extraction_tasks(fake_llm):
@@ -969,15 +976,37 @@ def test_the_platform_taxonomy_survives_in_the_kind_and_is_never_clean_retried(e
     assert len(client.calls) == 1  # the script would have failed a retry loudly
 
 
-def test_an_answer_cut_at_the_budget_is_kind_budget_and_never_retried():
-    """Deterministic: the same conversation runs to the same limit, and a clean one too."""
-    client = ScriptedClient(completion('{"ok": fal', finish_reason="length"))
+def test_an_answer_cut_at_the_budget_buys_one_clean_conversation():
+    """v8: a length-cut runaway is deterministic per provider, and the router draws a
+    provider per request — one fresh conversation is one re-roll of that draw."""
+    client = ScriptedClient(
+        completion('{"ok": fal', finish_reason="length"),
+        completion('{"ok": true}'),
+    )
 
+    payload, usage = ask(client)
+
+    assert payload == {"ok": True}
+    assert usage.clean_retries == 1
+    assert [m["role"] for m in client.calls[1]["messages"]] == ["system", "user"]
+
+
+def test_a_second_budget_cut_raises_and_a_usable_capped_answer_never_spends_the_retry():
+    client = ScriptedClient(
+        completion('{"ok": fal', finish_reason="length"),
+        completion('{"ok": fal', finish_reason="length"),
+    )
     with pytest.raises(AssessorExecutionError, match="token budget") as e:
         ask(client)
-
     assert e.value.kind == "budget"
-    assert len(client.calls) == 1
+    assert len(client.calls) == 2
+
+    # An answer that hits the limit and still validates is returned on the spot: a usable
+    # answer is a usable answer, and the retry stays unspent.
+    client = ScriptedClient(completion('{"ok": true}', finish_reason="length"))
+    payload, usage = ask(client)
+    assert payload == {"ok": True}
+    assert usage.clean_retries == 0
 
 
 def test_a_contract_never_satisfied_is_kind_contract_and_spends_only_its_conversation():

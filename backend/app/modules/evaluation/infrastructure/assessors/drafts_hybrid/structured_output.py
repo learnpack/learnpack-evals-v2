@@ -5,11 +5,15 @@ the model missed, ask again WITH the validator's feedback in the conversation �
 sees its own answer and what was wrong with it. Feedback works when the answer is a fixable
 mistake; it is useless against **degeneration** (a reply repeated verbatim), where feeding
 the broken answer back puts the loop *in* the context. So the two failure shapes get two
-remedies (ADR-0037 §7): a contract violation keeps the feedback retry; a degeneration buys
-**one retry on a clean conversation** — `messages` rebuilt from scratch, nothing of the
-broken round carried over — and a second identical degeneration is the poison case and
-raises. Transport, configuration and `finish_reason: length` are never clean-retried:
-transport has its own backoff under this call, the other two are deterministic.
+remedies (ADR-0037 §7): a contract violation keeps the feedback retry; a degeneration and
+an unusable answer cut at the token budget each buy **one retry on a clean conversation**
+— `messages` rebuilt from scratch, nothing of the broken round carried over — and a second
+identical failure is the poison case and raises. The budget kind joined in v8 on field
+evidence: a length-cut degeneration is deterministic *per provider*, and the router draws
+a provider per request — every capped runaway of the campaign came from one upstream while
+the same questions answered cleanly everywhere else, so one fresh conversation is one
+re-roll of that lottery. Transport and configuration are never clean-retried: transport
+has its own backoff under this call, and configuration is deterministic everywhere.
 
 Every raise carries a machine-readable `kind` (plumbing, not identity — `errors.py`), so
 the derivation can record *why* a criterion could not be judged and the retry policy can
@@ -42,10 +46,12 @@ from app.platform.llm import (
 # and every extra round is paid latency in front of a fixed answer.
 MAX_SCHEMA_ATTEMPTS = 3
 
-# Fresh-conversation retries, for degeneration alone. One: the first retry is the cheap
-# bet that the loop was the conversation's fault; a second identical degeneration says the
-# question itself invites it, and more copies of the same failure teach nothing.
+# Fresh-conversation retries, for the two failure shapes a re-roll can dissolve. One: the
+# first retry is the cheap bet that the loop was the conversation's (or the upstream's)
+# fault; a second identical failure says the question itself invites it, and more copies
+# of the same failure teach nothing.
 MAX_CLEAN_RETRIES = 1
+CLEAN_RETRY_KINDS = ("degeneration", "budget")
 
 # A validator returns the contract violations it found — empty means the payload holds.
 Validator = Callable[[Any], list[str]]
@@ -107,7 +113,7 @@ def request_structured_output(
                 spend=spend,
             )
         except AssessorExecutionError as exc:
-            if exc.kind != "degeneration" or clean_retries == MAX_CLEAN_RETRIES:
+            if exc.kind not in CLEAN_RETRY_KINDS or clean_retries == MAX_CLEAN_RETRIES:
                 raise
             continue
         return payload, LlmUsage(
@@ -180,9 +186,10 @@ def _one_conversation(
         if not violations:
             return payload
         # An answer cut off at the token budget is not a mistake feedback can correct: the
-        # model ran to the limit, so the same conversation runs to it again. Deterministic,
-        # so a clean conversation buys the same stop — never retried either way; the remedy
-        # is the task's budget, or the prompt that let the answer sprawl.
+        # model ran to the limit, so the same conversation runs to it again. But it IS
+        # deterministic only per provider (v8): the campaign's capped runaways all came
+        # from one upstream while the same questions answered cleanly elsewhere, so the
+        # outer loop may buy one fresh conversation — one re-roll of the provider draw.
         if completion.finish_reason == "length":
             raise AssessorExecutionError(
                 f"task '{task_id}': the model ran to its {max_tokens}-token budget without "

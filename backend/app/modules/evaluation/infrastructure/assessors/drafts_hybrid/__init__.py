@@ -1,6 +1,27 @@
-"""`drafts-hybrid` v6 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v8 — the `course-drafts-qa` lineage's LLM-carrying assessor.
 
-v6 changes how a failing conversation is retried, and nothing about what is asked
+v8 lets an answer cut at the token budget buy the clean-conversation retry that v6 gave
+degeneration alone. The v1 lesson said `finish_reason: length` is deterministic and
+retrying never recovered one — measured over feedback retries, where the broken answer
+re-enters the same conversation. The v7 field runs sharpened it: length-cut runaways are
+deterministic **per provider** (all three of the campaign's came from one upstream, while
+the same questions answered cleanly under every other), and OpenRouter draws an upstream
+per request — so a conversation rebuilt from scratch is a re-roll of that draw, worth
+exactly one attempt. `CLEAN_RETRY_KINDS` is declared in `SOURCE_CONFIG` because which
+failures may be retried decides which verdict survives.
+
+v7 says "no reasoning" in both of the words a provider might understand:
+`reasoning: {effort: "none", enabled: false}`. OpenRouter documents `effort` for
+OpenAI/Grok models, not this family, so for some upstreams v6's `effort: "none"` was
+never an instruction at all — the first v6 calibration met one that reasoned for 36
+seconds and billed 3,491 output tokens for a 60-token answer, and another that returned
+its entire reasoning with a null answer (an `execution_error` the failure budget
+absorbed). `enabled` is the boolean OpenRouter can translate more broadly; sending both
+is belt and braces, not a guarantee — an upstream that ignores the whole `reasoning`
+object still ignores it, which is the open provider-pinning question, not this bump's.
+Whether the model may reason is identity (ADR-0034 §1), so this is a version.
+
+v6 changed how a failing conversation is retried, and nothing about what is asked
 (ADR-0037 §7). The feedback loop realized v5's failures are two shapes wearing one
 remedy: a **contract violation** is a fixable mistake and keeps the feedback retry, which
 the campaign measured to work; a **degeneration** — the model repeating its answer
@@ -131,7 +152,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "6"
+VERSION = "8"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
@@ -250,8 +271,11 @@ SOURCE_CONFIG = {
         "judgeMaxOutputTokens": judgments.JUDGE_MAX_OUTPUT_TOKENS,
         "extractionMaxOutputTokens": judgments.EXTRACTION_MAX_OUTPUT_TOKENS,
         # How a failing conversation is retried decides which answer finally arrives
-        # (ADR-0037 §7): degeneration alone may buy this many fresh conversations.
-        "cleanRetries": {"max": structured_output.MAX_CLEAN_RETRIES},
+        # (ADR-0037 §7): these kinds may buy this many fresh conversations.
+        "cleanRetries": {
+            "max": structured_output.MAX_CLEAN_RETRIES,
+            "kinds": list(structured_output.CLEAN_RETRY_KINDS),
+        },
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
