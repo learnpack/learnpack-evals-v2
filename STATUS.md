@@ -521,6 +521,21 @@ campaign. The recurring 2-1s were the warning; the flip is the bug report: the H
 closing sits ON the v5 threshold, and deciding it belongs to the instrument's next
 wording, not to more sampling.
 
+**v9 — the provider deny-list (ADR-0038).** The §3 question ADR-0034 left open, answered
+with the measurement it asked for: behind one model id, `sail-research` served **every
+capped runaway of the campaign (seven of seven)** — reasoning past both disable flags into
+the judging budget, one four-draw streak beating the clean retry and costing an
+`execution_error` — and `atlas-cloud` billed invisible reasoning at 11–100× the visible
+answer, once returning a null-content 200. The pool of possible judges is therefore
+**identity**: `DENIED_PROVIDERS = (sail-research, atlas-cloud)` is pinned beside the retry
+constants, declared in `SOURCE_CONFIG` (the ratification guard refuses drift), and rides
+each request as a provider preference through the same extra-wire-fields seam as the
+reasoning flags — the platform client is untouched and transport still re-versions
+nothing. Deny rather than allow, on ADR-0034 §3's own recorded reasoning: an allow-list
+buys consistency at an availability price already judged worse than the variance. The bar
+for an entry is repeated, trace-documented failure — Phala (one 3,491-token bill) is
+watched, not listed. Editing the list in either direction is a version bump.
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three

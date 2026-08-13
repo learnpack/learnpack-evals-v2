@@ -53,6 +53,16 @@ MAX_SCHEMA_ATTEMPTS = 3
 MAX_CLEAN_RETRIES = 1
 CLEAN_RETRY_KINDS = ("degeneration", "budget")
 
+# Upstreams that may NOT serve this assessor's calls (ADR-0038: the pool of possible
+# judges is identity — editing this list is a version bump). The bar for an entry is
+# repeated, trace-documented failure, never one incident:
+# - sail-research: every capped runaway of the campaign (7/7), including reasoning past
+#   both disable flags into the judging budget; a four-draw streak cost an
+#   execution_error through the clean retry.
+# - atlas-cloud: reasoning billed at 11-100x the visible answer under both disable
+#   flags; one null-content 200 carrying only reasoning (the first execution_error).
+DENIED_PROVIDERS = ("sail-research", "atlas-cloud")
+
 # A validator returns the contract violations it found — empty means the payload holds.
 Validator = Callable[[Any], list[str]]
 
@@ -155,10 +165,14 @@ def _one_conversation(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
-                # Whether the judge thinks before answering is part of what it is asked,
-                # so it is pinned here and declared in SOURCE_CONFIG, never in the
-                # transport (ADR-0034 §1).
-                extra_body={"reasoning": dict(reasoning)},
+                # Whether the judge thinks before answering, and which upstreams may
+                # serve the question, are part of what is asked — pinned here and
+                # declared in SOURCE_CONFIG, never in the transport (ADR-0034 §1,
+                # ADR-0038).
+                extra_body={
+                    "reasoning": dict(reasoning),
+                    "provider": {"ignore": list(DENIED_PROVIDERS)},
+                },
                 # Names this question in the trace and nothing else — it never reaches the
                 # wire, so it is not part of what the judge is asked (ADR-0034 §5).
                 task_id=task_id,

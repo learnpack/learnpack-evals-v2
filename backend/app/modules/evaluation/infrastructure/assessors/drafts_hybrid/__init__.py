@@ -1,4 +1,14 @@
-"""`drafts-hybrid` v8 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v9 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v9 declares which upstreams may NOT serve its calls (ADR-0038): `sail-research`, whose
+serving produced every capped runaway of the campaign — seven of seven, reasoning past
+both disable flags into the judging budget, one four-draw streak beating the clean retry —
+and `atlas-cloud`, which billed invisible reasoning at 11–100× the visible answer and once
+returned a null-content 200. The router draws an upstream per request, so the pool of
+possible judges is identity: the list is pinned beside the retry constants, declared in
+`SOURCE_CONFIG`, and travels per request as a provider preference through the same
+extra-wire-fields seam the reasoning flags use. Editing the list — either direction — is a
+version bump.
 
 v8 lets an answer cut at the token budget buy the clean-conversation retry that v6 gave
 degeneration alone. The v1 lesson said `finish_reason: length` is deterministic and
@@ -154,7 +164,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "8"
+VERSION = "9"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
@@ -278,6 +288,9 @@ SOURCE_CONFIG = {
             "max": structured_output.MAX_CLEAN_RETRIES,
             "kinds": list(structured_output.CLEAN_RETRY_KINDS),
         },
+        # Which upstreams may not serve a call decides which judge answers it
+        # (ADR-0038): the pool is identity, like the model ids that name it.
+        "deniedProviders": list(structured_output.DENIED_PROVIDERS),
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
