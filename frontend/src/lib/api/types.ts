@@ -469,6 +469,15 @@ export interface FitnessLevel {
   dimensions: Record<string, FitnessDimension>;
 }
 
+/** A commission the study was computed over (ADR-0039): the id joins, the hash identifies
+ *  it in any store, and the text is what a person recognises. Never a score — the brief
+ *  groups the projection and nothing is pooled per brief. */
+export interface FitnessBrief {
+  briefId: string;
+  briefHash: string | null;
+  brief: string | null;
+}
+
 export interface StudyFitness {
   studyId: string;
   status: StudyStatus;
@@ -483,6 +492,7 @@ export interface StudyFitness {
     note: string;
   };
   gaps: { gap: string }[];
+  briefs: FitnessBrief[];
   assessorCoverage: {
     ratifiedAssessors?: string[];
     notAssessed?: number;
@@ -492,6 +502,7 @@ export interface StudyFitness {
   contents: (FitnessLevel & {
     contentId: string;
     externalId: string;
+    briefId: string | null;
     generatorVersionId: string | null;
     judged: boolean;
   })[];
