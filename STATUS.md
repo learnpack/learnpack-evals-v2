@@ -521,6 +521,22 @@ campaign. The recurring 2-1s were the warning; the flip is the bug report: the H
 closing sits ON the v5 threshold, and deciding it belongs to the instrument's next
 wording, not to more sampling.
 
+**`course-drafts-qa` v6 is that wording, and nothing else** (`bump-instrument` → edit →
+`import-instrument`; ids, claims and `requires` verbatim v5; drafts-hybrid untouched — the
+judge reads the `pass_condition` from the spec, which is the property built for this).
+Fifteen samples of the HTML closing quoted the same two passages and divided only on
+whether *naming* CSS/JavaScript counts as *projecting*; v6 writes the threshold: a named
+technology projects forward **when the closing offers it to the learner** — connects what
+they can now do or build with the thing it names — and does not when it appears only as
+background about other tools. The stricter reading (demanding an explicit "go study X
+next") was rejected: the criterion's purpose is orientation, not curriculum prescription,
+and "named and offered" still refuses generic futurology and the keep-practising closing
+v5 was written against. The second edit closes the opening criterion's residual 2-1 the
+same way: addressing the learner's everyday experience **of the subject** ("every web page
+you have ever visited") counts as referring to what they already know, stated outright.
+Sits as a **draft**; the verification that decides it: three runs of the HTML draft (do
+the 2-1s collapse?), one of CSS and one of GitHub (does anything unanimous move?).
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
