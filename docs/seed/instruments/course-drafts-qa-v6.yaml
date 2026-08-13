@@ -122,7 +122,7 @@
 instrument_id: course-drafts-qa
 version: v6
 revision_reason: "write the thresholds the HTML draft's 2-1 votes exposed: a named technology projects forward when it is offered to the learner; everyday experience of the subject counts as prior knowledge"
-name: "Course Drafts QA v5"
+name: "Course Drafts QA v6"
 purpose: >
   Internal QA of the drafts an AI course generator emits, before a teacher processes them
   into a deliverable course: whether the draft declares what it is for, states observable
