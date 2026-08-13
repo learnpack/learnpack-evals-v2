@@ -50,6 +50,9 @@ class BriefInfo:
     brief_id: UUID
     brief: str
     fields: dict[str, Any]
+    # ADR-0022 §3, published by ADR-0039 §4: the id identifies a row, the hash identifies
+    # the commission — and only the hash means the same thing in another store.
+    brief_hash: str | None = None
 
 
 @dataclass(frozen=True)

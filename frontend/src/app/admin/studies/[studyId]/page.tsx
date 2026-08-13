@@ -201,6 +201,8 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
               </div>
             ))}
 
+            <ByBrief fitness={fitness} />
+
             <div className="space-y-2">
               <p className="font-medium">
                 Whole study
@@ -228,6 +230,102 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** The brief is a grouping axis, not a grain (ADR-0039): nothing here is a per-brief score.
+ *  Courses generated from one commission sit together so their spread is readable — which is
+ *  the whole reason several are generated from it, and what a pooled number would erase. */
+function ByBrief({ fitness }: { fitness: StudyFitness }) {
+  const dimensionIds = Object.keys(fitness.study.dimensions ?? {});
+  const named = new Map(fitness.briefs.map((b) => [b.briefId, b]));
+  const groups = new Map<string, StudyFitness["contents"]>();
+  for (const content of fitness.contents) {
+    const key = content.briefId ?? "";
+    groups.set(key, [...(groups.get(key) ?? []), content]);
+  }
+  // Every commission of the recipe, including one that produced no course; the contents
+  // without a derived brief (ADR-0022) group nowhere and are listed last.
+  const keys = [
+    ...fitness.briefs.map((b) => b.briefId).filter((id) => id !== ""),
+    ...(groups.has("") ? [""] : []),
+  ];
+  if (keys.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <p className="font-medium">
+        By brief
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          grouped, never pooled — one row per course, so repeats of a commission can be
+          compared
+        </span>
+      </p>
+      {keys.map((briefId) => {
+        const brief = named.get(briefId);
+        const courses = groups.get(briefId) ?? [];
+        return (
+          <div key={briefId || "unpaired"} className="space-y-1">
+            <p className="text-sm">
+              {briefId === "" ? (
+                <span className="italic text-muted-foreground">no brief derived</span>
+              ) : (
+                <span className="max-w-xl truncate" title={brief?.brief ?? undefined}>
+                  {brief?.brief ?? briefId}
+                </span>
+              )}
+              <span className="ml-2 text-xs text-muted-foreground">
+                {briefId === ""
+                  ? null
+                  : brief?.briefHash
+                    ? `${brief.briefHash.slice(0, 12)}… · `
+                    : "registered by hand · "}
+                {courses.length} course{courses.length === 1 ? "" : "s"}
+              </span>
+            </p>
+            {courses.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">
+                no course in this study answers this commission
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Course</TableHead>
+                      {dimensionIds.map((id) => (
+                        <TableHead key={id} className="text-right">
+                          {id}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {courses.map((content) => (
+                      <TableRow key={content.contentId}>
+                        <TableCell>
+                          {content.externalId}
+                          {content.judged ? null : (
+                            <span className="ml-2 text-xs italic text-muted-foreground">
+                              not judged
+                            </span>
+                          )}
+                        </TableCell>
+                        {dimensionIds.map((id) => (
+                          <TableCell key={id} className="text-right">
+                            <FitnessValue value={content.dimensions[id]?.fitness ?? null} />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

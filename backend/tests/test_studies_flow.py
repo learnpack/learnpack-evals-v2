@@ -145,6 +145,11 @@ def _project_fitness(session, study_id):
         study=study,
         instrument=DesignGateway(session).get_instrument(version_id),
         contents=contents,
+        briefs={
+            brief_id: brief
+            for brief_id in set(study.brief_ids) | {c.brief_id for c in contents if c.brief_id}
+            if (brief := registry.get_brief(brief_id)) is not None
+        },
         generators={
             c.generator_version_id: generator
             for c in contents
@@ -340,6 +345,20 @@ def test_the_first_increment_closes_the_loop(
     assert [g["generatorVersionId"] for g in projection["generators"]] == [str(generator_id)]
     assert projection["generators"][0]["contents"] == 1
     assert projection["unknownExclusions"] == [str(orphan.id)]
+
+    # The brief is an axis, not a grain (ADR-0039). These two courses answer the same
+    # commission — paired by hash, nobody linked them — so both sections carry that id and
+    # a consumer can read them as repeats of one assignment.
+    assert {c["briefId"] for c in projection["contents"]} == {str(brief_id)}
+    # Named once in the header, with the identity that survives a rebuilt store: the id is
+    # minted here, the hash is `sha256(description + materialsHash)` anywhere (ADR-0022 §3).
+    assert len(projection["briefs"]) == 1
+    entry = projection["briefs"][0]
+    assert entry["briefId"] == str(brief_id)
+    assert entry["briefHash"] and entry["brief"]
+    # A table, deliberately not a fourth grain: no score is pooled per brief, because
+    # pooling would erase the very dispersion repeats of one commission exist to measure.
+    assert "qualities" not in entry and "dimensions" not in entry
 
 
 def test_an_attributed_content_enters_generator_level_accumulation(

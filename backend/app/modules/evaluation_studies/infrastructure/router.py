@@ -291,6 +291,14 @@ def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any
     instrument = design.get_instrument(instrument_version_id) if instrument_version_id else None
     registry = RegistryGateway(uow.session)
     contents = registry.get_contents_by_ids(list(study.content_ids))
+    # The recipe as well as what the contents reference (ADR-0039 §3): a commission that
+    # produced no course is a reading, not an absence.
+    briefs = {
+        brief_id: brief
+        for brief_id in set(study.brief_ids)
+        | {c.brief_id for c in contents if c.brief_id is not None}
+        if (brief := registry.get_brief(brief_id)) is not None
+    }
     generators = {
         content.generator_version_id: generator
         for content in contents
@@ -316,6 +324,7 @@ def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any
         study=study,
         instrument=instrument,
         contents=contents,
+        briefs=briefs,
         generators=generators,
         judgments=judgments,
         outcomes=outcomes,

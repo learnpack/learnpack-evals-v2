@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.modules.evaluation_studies.application.dtos import (
+    BriefInfo,
     ContentInfo,
     CriterionOutcomeInfo,
     GeneratorInfo,
@@ -60,9 +61,13 @@ def project(
     generators_of: dict[UUID, UUID | None] | None = None,
     generators: dict[UUID, GeneratorInfo] | None = None,
     ratifications: list[RatificationInfo] | None = None,
+    briefs_of: dict[UUID, UUID | None] | None = None,
+    briefs: dict[UUID, BriefInfo] | None = None,
+    recipe: list[UUID] | None = None,
 ) -> dict:
     """Run the projection over hand-written outcomes, one judgment per content."""
     generators_of = generators_of or {}
+    briefs_of = briefs_of or {}
     contents, judgments, outcomes = [], [], []
     for content_id, states in outcomes_per_content.items():
         judgment_id = uuid4()
@@ -71,7 +76,7 @@ def project(
                 content_id=content_id,
                 external_id=f"course-{content_id}",
                 package_format="LearnpackV1",
-                brief_id=None,
+                brief_id=briefs_of.get(content_id),
                 generator_version_id=generators_of.get(content_id),
             )
         )
@@ -95,12 +100,14 @@ def project(
         purpose="fitness",
         status="published",
         instrument_version_id=inst.instrument_version_id,
+        brief_ids=tuple(dict.fromkeys(recipe or [b for b in briefs_of.values() if b is not None])),
         content_ids=tuple(outcomes_per_content),
     )
     return compute_fitness(
         study=study,
         instrument=inst,
         contents=contents,
+        briefs=briefs or {},
         generators=generators or {},
         judgments=judgments,
         outcomes=outcomes,
@@ -303,6 +310,109 @@ def test_an_unknown_generator_is_excluded_from_accumulation_and_named():
     assert result["study"]["qualities"]["q"]["fitness"] == 0.5
 
 
+# ------------------------------------------------------------------ the brief axis
+
+
+def brief(brief_id: UUID, text: str, brief_hash: str | None = "sha256:derived") -> BriefInfo:
+    return BriefInfo(brief_id=brief_id, brief=text, fields={}, brief_hash=brief_hash)
+
+
+def test_repeats_of_one_commission_group_without_being_pooled():
+    """ADR-0039: the brief labels the content grain and aggregates nothing. Two courses from
+    one commission keep their own values — pooling them would erase exactly the dispersion
+    the repeats were generated to measure, and nothing recovers it afterwards."""
+    inst = instrument(
+        claims=[claim("cl", "q")],
+        criteria=[criterion("cr-1", "cl"), criterion("cr-2", "cl")],
+    )
+    commission, other = uuid4(), uuid4()
+    first, second, elsewhere = uuid4(), uuid4(), uuid4()
+
+    result = project(
+        inst,
+        {
+            first: {"cr-1": "pass", "cr-2": "pass"},  # same commission, different course
+            second: {"cr-1": "pass", "cr-2": "fail"},
+            elsewhere: {"cr-1": "fail", "cr-2": "fail"},
+        },
+        briefs_of={first: commission, second: commission, elsewhere: other},
+        briefs={commission: brief(commission, "Teach CSS"), other: brief(other, "Teach Git")},
+    )
+
+    by_content = {c["contentId"]: c for c in result["contents"]}
+    assert by_content[str(first)]["briefId"] == str(commission)
+    assert by_content[str(second)]["briefId"] == str(commission)
+    assert by_content[str(elsewhere)]["briefId"] == str(other)
+    # The two repeats disagree, and the projection says so instead of averaging them away.
+    assert by_content[str(first)]["qualities"]["q"]["fitness"] == 1.0
+    assert by_content[str(second)]["qualities"]["q"]["fitness"] == 0.5
+    # No fourth grain: the only levels are content, generator version and study.
+    assert "briefLevels" not in result
+    assert all("qualities" not in entry for entry in result["briefs"])
+
+
+def test_the_header_names_every_commission_including_one_that_produced_nothing():
+    """The table covers the recipe as well as what the contents reference: a generation that
+    produced no course is a reading about that commission, not its disappearance."""
+    inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
+    delivered, barren = uuid4(), uuid4()
+    content = uuid4()
+
+    result = project(
+        inst,
+        {content: {"cr": "pass"}},
+        briefs_of={content: delivered},
+        briefs={
+            delivered: brief(delivered, "Teach CSS", "sha256:css"),
+            barren: brief(barren, "Teach Rust", "sha256:rust"),
+        },
+        recipe=[delivered, barren],
+    )
+
+    assert result["briefs"] == sorted(
+        [
+            {"briefId": str(delivered), "briefHash": "sha256:css", "brief": "Teach CSS"},
+            {"briefId": str(barren), "briefHash": "sha256:rust", "brief": "Teach Rust"},
+        ],
+        key=lambda entry: entry["briefId"],
+    )
+    assert [c["briefId"] for c in result["contents"]] == [str(delivered)]
+
+
+def test_a_content_without_a_brief_groups_nowhere_and_says_so():
+    """An absent brief is a first-class recorded state (ADR-0022 §4), and a manually
+    registered one carries no derived hash. Neither is reported as a group of its own."""
+    inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
+    commission, paired, orphan = uuid4(), uuid4(), uuid4()
+
+    result = project(
+        inst,
+        {paired: {"cr": "pass"}, orphan: {"cr": "fail"}},
+        briefs_of={paired: commission, orphan: None},
+        briefs={commission: brief(commission, "Registered by hand", brief_hash=None)},
+    )
+
+    by_content = {c["contentId"]: c for c in result["contents"]}
+    assert by_content[str(orphan)]["briefId"] is None
+    assert result["briefs"] == [
+        {"briefId": str(commission), "briefHash": None, "brief": "Registered by hand"}
+    ]
+    # The orphan still counts everywhere else: it is unpaired, not excluded.
+    assert result["study"]["qualities"]["q"]["fitness"] == 0.5
+
+
+def test_a_brief_the_caller_could_not_read_is_still_named():
+    """Dropping the row would take the group with it, and identifying the group is what the
+    table is for."""
+    inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
+    commission, content = uuid4(), uuid4()
+
+    result = project(inst, {content: {"cr": "pass"}}, briefs_of={content: commission}, briefs={})
+
+    assert result["briefs"] == [{"briefId": str(commission), "briefHash": None, "brief": None}]
+    assert result["contents"][0]["briefId"] == str(commission)
+
+
 def test_only_the_current_judgment_of_a_content_counts():
     """Judgments are append-only; a superseded one must not feed the number the GA reads."""
     inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
@@ -328,6 +438,7 @@ def test_only_the_current_judgment_of_a_content_counts():
                 generator_version_id=None,
             )
         ],
+        briefs={},
         generators={},
         judgments=[
             JudgmentInfo(judgment_id=stale, content_id=content, derived_at=NOW, coverage={}),
@@ -382,6 +493,9 @@ def test_every_value_travels_with_its_formula_version_and_assessor_coverage():
     )
 
     assert result["formulaVersion"] == FITNESS_FORMULA_VERSION
+    # Labelling a value is not changing it: the brief axis moved no number, so values
+    # computed before it stay comparable with values computed after (ADR-0039 §6).
+    assert result["formulaVersion"] == "1"
     assert result["signal"] == "optimization"  # never a judgment
     assert result["assessorCoverage"]["ratifiedAssessors"] == [str(assessor)]
     assert result["assessorCoverage"]["notAssessed"] == 1
@@ -401,6 +515,7 @@ def test_a_study_with_nothing_pinned_answers_with_its_gaps():
         study=study,
         instrument=None,
         contents=[],
+        briefs={},
         generators={},
         judgments=[],
         outcomes=[],
@@ -410,3 +525,4 @@ def test_a_study_with_nothing_pinned_answers_with_its_gaps():
 
     assert [g["gap"] for g in result["gaps"]] == ["instrument_not_pinned", "dataset_not_composed"]
     assert result["study"] == {}
+    assert result["briefs"] == []

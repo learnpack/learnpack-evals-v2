@@ -33,6 +33,10 @@ class BriefDTO:
     brief_id: UUID
     brief: str
     fields: dict[str, Any]
+    # The identity of the effective instruction (ADR-0022 §3), published because the id is
+    # not portable: a UUID is minted per store, the hash is the same commission anywhere.
+    # Null on a manually registered brief, which has no derived identity.
+    brief_hash: str | None = None
 
 
 @dataclass(frozen=True)

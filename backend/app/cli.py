@@ -1825,6 +1825,14 @@ def run_show_fitness(study_id: UUID) -> int:
         instrument_version_id = study.instrument_version_id
         registry = StudiesRegistryGateway(session)
         contents = registry.get_contents_by_ids(list(study.content_ids))
+        # The recipe as well as what the contents reference (ADR-0039 §3): a commission that
+        # produced no course is a reading, not an absence.
+        briefs = {
+            brief_id: brief
+            for brief_id in set(study.brief_ids)
+            | {c.brief_id for c in contents if c.brief_id is not None}
+            if (brief := registry.get_brief(brief_id)) is not None
+        }
         generators = {
             content.generator_version_id: generator
             for content in contents
@@ -1841,6 +1849,7 @@ def run_show_fitness(study_id: UUID) -> int:
                 else None
             ),
             contents=contents,
+            briefs=briefs,
             generators=generators,
             judgments=(
                 evaluation.get_judgments(content_ids, instrument_version_id)

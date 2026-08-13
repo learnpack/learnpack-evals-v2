@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-12._
+_Last updated: 2026-08-13._
 
 ## Where we are
 
@@ -96,6 +96,27 @@ published `InstrumentVersion` now **freezes its `quality → dimension` map**
 retroactively; and `evaluation.public` publishes `get_criterion_outcomes` — the un-aggregated
 five states per criterion, which `judgment_claims.evidence_basis` cannot supply (it is counted
 per claim, and claims excluded from the denominator have no row at all).
+
+**The brief axis (ADR-0039), the first piece built for the collaborator's use.** The GA
+experiment generates **several courses from one brief with one generator version** to measure how
+much that version varies on a commission, and the projection could not express the grouping: the
+three grains never named the brief, though `ContentInfo.brief_id` already reached
+`compute_fitness` and the study report has labelled its contents since block 7. Now each content
+section carries its `briefId` (`null` where the intake derived none) and the header carries a
+**brief table** — one entry per commission, never per course, with `briefHash` and the brief's
+text — covering the study's recipe **union** what its contents reference, so a commission that
+produced no course reads as an empty group instead of vanishing. The hash is published because
+the id is not portable: a UUID is minted per store and does not survive the local database being
+rebuilt between generations, while `sha256(description + materialsHash)` (ADR-0022 §3) is the same
+commission anywhere. It travels through `BriefDTO` → `BriefInfo`, which had never carried it.
+**Nothing is pooled per brief**, and the ADR records why: across generator versions a pool mixes
+individuals, and per brief × version it collapses exactly the dispersion the repeats exist to
+measure — a consumer can derive the pooled value from labelled contents and can never recover the
+dispersion from a pooled one. `FITNESS_FORMULA_VERSION` therefore stays `"1"`: no state entered or
+left a denominator, so every value computed before this stays comparable with every value computed
+after. The console's fitness panel gained a **By brief** block — one row per course, one column
+per dimension, the commissions of the recipe with no course included — which is the only reading
+that makes a version's variability visible to a person.
 
 **After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
 declaration** — a generator version or an explicit `unknown` — at every entry point (form,

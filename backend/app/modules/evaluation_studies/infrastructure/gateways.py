@@ -61,7 +61,12 @@ class RegistryGateway:
         dto = self._queries.get_brief(brief_id)
         if dto is None:
             return None
-        return BriefInfo(brief_id=dto.brief_id, brief=dto.brief, fields=dto.fields)
+        return BriefInfo(
+            brief_id=dto.brief_id,
+            brief=dto.brief,
+            fields=dto.fields,
+            brief_hash=dto.brief_hash,
+        )
 
     def get_generator(self, generator_version_id: UUID) -> GeneratorInfo | None:
         dto = self._queries.get_generator_version(generator_version_id)
