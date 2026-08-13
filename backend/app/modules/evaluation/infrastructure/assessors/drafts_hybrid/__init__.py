@@ -1,4 +1,14 @@
-"""`drafts-hybrid` v7 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v8 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v8 lets an answer cut at the token budget buy the clean-conversation retry that v6 gave
+degeneration alone. The v1 lesson said `finish_reason: length` is deterministic and
+retrying never recovered one — measured over feedback retries, where the broken answer
+re-enters the same conversation. The v7 field runs sharpened it: length-cut runaways are
+deterministic **per provider** (all three of the campaign's came from one upstream, while
+the same questions answered cleanly under every other), and OpenRouter draws an upstream
+per request — so a conversation rebuilt from scratch is a re-roll of that draw, worth
+exactly one attempt. `CLEAN_RETRY_KINDS` is declared in `SOURCE_CONFIG` because which
+failures may be retried decides which verdict survives.
 
 v7 says "no reasoning" in both of the words a provider might understand:
 `reasoning: {effort: "none", enabled: false}`. OpenRouter documents `effort` for
@@ -142,7 +152,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "7"
+VERSION = "8"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
@@ -261,8 +271,11 @@ SOURCE_CONFIG = {
         "judgeMaxOutputTokens": judgments.JUDGE_MAX_OUTPUT_TOKENS,
         "extractionMaxOutputTokens": judgments.EXTRACTION_MAX_OUTPUT_TOKENS,
         # How a failing conversation is retried decides which answer finally arrives
-        # (ADR-0037 §7): degeneration alone may buy this many fresh conversations.
-        "cleanRetries": {"max": structured_output.MAX_CLEAN_RETRIES},
+        # (ADR-0037 §7): these kinds may buy this many fresh conversations.
+        "cleanRetries": {
+            "max": structured_output.MAX_CLEAN_RETRIES,
+            "kinds": list(structured_output.CLEAN_RETRY_KINDS),
+        },
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,

@@ -471,12 +471,38 @@ an instruction at all. **v7 says it both ways**: `{effort: "none", enabled: fals
 `enabled` being the boolean OpenRouter can translate more broadly. Belt and braces, not a
 guarantee: an upstream that ignores the whole `reasoning` object still ignores it, which
 is the open provider-pinning question (two more data points on its pile, providers named
-in the traces), not this bump's business. Not yet measured: whether v7 actually lowers
-the reasoning spend — read `tokens_out` per provider in the next traces against the two
-recorded today. A lateral note for the threshold reading:
-`cr-closing-lesson-projects-forward` settled 2-0 on the CSS draft (where it was the coin
-flip) and split 2-1 on the HTML draft (where it had been unanimous) — one run each, read
-the three HTML samples' reasons before concluding anything.
+in the traces), not this bump's business.
+
+**What nine runs under v7 then measured (3 CSS + 3 HTML of the calibration pair, then
+three new courses).** The threshold verdict first: **v5's wording settled the criterion it
+was written for** — `cr-closing-lesson-projects-forward` on the CSS draft came back 2-0
+*fail* in all three runs, six samples without one dissent. The borderline moved to the
+HTML draft: its majority verdict (*pass*) was stable across all three runs — the vote
+doing its job — but the split came back 2-1 twice, which is the recorded signature of an
+under-specified edge, now on the neighbour's closing. `assessment_verification_match`
+wobbled 2-1 once on HTML. Every other judged criterion was unanimous in every run.
+Three more findings, each with the provider named in the trace:
+
+- **`enabled: false` is not enough either**: under v7, AtlasCloud billed 1,139 output
+  tokens for a ~97-token visible answer — it ignores both reasoning fields. The cost
+  leak's remaining fix is the provider-pinning question, whose pile keeps growing.
+- **Every capped runaway of the campaign — three — came from Sail Research**, and all
+  share one new shape: *enumeration* degeneration (item indices counting 0…806 with a
+  null for good measure; the full lesson inventory recited), which evades the
+  no-duplicates rule by producing distinct values and is refused by the range/id
+  validators instead. The failure budget absorbed every one.
+- **The feedback loop recovered six real misquotes across the new courses** at one extra
+  call each — quote-start capitalization ("These" for "these" mid-sentence), a dropped
+  word, a passage quoted twice — first field confirmation that actionable feedback pays,
+  and that grounding is catching real alterations, not formatting.
+
+**v8 — a budget cut buys the clean retry too.** The v1 lesson ("length is deterministic,
+retrying never recovered one") was measured over feedback retries, where the broken answer
+re-enters the same conversation. The field runs sharpened it: a length-cut runaway is
+deterministic **per provider**, and the router draws a provider per request — so one
+conversation rebuilt from scratch is one re-roll of that draw. `CLEAN_RETRY_KINDS =
+(degeneration, budget)` is declared in `SOURCE_CONFIG`; a usable capped answer still
+returns without spending the retry, and transport/configuration stay never-retried.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
@@ -514,10 +540,11 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 `drafts-hybrid` is a new identity that inherits nothing from the previous one's
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
-`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 7
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 8
 --instrument-version-id <version> --email <admin>`. Which version is part of the act: the
-registry's current artifact is **v7** (reasoning disabled in both fields), and each bump
-inherited nothing from the previous version's runs. Ratifying before the seven judged
+registry's current artifact is **v8** (reasoning disabled in both fields; degeneration and
+budget cuts each buy one clean retry), and each bump inherited nothing from the previous
+version's runs. Ratifying before the seven judged
 criteria have been read would persist verdicts nobody has checked, which is the one thing
 the calibration loop exists to prevent.
 
