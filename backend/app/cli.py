@@ -17,6 +17,7 @@ import logging
 import re
 import sys
 from collections.abc import Callable
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -811,8 +812,6 @@ def run_evaluate(
             # The scriptable half of the calibration loop gets what the page gets: each
             # criterion announced as it lands (to stderr, so stdout stays the report) and
             # every LLM attempt written to the run's trace file.
-            if package.reset_caches is not None:
-                package.reset_caches()
             trace = observability.trace_path(f"cli-{new_id()}")
             preview_use_case = PreviewEvaluation(
                 instruments=instruments,
@@ -824,8 +823,11 @@ def run_evaluate(
             if trace is not None:
                 sinks.append(observability.jsonl_sink(trace))
             sink = observability.fan_out(*sinks)
+            # This run's own memory of what it asked, so nothing of an earlier one leaks
+            # into its spend or its trace.
+            scope = package.cache_scope() if package.cache_scope else nullcontext()
             try:
-                with observability.collecting(sink):
+                with scope, observability.collecting(sink):
                     preview = preview_use_case(
                         PreviewEvaluationCommand(
                             content_id=content_id, instrument_version_id=instrument_version_id

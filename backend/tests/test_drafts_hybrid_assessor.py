@@ -22,6 +22,7 @@ business, never the suite's — no test touches the network.
 import copy
 import dataclasses
 import json
+import threading
 from uuid import uuid4
 
 import pytest
@@ -143,9 +144,9 @@ class FakeLlmClient:
 
 @pytest.fixture(autouse=True)
 def isolated_task_cache():
-    drafts_hybrid.clear_caches()
-    yield
-    drafts_hybrid.clear_caches()
+    """Each test evaluates in its own memoization scope, like each evaluation does."""
+    with drafts_hybrid.cache_scope():
+        yield
 
 
 @pytest.fixture
@@ -465,6 +466,59 @@ def test_paired_criteria_share_one_extraction(fake_llm):
 
     assert present.passed and verbs.passed
     assert len(client.calls) == 1  # the second criterion read the memoized extraction
+
+
+def test_two_evaluations_of_one_profile_each_ask_for_themselves(fake_llm):
+    """The other half of the memoization contract: sharing is within ONE evaluation.
+
+    Repeats over the same content are how a judge's variance gets measured, so a second run
+    reading the first one's answer would not be a second sample — it would be one answer
+    counted twice, silently, with an empty trace and a spend it never paid.
+    """
+    client = fake_llm(
+        outcomes=[
+            outcomes_json((GROUNDED_OUTCOME, "build", True)),
+            outcomes_json((GROUNDED_OUTCOME, "build", True)),
+        ]
+    )
+    data = outcomes_profile()
+    spec = _V5_CRITERIA["cr-outcomes-present"]
+
+    for _ in range(2):
+        with drafts_hybrid.cache_scope():
+            assert PACKAGE.executors["cr-outcomes-present"](spec, data).passed
+
+    assert len(client.calls) == 2
+
+
+def test_concurrent_evaluations_do_not_read_each_others_answers(fake_llm):
+    """Two workers, one profile: each pays for its own answer. Without a scope per thread
+    the batch would silently collapse repeats into one measurement — and the caches used to
+    be one dict per process, which is exactly what a parallel batch would have shared."""
+    client = fake_llm(
+        outcomes=[
+            outcomes_json((GROUNDED_OUTCOME, "build", True)),
+            outcomes_json((GROUNDED_OUTCOME, "build", True)),
+        ]
+    )
+    data = outcomes_profile()
+    spec = _V5_CRITERIA["cr-outcomes-present"]
+    passed: list[bool] = []
+    barrier = threading.Barrier(2)
+
+    def evaluate() -> None:
+        with drafts_hybrid.cache_scope():
+            barrier.wait(timeout=5)  # both inside their scopes before either asks
+            passed.append(PACKAGE.executors["cr-outcomes-present"](spec, data).passed)
+
+    threads = [threading.Thread(target=evaluate) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert passed == [True, True]
+    assert len(client.calls) == 2
 
 
 # --- the judged criteria: the verdict is the model's, the vocabulary is not -------------

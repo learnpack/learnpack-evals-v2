@@ -45,11 +45,9 @@ budget, the shape of the question and the grounding rule. Editing it is a new ve
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
 
 from app.modules.evaluation.domain.model import (
     CriterionSpec,
-    ExecutionFailure,
     ProfileData,
     ProfileEntryData,
 )
@@ -58,6 +56,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
     runtime,
     tasks,
 )
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.memo import TaskMemo
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
     LlmUsage,
     request_structured_output,
@@ -189,33 +188,21 @@ class ItemReach:
 # criteria reading one answer must not pay for it twice. Here it is the assessment mapping
 # that two criteria share.
 
-_cache: dict[tuple[str, UUID], Any] = {}
+_memo = TaskMemo("drafts_hybrid_judgments")
+
+
+cache_scope = _memo.scope
 
 
 def clear_judgment_cache() -> None:
-    _cache.clear()
+    _memo.clear()
 
 
 def _memoized(task_id: str, profile: ProfileData, run: Callable[[], Any]) -> Any:
-    """Whatever `run` returns, once per (task, profile). Callers that also need the spend
-    return it inside the value — a `Judgement` carries its own, the extraction tasks pair
-    theirs with the data.
-
-    Typed failures are cached like answers (ADR-0037 §2): the two criteria that share the
-    assessment mapping must degrade together, with one cause, without re-asking the model
-    a question that just degenerated. Only `ExecutionFailure`; a bug propagates every
-    time."""
-    key = (task_id, profile.profile_id)
-    if key not in _cache:
-        try:
-            _cache[key] = run()
-        except ExecutionFailure as exc:
-            _cache[key] = exc
-            raise
-    cached = _cache[key]
-    if isinstance(cached, ExecutionFailure):
-        raise cached
-    return cached
+    """Whatever `run` returns, once per (task, profile) in this evaluation. Callers that
+    also need the spend return it inside the value — a `Judgement` carries its own, the
+    extraction tasks pair theirs with the data."""
+    return _memo.memoized(task_id, profile, run)
 
 
 # --- grounding: finding the model's quote in the source ----------------------------------
