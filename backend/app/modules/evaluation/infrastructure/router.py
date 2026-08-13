@@ -27,6 +27,7 @@ everything else a run can hit becomes the run's own error, so the page reads eve
 from one place.
 """
 
+from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -224,6 +225,9 @@ class PreviewOutcomeResponse(BaseModel):
     quote: str | None
     locator: dict[str, Any] | None
     failure_mode: str | None
+    # Present exactly on execution_error: {task, kind, message} — why THIS run could not
+    # judge the criterion (ADR-0037), never a statement about the content.
+    execution_cause: dict[str, Any] | None = None
 
 
 class PreviewClaimResponse(BaseModel):
@@ -284,6 +288,9 @@ class PreviewEvaluationResponse(BaseModel):
                     quote=o.quote,
                     locator=dict(o.locator) if o.locator is not None else None,
                     failure_mode=o.failure_mode,
+                    execution_cause=(
+                        asdict(o.execution_cause) if o.execution_cause is not None else None
+                    ),
                 )
                 for o in preview.outcomes
             ],

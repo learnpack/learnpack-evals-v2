@@ -212,7 +212,11 @@ def test_fitness_is_its_own_resource_and_informs_before_there_is_anything_to_mea
     # The instrument's qualities are known even before a single content is judged, and each
     # is undefined rather than zero — nothing was measurable yet.
     assert pinned["study"]["qualities"]["objectives-observable"]["fitness"] is None
-    assert pinned["denominatorRule"]["excluded"] == ["not_applicable", "not_assessed"]
+    assert pinned["denominatorRule"]["excluded"] == [
+        "not_applicable",
+        "not_assessed",
+        "execution_error",
+    ]
 
     assert admin_client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 404
 

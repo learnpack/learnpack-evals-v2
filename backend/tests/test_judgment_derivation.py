@@ -1,4 +1,4 @@
-"""Judgment derivation — conjunctive sufficiency over five states, pure domain."""
+"""Judgment derivation — conjunctive sufficiency over six states, pure domain."""
 
 import pytest
 
@@ -8,6 +8,7 @@ from app.modules.evaluation.domain.model import (
     ClaimSpec,
     CriterionOutcome,
     CriterionSpec,
+    ExecutionCause,
     InstrumentSpec,
     InvalidAutomatedEvaluation,
 )
@@ -45,6 +46,11 @@ def outcome(criterion_id: str, kind: str, **overrides) -> CriterionOutcome:
         "no_evidence": dict(outcome="no_evidence", derived=True),
         "not_applicable": dict(outcome="not_applicable", derived=True),
         "not_assessed": dict(outcome="not_assessed", derived=True),
+        "execution_error": dict(
+            outcome="execution_error",
+            derived=True,
+            execution_cause=ExecutionCause(task="task", kind="degeneration", message="loop"),
+        ),
     }
     return CriterionOutcome(criterion_id=criterion_id, **(presets[kind] | overrides))
 
@@ -66,7 +72,9 @@ def test_one_cited_counterexample_refutes():
     assert draft.claims[0].status == "refuted"
 
 
-@pytest.mark.parametrize("state", ["no_evidence", "not_assessed", "not_applicable"])
+@pytest.mark.parametrize(
+    "state", ["no_evidence", "not_assessed", "not_applicable", "execution_error"]
+)
 def test_anything_short_of_full_pass_is_insufficient(state):
     draft = derive_judgment(
         instrument({"cr-1": ("cl-a",), "cr-2": ("cl-a",)}),
@@ -78,6 +86,7 @@ def test_anything_short_of_full_pass_is_insufficient(state):
         "no_evidence": "noEvidence",
         "not_assessed": "notAssessed",
         "not_applicable": "notApplicable",
+        "execution_error": "executionError",
     }
     assert draft.claims[0].evidence_basis[key[state]] == 1
 
@@ -94,7 +103,21 @@ def test_all_not_applicable_claim_is_excluded_and_recorded_in_coverage():
         "noEvidence": 0,
         "notApplicable": 1,
         "notAssessed": 0,
+        "executionError": 0,
     }
+
+
+def test_execution_error_never_excludes_a_claim():
+    # Even a claim whose evidencing criteria ALL errored stays in the judgment: a gap in
+    # this run must stay visible in it (ADR-0037 §5) — unlike all-not_applicable.
+    draft = derive_judgment(
+        instrument({"cr-1": ("cl-a",), "cr-2": ("cl-a",)}),
+        (outcome("cr-1", "execution_error"), outcome("cr-2", "execution_error")),
+    )
+    assert [c.claim_id for c in draft.claims] == ["cl-a"]
+    assert draft.claims[0].status == "insufficient"
+    assert draft.coverage["excludedClaims"] == []
+    assert draft.coverage["criteria"]["executionError"] == 2
 
 
 def test_derived_fail_refutes_and_produces_a_quoteless_finding():

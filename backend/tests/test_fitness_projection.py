@@ -9,6 +9,8 @@ the mean of its DEFINED qualities.
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.modules.evaluation_studies.application.dtos import (
     ContentInfo,
     CriterionOutcomeInfo,
@@ -148,11 +150,11 @@ def test_a_claim_about_two_qualities_counts_its_criteria_fully_in_each():
 
 def test_omissions_penalize_and_assessor_limits_do_not():
     """The anti-gaming core: no_evidence is the generator's omission and counts against it;
-    not_assessed is our missing executor and must not, or the fitness would improve merely
-    by ratifying an assessor."""
+    not_assessed is our missing executor and execution_error is this run's own failure —
+    neither must count, or the fitness would track our tooling instead of the artifact."""
     inst = instrument(
         claims=[claim("cl", "q")],
-        criteria=[criterion(f"cr-{i}", "cl") for i in range(1, 5)],
+        criteria=[criterion(f"cr-{i}", "cl") for i in range(1, 6)],
     )
     content = uuid4()
 
@@ -164,6 +166,7 @@ def test_omissions_penalize_and_assessor_limits_do_not():
                 "cr-2": "no_evidence",  # in, penalizes
                 "cr-3": "not_assessed",  # out
                 "cr-4": "not_applicable",  # out
+                "cr-5": "execution_error",  # out (ADR-0037 §6)
             }
         },
     )
@@ -173,6 +176,17 @@ def test_omissions_penalize_and_assessor_limits_do_not():
     assert quality["fitness"] == 0.5
     assert quality["coverage"]["notAssessed"] == 1
     assert quality["coverage"]["notApplicable"] == 1
+    assert quality["coverage"]["executionError"] == 1
+
+
+def test_an_unknown_outcome_state_is_loud_never_dropped():
+    """The partition must name every state: a silent drop is the NaN failure mode the
+    industry already paid for (ADR-0037 §6)."""
+    inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr-1", "cl")])
+    content = uuid4()
+
+    with pytest.raises(ValueError, match="unknown outcome state"):
+        project(inst, {content: {"cr-1": "half_pass"}})
 
 
 def test_an_unmeasurable_quality_is_undefined_and_never_zero():
@@ -353,13 +367,17 @@ def test_only_the_current_judgment_of_a_content_counts():
 
 def test_every_value_travels_with_its_formula_version_and_assessor_coverage():
     """Pinning the formula is not enough: dropping not_assessed means two assessor sets
-    compute over different populations, so the GA may only compare within equal coverage."""
-    inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
+    compute over different populations — and dropping execution_error means two runs of
+    the same content can too (ADR-0037 §6) — so the GA may only compare within equal
+    coverage, and both counts travel with every value."""
+    inst = instrument(
+        claims=[claim("cl", "q")], criteria=[criterion("cr", "cl"), criterion("cr-2", "cl")]
+    )
     content, assessor = uuid4(), uuid4()
 
     result = project(
         inst,
-        {content: {"cr": "not_assessed"}},
+        {content: {"cr": "not_assessed", "cr-2": "execution_error"}},
         ratifications=[RatificationInfo(assessor_id=assessor, instrument_version_id="qa-v1")],
     )
 
@@ -367,7 +385,12 @@ def test_every_value_travels_with_its_formula_version_and_assessor_coverage():
     assert result["signal"] == "optimization"  # never a judgment
     assert result["assessorCoverage"]["ratifiedAssessors"] == [str(assessor)]
     assert result["assessorCoverage"]["notAssessed"] == 1
-    assert result["denominatorRule"]["excluded"] == ["not_applicable", "not_assessed"]
+    assert result["assessorCoverage"]["executionErrors"] == 1
+    assert result["denominatorRule"]["excluded"] == [
+        "not_applicable",
+        "not_assessed",
+        "execution_error",
+    ]
 
 
 def test_a_study_with_nothing_pinned_answers_with_its_gaps():

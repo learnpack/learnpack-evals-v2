@@ -73,7 +73,7 @@ class RatificationDTO:
 class CriterionOutcomeDTO:
     """One criterion's outcome under a published judgment, in its own right.
 
-    `judgment_claims.evidence_basis` already counts these five states, but only per claim
+    `judgment_claims.evidence_basis` already counts these six states, but only per claim
     and pre-aggregated — a consumer that must attribute a criterion to something other than
     its claim (ADR-0023: to a quality, deduplicated) needs the criterion's identity, which a
     count has lost. `derived` marks the absence-derived `fail` (ADR-0021).
@@ -82,7 +82,7 @@ class CriterionOutcomeDTO:
     judgment_id: UUID
     content_id: UUID
     criterion_id: str
-    outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed
+    outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed | execution_error
     derived: bool
 
 

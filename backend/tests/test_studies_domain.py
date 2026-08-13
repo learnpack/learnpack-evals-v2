@@ -221,6 +221,15 @@ BASIS_FAIL = {"pass": 1, "fail": 1, "noEvidence": 0, "notApplicable": 0, "notAss
 BASIS_NOT_ASSESSED = {"pass": 1, "fail": 0, "noEvidence": 0, "notApplicable": 0, "notAssessed": 1}
 BASIS_NO_EVIDENCE = {"pass": 0, "fail": 0, "noEvidence": 1, "notApplicable": 0, "notAssessed": 0}
 BASIS_MIXED = {"pass": 0, "fail": 0, "noEvidence": 1, "notApplicable": 0, "notAssessed": 1}
+# Judgments derived since ADR-0037 carry the sixth key; the report reads both shapes.
+BASIS_EXECUTION_ERROR = {
+    "pass": 1,
+    "fail": 0,
+    "noEvidence": 0,
+    "notApplicable": 0,
+    "notAssessed": 0,
+    "executionError": 1,
+}
 
 
 def judgment(content_id, *claims, derived_at=NOW, excluded=()):
@@ -304,6 +313,41 @@ def test_insufficiency_is_qualified_by_cause():
         ("cl-structure", "not_assessed"),
         ("cl-objectives", "no_evidence"),
     }
+
+
+def test_execution_error_is_a_named_insufficiency_cause_and_a_caveat():
+    cid = uuid4()
+    j = JudgmentInfo(
+        judgment_id=uuid4(),
+        content_id=cid,
+        derived_at=NOW,
+        coverage={"criteria": {"executionError": 2}, "excludedClaims": []},
+        claims=(
+            ClaimJudgment("cl-structure", "insufficient", BASIS_EXECUTION_ERROR),
+            ClaimJudgment(
+                "cl-objectives",
+                "insufficient",
+                BASIS_EXECUTION_ERROR | {"noEvidence": 1},
+            ),
+        ),
+    )
+    report = compose_report(
+        study=published_study([cid]),
+        contents=[content(cid)],
+        briefs={},
+        generators={},
+        judgments=[j],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        published_at=NOW,
+    )
+    causes = {c["claimId"]: c["insufficiencyCause"] for c in report["contents"][0]["claims"]}
+    # Never "unknown": the run's failure is a named cause; two causes at once read mixed.
+    assert causes == {"cl-structure": "execution_error", "cl-objectives": "mixed"}
+    assert report["caveats"]["executionErrors"]["perContent"] == [
+        {"contentId": str(cid), "count": 2}
+    ]
 
 
 def test_a_quoteless_finding_shows_its_cause():
@@ -424,9 +468,11 @@ def test_every_caveat_kind_is_always_present():
         "briefCompleteness",
         "contentsWithoutJudgment",
         "taskVariablePatterns",
+        "executionErrors",
     }
     assert caveats["unresolvedDisagreements"] == []  # inert, present on purpose
     assert caveats["taskVariablePatterns"]["status"] == "deferred"  # non-silent deferral
+    assert caveats["executionErrors"]["perContent"] == []  # present even when empty
 
 
 def test_caveats_carry_brief_completeness_and_adapter_acceptance():
