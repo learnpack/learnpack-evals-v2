@@ -498,11 +498,28 @@ Three more findings, each with the provider named in the trace:
 
 **v8 — a budget cut buys the clean retry too.** The v1 lesson ("length is deterministic,
 retrying never recovered one") was measured over feedback retries, where the broken answer
-re-enters the same conversation. The field runs sharpened it: a length-cut runaway is
-deterministic **per provider**, and the router draws a provider per request — so one
-conversation rebuilt from scratch is one re-roll of that draw. `CLEAN_RETRY_KINDS =
-(degeneration, budget)` is declared in `SOURCE_CONFIG`; a usable capped answer still
-returns without spending the retry, and transport/configuration stay never-retried.
+re-enters the same conversation; a conversation rebuilt from scratch re-rolls the serving.
+`CLEAN_RETRY_KINDS = (degeneration, budget)` is declared in `SOURCE_CONFIG`; a usable
+capped answer still returns without spending the retry, and transport/configuration stay
+never-retried.
+
+**Six runs under v8 (3 HTML + 3 GitHub): zero exceptions, and the retry earned two saves
+in its first session.** A judge call cut at its 1,500 budget was answered cleanly by a
+fresh conversation — served by the SAME provider seconds later — and a mapping that came
+back byte-identical after feedback (the degeneration signature, over an answer missing two
+of three objectives) completed on its clean conversation, again on the same provider. That
+same-provider save **refuted the "deterministic per provider" theory the v8 rationale was
+first written with** (the docstrings now say what the field showed): runaways are
+stochastic per request, strongly provider-correlated — every capped cut of the campaign
+remains one upstream's, which keeps feeding the open pinning question without changing the
+mechanism. Feedback recovered three more incomplete-mapping answers at one extra call
+each. **The instrument signal of the night:** `cr-closing-lesson-projects-forward` on the
+HTML draft produced its first judgment-level flip — one of the three runs decided 2-1
+*fail* where every other run (five, across v7 and v8) decided *pass* — and
+`cr-opening-lesson-connects-backwards` on HTML went 2-1 twice after being unanimous all
+campaign. The recurring 2-1s were the warning; the flip is the bug report: the HTML
+closing sits ON the v5 threshold, and deciding it belongs to the instrument's next
+wording, not to more sampling.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
