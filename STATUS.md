@@ -564,6 +564,27 @@ buys consistency at an availability price already judged worse than the variance
 for an entry is repeated, trace-documented failure — Phala (one 3,491-token bill) is
 watched, not listed. Editing the list in either direction is a version bump.
 
+**v10 — the wrapped outcome verb, the first bump the human review of verdicts produced.**
+Reading the eleven runs of the v6 era by criterion found `outcomes_extraction` taking the
+auxiliary of a wrapper as the verb and marking observable content non-observable: *"you will
+be able to read, write, and structure your own web pages"* → `be able to`, false; *"you'll
+go from writing plain, unstyled HTML pages to confidently styling…"* → `go`, false — while
+the SAME structure in another draft, *"you will be able to contribute to any GitHub
+repository"*, answered `contribute`, true. Inconsistency rather than a rule, the same class
+as the historic `learn` case, and it lands on `cr-outcomes-observable-verbs` as a false fail
+on two of the three drafts. The prompt now says to look through an enabling phrase and
+report the verb of the action, to take the first when several are named, and to report the
+wrapper phrase itself when there is no action behind it — a state about a topic is not an
+observable action, which is the answer the criterion IS written to catch. **Two remedies
+were rejected and the docstring says why:** a validator deny-list of wrapper verbs would
+force a false answer, because `be familiar with` / `learn about` / `understand` are exactly
+the answers a truthful extraction must be able to give; and rewording the task's own framing
+line ("what the learner will BE ABLE TO DO" — the likely source of the priming) would move
+which statements are LISTED, which is `cr-outcomes-present`'s evidence, leaving the field
+verification with two variables. `objectives_classification` carries the same field and the
+same risk and was left alone: the same reading found it resolving correctly in all three
+drafts. Prompts are identity (ADR-0034), so v9's calibration does not transfer.
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
@@ -600,11 +621,11 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 `drafts-hybrid` is a new identity that inherits nothing from the previous one's
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
-`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 8
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 10
 --instrument-version-id <version> --email <admin>`. Which version is part of the act: the
-registry's current artifact is **v8** (reasoning disabled in both fields; degeneration and
-budget cuts each buy one clean retry), and each bump inherited nothing from the previous
-version's runs. Ratifying before the seven judged
+registry's current artifact is **v10** (reasoning disabled in both fields; degeneration and
+budget cuts each buy one clean retry; the denied upstreams; the wrapped outcome verb), and
+each bump inherited nothing from the previous version's runs. Ratifying before the seven judged
 criteria have been read would persist verdicts nobody has checked, which is the one thing
 the calibration loop exists to prevent.
 
