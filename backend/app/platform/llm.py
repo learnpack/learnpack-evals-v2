@@ -13,6 +13,13 @@ change may alter whether and when an answer arrives, never which answer arrives.
 Environment supplies access, not identity: the API key and the base URL come from
 `Settings` at wiring time; the model id always arrives per call, from the assessor's code.
 
+Two things every call passes through live here for the same reason — this is the only place
+that sees them all, however many levels of fan-out sit above it. **How many requests may be
+in flight at once**, because a rate limit is survived by backing off but the cost of having
+asked is not recoverable; and **whether the work is still wanted**
+(`app.platform.cancellation`), because a call not issued is money not spent. Both are access
+rather than identity: they change whether and when an answer arrives, never which one.
+
 Every attempt is announced to `app.platform.observability` — what was sent, what came
 back, what it cost — so a caller that wants a trace gets one without this module knowing
 who is listening. Announcing an answer does not change which answer arrives, so it
@@ -30,7 +37,7 @@ from typing import Any
 
 import httpx
 
-from app.platform import observability
+from app.platform import cancellation, observability
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +203,9 @@ class ChatCompletionsClient:
         last_transient = ""
         for attempt in range(1, MAX_TRANSPORT_ATTEMPTS + 1):
             here = asked.attempt(attempt)
+            # Before the money is spent, and before waiting for a slot: a call not issued
+            # is a call not paid for, and this is the point every call passes through.
+            cancellation.check()
             try:
                 with self._slot():
                     response = self._http.post(
