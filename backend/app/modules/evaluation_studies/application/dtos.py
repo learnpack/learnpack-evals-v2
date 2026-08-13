@@ -85,7 +85,7 @@ class CriterionOutcomeInfo:
     judgment_id: UUID
     content_id: UUID
     criterion_id: str
-    outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed
+    outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed | execution_error
     derived: bool  # the absence-derived fail (ADR-0021); counted as a fail all the same
 
 

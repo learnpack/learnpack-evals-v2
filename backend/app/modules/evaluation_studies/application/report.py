@@ -39,15 +39,22 @@ def latest_judgments(judgments: list[JudgmentInfo]) -> dict[UUID, JudgmentInfo]:
 
 
 def _insufficiency_cause(evidence_basis: dict[str, int]) -> str:
-    """Qualify an `insufficient` by its cause (ADR-0018: three causes, three remedies)."""
-    no_evidence = evidence_basis.get("noEvidence", 0) > 0
-    not_assessed = evidence_basis.get("notAssessed", 0) > 0
-    if no_evidence and not_assessed:
+    """Qualify an `insufficient` by its cause (ADR-0018 + ADR-0037: better generator,
+    better assessor, better run). `.get` because judgments derived before ADR-0037 carry
+    no `executionError` key — an absent count is a zero, not an unknown."""
+    causes = [
+        cause
+        for key, cause in (
+            ("noEvidence", "no_evidence"),
+            ("notAssessed", "not_assessed"),
+            ("executionError", "execution_error"),
+        )
+        if evidence_basis.get(key, 0) > 0
+    ]
+    if len(causes) > 1:
         return "mixed"
-    if no_evidence:
-        return "no_evidence"
-    if not_assessed:
-        return "not_assessed"
+    if causes:
+        return causes[0]
     return "unknown"
 
 
@@ -182,6 +189,12 @@ def _caveats(
 
     without_judgment = [str(c.content_id) for c in contents if c.content_id not in current]
 
+    execution_errors = [
+        {"contentId": str(judgment.content_id), "count": count}
+        for judgment in sorted(current.values(), key=lambda j: str(j.content_id))
+        if (count := judgment.coverage.get("criteria", {}).get("executionError", 0)) > 0
+    ]
+
     return {
         "insufficientEvidence": insufficient,
         # Inert in the first increment (single automated assessor) — present on purpose.
@@ -198,6 +211,15 @@ def _caveats(
         "unacceptedAdapters": unaccepted,
         "briefCompleteness": brief_completeness,
         "contentsWithoutJudgment": without_judgment,
+        "executionErrors": {
+            "perContent": execution_errors,
+            # ADR-0037: an execution fact of this run, never a verdict about the content;
+            # re-evaluating the content replaces it.
+            "note": (
+                "criteria this run could not judge (execution failure) — "
+                "not the content's fault; re-evaluate to replace"
+            ),
+        },
         # Deferred non-silently until the first task variable exists (13-code §3.6).
         "taskVariablePatterns": {
             "status": "deferred",

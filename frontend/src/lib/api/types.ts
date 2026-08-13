@@ -392,6 +392,8 @@ export interface StudyReportCaveats {
   briefCompleteness: { briefId: string; promptRecorded: boolean; origin: string | null }[];
   contentsWithoutJudgment: string[];
   taskVariablePatterns: { status: string; reason: string };
+  /** Absent on reports published before ADR-0037 — those are frozen; render as empty. */
+  executionErrors?: { perContent: { contentId: string; count: number }[]; note: string };
 }
 
 export interface StudyReport {
@@ -447,6 +449,7 @@ export interface FitnessCoverage {
   noEvidence: number;
   notApplicable: number;
   notAssessed: number;
+  executionError: number;
 }
 
 export interface FitnessQuality {
@@ -483,6 +486,7 @@ export interface StudyFitness {
   assessorCoverage: {
     ratifiedAssessors?: string[];
     notAssessed?: number;
+    executionErrors?: number;
     note?: string;
   };
   contents: (FitnessLevel & {
@@ -721,7 +725,15 @@ export type CriterionOutcomeState =
   | "fail"
   | "no_evidence"
   | "not_applicable"
-  | "not_assessed";
+  | "not_assessed"
+  | "execution_error";
+
+export interface ExecutionCause {
+  /** The assessor's failed unit of work; criteria fed by one task share one cause. */
+  task: string | null;
+  kind: string;
+  message: string;
+}
 
 export interface PreviewOutcome {
   criterion_id: string;
@@ -731,6 +743,8 @@ export interface PreviewOutcome {
   quote: string | null;
   locator: Record<string, unknown> | null;
   failure_mode: string | null;
+  /** Present exactly on execution_error: why THIS run could not judge it (ADR-0037). */
+  execution_cause: ExecutionCause | null;
 }
 
 export interface PreviewClaim {

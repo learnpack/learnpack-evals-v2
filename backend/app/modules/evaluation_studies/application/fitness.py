@@ -10,7 +10,8 @@ Everything here is arithmetic over what the caller already gathered — no I/O, 
 one rule worth reading twice is the denominator (§2 of the ADR): `no_evidence` and the
 absence-derived `fail` are the generator's omissions and must penalize, or evolution learns
 that the cheapest way to score well is to produce unevaluable content; `not_assessed` is our
-tooling's limit and `not_applicable` is unmet demand, so neither is charged to the generator.
+tooling's limit, `not_applicable` is unmet demand and `execution_error` is this run's own
+failure (ADR-0037), so none of them is charged to the generator.
 """
 
 from datetime import datetime
@@ -35,8 +36,9 @@ FITNESS_FORMULA_VERSION = "1"
 PASSED = "pass"
 # In the denominator and penalizing — the generator's own omissions.
 PENALIZED = ("fail", "no_evidence")
-# Out of the denominator — an assessor limitation and unmet demand, not the generator's fault.
-EXCLUDED = ("not_applicable", "not_assessed")
+# Out of the denominator — an assessor limitation, unmet demand and this run's execution
+# failures: none of them the generator's fault (ADR-0023 §2, ADR-0037 §6).
+EXCLUDED = ("not_applicable", "not_assessed", "execution_error")
 
 # camelCase state names, the same vocabulary `evidence_basis` uses.
 STATE_KEYS = {
@@ -45,6 +47,7 @@ STATE_KEYS = {
     "no_evidence": "noEvidence",
     "not_applicable": "notApplicable",
     "not_assessed": "notAssessed",
+    "execution_error": "executionError",
 }
 
 # Declared in the payload so nobody has to reverse-engineer the number from a value.
@@ -54,7 +57,12 @@ DENOMINATOR_RULE = {
     "excluded": list(EXCLUDED),
     "note": (
         "Optimization denominator, not the QA one: ADR-0018 keeps not_assessed inside the "
-        "coverage denominator of a judgment, this drops it. Same state, two purposes."
+        "coverage denominator of a judgment, this drops it. Same state, two purposes. "
+        "execution_error is likewise out (a failure of our run, not of the generator) and "
+        "extends the §7 equal-coverage rule to execution variance: two runs of the same "
+        "content are comparable only where their executionError counts permit (ADR-0037 §6). "
+        "The formula version stays 1: the state could not exist in rows persisted before "
+        "ADR-0037, so no already-computed value changes."
     ),
 }
 
@@ -87,8 +95,14 @@ def _tally(outcomes: list[str]) -> dict[str, int]:
     counts = {key: 0 for key in STATE_KEYS.values()}
     for outcome in outcomes:
         key = STATE_KEYS.get(outcome)
-        if key is not None:
-            counts[key] += 1
+        if key is None:
+            # Loud, never silent: a state this partition does not name would otherwise
+            # vanish from the counts and the coverage — the NaN failure mode (ADR-0037 §6).
+            raise ValueError(
+                f"unknown outcome state {outcome!r} — the fitness partition must name "
+                "every state (ADR-0037 §6)"
+            )
+        counts[key] += 1
     return counts
 
 
@@ -283,13 +297,19 @@ def compute_fitness(
     not_assessed = sum(
         1 for states in study_pool.values() for state in states if state == "not_assessed"
     )
+    execution_errors = sum(
+        1 for states in study_pool.values() for state in states if state == "execution_error"
+    )
     return header | {
         "assessorCoverage": {
             "ratifiedAssessors": sorted(str(r.assessor_id) for r in ratifications),
             "notAssessed": not_assessed,
+            "executionErrors": execution_errors,
             "note": (
                 "Values computed under different assessor coverage are not comparable: "
-                "not_assessed is outside the denominator, so the population differs."
+                "not_assessed is outside the denominator, so the population differs. "
+                "executionErrors differ between runs of the SAME content under the SAME "
+                "assessor — compare only where these counts permit (ADR-0037 §6)."
             ),
         },
         "contents": content_sections,

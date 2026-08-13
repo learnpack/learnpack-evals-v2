@@ -1,16 +1,17 @@
-"""Judgment derivation — sufficiency over the five-state outcomes (13-code §3.5 + §7.1).
+"""Judgment derivation — sufficiency over the six-state outcomes (13-code §3.5 + §7.1).
 
 Conjunctive rule (the only one built): a claim is **supported** iff every evidencing
 criterion passed · **refuted** iff at least one failed (one cited counterexample refutes)
-· **insufficient** otherwise (`no_evidence`/`not_assessed` fall here — ADR-0018 §4).
-Deliberate error asymmetry: conjunctive produces false "refuted" before false "supported"
-— right for internal QA.
+· **insufficient** otherwise (`no_evidence`/`not_assessed`/`execution_error` fall here —
+ADR-0018 §4, ADR-0037 §5). Deliberate error asymmetry: conjunctive produces false
+"refuted" before false "supported" — right for internal QA.
 
 Denominator rule (ADR-0011, one level up): a claim whose evidencing criteria are ALL
 `not_applicable` is excluded from the judgment (no row) and recorded in the coverage;
-everything else stays in. `evidence_basis` counts all five states per claim, so every
-"insufficient" is qualified by its cause. Findings: one per failing criterion — the
-failure mode IS the suggestion; the absence-derived fail goes quoteless with its
+everything else stays in — an `execution_error` never excludes a claim: a gap in this run
+must stay visible in it (ADR-0037 §5). `evidence_basis` counts all six states per claim,
+so every "insufficient" is qualified by its cause. Findings: one per failing criterion —
+the failure mode IS the suggestion; the absence-derived fail goes quoteless with its
 mechanical mode (ADR-0021).
 """
 
@@ -18,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.modules.evaluation.domain.model import (
+    OUTCOME_EXECUTION_ERROR,
     OUTCOME_FAIL,
     OUTCOME_NO_EVIDENCE,
     OUTCOME_NOT_APPLICABLE,
@@ -38,6 +40,7 @@ _BASIS_KEYS = {
     OUTCOME_NO_EVIDENCE: "noEvidence",
     OUTCOME_NOT_APPLICABLE: "notApplicable",
     OUTCOME_NOT_ASSESSED: "notAssessed",
+    OUTCOME_EXECUTION_ERROR: "executionError",
 }
 
 
@@ -122,6 +125,7 @@ def derive_judgment(
             "noEvidence": counts["noEvidence"],
             "notApplicable": counts["notApplicable"],
             "notAssessed": counts["notAssessed"],
+            "executionError": counts["executionError"],
         },
         "excludedClaims": excluded,
     }

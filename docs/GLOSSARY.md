@@ -105,8 +105,8 @@
   the datum's absence; the **fact** is determined by matching/profile (mechanical, never the
   assessor), and `not_applicable` only arises from capability/conditionals.
   ADR-0010 defines its shape: **verifiable pass condition + enumerated failure modes**,
-  outcome `scored (pass/fail) | not_applicable | no_evidence | not_assessed` (ADR-0018) — not
-  an appreciation scale. (The 1–5 scale survives in `Rubric v1`, which is **not migrated**: it is
+  outcome `scored (pass/fail) | not_applicable | no_evidence | not_assessed |
+  execution_error` (ADR-0018, ADR-0037) — not an appreciation scale. (The 1–5 scale survives in `Rubric v1`, which is **not migrated**: it is
   the reference instrument of calibration — ADR-0015.)
 - **Rubric** (aka `EvaluationInstrument`) — an ordered, **versioned** set of criteria.
   Interchangeable unit. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
@@ -226,9 +226,10 @@
   anti-duplication lives in the `Assignment`, not here. See ADR-0005 — **intact**. The outcomes
   `not_applicable`/`no_evidence`/`not_assessed` are **derived mechanically** (matching +
   profile + the assessor's registered abstentions, ADR-0018) — so is the absence-derived `fail`
-  when `on_missing_evidence='fail'` (ADR-0021) —, never decided by the assessor at runtime;
-  **executed** `scored` demands a quote (the derived `fail` has none: its evidence is the
-  profile's `absent` entry).
+  when `on_missing_evidence='fail'` (ADR-0021), and so is `execution_error`, minted by the
+  derivation from the typed failure an executor raises (ADR-0037: raising is not deciding) —,
+  never decided by the assessor at runtime; **executed** `scored` demands a quote (the derived
+  `fail` has none: its evidence is the profile's `absent` entry).
 - **ComputedMetric** (aka `Signal`) — a **raw measurement** produced by
   deterministic/hybrid sources (e.g. FK grade level, cohesion index, alignment cosine,
   Bloom level distribution). **It admits structured values** (distributions, lists),
@@ -243,18 +244,20 @@
   **sufficiency** (ADR-0013), under the prohibition of ADR-0011. The entry is kept as
   traceability; slice 1 code may refer to it until its migration.
 - **CriterionScore** — the outcome of a criterion on a content (+ optional `Comment`).
-  ADR-0010 + ADR-0018 shape: `scored (pass/fail) | not_applicable | no_evidence | not_assessed`,
-  **with the quote that sustains it** (only executed `scored` demands it; the
-  absence-**derived** `fail` goes without a quote, with its origin recorded — ADR-0021). The
-  three non-scored states are three causes with three remedies: no capability/conditional
+  ADR-0010 + ADR-0018 + ADR-0037 shape: `scored (pass/fail) | not_applicable | no_evidence |
+  not_assessed | execution_error`, **with the quote that sustains it** (only executed `scored`
+  demands it; the absence-**derived** `fail` goes without a quote, with its origin recorded —
+  ADR-0021; `execution_error` carries its **cause** `{task, kind, message}` instead). The
+  four non-scored states are four causes with four remedies: no capability/conditional
   (`not_applicable`) · datum absent from the content (`no_evidence`) · assessor with no
-  executor for the criterion (`not_assessed`). (The 1–5 score survives in the **reference
-  panel** flow — `Rubric v1`, ADR-0015.)
+  executor for the criterion (`not_assessed`) · this run's execution failed on it
+  (`execution_error` — a fact of the run, never of the content; re-evaluating replaces it).
+  (The 1–5 score survives in the **reference panel** flow — `Rubric v1`, ADR-0015.)
 - **EvaluationResult** — the set of `CriterionScore`s (+ comments) of an `Evaluation`.
 - **QualityJudgment** — the published quality judgment on a content: a **per-criterion
   profile** (never a single aggregated score, ADR-0011) + **coverage** (assessed / not
-  applicable / no evidence / no capable assessor — ADR-0018) + **provenance** (`assessor` +
-  `assessorCalibrationStatus`). With ECD-lite
+  applicable / no evidence / no capable assessor / execution failed — ADR-0018, ADR-0037) +
+  **provenance** (`assessor` + `assessorCalibrationStatus`). With ECD-lite
   (ADR-0013) it is communicated as **claims with evidential status** and findings under each
   claim. Event: `QualityJudgmentPublished`.
 - **Finding** — a finding derived from an unmet criterion: what failed, the **quote** (absent
@@ -266,7 +269,7 @@
 - **Fitness** — a **read-side projection for optimization, never a judgment** (ADR-0023): the
   proportion of passed criteria per `Quality`, over a denominator that keeps `no_evidence` and
   the absence-derived `fail` (the generator's omissions) and drops `not_assessed` (an assessor
-  limitation) and `not_applicable`. A `PedagogicalDimension`'s fitness is the unweighted **mean**
+  limitation), `not_applicable` and `execution_error` (this run's own failure — ADR-0037). A `PedagogicalDimension`'s fitness is the unweighted **mean**
   of its defined qualities; a `GeneratorVersion`'s **pools** the criterion counts across its
   contents. An empty denominator is `undefined`, never `0`. It is the fitness function of the
   genetic-algorithm experiment (individual = `GeneratorVersion`, generation = `EvaluationStudy`;
@@ -339,7 +342,8 @@
 | `Criterion` **+** `Assessor` executing it | *scorer* (Braintrust/MLflow) · *evaluator* (LangSmith/Azure) · *metric* (DeepEval/Ragas) · *grader* (OpenAI) · *assertion* (promptfoo) | **five names, no standard** — and all of them fuse the *what* with the *who*; our separation is the precision we do not concede |
 | Automated `Assessor` (ADR-0016) | *LLM-as-judge* · automated *scorer/evaluator* · our former `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` | the mechanism (with or without an LLM) is an internal detail of the assessor; `Assessor` (versioned instance with a target instrument) is more precise — the industry does not version judges |
 | `Sufficiency` | *evidence assembly / accumulation* (ECD) · aggregation of assertions (promptfoo et al.) | simple, explicit accumulation (ADR-0013), conjunctive/existential/m_of_n taxonomy; the industry's compensatory schemes are forbidden (ADR-0011) |
-| `CriterionScore` | *score* (Langfuse's "universal object") | ours carries a quote + an outcome of discrete states (`scored`/`not_applicable`/`no_evidence`/`not_assessed`) |
+| `CriterionScore` | *score* (Langfuse's "universal object") | ours carries a quote + an outcome of discrete states (`scored`/`not_applicable`/`no_evidence`/`not_assessed`/`execution_error`) |
+| `execution_error` (ADR-0037) | *error* vs. *failure* (xUnit) · per-sample *error* + `fail_on_error` threshold (Inspect AI) · null score excluded from aggregates (Braintrust) | the harness records that the judge could not run — categorically distinct from `fail` and never attributed to the evaluand; our derivation mints it from a typed failure, the assessor decides nothing |
 | `Evaluation` (the act) | ≈ *trace with scores* / row of a dataset run | their "run" is at dataset level — **false friend, do not adopt** |
 | verification queues (layer 2, ADR-0015) | *annotation queue* | **adopted** as a realization term |
 | `StudiesComparison` | *experiment comparison* / *regression testing* | within a line |

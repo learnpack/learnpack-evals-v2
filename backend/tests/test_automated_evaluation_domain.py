@@ -10,6 +10,7 @@ from app.modules.evaluation.domain.model import (
     ClaimSpec,
     CriterionOutcome,
     CriterionSpec,
+    ExecutionCause,
     InstrumentSpec,
     InvalidAutomatedEvaluation,
 )
@@ -83,3 +84,41 @@ def test_executed_fail_requires_quote_but_derived_fail_does_not():
         criterion_id="cr-1", outcome="fail", derived=True, failure_mode="required data absent: d"
     )
     assert derived.quote is None
+
+
+CAUSE = ExecutionCause(task="arc_character", kind="degeneration", message="repeated verbatim")
+
+
+def test_execution_error_is_derived_quoteless_and_carries_its_cause():
+    row = CriterionOutcome(
+        criterion_id="cr-1", outcome="execution_error", derived=True, execution_cause=CAUSE
+    )
+    assert row.execution_cause is CAUSE
+
+    with pytest.raises(InvalidAutomatedEvaluation, match="must carry its cause"):
+        CriterionOutcome(criterion_id="cr-1", outcome="execution_error", derived=True)
+    with pytest.raises(InvalidAutomatedEvaluation, match="fact of the run"):
+        CriterionOutcome(criterion_id="cr-1", outcome="execution_error", execution_cause=CAUSE)
+    with pytest.raises(InvalidAutomatedEvaluation, match="fact of the run"):
+        CriterionOutcome(
+            criterion_id="cr-1",
+            outcome="execution_error",
+            derived=True,
+            quote="q",
+            execution_cause=CAUSE,
+        )
+    with pytest.raises(InvalidAutomatedEvaluation, match="only accompanies a fail"):
+        CriterionOutcome(
+            criterion_id="cr-1",
+            outcome="execution_error",
+            derived=True,
+            failure_mode="mode",
+            execution_cause=CAUSE,
+        )
+
+
+def test_execution_cause_belongs_to_execution_error_alone():
+    with pytest.raises(InvalidAutomatedEvaluation, match="only an execution_error"):
+        CriterionOutcome(
+            criterion_id="cr-1", outcome="not_assessed", derived=True, execution_cause=CAUSE
+        )

@@ -19,18 +19,47 @@ OUTCOME_FAIL = "fail"
 OUTCOME_NOT_APPLICABLE = "not_applicable"
 OUTCOME_NO_EVIDENCE = "no_evidence"
 OUTCOME_NOT_ASSESSED = "not_assessed"
+OUTCOME_EXECUTION_ERROR = "execution_error"
 OUTCOMES = (
     OUTCOME_PASS,
     OUTCOME_FAIL,
     OUTCOME_NOT_APPLICABLE,
     OUTCOME_NO_EVIDENCE,
     OUTCOME_NOT_ASSESSED,
+    OUTCOME_EXECUTION_ERROR,
 )
 SCORED = (OUTCOME_PASS, OUTCOME_FAIL)
 
 
 class InvalidAutomatedEvaluation(Exception):
     """The automated path violates a domain invariant."""
+
+
+class ExecutionFailure(Exception):
+    """A criterion's execution could not complete — the typed failure the derivation
+    catches at the executor boundary to mint `execution_error` (ADR-0037 §1).
+
+    Assessor infrastructure subclasses this; raising it is not deciding an outcome, so
+    the ADR-0018 invariant (non-scored outcomes derived mechanically, never decided by
+    the assessor at runtime) holds. `kind` is machine-readable plumbing (transport,
+    configuration, response, budget, contract, degeneration, profile), never identity.
+    """
+
+    def __init__(self, message: str, *, kind: str = "unknown", task: str | None = None):
+        super().__init__(message)
+        self.kind = kind
+        self.task = task
+
+
+@dataclass(frozen=True)
+class ExecutionCause:
+    """Why one criterion carries `execution_error`: a fact of this run, never of the
+    content. `task` names the assessor's failed unit of work so criteria fed by the
+    same task share one cause (ADR-0037 §2)."""
+
+    task: str | None
+    kind: str
+    message: str
 
 
 @dataclass(frozen=True)
@@ -158,6 +187,7 @@ class CriterionOutcome:
     locator: Mapping[str, Any] | None = None
     failure_mode: str | None = None
     comment: str | None = None
+    execution_cause: ExecutionCause | None = None
 
     def __post_init__(self) -> None:
         if self.outcome not in OUTCOMES:
@@ -176,4 +206,20 @@ class CriterionOutcome:
         if self.failure_mode is not None and self.outcome != OUTCOME_FAIL:
             raise InvalidAutomatedEvaluation(
                 f"criterion {self.criterion_id}: failure_mode only accompanies a fail"
+            )
+        if self.outcome == OUTCOME_EXECUTION_ERROR:
+            if not self.derived or self.quote is not None:
+                raise InvalidAutomatedEvaluation(
+                    f"criterion {self.criterion_id}: an execution_error is minted by the "
+                    "derivation, quoteless — it is a fact of the run, not a verdict "
+                    "(ADR-0037 §1)"
+                )
+            if self.execution_cause is None:
+                raise InvalidAutomatedEvaluation(
+                    f"criterion {self.criterion_id}: an execution_error must carry its "
+                    "cause (ADR-0037 §1)"
+                )
+        elif self.execution_cause is not None:
+            raise InvalidAutomatedEvaluation(
+                f"criterion {self.criterion_id}: only an execution_error carries an execution cause"
             )

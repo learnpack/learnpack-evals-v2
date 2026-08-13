@@ -51,8 +51,17 @@ const OUTCOME_VARIANT: Record<string, BadgeProps["variant"]> = {
   no_evidence: "warning",
   not_applicable: "outline",
   not_assessed: "secondary",
+  // A malfunction of the run, never a verdict — kept visually apart from fail (ADR-0037).
+  execution_error: "malfunction",
 };
-const OUTCOME_ORDER = ["pass", "fail", "no_evidence", "not_applicable", "not_assessed"];
+const OUTCOME_ORDER = [
+  "pass",
+  "fail",
+  "no_evidence",
+  "not_applicable",
+  "not_assessed",
+  "execution_error",
+];
 
 const CLAIM_VARIANT: Record<string, BadgeProps["variant"]> = {
   supported: "success",
@@ -717,7 +726,13 @@ interface QualityFitnessRow {
   qualityId: string;
   dimensionId: string | null;
   fitness: number | null;
-  counts: { pass: number; fail: number; noEvidence: number; excluded: number };
+  counts: {
+    pass: number;
+    fail: number;
+    noEvidence: number;
+    excluded: number;
+    executionError: number;
+  };
 }
 
 interface DimensionFitnessRow {
@@ -729,10 +744,11 @@ interface DimensionFitnessRow {
 
 /** The ADR-0023 arithmetic (formula v1), locally over this one dry run.
  *
- * `pass / (pass + fail + no_evidence)`; `not_assessed`/`not_applicable` stay out of the
- * denominator; an empty denominator is UNDEFINED, never zero. Criteria attach to a quality
- * through the claims that assert about it, counting once per quality (set semantics).
- * A dimension is the unweighted mean of its defined qualities. */
+ * `pass / (pass + fail + no_evidence)`; `not_assessed`/`not_applicable`/`execution_error`
+ * stay out of the denominator (ADR-0023 §2, ADR-0037 §6); an empty denominator is
+ * UNDEFINED, never zero. Criteria attach to a quality through the claims that assert
+ * about it, counting once per quality (set semantics). A dimension is the unweighted mean
+ * of its defined qualities. */
 function computeFitnessPreview(
   result: PreviewEvaluationResponse,
   instrument: InstrumentResponse,
@@ -751,13 +767,14 @@ function computeFitnessPreview(
 
   const qualities: QualityFitnessRow[] = [...claimsOfQuality.entries()]
     .map(([qualityId, claimIds]) => {
-      const counts = { pass: 0, fail: 0, noEvidence: 0, excluded: 0 };
+      const counts = { pass: 0, fail: 0, noEvidence: 0, excluded: 0, executionError: 0 };
       for (const criterion of instrument.criteria) {
         if (!criterion.claim_ids.some((id) => claimIds.has(id))) continue;
         const outcome = outcomeOf.get(criterion.criterion_id);
         if (outcome === "pass") counts.pass += 1;
         else if (outcome === "fail") counts.fail += 1;
         else if (outcome === "no_evidence") counts.noEvidence += 1;
+        else if (outcome === "execution_error") counts.executionError += 1;
         else if (outcome) counts.excluded += 1;
       }
       const denominator = counts.pass + counts.fail + counts.noEvidence;
@@ -847,6 +864,7 @@ function FitnessPreview({
               <TableHead>Fitness</TableHead>
               <TableHead>pass / fail / no_evidence</TableHead>
               <TableHead>Excluded</TableHead>
+              <TableHead>Errored</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -865,20 +883,33 @@ function FitnessPreview({
                 <TableCell className="text-xs tabular-nums text-muted-foreground">
                   {row.counts.excluded}
                 </TableCell>
+                <TableCell className="text-xs tabular-nums text-muted-foreground">
+                  {row.counts.executionError}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Excluded = not_assessed + not_applicable: outside the denominator on purpose — the
-        assessor&apos;s limits and unmet format demand are not the generator&apos;s fault.
+        Excluded = not_assessed + not_applicable, Errored = execution_error: all outside the
+        denominator on purpose — the assessor&apos;s limits, unmet format demand and this
+        run&apos;s own failures are not the generator&apos;s fault (ADR-0037).
       </p>
     </div>
   );
 }
 
 function OutcomeEvidence({ outcome }: { outcome: PreviewOutcome }) {
+  if (outcome.execution_cause) {
+    // A malfunction, never a verdict: what failed and why, in the run's own words.
+    return (
+      <p className="text-violet-700 dark:text-violet-400">
+        {outcome.execution_cause.task ? `${outcome.execution_cause.task} — ` : ""}
+        {outcome.execution_cause.kind}: {outcome.execution_cause.message}
+      </p>
+    );
+  }
   if (outcome.failure_mode) {
     return (
       <div className="space-y-1">

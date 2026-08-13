@@ -13,6 +13,8 @@ const badgeVariants = cva(
         success: "border-transparent bg-emerald-600 text-white",
         warning: "border-transparent bg-amber-500 text-white",
         outline: "text-foreground",
+        // A malfunction of the run, never a verdict: visually apart from fail (ADR-0037).
+        malfunction: "border-transparent bg-violet-600 text-white",
       },
     },
     defaultVariants: { variant: "default" },

@@ -208,13 +208,22 @@ def test_preview_runs_a_draft_and_persists_nothing(
     drift = outcomes["cr-module-structure-well-formed"]
     assert drift["outcome"] == "fail" and not drift["derived"]
     assert "drift" in drift["failure_mode"].lower() and drift["quote"]
+    # The cause travels in the contract, empty on every state but execution_error.
+    assert drift["execution_cause"] is None
 
     # The judgment rides along: camelCase evidence_basis (the domain's own vocabulary),
     # the excluded claims, and at least one finding carrying its quote.
     statuses = {c["claim_id"]: c["status"] for c in body["claims"]}
     assert statuses["cl-course-modular"] == "refuted"
     basis_keys = {key for c in body["claims"] for key in c["evidence_basis"]}
-    assert basis_keys <= {"pass", "fail", "noEvidence", "notApplicable", "notAssessed"}
+    assert basis_keys <= {
+        "pass",
+        "fail",
+        "noEvidence",
+        "notApplicable",
+        "notAssessed",
+        "executionError",
+    }
     assert set(body["coverage"]["excludedClaims"]) == {
         "cl-objectives-declared",
         "cl-audience-declared",

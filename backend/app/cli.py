@@ -935,15 +935,19 @@ def _print_call(call: observability.LlmCall) -> None:
 
 def _print_outcomes(outcomes, judgment) -> None:  # noqa: ANN001 — CLI presentation only
     width = max(len(o.criterion_id) for o in outcomes)
+    state_width = max(len(o.outcome) for o in outcomes)
     for outcome in outcomes:
         origin = "derived " if outcome.derived else "executed"
         detail = ""
         if outcome.failure_mode:
             detail = f"  [{outcome.failure_mode}]"
+        elif outcome.execution_cause:
+            cause = outcome.execution_cause
+            detail = f"  [{cause.kind}: {cause.message}]"
         elif outcome.quote:
             quote = outcome.quote.replace("\n", " ")
             detail = f'  "{quote[:60]}..."' if len(quote) > 60 else f'  "{quote}"'
-        print(f"  {outcome.criterion_id:{width}}  {outcome.outcome:14} {origin}{detail}")
+        print(f"  {outcome.criterion_id:{width}}  {outcome.outcome:{state_width}} {origin}{detail}")
     print("claims:")
     for claim in judgment.claims:
         basis = ", ".join(f"{k}={v}" for k, v in claim.evidence_basis.items() if v)

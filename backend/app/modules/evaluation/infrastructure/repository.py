@@ -2,6 +2,7 @@
 
 import json
 from collections import defaultdict
+from dataclasses import asdict
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +21,15 @@ from app.modules.evaluation.application.dtos import (
 from app.modules.evaluation.application.ports import JudgmentRecord
 from app.modules.evaluation.domain.automated import AutomatedEvaluation
 from app.modules.evaluation.domain.evaluation import Evaluation
-from app.modules.evaluation.domain.model import CriterionOutcome
+from app.modules.evaluation.domain.model import CriterionOutcome, ExecutionCause
+
+
+def _execution_cause(payload: dict[str, Any] | None) -> ExecutionCause | None:
+    if payload is None:
+        return None
+    return ExecutionCause(
+        task=payload.get("task"), kind=payload["kind"], message=payload["message"]
+    )
 
 
 class SqlAlchemyEvaluationRepository:
@@ -161,9 +170,10 @@ class SqlAlchemyAutomatedEvaluationRepository:
                     """
                     INSERT INTO criterion_outcomes
                         (evaluation_id, criterion_id, outcome, derived, quote, locator,
-                         failure_mode, comment)
+                         failure_mode, comment, execution_cause)
                     VALUES (:evaluation_id, :criterion_id, :outcome, :derived, :quote,
-                            cast(:locator as jsonb), :failure_mode, :comment)
+                            cast(:locator as jsonb), :failure_mode, :comment,
+                            cast(:execution_cause as jsonb))
                     """
                 ),
                 {
@@ -175,6 +185,11 @@ class SqlAlchemyAutomatedEvaluationRepository:
                     "locator": json.dumps(dict(outcome.locator)) if outcome.locator else None,
                     "failure_mode": outcome.failure_mode,
                     "comment": outcome.comment,
+                    "execution_cause": (
+                        json.dumps(asdict(outcome.execution_cause))
+                        if outcome.execution_cause
+                        else None
+                    ),
                 },
             )
         for metric in evaluation.metrics:
@@ -214,7 +229,8 @@ class SqlAlchemyAutomatedEvaluationRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT criterion_id, outcome, derived, quote, locator, failure_mode, comment
+                    SELECT criterion_id, outcome, derived, quote, locator, failure_mode,
+                           comment, execution_cause
                       FROM criterion_outcomes
                      WHERE evaluation_id = :evaluation_id
                      ORDER BY criterion_id
@@ -234,6 +250,7 @@ class SqlAlchemyAutomatedEvaluationRepository:
                 locator=row["locator"],
                 failure_mode=row["failure_mode"],
                 comment=row["comment"],
+                execution_cause=_execution_cause(row["execution_cause"]),
             )
             for row in rows
         )

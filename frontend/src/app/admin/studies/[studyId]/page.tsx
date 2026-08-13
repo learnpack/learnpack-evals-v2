@@ -144,7 +144,8 @@ function FitnessLevelTable({ level }: { level: FitnessLevel }) {
                 </TableCell>
                 <TableCell className="text-right text-xs text-muted-foreground">
                   {quality.coverage.notAssessed} not assessed ·{" "}
-                  {quality.coverage.notApplicable} n/a
+                  {quality.coverage.notApplicable} n/a ·{" "}
+                  {quality.coverage.executionError} errored
                 </TableCell>
               </TableRow>
             ))}
@@ -170,8 +171,9 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
       <CardContent className="space-y-4 text-sm">
         <p className="text-xs text-muted-foreground">
           Formula v{fitness.formulaVersion} · passed over (passed + failed + no evidence).
-          Not assessed and not applicable stay out of the denominator, so values computed
-          under different assessor coverage are not comparable.
+          Not assessed, not applicable and execution errors stay out of the denominator, so
+          values computed under different assessor coverage — or runs with different
+          execution-error counts — are not comparable.
         </p>
 
         {fitness.gaps.length > 0 ? (
@@ -216,6 +218,7 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
             <p className="text-xs text-muted-foreground">
               {fitness.assessorCoverage.ratifiedAssessors?.length ?? 0} ratified assessor(s)
               · {fitness.assessorCoverage.notAssessed ?? 0} criteria left unassessed
+              · {fitness.assessorCoverage.executionErrors ?? 0} execution error(s)
             </p>
           </>
         ) : (
@@ -472,6 +475,13 @@ function CaveatsSection({ report }: { report: StudyReport }) {
           {caveats.contentsWithoutJudgment.length === 0
             ? "none"
             : `${caveats.contentsWithoutJudgment.length}`}
+        </CaveatRow>
+        <CaveatRow label="Execution errors">
+          {(caveats.executionErrors?.perContent ?? []).length === 0
+            ? "none"
+            : `${caveats.executionErrors!.perContent.length} content(s), ` +
+              `${caveats.executionErrors!.perContent.reduce((sum, c) => sum + c.count, 0)} ` +
+              `criteria — ${caveats.executionErrors!.note}`}
         </CaveatRow>
         <CaveatRow label="Task-variable patterns">
           {caveats.taskVariablePatterns.status}: {caveats.taskVariablePatterns.reason}
