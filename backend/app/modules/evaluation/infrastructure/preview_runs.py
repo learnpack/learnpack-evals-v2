@@ -280,7 +280,9 @@ def execute(run: PreviewRun) -> None:
     except InstrumentNotEvaluable as exc:
         run.finish(error=RunError("instrument_missing", str(exc)))
     except AssessorExecutionError as exc:
-        # ADR-0034 clause 4: the judge could not judge, so there is no verdict at all.
+        # ADR-0037 §3: below the failure budget the derivation absorbed the failures as
+        # execution_error outcomes (the run ends `done`, its failed steps `ok=False`), so
+        # reaching here means the budget was exceeded and the run was not an evaluation.
         # Nothing was persisted — running it again IS the retry.
         run.finish(error=RunError("assessor_failed", str(exc)))
     except Exception as exc:  # noqa: BLE001 — a worker thread has nowhere to raise

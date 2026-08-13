@@ -1,20 +1,26 @@
-"""Mechanical five-state derivation — pure domain, no DB (13-code §10).
+"""Mechanical six-state derivation — pure domain, no DB (13-code §10).
 
 Case table: capability × absence × on_missing_evidence × condition × abstention ×
-binding coverage, plus the mixed multi-required cases and exact coverage by construction.
+binding coverage, plus the mixed multi-required cases, the failure budget (ADR-0037) and
+exact coverage by construction.
 """
 
 from uuid import uuid4
 
 import pytest
 
-from app.modules.evaluation.domain.derivation import absence_failure_mode, derive_and_execute
+from app.modules.evaluation.domain.derivation import (
+    EXECUTION_FAILURE_BUDGET,
+    absence_failure_mode,
+    derive_and_execute,
+)
 from app.modules.evaluation.domain.model import (
     BindingSpec,
     ClaimSpec,
     ComputedMetric,
     Coverage,
     CriterionSpec,
+    ExecutionFailure,
     ExecutorResult,
     InstrumentSpec,
     InvalidAutomatedEvaluation,
@@ -215,6 +221,92 @@ def test_executor_metrics_are_collected():
         instrument(criterion()), profile({"datum": declared()}), executors={"cr-x": measuring}
     )
     assert metrics == (ComputedMetric("lesson_count", 7),)
+
+
+# --- (e) execution failure: the budget (ADR-0037) ---------------------------------
+
+
+def raising_executor(spec, prof):
+    raise ExecutionFailure("task 'probe': the model looped", kind="degeneration", task="probe")
+
+
+def test_a_failure_under_the_budget_becomes_execution_error_with_its_cause():
+    """Five executable criteria tolerate one failure (int(0.25 * 5) = 1): the failed one
+    carries the cause, the others persist, and the successes keep their metrics."""
+
+    def measuring(spec, prof):
+        return ExecutorResult(passed=True, quote="q", metrics=(ComputedMetric("count", 1),))
+
+    ids = [f"cr-{i}" for i in range(5)]
+    instr = instrument(*(criterion(cid) for cid in ids))
+    executors = {cid: measuring for cid in ids} | {"cr-2": raising_executor}
+
+    outcomes, metrics = run(
+        instr,
+        profile({"datum": declared()}),
+        coverage=Coverage(frozenset(ids), {}),
+        executors=executors,
+    )
+
+    by_id = {o.criterion_id: o for o in outcomes}
+    errored = by_id["cr-2"]
+    assert errored.outcome == "execution_error" and errored.derived
+    assert errored.execution_cause.task == "probe"
+    assert errored.execution_cause.kind == "degeneration"
+    assert "the model looped" in errored.execution_cause.message
+    assert [by_id[cid].outcome for cid in ids if cid != "cr-2"] == ["pass"] * 4
+    assert metrics == (ComputedMetric("count", 1),)  # the successes' spend survives
+
+
+def test_past_the_budget_the_original_failure_propagates_and_nothing_half_derives():
+    """int(0.25 * 5) = 1 tolerated: the second failure re-raises the executor's own
+    exception — ADR-0034 §4 surviving as the limit case."""
+    ids = [f"cr-{i}" for i in range(5)]
+    instr = instrument(*(criterion(cid) for cid in ids))
+    executors = {cid: passing_executor for cid in ids} | {
+        "cr-1": raising_executor,
+        "cr-3": raising_executor,
+    }
+
+    with pytest.raises(ExecutionFailure, match="the model looped"):
+        run(
+            instr,
+            profile({"datum": declared()}),
+            coverage=Coverage(frozenset(ids), {}),
+            executors=executors,
+        )
+
+
+def test_a_small_instrument_tolerates_zero_failures():
+    """int(0.25 * 1) = 0: the budget's zero point IS the old all-or-nothing behavior."""
+    assert EXECUTION_FAILURE_BUDGET == 0.25  # a decision constant; changing it is reviewed
+    with pytest.raises(ExecutionFailure):
+        run(
+            instrument(criterion()),
+            profile({"datum": declared()}),
+            executors={"cr-x": raising_executor},
+        )
+
+
+def test_a_registration_bug_is_never_softened_into_an_execution_error():
+    """`InvalidAutomatedEvaluation` (an executor reporting an undeclared failure mode, a
+    missing executor) is a bug in the artifact, not a fact of the run: it propagates even
+    when the budget would have absorbed a typed failure."""
+
+    def failing(spec, prof):
+        return ExecutorResult(passed=False, quote="text", failure_mode="invented mode")
+
+    ids = [f"cr-{i}" for i in range(5)]
+    instr = instrument(*(criterion(cid) for cid in ids))
+    executors = {cid: passing_executor for cid in ids} | {"cr-2": failing}
+
+    with pytest.raises(InvalidAutomatedEvaluation, match="does not declare"):
+        run(
+            instr,
+            profile({"datum": declared()}),
+            coverage=Coverage(frozenset(ids), {}),
+            executors=executors,
+        )
 
 
 # --- exact coverage ---------------------------------------------------------------

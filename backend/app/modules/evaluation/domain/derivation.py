@@ -1,7 +1,7 @@
 """Mechanical derivation of criterion outcomes — the automated path's core (13-code §3.5).
 
 Per criterion, precedence order (each cause is the most upstream one — its remedy names
-what to fix: better format/extraction · better generator · better assessor):
+what to fix: better format/extraction · better generator · better assessor · better run):
 
 (a) the instrument's bindings do not cover the profile's package format, or the
     criterion's `condition` excludes it under the binding's task variables
@@ -13,11 +13,14 @@ what to fix: better format/extraction · better generator · better assessor):
     ADR-0009 §4 / ADR-0021 — quoteless, with a mechanical failure mode)
 (d) the assessor abstains from the criterion -> `not_assessed` (derived; ADR-0018 —
     the datum is there and judgeable, this assessor declared it cannot judge it)
-(e) otherwise -> the executor runs and its result becomes the scored outcome
+(e) otherwise -> the executor runs and its result becomes the scored outcome — or, when
+    it raises the typed failure, `execution_error` with its cause (ADR-0037: a fact of
+    this run, never of the content), bounded by the failure budget below
 
 The invariant "non-scored outcomes are derived mechanically, never decided by the
 assessor at runtime" holds by construction: abstentions are part of the assessor's
-registered identity, and executors only ever produce pass/fail.
+registered identity, executors only ever produce pass/fail, and an `execution_error` is
+minted HERE from the failure the executor raised — raising is not deciding (ADR-0037 §1).
 
 Exact coverage by construction: exactly one outcome per criterion of the snapshot.
 """
@@ -25,6 +28,7 @@ Exact coverage by construction: exactly one outcome per criterion of the snapsho
 from collections.abc import Callable, Mapping
 
 from app.modules.evaluation.domain.model import (
+    OUTCOME_EXECUTION_ERROR,
     OUTCOME_FAIL,
     OUTCOME_NO_EVIDENCE,
     OUTCOME_NOT_APPLICABLE,
@@ -34,6 +38,8 @@ from app.modules.evaluation.domain.model import (
     Coverage,
     CriterionOutcome,
     CriterionSpec,
+    ExecutionCause,
+    ExecutionFailure,
     ExecutorResult,
     InstrumentSpec,
     InvalidAutomatedEvaluation,
@@ -41,6 +47,14 @@ from app.modules.evaluation.domain.model import (
 )
 
 Executor = Callable[[CriterionSpec, ProfileData], ExecutorResult]
+
+# The failure budget (ADR-0037 §3): the proportion of the criteria mapped for execution
+# that may carry `execution_error` before the evaluation is not worth persisting. Past it
+# the original failure propagates and the run aborts whole, nothing persisted — ADR-0034
+# §4 surviving as the limit case (an instrument with ≤3 executable criteria tolerates
+# zero). A decision constant, reviewed like one; its effect is checkable because the
+# failure counts travel with every evaluation.
+EXECUTION_FAILURE_BUDGET = 0.25
 
 
 def absence_failure_mode(missing: list[str]) -> str:
@@ -67,12 +81,36 @@ def derive_and_execute(
         {},
     )
 
+    executable = sum(
+        1 for criterion in instrument.criteria if criterion.criterion_id in coverage.executes
+    )
+    allowed = int(EXECUTION_FAILURE_BUDGET * executable)
+
     outcomes: list[CriterionOutcome] = []
     metrics: dict[str, ComputedMetric] = {}
+    failures = 0
     for criterion in instrument.criteria:
-        outcome = _derive_one(
-            criterion, profile, coverage, executors, format_covered, binding_variables
-        )
+        try:
+            outcome = _derive_one(
+                criterion, profile, coverage, executors, format_covered, binding_variables
+            )
+        except ExecutionFailure as exc:
+            # Only the typed failure: `InvalidAutomatedEvaluation` is a registration bug
+            # and keeps propagating on the first criterion that exposes it.
+            failures += 1
+            if failures > allowed:
+                # Past the budget this was not an evaluation; the original failure
+                # propagates and the run aborts whole (ADR-0037 §3).
+                raise
+            outcomes.append(
+                CriterionOutcome(
+                    criterion_id=criterion.criterion_id,
+                    outcome=OUTCOME_EXECUTION_ERROR,
+                    derived=True,
+                    execution_cause=ExecutionCause(task=exc.task, kind=exc.kind, message=str(exc)),
+                )
+            )
+            continue
         outcomes.append(outcome[0])
         for metric in outcome[1]:
             metrics[metric.metric_id] = metric

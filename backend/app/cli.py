@@ -836,9 +836,10 @@ def run_evaluate(
                 return 1
             except AssessorExecutionError as exc:
                 print(
-                    f"the assessor could not produce a verdict: {exc}\n"
+                    f"too many criteria failed to judge - past the failure budget the run "
+                    f"was not an evaluation (ADR-0037): {exc}\n"
                     "nothing persisted - fix the cause (or just retry, if it was "
-                    "transient) and run evaluate again (ADR-0034)",
+                    "transient) and run evaluate again",
                     file=sys.stderr,
                 )
                 if trace is not None:
@@ -887,12 +888,15 @@ def run_evaluate(
             print(str(exc), file=sys.stderr)
             return 1
         except AssessorExecutionError as exc:
-            # ADR-0034 clause 4: the evaluation is all-or-nothing. The exception fired
-            # before anything was added to the session, so there is nothing to roll back.
+            # ADR-0037 §3: below the failure budget the derivation absorbed the failures
+            # as execution_error rows, so reaching here means the budget was exceeded and
+            # the run aborts whole. The exception fired before anything was added to the
+            # session, so there is nothing to roll back.
             print(
-                f"the assessor could not produce a verdict: {exc}\n"
+                f"too many criteria failed to judge - past the failure budget the run "
+                f"was not an evaluation (ADR-0037): {exc}\n"
                 "nothing persisted - fix the cause (or just retry, if it was "
-                "transient) and run evaluate again (ADR-0034)",
+                "transient) and run evaluate again",
                 file=sys.stderr,
             )
             return 1
