@@ -40,6 +40,7 @@ end persists nothing.
 import logging
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
@@ -90,6 +91,10 @@ TRANSPORT_FAILURE_STREAK = 3
 # Failure kinds that are a property of the wiring, identical for every course: the first one
 # ends the batch instead of proving itself nineteen more times.
 FATAL_FAILURE_KINDS = frozenset({"configuration"})
+
+# How many runs the process remembers. Fewer than the dry runs keep: a batch is a deliberate
+# act nobody fires twenty times in a session, and what outlives the process is what it wrote.
+KEEP_RUNS = 10
 
 
 class BatchRefused(Exception):
@@ -392,9 +397,9 @@ def prepare(
 def execute(run: BatchRun) -> None:
     """Run every pending course, at most `run.workers` at a time. Never raises.
 
-    Blocking on purpose: whoever wants it asynchronous starts a thread around this call —
-    the CLI wants it in the foreground so Ctrl-C reaches it, the console will want it behind
-    a run id, and both get the same work.
+    Blocking on purpose: whoever wants it asynchronous starts a thread around this call. The
+    CLI wants it in the foreground so Ctrl-C reaches it; the console starts it through
+    `batch_runs.start` and reads the run by its id. One function, two doors.
     """
     try:
         with ThreadPoolExecutor(max_workers=max(1, run.workers)) as pool:
@@ -405,6 +410,76 @@ def execute(run: BatchRun) -> None:
         run.finish(error=f"{type(exc).__name__}: {exc}")
         return
     run.finish()
+
+
+class BatchRunRegistry:
+    """The batches this process is running, or has just run. In memory, like the dry runs.
+
+    What is durable about a batch is what it wrote — the evaluations — so a run object is
+    only the live view of one, and forgetting it on restart costs nothing that a query
+    cannot answer (ADR-0040 §9).
+
+    It carries one rule of its own: **a batch may not overlap a running one.** Judgments are
+    append-only and every reader takes the most recent per content, so two batches over one
+    course decide by arrival order — the only genuinely confusing outcome available here, and
+    the cheapest one to refuse. Batches over disjoint studies still run together; how many
+    requests that puts in flight is the transport's ceiling, not this registry's business.
+    """
+
+    def __init__(self, keep: int = KEEP_RUNS) -> None:
+        self._runs: OrderedDict[UUID, BatchRun] = OrderedDict()
+        self._keep = keep
+        self._lock = threading.Lock()
+
+    def start(self, run: BatchRun) -> BatchRun:
+        with self._lock:
+            self._refuse_overlap(run)
+            self._runs[run.run_id] = run
+            while len(self._runs) > self._keep:
+                self._forget_oldest_finished()
+        # Daemon: an evaluation must never hold the API process open on shutdown.
+        threading.Thread(
+            target=execute, args=(run,), name=f"batch-{run.run_id}", daemon=True
+        ).start()
+        return run
+
+    def _refuse_overlap(self, run: BatchRun) -> None:
+        wanted = {course.content_id for course in run.pending}
+        for other in self._runs.values():
+            if other.status != "running":
+                continue
+            if wanted & {course.content_id for course in other.pending}:
+                raise BatchRefused(
+                    f"batch {other.run_id} is already evaluating courses this one would "
+                    "evaluate: two runs over one course decide by arrival order, since every "
+                    "reader takes the most recent judgment. Wait for it, or cancel it",
+                    kind="overlapping_run",
+                )
+
+    def _forget_oldest_finished(self) -> None:
+        """Drop the oldest run that has ENDED. A running one is never forgotten — its thread
+        is still reporting into it, and it is the one someone is watching."""
+        ended = next(
+            (run_id for run_id, run in self._runs.items() if run.status != "running"), None
+        )
+        if ended is not None:
+            del self._runs[ended]
+            return
+        self._runs.popitem(last=False)  # every kept run is running: the oldest goes anyway
+
+    def get(self, run_id: UUID) -> BatchRun | None:
+        with self._lock:
+            return self._runs.get(run_id)
+
+    def for_study(self, study_id: UUID) -> list[BatchRun]:
+        """Newest first — what a page shows under "this study's runs"."""
+        with self._lock:
+            return [run for run in reversed(self._runs.values()) if run.study_id == study_id]
+
+
+# One registry per process, like the dry runs' and the event dispatcher's. The API reads it;
+# the CLI runs its batch in the foreground and never touches it.
+batch_runs = BatchRunRegistry()
 
 
 def _evaluate_one(run: BatchRun, course: ContentInfo) -> None:

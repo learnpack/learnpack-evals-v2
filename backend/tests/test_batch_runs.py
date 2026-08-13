@@ -10,6 +10,8 @@ import threading
 import time
 from uuid import uuid4
 
+import pytest
+
 from app.modules.evaluation.application.evaluate_content import ProfileNotAvailable
 from app.modules.evaluation.domain.model import Coverage, InvalidAutomatedEvaluation
 from app.modules.evaluation.infrastructure.assessors import AssessorPackage
@@ -41,10 +43,10 @@ def course(name: str) -> ContentInfo:
     )
 
 
-def a_run(courses, workers: int = 1, already=()) -> BatchRun:
+def a_run(courses, workers: int = 1, already=(), study_id=None) -> BatchRun:
     return BatchRun(
         run_id=uuid4(),
-        study_id=uuid4(),
+        study_id=study_id or uuid4(),
         instrument_version_id="qa-v6",
         assessor_id=uuid4(),
         package=package(),
@@ -251,3 +253,94 @@ def test_a_run_that_dies_unexpectedly_ends_refused_rather_than_hanging(monkeypat
     view = run.view()
     assert view.status == "refused"
     assert view.error is not None and "something nobody predicted" in view.error
+
+
+# ------------------------------------------------------------------ the registry
+
+
+def registry() -> module.BatchRunRegistry:
+    return module.BatchRunRegistry(keep=3)
+
+
+def test_a_started_run_is_remembered_and_readable(monkeypatch):
+    """Started, not awaited: the caller gets an id back and reads the run afterwards."""
+    finished = threading.Event()
+
+    def fake(run, content):
+        finished.wait(timeout=5)
+        return uuid4()
+
+    monkeypatch.setattr(module, "_run_use_case", fake)
+    runs = registry()
+    run = runs.start(a_run([course("a")]))
+
+    assert runs.get(run.run_id) is run
+    assert runs.get(run.run_id).view().status == "running"
+    finished.set()
+
+
+def test_a_run_that_would_overlap_a_running_one_is_refused(monkeypatch):
+    """Two batches over one course decide by arrival order, since every reader takes the
+    most recent judgment. Refusing is cheaper than explaining."""
+    holding = threading.Event()
+    monkeypatch.setattr(module, "_run_use_case", lambda run, content: holding.wait(timeout=5))
+    shared = course("a")
+    runs = registry()
+    runs.start(a_run([shared, course("b")]))
+
+    with pytest.raises(module.BatchRefused) as refused:
+        runs.start(a_run([shared, course("c")]))
+
+    assert refused.value.kind == "overlapping_run"
+    holding.set()
+
+
+def test_batches_over_different_courses_run_together(monkeypatch):
+    """The guard is about the same course, not about batches: two studies with nothing in
+    common are two independent runs, and how many requests that puts in flight is the
+    transport's ceiling, not this registry's business."""
+    holding = threading.Event()
+    monkeypatch.setattr(module, "_run_use_case", lambda run, content: holding.wait(timeout=5))
+    runs = registry()
+
+    first = runs.start(a_run([course("a")]))
+    second = runs.start(a_run([course("b")]))
+
+    assert {first.run_id, second.run_id} <= set(runs._runs)
+    holding.set()
+
+
+def test_a_finished_run_is_forgotten_before_one_still_running(monkeypatch):
+    """The oldest goes, but never the one whose thread is still reporting into it — which
+    is also the one somebody is watching."""
+    holding = threading.Event()
+
+    def fake(run, content):
+        if content.external_id == "held":
+            holding.wait(timeout=5)
+        return uuid4()
+
+    monkeypatch.setattr(module, "_run_use_case", fake)
+    runs = module.BatchRunRegistry(keep=2)
+    running = runs.start(a_run([course("held")]))
+    older = runs.start(a_run([course("b")]))
+    while older.view().status == "running":
+        time.sleep(0.01)
+
+    newest = runs.start(a_run([course("c")]))
+
+    assert runs.get(older.run_id) is None  # the ended one made room
+    assert runs.get(running.run_id) is running  # still working, never forgotten
+    assert runs.get(newest.run_id) is newest
+    holding.set()
+
+
+def test_a_studys_runs_come_back_newest_first(monkeypatch):
+    monkeypatch.setattr(module, "_run_use_case", lambda run, content: uuid4())
+    runs = registry()
+    study = uuid4()
+    first = runs.start(a_run([course("a")], study_id=study))
+    second = runs.start(a_run([course("b")], study_id=study))
+    runs.start(a_run([course("c")]))  # another study's
+
+    assert [r.run_id for r in runs.for_study(study)] == [second.run_id, first.run_id]
