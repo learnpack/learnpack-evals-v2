@@ -13,8 +13,9 @@ _Last updated: 2026-08-12._
 Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 blocks,
 plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
 projection the genetic-algorithm experiment reads), ADR-0027 (package intake by
-mechanical discovery) and ADR-0034 (LLM-carrying assessors, realized by
-`drafts-hybrid`, whose v3 takes the first criteria the model itself judges — see below) on
+mechanical discovery), ADR-0034 (LLM-carrying assessors, realized by
+`drafts-hybrid`, whose v3 takes the first criteria the model itself judges — see below)
+and ADR-0037 (execution failure is an outcome — in flight, PR 1 of 3, see below) on
 top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
@@ -408,6 +409,30 @@ and a criterion can be perfectly stable and stably wrong.
 runs of the CSS draft answer that, and one of the HTML draft confirms nothing that was
 already unanimous moved.
 
+**Failure isolation is decided (ADR-0037) and its first of three PRs is this one.** The
+four calibration deaths above — each one task degenerating inside an otherwise healthy
+evaluation — falsified ADR-0034 §4's bet that whole-run aborts stay cheap, so its §4 is
+superseded: an execution failure becomes a **sixth outcome state, `execution_error`**,
+minted by the derivation from a typed failure (the assessor raises, the machinery derives —
+ADR-0018 refined, not broken), carrying a structured cause `{task, kind, message}`, with a
+**failure budget** that keeps the whole-run abort as the limit case and a **three-way retry**
+(contract → feedback as today · degeneration → one clean-conversation retry · transport,
+configuration and `finish_reason: length` → never). The work lands in three PRs so main
+stays green at each step: **PR 1 (this one)** teaches the state to every consumer before
+anything produces it — domain vocabulary and validator, migration 0018 (CHECK + the
+`execution_cause` jsonb column), repository roundtrip, `evidence_basis`/judgment coverage,
+the report's `insufficiencyCause` (never `"unknown"` for a run failure) and its
+always-present `executionErrors` caveat, the fitness partition (state excluded from the
+denominator; unknown states now raise instead of vanishing; `executionErrors` published in
+`assessorCoverage`, extending ADR-0023 §7's equal-coverage rule to execution variance),
+the preview API contract, the CLI printer, the console (badge, cause in the evidence cell,
+fitness-preview column, study caveat row) and the GLOSSARY. **PR 2** de-collapses the error
+taxonomy, adds the clean retry and failure memoization inside the assessor package ⇒
+`drafts-hybrid` v6. **PR 3** makes the derivation catch the failure and mint the state,
+bounded by the budget. Until PR 3 lands, nothing produces the state and an irrecoverable
+failure still aborts the evaluation whole. **Calibration stays paused until the three are
+merged.**
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
@@ -531,9 +556,9 @@ re-versioning anything: a 200 that carries the provider's own error (`choices[].
 is read as the upstream failure it is and retried by its code instead of looking like an
 empty answer; an empty answer at the token limit says which tokens went where and that
 retrying will not help; and the trace records `provider` and `finish_reason` on the
-failing paths too, which is where they matter. What is still **not** decided: the dry run
-still aborts whole when a task cannot answer, so one bad call discards the structural
-criteria that already passed — worth its own ADR, not taken here.
+failing paths too, which is where they matter. What was still not decided then — the run
+aborting whole when a task cannot answer, discarding the structural criteria that already
+passed — is now decided: **ADR-0037** (see the failure-isolation entry above).
 
 **Agreed working mode:** branch + PR per block, with branch names and commits that describe
 **the change** (feature/fix), never plan stages; Claude commits only inside the working
@@ -696,8 +721,18 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 824 tests** against local Postgres (~55 s). Requires
+- **Backend suite green: 830 tests** against local Postgres (~55 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+- **The sixth state pinned at every consumer, with nothing yet producing it** (suite,
+  ADR-0037 PR 1): the domain validator admits `execution_error` only derived, quoteless and
+  carrying its cause, and refuses the cause on every other state; the judgment counts six
+  states, leaves the conjunctive rule untouched and **never excludes** a claim for execution
+  errors (unlike all-`not_applicable`); the report names `execution_error` as an
+  insufficiency cause (never `"unknown"`, `mixed` when combined) and always publishes the
+  `executionErrors` caveat; the fitness excludes the state from the denominator, counts it
+  in every coverage payload and **raises on an unknown outcome state** instead of dropping
+  it silently; the preview API carries `execution_cause`; migration 0018 round-trips the
+  cause through the repository.
   **No test touches the LLM network**: the transport contract is pinned over
   `httpx.MockTransport` and the hybrid assessor runs over a fake at the `runtime.get_client`
   seam — prompts, validation, grounding, feedback retries and decision rules run for real.
@@ -913,11 +948,9 @@ the data in the package).
   objectives-against-lesson-bodies matrix (three criteria), the per-lesson reads
   (`cr-new-instruction-is-preceded-by-a-problem`, `cr-skill-lessons-carry-a-worked-example`),
   the per-pair bridge and the per-module topic — all take an evaluation from ~10 calls to
-  ~40–50. Two things should be decided before building them rather than after. First,
-  **failure isolation**: ADR-0034 §4 aborts an evaluation whole when a task cannot answer,
-  which is a fair trade at ten calls and a bad one at fifty, and the shape the industry
-  converged on is checkpointed/resumable steps rather than partial evaluations — worth an
-  ADR written with the evidence of v3's runs, not before them. Second, for the
+  ~40–50. One of the two things to decide first is now decided: **failure isolation is
+  ADR-0037** (a task's failure costs its criteria, not the evaluation, bounded by a failure
+  budget — realized in three PRs, the first of which is merged). Second, for the
   objectives-against-bodies matrix specifically, whether to decompose it at all: it is a
   **completeness** task, and there is evidence that decomposing those into per-cell
   judgments *loses* to a holistic read, because the decomposition fragments the reasoning
