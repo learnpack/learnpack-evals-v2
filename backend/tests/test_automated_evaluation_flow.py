@@ -32,6 +32,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
+from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.evaluation.infrastructure.policies import on_evaluation_completed
 from app.modules.evaluation.public import EvaluationQueries
 from app.modules.evaluation_design.application.publish_instrument import (
@@ -326,6 +327,82 @@ def test_full_automated_path(cleanup, unique, session, admin, patched_package, p
         {"c": profiled_course},
     ).scalar_one()
     assert judgment_count == 2  # append-only; the most recent is the current one
+
+
+def test_a_failed_criterion_persists_as_execution_error_and_the_rest_survives(
+    cleanup, unique, session, admin, patched_package, profiled_course, monkeypatch
+):
+    """ADR-0037 end to end: one degenerating executor inside an otherwise healthy run.
+    The evaluation persists, the failed criterion carries its structured cause through the
+    repository, the judgment derives with the claim insufficient — and the judgment
+    policy's synchronous replay proves the six-state roundtrip."""
+    admin_id, email = admin
+    instrument_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
+
+    def degenerating(spec, prof):
+        raise AssessorExecutionError(
+            "task 'probe': the model repeated itself", kind="degeneration", task="probe"
+        )
+
+    package = dataclasses.replace(
+        patched_package,
+        executors={
+            **patched_package.executors,
+            "cr-module-structure-well-formed": degenerating,
+        },
+    )
+    monkeypatch.setitem(AUTOMATED_ASSESSORS, (package.name, package.version), package)
+
+    assert run_ratify_assessor(package.name, "1", instrument_id, email, []) == 0
+    track_automated(cleanup, package.name)
+    # Nine executable criteria tolerate int(0.25 * 9) = 2 failures; this run has one.
+    assert run_evaluate(str(profiled_course), instrument_id, f"{package.name}:1", False) == 0
+
+    errored = (
+        session.execute(
+            text(
+                "SELECT o.outcome, o.derived, o.quote, o.failure_mode, o.execution_cause "
+                "FROM criterion_outcomes o JOIN evaluations e ON e.id = o.evaluation_id "
+                "WHERE e.content_id = :c AND o.criterion_id = 'cr-module-structure-well-formed'"
+            ),
+            {"c": profiled_course},
+        )
+        .mappings()
+        .one()
+    )
+    assert errored["outcome"] == "execution_error"
+    assert errored["derived"] is True
+    assert errored["quote"] is None and errored["failure_mode"] is None
+    assert errored["execution_cause"] == {
+        "task": "probe",
+        "kind": "degeneration",
+        "message": "task 'probe': the model repeated itself",
+    }
+
+    judgment = (
+        session.execute(
+            text("SELECT id, coverage FROM quality_judgments WHERE content_id = :c"),
+            {"c": profiled_course},
+        )
+        .mappings()
+        .one()
+    )
+    assert judgment["coverage"]["criteria"]["executionError"] == 1
+    claim = (
+        session.execute(
+            text(
+                "SELECT status, evidence_basis FROM judgment_claims "
+                "WHERE judgment_id = :id AND claim_id = 'cl-course-modular'"
+            ),
+            {"id": judgment["id"]},
+        )
+        .mappings()
+        .one()
+    )
+    # Without its counterexample the claim is neither refuted nor fully passed: the gap
+    # stays visible in the judgment, qualified by its cause (ADR-0037 §5).
+    assert claim["status"] == "insufficient"
+    assert claim["evidence_basis"]["executionError"] == 1
 
 
 def test_evaluate_guards(cleanup, unique, session, admin, patched_package, profiled_course):

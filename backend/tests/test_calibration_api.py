@@ -321,16 +321,19 @@ def test_a_content_without_an_ok_profile_fails_the_run(admin, cleanup, unique, p
     assert "profile it first" in run["error"]["message"]
 
 
-def test_an_assessor_that_cannot_judge_fails_the_run(
+def test_an_assessor_past_the_failure_budget_fails_the_run(
     admin, cleanup, unique, session, monkeypatch, patched_package, profiled_course
 ):
-    """ADR-0034 clause 4 through the HTTP door: the judge's irrecoverable failure ends the
-    run with no verdict at all, nothing persisted, and the cause named so the page can say
+    """ADR-0037 §3 through the HTTP door: with EVERY executor failing, the budget
+    (int(0.25 × 9) = 2 tolerated) is exceeded and the run was not an evaluation — it ends
+    with no verdict at all, nothing persisted, and the cause named so the page can say
     what to do about it."""
 
     def boom(spec, profile):
         raise AssessorExecutionError(
-            "task 'outcomes_extraction': the model never satisfied the output contract"
+            "task 'outcomes_extraction': the model never satisfied the output contract",
+            kind="contract",
+            task="outcomes_extraction",
         )
 
     name = f"broken-{unique}"
@@ -353,6 +356,53 @@ def test_an_assessor_that_cannot_judge_fails_the_run(
     # The criterion that blew up is in the log: the page shows where it stopped.
     assert any(
         not step["ok"] and "AssessorExecutionError" in step["detail"] for step in run["steps"]
+    )
+
+
+def test_a_single_failed_criterion_leaves_the_run_done_with_its_cause(
+    admin, cleanup, unique, session, monkeypatch, patched_package, profiled_course
+):
+    """ADR-0037 through the HTTP door, below the budget: one degenerating executor inside
+    an otherwise healthy dry run. The run finishes `done`, the failed criterion carries
+    `execution_error` with its structured cause, coverage stays exact around it, its step
+    is the red line — and still nothing persists (a dry run never does)."""
+
+    def boom(spec, profile):
+        raise AssessorExecutionError(
+            "task 'probe': the model repeated itself", kind="degeneration", task="probe"
+        )
+
+    name = f"flaky-{unique}"
+    flaky = dataclasses.replace(
+        patched_package,
+        name=name,
+        executors={
+            **patched_package.executors,
+            "cr-module-structure-well-formed": boom,
+        },
+        source_config={**patched_package.source_config, "name": name},
+    )
+    monkeypatch.setitem(AUTOMATED_ASSESSORS, (name, flaky.version), flaky)
+    draft_id = import_spec(cleanup, copy_spec(unique), revise_definitions=True)
+    before = session.execute(text("SELECT count(*) FROM evaluations")).scalar_one()
+
+    run = run_preview(admin, flaky, profiled_course, draft_id)
+
+    assert run["status"] == "done" and run["error"] is None
+    outcomes = {o["criterion_id"]: o for o in run["result"]["outcomes"]}
+    assert len(outcomes) == 27  # exact coverage holds around the failure
+    errored = outcomes["cr-module-structure-well-formed"]
+    assert errored["outcome"] == "execution_error" and errored["derived"]
+    assert errored["execution_cause"] == {
+        "task": "probe",
+        "kind": "degeneration",
+        "message": "task 'probe': the model repeated itself",
+    }
+    assert run["result"]["coverage"]["criteria"]["executionError"] == 1
+    assert session.execute(text("SELECT count(*) FROM evaluations")).scalar_one() == before
+    assert any(
+        not step["ok"] and step["label"] == "cr-module-structure-well-formed"
+        for step in run["steps"]
     )
 
 
