@@ -394,6 +394,23 @@ database pool raised, since each worker uses up to two sessions. If the endpoint
 back, the transport already backs off on 429 honouring `Retry-After` — the first real batch
 is how the account's actual limit gets measured, rather than guessed.
 
+**The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with
+the identical work behind it — one use case, two doors, so they cannot answer differently.
+It opens on the **durable** count ("12 of 20 courses judged"), which is a query over the
+judgments rather than a run's memory: it is still right after a restart, and it counts a
+batch someone ran from a terminal. Starting states what it commits to before asking, and
+only offers assessors that have **ratified the pinned version** — the option that would be
+refused is not shown. While it runs, the page reads it once a second (`POST
+/admin/studies/{id}/evaluations` returns a run id; `GET …/{run_id}` reads it; `POST
+…/{run_id}/cancel` stops it), showing a row per course, the current activity and a range for
+what is left. A run is refused with **409** while another one over the same courses is alive:
+two batches over one course would decide by arrival order, since every reader takes the most
+recent judgment.
+
+What the console cannot do, on purpose: watch or cancel a batch started from the CLI. They
+are different processes and runs live in memory — the durable count reflects it all the same.
+Runs are forgotten on restart; what they wrote is not.
+
 ### Reading a calibration trace
 
 A semantic criterion's verdict is only as good as the question that produced it, and the

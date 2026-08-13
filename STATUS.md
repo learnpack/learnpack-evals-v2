@@ -148,6 +148,23 @@ calibrations emptied each other's answers and, over one profile, one could be se
 — two repeats silently collapsing into one measurement. The caches are now scoped to one
 evaluation; within a run nothing changed, so **no version was bumped**.
 
+**The batch from the console.** The loop's only step that still needed a terminal was the one
+in the middle: `/admin/studies` already declared, pinned, composed, opened and published, and
+evaluating was CLI-only. Now `/admin/studies/<id>` carries an *Evaluation* card over the same
+use case — `POST /admin/studies/{id}/evaluations` starts a run and returns its id (202), `GET
+…/{run_id}` reads it while it advances, `POST …/{run_id}/cancel` stops it — composed in
+`app/platform/batch_router.py`, beside `ratification_router.py` and for the same reason: the
+act spans two modules. Three things are worth naming. The **durable count** ("12 of 20 courses
+judged") is a query over the judgments, not the run's memory, so it survives a restart and
+counts a batch someone ran from a terminal — which is exactly what an in-memory run cannot do.
+The start dialog **only offers assessors that ratified the pinned version**, so the option that
+would be refused is never shown (the ADR-0036 stance, applied here). And a second run over the
+same courses is refused **409** while the first is alive: judgments are append-only and every
+reader takes the most recent, so two batches over one course would decide by arrival order —
+the one genuinely confusing outcome available, and the cheapest to prevent. Runs are kept in
+memory, last ten, and the registry never forgets one that is still working. **No ADR:**
+ADR-0040 decided all of it and named this surface in its `[future]`.
+
 **After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
 declaration** — a generator version or an explicit `unknown` — at every entry point (form,
 API, canonical bulk import, `register-package`), so the accidental null that
