@@ -534,8 +534,20 @@ and "named and offered" still refuses generic futurology and the keep-practising
 v5 was written against. The second edit closes the opening criterion's residual 2-1 the
 same way: addressing the learner's everyday experience **of the subject** ("every web page
 you have ever visited") counts as referring to what they already know, stated outright.
-Sits as a **draft**; the verification that decides it: three runs of the HTML draft (do
-the 2-1s collapse?), one of CSS and one of GitHub (does anything unanimous move?).
+Sits as a **draft**. **Verified over five runs (3 HTML + 1 CSS + 1 GitHub):** the opening
+criterion is fixed — unanimous *pass* where it had split 2-1 twice — and the closing
+collapsed **onto fail** (3-0, 2-0, one residual 2-1): the judges read "offered to the
+learner" as unmet by a closing that describes CSS/JavaScript without making them the
+learner's next step. That direction was the opposite of the prediction the wording shipped
+with, and the team reviewed the closing against it and **agreed with the fail** — the
+criterion is now decidable and decided; nothing unanimous moved on CSS or GitHub. One
+finding rode along, of a new class: a cross-run verdict flip on
+`cr-assessment-matches-the-declared-verification` traced to **mapping variance upstream**,
+not to the judge — one run's mapping gave obj-1 items (so its declared verification was
+judged, and failed), the other's gave it none (so the corpus narrowed in code to an
+objective whose item matches, and passed). Two different questions, both answered
+correctly: chained-task sensitivity, recorded as a candidate for tightening the mapping
+prompt (assessor identity), not the instrument.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
