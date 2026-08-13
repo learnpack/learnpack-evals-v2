@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import re
+import signal
 import sys
 from collections.abc import Callable
 from contextlib import nullcontext
@@ -229,7 +230,7 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
 )
-from app.platform import observability
+from app.platform import batch_runs, observability
 from app.platform.db import SessionLocal
 from app.platform.events import dispatcher
 from app.platform.policies import register_all_policies
@@ -667,6 +668,17 @@ def _assessor_package(name: str, version: str) -> AssessorPackage | None:
     return package
 
 
+def _assessor_from_spec(spec: str | None) -> AssessorPackage | None:
+    """`name:version` -> the package. Always explicit: an assessor owes itself to a lineage,
+    and naming which one is doing the judging is part of the act."""
+    if spec is None or ":" not in spec:
+        known = ", ".join(f"{n}:{v}" for n, v in sorted(AUTOMATED_ASSESSORS))
+        print(f"pass --assessor <name>:<version> (registry has: {known})", file=sys.stderr)
+        return None
+    name, version = spec.split(":", 1)
+    return _assessor_package(name, version)
+
+
 def _print_decided_deltas(deltas: tuple[CriterionDelta, ...], email: str) -> None:
     """The half of the diff that needed no decision from the caller, as it was decided."""
     for delta in deltas:
@@ -794,16 +806,10 @@ def run_evaluate(
     except ValueError:
         print(f"invalid content id: {raw_content_id}", file=sys.stderr)
         return 1
-    if assessor_spec is None or ":" not in assessor_spec:
-        # Always explicit since the registry grew past one package: an assessor owes
-        # itself to a lineage, and naming which one is doing the judging is part of the act.
-        known = ", ".join(f"{n}:{v}" for n, v in sorted(AUTOMATED_ASSESSORS))
-        print(f"pass --assessor <name>:<version> (registry has: {known})", file=sys.stderr)
-        return 1
-    assessor_name, assessor_version = assessor_spec.split(":", 1)
-    package = _assessor_package(assessor_name, assessor_version)
+    package = _assessor_from_spec(assessor_spec)
     if package is None:
         return 1
+    assessor_name, assessor_version = package.name, package.version
 
     with SessionLocal() as session:
         instruments = DesignInstrumentGateway(session)
@@ -1874,6 +1880,119 @@ def run_show_fitness(study_id: UUID) -> int:
     return 0
 
 
+def run_evaluate_study(
+    study_id: UUID, assessor_spec: str | None, concurrency: int | None, re_evaluate: bool
+) -> int:
+    """Evaluate every course of an open study, in one bounded run.
+
+    Progress goes to stderr and the summary to stdout, the same split `evaluate --dry-run`
+    uses: what a script reads is one JSON document, and a batch of twenty courses would
+    otherwise bury it in progress lines. Ctrl-C cancels — the same token the console will
+    use — and the summary still prints, because half a batch is a result too.
+    """
+    package = _assessor_from_spec(assessor_spec)
+    if package is None:
+        return 1
+
+    workers = concurrency if concurrency is not None else get_settings().llm_max_concurrency
+    try:
+        run = batch_runs.prepare(
+            study_id=study_id, package=package, workers=workers, re_evaluate=re_evaluate
+        )
+    except batch_runs.BatchRefused as exc:
+        # Refused before a single call was paid for: every course would have failed the
+        # same way, so the message names the act that fixes it.
+        print(f"{exc} [{exc.kind}]", file=sys.stderr)
+        return 1
+
+    trace = observability.trace_path(f"batch-{run.run_id}")
+    sinks = [_print_call]
+    if trace is not None:
+        sinks.append(observability.jsonl_sink(trace))
+    run.sink = observability.fan_out(*sinks)
+
+    print(
+        f"evaluating {len(run.pending)} of {len(run.courses)} courses with "
+        f"{package.display_name} against {run.instrument_version_id}, "
+        f"{workers} at a time (study {study_id})",
+        file=sys.stderr,
+    )
+    if len(run.pending) < len(run.courses):
+        print(
+            f"  {len(run.courses) - len(run.pending)} already evaluated by this assessor — "
+            "pass --re-evaluate to do them again",
+            file=sys.stderr,
+        )
+
+    # Ctrl-C stops the run instead of killing the process mid-course: the workers finish
+    # what they are already asking, nothing new starts, and the summary is still printed.
+    previous_handler = signal.signal(signal.SIGINT, lambda *_: _cancel_batch(run))
+    try:
+        batch_runs.execute(run)
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+    view = run.view()
+    for outcome in view.outcomes:
+        detail = f" ({outcome.cause})" if outcome.cause else ""
+        print(f"  {outcome.status:10} {outcome.external_id}{detail}", file=sys.stderr)
+    if trace is not None and trace.exists():
+        print(f"LLM trace: {trace}", file=sys.stderr)
+
+    print(json.dumps(_batch_summary(view), indent=2))
+    # A batch that ended for a reason is a failed command, even though what succeeded stays
+    # persisted: a script must not read "cancelled" or "refused" as a finished generation.
+    return 0 if view.status == "done" and view.failed == 0 else 1
+
+
+def _cancel_batch(run: batch_runs.BatchRun) -> None:
+    print(
+        "\ncancelling: no further courses will start, and the ones in flight stop at their "
+        "next call. What already finished is persisted.",
+        file=sys.stderr,
+    )
+    run.cancel()
+
+
+def _batch_summary(view: batch_runs.BatchView) -> dict[str, Any]:
+    """What a script reads to know how a generation went, per course and in total."""
+    return {
+        "runId": str(view.run_id),
+        "studyId": str(view.study_id),
+        "instrumentVersionId": view.instrument_version_id,
+        "assessor": {"name": view.package.name, "version": view.package.version},
+        "status": view.status,
+        "startedAt": view.started_at.isoformat(),
+        "elapsedMs": view.elapsed_ms,
+        "totals": {
+            "courses": view.total,
+            "evaluated": view.evaluated,
+            "skipped": view.skipped,
+            "failed": view.failed,
+            "cancelled": sum(1 for o in view.outcomes if o.status == "cancelled"),
+            "llmCalls": sum(o.llm_calls for o in view.outcomes),
+        },
+        "error": view.error,
+        "courses": [
+            {
+                "contentId": str(outcome.content_id),
+                "externalId": outcome.external_id,
+                # The grouping axis of the fitness (ADR-0039), so a generation's courses can
+                # be read by commission without a second query.
+                "briefId": str(outcome.brief_id) if outcome.brief_id else None,
+                "status": outcome.status,
+                "cause": outcome.cause,
+                "durationMs": outcome.duration_ms,
+                "llmCalls": outcome.llm_calls,
+                "evaluationId": (
+                    str(outcome.evaluation_id) if outcome.evaluation_id is not None else None
+                ),
+            }
+            for outcome in view.outcomes
+        ],
+    }
+
+
 # --------------------------------------------------------------------------- seed-demo
 # A ready-to-use local dataset (ADR-0008), for contributors who work on rubrics, metrics and
 # evaluations and should not need a Clerk account or a Neon database to run the app.
@@ -2449,6 +2568,29 @@ def main(argv: list[str] | None = None) -> int:
         help="calibration mode: accepts drafts, needs no ratification, persists nothing",
     )
 
+    evaluate_study_parser = subparsers.add_parser(
+        "evaluate-study",
+        help="evaluate every course of an open study in one bounded, cancellable run",
+    )
+    evaluate_study_parser.add_argument("--study-id", required=True)
+    evaluate_study_parser.add_argument(
+        "--assessor", required=True, help="name:version - the same declaration `evaluate` needs"
+    )
+    evaluate_study_parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        help="how many courses to evaluate at a time (default: LLM_MAX_CONCURRENCY). How "
+        "many REQUESTS may be in flight is the transport's ceiling either way",
+    )
+    evaluate_study_parser.add_argument(
+        "--re-evaluate",
+        action="store_true",
+        dest="re_evaluate",
+        help="evaluate courses this assessor already evaluated too (default: skip them, so "
+        "re-running resumes an interrupted batch)",
+    )
+
     declare_study_parser = subparsers.add_parser(
         "declare-study", help="declare an evaluation study (the round with a purpose)"
     )
@@ -2611,6 +2753,10 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "evaluate":
         return run_evaluate(
             args.content_id, args.instrument_version_id, args.assessor, args.dry_run
+        )
+    elif args.command == "evaluate-study":
+        return run_evaluate_study(
+            UUID(args.study_id), args.assessor, args.concurrency, args.re_evaluate
         )
     elif args.command == "declare-study":
         return run_declare_study(args.purpose)
