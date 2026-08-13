@@ -322,9 +322,13 @@ Two aggregation rules not to confuse:
   reasoning model for an answer inside a budget its thinking consumed whole, and got
   nothing back — see *Reading a calibration trace*. Every `evaluate` — dry run
   included — spends real calls (a few per evaluation; tasks are memoized per profile, and
-  tokens/latency come back as `llm_*` metrics with the outcomes). If the model
-  irrecoverably fails (transport down, output contract never satisfied, an ungrounded
-  quote), the evaluation **aborts whole and persists nothing**; fix or just retry.
+  tokens/latency/`clean_retries` come back as `llm_*` metrics with the outcomes). When a
+  task irrecoverably fails (transport down, output contract never satisfied, a
+  degeneration that survived its one clean-conversation retry), the criteria it feeds
+  degrade to **`execution_error`** — a fact of the run, never of the content, carrying its
+  cause `{task, kind, message}` — and the rest of the evaluation persists (ADR-0037).
+  Past the **failure budget** (a quarter of the criteria mapped for execution) the run
+  was not an evaluation: it aborts whole and persists nothing; fix or just retry.
   `LLM_TIMEOUT_SECONDS` bounds one call before the transport treats it as transient and
   backs off — access like the key, so raising it for a long prompt against a slow provider
   re-versions nothing. The test suite never touches the network: the transport is faked at
@@ -419,6 +423,14 @@ A judged criterion reports how close its vote was, as a
 `judgment_agreement_<task>` metric of `{samples, agreed}`. Treat a criterion that keeps coming
 back **2-1 as a bug report about the instrument**, not as noise to average away — that is the
 signature of the first case above.
+
+Two more signals ride with every task's `llm_*` metric since ADR-0037. `clean_retries`
+counts the fresh conversations an answer cost: verdicts that needed one are a shifted
+population — the retry changed the conversation that produced them — so compare them apart
+before reading agreement across runs. And a criterion carrying `execution_error` names in
+its cause `{task, kind, message}` exactly which task failed and how; a recurring
+`degeneration` on one (content, criterion) pair is a bug report about the question, the
+same way a recurring 2-1 vote is.
 
 And the limit worth stating: self-agreement is not correctness. A criterion can be perfectly
 stable and stably wrong, and nothing in these runs would show it. Only a human reading the

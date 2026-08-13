@@ -15,7 +15,7 @@ plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
 projection the genetic-algorithm experiment reads), ADR-0027 (package intake by
 mechanical discovery), ADR-0034 (LLM-carrying assessors, realized by
 `drafts-hybrid`, whose v3 takes the first criteria the model itself judges — see below)
-and ADR-0037 (execution failure is an outcome — in flight, PR 1 of 3, see below) on
+and ADR-0037 (execution failure is an outcome — realized end to end, see below) on
 top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
@@ -437,10 +437,22 @@ answers** so the criteria sharing a task degrade together with one cause and wit
 re-asking a degenerated question, and every task reports `clean_retries` inside its
 `llm_*` metric — verdicts that needed a fresh conversation are a shifted population. The
 retry conversation shapes which answer arrives, so this is identity: v6 inherits no
-calibration. **PR 3** makes the derivation catch the failure and mint the state, bounded
-by the budget. Until PR 3 lands, nothing produces the state and an irrecoverable failure
-still aborts the evaluation whole. **Calibration stays paused until the three are
-merged.**
+calibration. **PR 3 (this one) closes the decision**: the derivation catches the typed
+failure at the executor boundary and mints `execution_error` with its cause — case (e) of
+the precedence, still mechanical, since raising is not deciding — bounded by
+`EXECUTION_FAILURE_BUDGET = 0.25` of the criteria mapped for execution (`drafts-hybrid`'s
+19 tolerate 4; an instrument with ≤3 executable criteria tolerates zero, which IS
+ADR-0034 §4 as the limit case). Below the budget the evaluation persists with the
+successes' metrics; past it the original failure propagates and the run aborts whole,
+nothing persisted. A registration bug (`InvalidAutomatedEvaluation`) is never softened
+into an `execution_error`. The CLI and the preview page report the same reality: a dry
+run with a failed criterion ends `done` with the cause on the row and a red step;
+exceeding the budget is the `assessor_failed` ending it always was.
+
+**With the three PRs merged, calibration is UNPAUSED.** The next act is the one the
+campaign was interrupted for: run the v5-threshold measurement (three runs of the CSS
+draft, one of the HTML draft) under `drafts-hybrid:6` — remembering v6 inherits no
+calibration from v5's fourteen runs, which is the point of the bump.
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
@@ -478,11 +490,12 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 `drafts-hybrid` is a new identity that inherits nothing from the previous one's
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
-`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 4
---instrument-version-id <version> --email <admin>`. Which version is part of the act: v3 is
-published, v4 is the draft with the two corrected criteria, and a ratification names one.
-Ratifying before the seven judged criteria have been read would persist verdicts nobody has
-checked, which is the one thing the calibration loop exists to prevent.
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 6
+--instrument-version-id <version> --email <admin>`. Which version is part of the act: the
+registry's current artifact is **v6** (the corrected retry, ADR-0037), and each bump
+inherited nothing from the previous version's runs. Ratifying before the seven judged
+criteria have been read would persist verdicts nobody has checked, which is the one thing
+the calibration loop exists to prevent.
 
 **The assessors page (`/admin/assessors`, ADR-0036).** Ratification used to be readable
 only from the database and performable only from a terminal, which is what had been
@@ -732,6 +745,17 @@ the data in the package).
 
 - **Backend suite green: 838 tests** against local Postgres (~60 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+- **The failure budget pinned at both edges and end to end** (suite, ADR-0037 PR 3): a
+  failure under the budget becomes `execution_error` carrying `{task, kind, message}`
+  while the other criteria and the successes' metrics survive; past the budget the
+  executor's own exception propagates and nothing half-derives; an instrument with one
+  executable criterion tolerates zero (the ADR-0034 §4 limit case); a registration bug
+  propagates even when the budget would have absorbed a typed failure. End to end over
+  the frozen course: the evaluation persists, the cause round-trips the repository as
+  jsonb, the judgment derives with the claim `insufficient` and `executionError` counted
+  in its coverage; over HTTP, a dry run with one failed criterion ends `done` with exact
+  coverage around it and its step `ok=false`, and one past the budget ends
+  `assessor_failed` with zero writes.
 - **The three-way retry pinned on both remedies and the poison case** (suite, ADR-0037
   PR 2): the platform's error taxonomy survives in the raised kind and is never
   clean-retried; an answer cut at the budget raises on one call; a contract never
