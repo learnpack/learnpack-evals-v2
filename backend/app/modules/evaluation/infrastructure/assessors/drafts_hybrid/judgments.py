@@ -47,7 +47,12 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from app.modules.evaluation.domain.model import CriterionSpec, ProfileData, ProfileEntryData
+from app.modules.evaluation.domain.model import (
+    CriterionSpec,
+    ExecutionFailure,
+    ProfileData,
+    ProfileEntryData,
+)
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
     prompts,
     runtime,
@@ -194,11 +199,23 @@ def clear_judgment_cache() -> None:
 def _memoized(task_id: str, profile: ProfileData, run: Callable[[], Any]) -> Any:
     """Whatever `run` returns, once per (task, profile). Callers that also need the spend
     return it inside the value — a `Judgement` carries its own, the extraction tasks pair
-    theirs with the data."""
+    theirs with the data.
+
+    Typed failures are cached like answers (ADR-0037 §2): the two criteria that share the
+    assessment mapping must degrade together, with one cause, without re-asking the model
+    a question that just degenerated. Only `ExecutionFailure`; a bug propagates every
+    time."""
     key = (task_id, profile.profile_id)
     if key not in _cache:
-        _cache[key] = run()
-    return _cache[key]
+        try:
+            _cache[key] = run()
+        except ExecutionFailure as exc:
+            _cache[key] = exc
+            raise
+    cached = _cache[key]
+    if isinstance(cached, ExecutionFailure):
+        raise cached
+    return cached
 
 
 # --- grounding: finding the model's quote in the source ----------------------------------
@@ -387,6 +404,7 @@ def _total(usages: Sequence[LlmUsage]) -> LlmUsage:
         tokens_in=sum(usage.tokens_in for usage in usages),
         tokens_out=sum(usage.tokens_out for usage in usages),
         latency_ms=sum(usage.latency_ms for usage in usages),
+        clean_retries=sum(usage.clean_retries for usage in usages),
     )
 
 
@@ -457,14 +475,17 @@ def closing_lesson_body(profile: ProfileData) -> tuple[str, ProfileEntryData]:
     bodies = profile.entries["lesson_bodies"]
     ordered = tasks.ordered_inventory(profile)
     if not ordered:
-        raise AssessorExecutionError("the lesson inventory is empty: no closing lesson to read")
+        raise AssessorExecutionError(
+            "the lesson inventory is empty: no closing lesson to read", kind="profile"
+        )
     closing_id = str(ordered[-1]["lessonId"])
     for lesson in bodies.value:
         if str(lesson.get("lessonId")) == closing_id:
             return str(lesson["body"]), bodies
     raise AssessorExecutionError(
         f"the profile carries no body for the closing lesson '{closing_id}' — "
-        "a broken package, not a finding about its pedagogy"
+        "a broken package, not a finding about its pedagogy",
+        kind="profile",
     )
 
 

@@ -1,6 +1,21 @@
-"""`drafts-hybrid` v5 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v6 — the `course-drafts-qa` lineage's LLM-carrying assessor.
 
-v5 answers what repeated runs of v4 measured, in two places that have nothing to do with
+v6 changes how a failing conversation is retried, and nothing about what is asked
+(ADR-0037 §7). The feedback loop realized v5's failures are two shapes wearing one
+remedy: a **contract violation** is a fixable mistake and keeps the feedback retry, which
+the campaign measured to work; a **degeneration** — the model repeating its answer
+verbatim after being told what was wrong — is not, because feeding the broken answer back
+puts the loop in the context. A degeneration now buys ONE retry on a clean conversation,
+rebuilt from scratch; a second identical degeneration raises, being the poison case.
+Transport, configuration and `finish_reason: length` are never clean-retried. Every
+failure now carries a machine-readable kind, failures are memoized like answers (the
+criteria sharing a task degrade together, without re-asking a question that just
+degenerated), and each task reports `clean_retries` in its `llm_*` metric — a verdict
+that needed a fresh conversation is a shifted population, and calibration must see it.
+The retry conversation shapes which answer finally arrives, so this is identity and v5's
+calibration does not transfer.
+
+v5 answered what repeated runs of v4 measured, in two places that have nothing to do with
 each other except that the same campaign found both.
 
 **A judgement is now decided by a vote.** Repeats of one question over one text disagree:
@@ -89,8 +104,10 @@ Identity (ADR-0034): the models, prompts, temperature, schemas and decision cons
 this assessor's identity, pinned in code and declared in `SOURCE_CONFIG` — including a
 fingerprint of the prompt texts, so a prompt edited without a VERSION bump is refused at
 ratification. The transport (key, base URL, backoff) is environment and re-versions
-nothing. An irrecoverable LLM failure raises `AssessorExecutionError` and the evaluation
-aborts whole; nothing persists.
+nothing. When a task genuinely cannot answer it raises `AssessorExecutionError` with its
+kind and task; what that costs — a criterion's `execution_error` or, past the failure
+budget, the whole evaluation — is the derivation's decision, not this package's
+(ADR-0037; until its third PR lands, every failure still aborts the evaluation whole).
 
 `cr-objectives-verb-level-band` stays abstained ON PURPOSE: it compares objectives against
 the declared difficulty, and this format declares `difficulty` only sometimes (a nullable
@@ -109,11 +126,12 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
     executors,
     judgments,
     prompts,
+    structured_output,
     tasks,
 )
 
 NAME = "drafts-hybrid"
-VERSION = "5"
+VERSION = "6"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
@@ -231,6 +249,9 @@ SOURCE_CONFIG = {
         # honest sizes differ by an order of magnitude.
         "judgeMaxOutputTokens": judgments.JUDGE_MAX_OUTPUT_TOKENS,
         "extractionMaxOutputTokens": judgments.EXTRACTION_MAX_OUTPUT_TOKENS,
+        # How a failing conversation is retried decides which answer finally arrives
+        # (ADR-0037 §7): degeneration alone may buy this many fresh conversations.
+        "cleanRetries": {"max": structured_output.MAX_CLEAN_RETRIES},
         "models": {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
