@@ -19,6 +19,7 @@ from typing import Any
 from uuid import UUID
 
 from app.modules.evaluation_studies.application.dtos import (
+    BriefInfo,
     ContentInfo,
     CriterionOutcomeInfo,
     GeneratorInfo,
@@ -193,10 +194,37 @@ def _level(
     }
 
 
+def _brief_table(
+    study: Study, contents: list[ContentInfo], briefs: dict[UUID, BriefInfo]
+) -> list[dict[str, Any]]:
+    """The commissions this study was computed over — one entry each, never per content.
+
+    The recipe **union** what the contents reference, so a brief that produced no course (a
+    generation that failed) is read as an empty group instead of disappearing. The hash rides
+    along because the id is minted per store and the hash is not: it is what keeps a series
+    joinable across a rebuilt database (ADR-0039 §3–§4).
+    """
+    wanted = set(study.brief_ids) | {c.brief_id for c in contents if c.brief_id is not None}
+    table: list[dict[str, Any]] = []
+    for brief_id in sorted(wanted, key=str):
+        brief = briefs.get(brief_id)
+        # A brief the caller could not read is still named: dropping the row would take the
+        # group with it, and a group of courses is what this table exists to identify.
+        table.append(
+            {
+                "briefId": str(brief_id),
+                "briefHash": brief.brief_hash if brief is not None else None,
+                "brief": brief.brief if brief is not None else None,
+            }
+        )
+    return table
+
+
 def compute_fitness(
     study: Study,
     instrument: InstrumentInfo | None,
     contents: list[ContentInfo],
+    briefs: dict[UUID, BriefInfo],
     generators: dict[UUID, GeneratorInfo],
     judgments: list[JudgmentInfo],
     outcomes: list[CriterionOutcomeInfo],
@@ -208,6 +236,12 @@ def compute_fitness(
     Coverage travels with every value and the ratified assessors are named, because dropping
     `not_assessed` means two assessor sets produce values over *different populations*: the
     GA may only compare within equal coverage, and that has to be checkable (ADR-0023 §7).
+
+    The **brief is a fourth axis and not a fourth grain** (ADR-0039): each content carries the
+    commission it answers, the header names the commissions, and nothing is pooled per brief —
+    a consumer can derive a pooled value from labelled contents, but nobody can recover from a
+    pooled value how much the courses of one commission differed, which is what the repeats
+    exist to measure.
     """
     gaps: list[dict[str, Any]] = []
     if study.instrument_version_id is None:
@@ -229,6 +263,9 @@ def compute_fitness(
         "signal": "optimization",
         "denominatorRule": DENOMINATOR_RULE,
         "gaps": gaps,
+        # The grouping axis, named once (ADR-0039 §3): contents carry the id, this says which
+        # commission each id is. In the header so it answers at any status, like the gaps.
+        "briefs": _brief_table(study, contents, briefs),
     }
     if instrument is None:
         return header | {"assessorCoverage": {}, "contents": [], "generators": [], "study": {}}
@@ -260,6 +297,9 @@ def compute_fitness(
             {
                 "contentId": str(content.content_id),
                 "externalId": content.external_id,
+                # The commission this course answers, `null` when the intake derived none
+                # (ADR-0022 §4) — an absent brief groups nowhere and is reported as itself.
+                "briefId": str(content.brief_id) if content.brief_id else None,
                 "generatorVersionId": (
                     str(content.generator_version_id) if content.generator_version_id else None
                 ),
