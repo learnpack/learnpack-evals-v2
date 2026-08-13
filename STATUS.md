@@ -418,7 +418,7 @@ ADR-0018 refined, not broken), carrying a structured cause `{task, kind, message
 **failure budget** that keeps the whole-run abort as the limit case and a **three-way retry**
 (contract → feedback as today · degeneration → one clean-conversation retry · transport,
 configuration and `finish_reason: length` → never). The work lands in three PRs so main
-stays green at each step: **PR 1 (this one)** teaches the state to every consumer before
+stays green at each step: **PR 1 (merged)** taught the state to every consumer before
 anything produces it — domain vocabulary and validator, migration 0018 (CHECK + the
 `execution_cause` jsonb column), repository roundtrip, `evidence_basis`/judgment coverage,
 the report's `insufficiencyCause` (never `"unknown"` for a run failure) and its
@@ -426,11 +426,20 @@ always-present `executionErrors` caveat, the fitness partition (state excluded f
 denominator; unknown states now raise instead of vanishing; `executionErrors` published in
 `assessorCoverage`, extending ADR-0023 §7's equal-coverage rule to execution variance),
 the preview API contract, the CLI printer, the console (badge, cause in the evidence cell,
-fitness-preview column, study caveat row) and the GLOSSARY. **PR 2** de-collapses the error
-taxonomy, adds the clean retry and failure memoization inside the assessor package ⇒
-`drafts-hybrid` v6. **PR 3** makes the derivation catch the failure and mint the state,
-bounded by the budget. Until PR 3 lands, nothing produces the state and an irrecoverable
-failure still aborts the evaluation whole. **Calibration stays paused until the three are
+fitness-preview column, study caveat row) and the GLOSSARY. **PR 2 (this one)** is
+`drafts-hybrid` **v6**, the retry corrected inside the assessor package: every failure now
+carries a machine-readable kind (`transport · configuration · response · budget · contract
+· degeneration · profile` — the platform taxonomy preserved instead of collapsed into one
+message string), a degeneration buys **one retry on a clean conversation** (nothing of the
+broken round fed back; a second identical degeneration raises as the poison case; budget,
+transport and configuration are never clean-retried), failures are **memoized like
+answers** so the criteria sharing a task degrade together with one cause and without
+re-asking a degenerated question, and every task reports `clean_retries` inside its
+`llm_*` metric — verdicts that needed a fresh conversation are a shifted population. The
+retry conversation shapes which answer arrives, so this is identity: v6 inherits no
+calibration. **PR 3** makes the derivation catch the failure and mint the state, bounded
+by the budget. Until PR 3 lands, nothing produces the state and an irrecoverable failure
+still aborts the evaluation whole. **Calibration stays paused until the three are
 merged.**
 
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
@@ -721,8 +730,16 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 830 tests** against local Postgres (~55 s). Requires
+- **Backend suite green: 838 tests** against local Postgres (~60 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+- **The three-way retry pinned on both remedies and the poison case** (suite, ADR-0037
+  PR 2): the platform's error taxonomy survives in the raised kind and is never
+  clean-retried; an answer cut at the budget raises on one call; a contract never
+  satisfied spends its conversation and nothing more; a degeneration is dissolved by a
+  clean conversation whose first call carries only system+user, with `clean_retries`
+  reported in the task's `llm_*` metric (summed across a vote's samples); a second
+  identical degeneration raises after exactly four calls; and a failed shared task is
+  memoized — both consuming criteria see the same exception instance with no extra call.
 - **The sixth state pinned at every consumer, with nothing yet producing it** (suite,
   ADR-0037 PR 1): the domain validator admits `execution_error` only derived, quoteless and
   carrying its cause, and refuses the cause on every other state; the judgment counts six
