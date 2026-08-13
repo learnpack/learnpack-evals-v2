@@ -1,4 +1,29 @@
-"""`drafts-hybrid` v9 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v10 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v10 tells the outcomes extraction which verb to report when the statement wraps its action.
+Reading the eleven runs of the v6 era found the task taking the auxiliary of the wrapper as
+the verb and marking as non-observable content that is observable: *"you will be able to
+read, write, and structure your own web pages"* answered `be able to`, *"you'll go from
+writing plain, unstyled HTML pages to confidently styling…"* answered `go` — while the SAME
+structure, *"you will be able to contribute to any repository"*, answered `contribute` in
+another draft. Inconsistency, not a rule the model was following, and the same class as the
+historic `learn` case. The prompt now says to look through an enabling phrase and report the
+verb of the action, to take the first when several are named, and to report the wrapper
+phrase itself when there is no action behind it — a state about a topic is not an observable
+action, which is the answer the criterion is written to catch. The suspected mechanism is
+worth recording: the task's own framing line asks for what the learner will BE ABLE TO DO,
+so the prompt primed the very phrase that came back as the verb.
+
+Two remedies were available and rejected. **The validator was not touched**: making the rule
+a contract the retry loop enforces means rejecting `verb` values from a wrapper list, and
+`be familiar with`, `learn about` and `understand` are exactly the answers a truthful
+extraction must be able to give — a deny-list would force a false answer whenever the
+statement genuinely has no action behind it. And **the framing line was left alone**: it is
+the likely cause, but rewording it moves which statements are LISTED, which is a different
+criterion's evidence and would leave the field verification with two variables. The rule
+overrides the priming without moving the statement set. `objectives_classification` carries
+the same field and the same risk and is also untouched, because the same reading found it
+resolving correctly in all three drafts.
 
 v9 declares which upstreams may NOT serve its calls (ADR-0038): `sail-research`, whose
 serving produced every capped runaway of the campaign — seven of seven, reasoning past
@@ -164,7 +189,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "9"
+VERSION = "10"
 INSTRUMENT_ID = "course-drafts-qa"
 
 

@@ -31,6 +31,15 @@ List every outcome statement it makes to the learner: a statement of what the le
 will BE ABLE TO DO after the course. Topics the course will cover, descriptions of the
 course's content and invitations to enjoy it are NOT outcome statements.
 
+Report as "verb" the verb that names what the LEARNER DOES. When the sentence wraps that
+action in an enabling phrase — "you will be able to X", "you will go from X to Y", "you
+will be comfortable with X" — look through the wrapper and report the action verb: in
+"you will be able to build a complete page" the verb is "build", and in "you'll go from
+writing plain pages to styling them" it is "style". When the sentence names several
+actions, report the first. When there is no action behind the wrapper — the sentence
+names only a state about a topic, as in "you will be comfortable with databases" —
+report the wrapper phrase itself, which is not an observable action.
+
 Answer with this JSON shape:
 {"outcomes": [{"statement": "<one outcome sentence, copied verbatim from the lesson>",
 "verb": "<the main action verb of the outcome, lowercase>",

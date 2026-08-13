@@ -59,7 +59,7 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "9")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "10")]
 
 _V5_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")

@@ -564,6 +564,48 @@ buys consistency at an availability price already judged worse than the variance
 for an entry is repeated, trace-documented failure — Phala (one 3,491-token bill) is
 watched, not listed. Editing the list in either direction is a version bump.
 
+**v10 — the wrapped outcome verb, the first bump the human review of verdicts produced.**
+Reading the eleven runs of the v6 era by criterion found `outcomes_extraction` taking the
+auxiliary of a wrapper as the verb and marking observable content non-observable: *"you will
+be able to read, write, and structure your own web pages"* → `be able to`, false; *"you'll
+go from writing plain, unstyled HTML pages to confidently styling…"* → `go`, false — while
+the SAME structure in another draft, *"you will be able to contribute to any GitHub
+repository"*, answered `contribute`, true. Inconsistency rather than a rule, the same class
+as the historic `learn` case, and it lands on `cr-outcomes-observable-verbs` as a false fail
+on two of the three drafts. The prompt now says to look through an enabling phrase and
+report the verb of the action, to take the first when several are named, and to report the
+wrapper phrase itself when there is no action behind it — a state about a topic is not an
+observable action, which is the answer the criterion IS written to catch. **Two remedies
+were rejected and the docstring says why:** a validator deny-list of wrapper verbs would
+force a false answer, because `be familiar with` / `learn about` / `understand` are exactly
+the answers a truthful extraction must be able to give; and rewording the task's own framing
+line ("what the learner will BE ABLE TO DO" — the likely source of the priming) would move
+which statements are LISTED, which is `cr-outcomes-present`'s evidence, leaving the field
+verification with two variables. `objectives_classification` carries the same field and the
+same risk and was left alone: the same reading found it resolving correctly in all three
+drafts. Prompts are identity (ADR-0034), so v9's calibration does not transfer.
+
+**Verified over six runs — three drafts of the campaign (one each) and two new ones (Git,
+command line ×2).** Both wrapped statements now answer the verb of the action and an honest
+`is_observable`: the HTML opening answers `read` and the CSS one `style`, where v9 answered
+`be able to` and `go` and called both non-observable. **The guard held**: the GitHub opening's
+*"you will be comfortable with that entire workflow"* names no action behind its wrapper and
+stayed non-observable, beside its own *"be able to contribute"* → `contribute`. The statement
+SET did not move (one, one and two statements, exactly the v6-era extractions), which is what
+keeps `cr-outcomes-present` out of this bump. The Git draft shows the rule generalizing rather
+than matching a list: *"You'll move from saving files with no history to making intentional
+commits"* — a wrapper the prompt never names — answers `make`. Ninety-one calls, every one
+`finish_reason: stop`, zero retries, zero failures, no denied upstream drawn.
+
+**And a new draft produced a new instrument signal.** The command-line draft's opening states
+NO outcome at all — it motivates ("the terminal is a conversation with your computer", "take a
+breath, let's begin") and never says what the learner will be able to do — so the extraction
+answers `{"outcomes": []}` in both of its runs, correctly. `cr-outcomes-present` fails on its
+own failure mode 0, and `cr-outcomes-observable-verbs` passes **vacuously**, there being no
+outcome phrased badly: the division of labour those two criteria were written with, doing
+exactly what it says. Their claim is conjunctive, so it fails on the first. It is the first
+draft of the corpus whose opening promises the learner nothing, and the criterion caught it.
+
 **v3 is published, and the real model answers.** `drafts-hybrid:2` has been calibrated
 against it from `/admin/calibration`: four dry runs over two courses, twelve LLM calls,
 every one answered on the first attempt (47–307 output tokens, 2.6–14 s), all three
@@ -600,11 +642,11 @@ ratification, but a **persisted** judgment does (ADR-0019), and each version of
 `drafts-hybrid` is a new identity that inherits nothing from the previous one's
 ratification — which is the point of a bump. So **no semantic or judged criterion of this
 lineage has yet produced a persisted judgment**, and doing so is one button on
-`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 8
+`/admin/assessors` (below) or, unchanged, `ratify-assessor --name drafts-hybrid --version 10
 --instrument-version-id <version> --email <admin>`. Which version is part of the act: the
-registry's current artifact is **v8** (reasoning disabled in both fields; degeneration and
-budget cuts each buy one clean retry), and each bump inherited nothing from the previous
-version's runs. Ratifying before the seven judged
+registry's current artifact is **v10** (reasoning disabled in both fields; degeneration and
+budget cuts each buy one clean retry; the denied upstreams; the wrapped outcome verb), and
+each bump inherited nothing from the previous version's runs. Ratifying before the seven judged
 criteria have been read would persist verdicts nobody has checked, which is the one thing
 the calibration loop exists to prevent.
 
@@ -1094,6 +1136,20 @@ the data in the package).
   and the dialog renders whatever is stored. Rows were dropped, not migrated (no production DB
   yet); historical `events` rows stay, being past facts. `docs/design/09`, `12` and `13` still
   describe the entity — frozen snapshots, superseded by the ADR, not corrected.
+- **A vacuous pass is honest and reads badly, and it is not decided which matters more.** Two
+  criteria of `drafts-hybrid` pass when there is nothing to judge: `cr-outcomes-observable-verbs`
+  when the opening lesson states no outcome, and `cr-objectives-observable-verbs` when the
+  course declares no objective. In both, absence is a NEIGHBOURING criterion's finding
+  (`cr-outcomes-present`, `cr-objectives-min-count`), each pair evidences one claim whose
+  sufficiency is conjunctive, and the claim therefore still fails — the verdict is right and
+  the argument has no hole. What is wrong is the reading: the criterion appears in green on
+  the per-criterion page quoting an excerpt of the lesson body, because there is no outcome to
+  quote. The command-line draft is the first package where this is visible rather than
+  theoretical. The alternative is for such a criterion to derive `no_evidence` instead, which
+  today an executor cannot express (it answers pass or fail, and `on_missing_evidence` governs
+  an absent data requirement, not an empty extraction from a present one). Both criteria would
+  have to move together, and it is a bump of the assessor. Deliberately not taken while the
+  wrapped-verb bump was being verified: one change, one reading.
 - **What is left of the drafts backlog: the nine that read every lesson.** v3 took the seven
   judged criteria answerable without per-lesson fan-out. The nine that remain — the concept
   map (`cr-concepts-introduced-before-use`, `cr-later-lessons-apply-earlier-concepts`), the
