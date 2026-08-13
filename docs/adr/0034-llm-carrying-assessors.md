@@ -1,7 +1,7 @@
 # ADR-0034 — LLM-carrying assessors: semantics are identity, transport is environment
 
-**Status:** accepted · **Date:** 2026-08 · **DDD context:** Pedagogical Evaluation ·
-Evaluation Design · Identity
+**Status:** accepted · §4 superseded by ADR-0037 · **Date:** 2026-08 · **DDD context:**
+Pedagogical Evaluation · Evaluation Design · Identity
 
 ## Context
 
