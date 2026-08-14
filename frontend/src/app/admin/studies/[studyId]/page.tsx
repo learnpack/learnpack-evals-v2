@@ -11,7 +11,6 @@ import {
   ListChecks,
   Play,
   Square,
-  TrendingUp,
 } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1042,21 +1041,26 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
   const judged = fitness.contents.filter((content) => content.judged).length;
 
   return (
-    <Card className="border-dashed">
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <TrendingUp className="h-4 w-4 text-muted-foreground" /> Fitness
-          <span className="text-xs font-normal text-muted-foreground">
-            optimization signal — not a judgment, and not part of the report
-          </span>
-          {hasStudyLevel && judged > 0 && judged < fitness.contents.length ? (
-            <Badge variant="warning">
-              {judged} of {fitness.contents.length} courses judged
-            </Badge>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 text-sm">
+    // Closed, and headed by the question it answers rather than by its own name. It sits
+    // apart from the report on purpose (ADR-0023 §11) — the juxtaposition is useful, the
+    // conflation is not, and the two use different denominators. A closed section is the
+    // cheapest way to say "read the report first": one asks what is wrong with these
+    // courses, the other asks whether the generator is improving between rounds.
+    <CollapsibleSection
+      title="Is the generator getting better?"
+      badge="optimization signal — not a judgment, and not part of the report"
+      defaultOpen={false}
+      className="border-dashed bg-muted/10"
+      contentClassName="space-y-4 text-sm"
+      meta={
+        hasStudyLevel && judged > 0 && judged < fitness.contents.length ? (
+          <Badge variant="warning">
+            {judged} of {fitness.contents.length} courses judged
+          </Badge>
+        ) : null
+      }
+    >
+      <div className="space-y-4 text-sm">
         {fitness.gaps.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {fitness.gaps.map((gap) => (
@@ -1126,8 +1130,8 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
             </p>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
