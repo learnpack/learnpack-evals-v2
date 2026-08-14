@@ -1,7 +1,7 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
-pin-study | compose-dataset | open-study | publish-study | show-report |
+pin-study | compose-dataset | open-study | publish-study | show-preview | show-report |
 attribute-generator | register-generator | register-generator-version`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
@@ -174,6 +174,7 @@ from app.modules.evaluation_studies.application.declare_study import (
     DeclareStudyCommand,
 )
 from app.modules.evaluation_studies.application.fitness import compute_fitness
+from app.modules.evaluation_studies.application.gathering import gather_report_inputs
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
 from app.modules.evaluation_studies.application.pin_instrument import (
     InstrumentNotPublished,
@@ -185,6 +186,7 @@ from app.modules.evaluation_studies.application.publish_study import (
     PublishStudy,
     PublishStudyCommand,
 )
+from app.modules.evaluation_studies.application.report import compose_preview
 from app.modules.evaluation_studies.domain.model import (
     DatasetEmpty,
     DatasetLocked,
@@ -1694,7 +1696,9 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
 
 
 # --------------------------------------------------------------------------- studies
-# The manual loop (13-code §3.6): declare → pin → compose → open → publish → show-report.
+# The manual loop (13-code §3.6): declare → pin → compose → open → publish → show-report,
+# with `show-preview` readable at any point along it — publishing is irreversible, and
+# reading what it would write is not.
 # Studies never command Orchestration — the wiring between rounds is this actor's.
 
 _STUDY_ERRORS = (
@@ -1816,6 +1820,40 @@ def run_show_report(study_id: UUID) -> int:
         print(f"study {study_id} has no published report", file=sys.stderr)
         return 1
     print(json.dumps(dto.report, indent=2))
+    return 0
+
+
+def run_show_preview(study_id: UUID) -> int:
+    """What publishing WOULD write, composed on demand — the report before the act.
+
+    A command of its own rather than a flag on `show-report`: that one prints the frozen
+    row and says so when there is none, and a flag that silently changes which of two
+    documents you got is the confusion this document's own `documentKind` marker fights.
+    """
+    with SessionLocal() as session:
+        study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
+        if study is None:
+            print(f"study {study_id} not found", file=sys.stderr)
+            return 1
+        inputs = gather_report_inputs(
+            study,
+            StudiesRegistryGateway(session),
+            StudiesEvaluationGateway(session),
+            StudiesDesignGateway(session),
+            StudiesProfilingGateway(session),
+        )
+        preview = compose_preview(
+            study=study,
+            contents=inputs.contents,
+            briefs=inputs.briefs,
+            generators=inputs.generators,
+            judgments=inputs.judgments,
+            findings=inputs.findings,
+            capabilities=inputs.capabilities,
+            instrument=inputs.instrument,
+            composed_at=datetime.now(UTC),
+        )
+    print(json.dumps(preview, indent=2))
     return 0
 
 
@@ -2631,6 +2669,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     show_report_parser.add_argument("--study-id", required=True)
 
+    show_preview_parser = subparsers.add_parser(
+        "show-preview",
+        help="print the report a study WOULD publish, composed on read — nothing is written",
+    )
+    show_preview_parser.add_argument("--study-id", required=True)
+
     show_fitness_parser = subparsers.add_parser(
         "show-fitness",
         help="print the fitness projection of a study (ADR-0023) — optimization, not a judgment",
@@ -2773,6 +2817,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_publish_study(UUID(args.study_id), args.email)
     elif args.command == "show-report":
         return run_show_report(UUID(args.study_id))
+    elif args.command == "show-preview":
+        return run_show_preview(UUID(args.study_id))
     elif args.command == "show-fitness":
         return run_show_fitness(UUID(args.study_id))
     elif args.command == "delete-content":
