@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-13._
+_Last updated: 2026-08-14._
 
 ## Where we are
 
@@ -14,9 +14,11 @@ Slice 2 (generator QA engine): the first increment is code-complete — 7 of 7 b
 plus ADR-0024 (generator declaration + late attribution), ADR-0023 (the fitness
 projection the genetic-algorithm experiment reads), ADR-0027 (package intake by
 mechanical discovery), ADR-0034 (LLM-carrying assessors, realized by
-`drafts-hybrid`, whose v3 takes the first criteria the model itself judges — see below)
-and ADR-0037 (execution failure is an outcome — realized end to end, see below) on
-top of it.**
+`drafts-hybrid`, whose v3 takes the first criteria the model itself judges — see below),
+ADR-0037 (execution failure is an outcome — realized end to end, see below) and
+ADR-0041 (the frozen report is the record, not the reading surface — a study's result
+is readable before it is signed, and the evidence behind every criterion lives outside
+the frozen row) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -164,6 +166,58 @@ reader takes the most recent, so two batches over one course would decide by arr
 the one genuinely confusing outcome available, and the cheapest to prevent. Runs are kept in
 memory, last ten, and the registry never forgets one that is still working. **No ADR:**
 ADR-0040 decided all of it and named this surface in its `[future]`.
+
+**The console area that worked and could not be used, in three PRs.** With the loop finally
+end-to-end on screen, the owner used it and found the studies area *"extremely confusing"* —
+which turned out to be three separate faults with one shape: the page told the truth about
+nothing that had just happened.
+
+**PR 1 — the page notices its own batch.** `queryKeys.studyReport` and `studyFitness` were
+never invalidated anywhere in the repo and `/evaluations` was never polled despite a docstring
+claiming it was, so after evaluating twenty courses the header still read "0 of 20 judged" and
+fitness still read `undefined` until a hard reload. **That, not the wording, is why running the
+batch a second time looked like the way to make something happen** — and why every course then
+came back `skipped`. The run watcher now refreshes the study's whole story the moment a run
+leaves `running`, once per run, waiting for the real ending rather than reacting to the cancel
+act (cancelling answers while courses are still landing). The rest of the PR is navigation and
+honesty: opening and publishing moved onto the study's own page, setup became three numbered
+steps, the evaluate button says which of the three things it would do, `skipped` reads "already
+judged", and the list became a list, newest first. One live defect fell out of it — cancelling
+wrote the run into the cache and then invalidated a key that is that key's prefix, throwing the
+answer away and refetching it. **The count remains assessor-blind** (`read_study_evaluations`
+counts judgments per instrument version while the batch skips per assessor); the UI says so in
+a sentence and promises "up to N" rather than N, which is a stated limit, not a fix.
+
+**PR 2 — two composed-on-read resources (ADR-0041).** `GET
+/admin/studies/{id}/report/preview` runs the same `compose_report` over today's inputs, at any
+status, minus `publishedAt` — removed and not nulled. `GET .../criterion-outcomes` carries one
+section per criterion the instrument declares, so every one has a denominator, plus each cell's
+own evidence; a published study is read through the judgments its report froze, named in the
+payload as `judgmentBasis`. The five columns the cross-module query had been dropping (`quote`,
+`locator`, `failure_mode`, `comment`, `execution_cause`) are now selected, which is what makes
+**the quote behind a pass readable at all** — it was persisted for every pass, CHECK-enforced,
+and reachable by nobody. `PublishStudy._compose` was extracted to `application/gathering.py` so
+the publish path and the preview compose from one gathering; the refactor's gate was that the
+three studies test files pass untouched, and they did. `show-preview` joins the CLI as its own
+command. `compose_report` is byte-identical and `SCHEMA_VERSION` did not move.
+
+**PR 3 — a report a person can read.** The old view was one always-open card per course (twenty
+courses, twenty expanded panels), ids as row labels, quotes inlined at whatever length they
+came, and eight caveat rows mostly saying "none". It now opens on what can be acted on: the
+weakest claims with their distributions and coverage, the most-failed criteria — the question
+that turns a round into an edit of the generator, unanswerable before for want of a denominator
+— then the courses one collapsed row each, then all eight caveats behind one line. Expanding a
+criterion shows its pass condition, its declared failure modes and every course that failed it
+with the passage the judge read, and offers both readings: the generator's fault, or the
+check's, the second being a deep link into `/admin/calibration` with the course and instrument
+preselected and that criterion's row marked. **The report is now rendered at every status**, the
+preview standing in until the document is frozen, with a band at the top saying which one is on
+screen — and `publishedAt` is *unreadable* through the shared type, so the old unguarded
+"Published \<date\>" cannot be written again. Readiness and the evaluation card no longer render
+on a published study: readiness is computed from today's ratifications and adapters, so on a
+frozen report it can contradict the document beside it. Human text (statements, pass conditions,
+failure modes) is joined from the immutable instrument version rather than denormalized into the
+frozen row.
 
 **A stale schema now refuses at the door, and the incident that asked for it.** The first real
 batch died mid-course on `UndefinedColumn: execution_cause`: the development database was at
@@ -982,8 +1036,23 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 838 tests** against local Postgres (~60 s). Requires
+- **Backend suite green: 908 tests, 1 skipped** against local Postgres (~70 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
+- **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
+  installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
+  --noEmit` and nothing else. The enforcement that exists is therefore typing: every palette
+  and label map over a domain vocabulary is an exhaustive `Record<Union, …>`, so a seventh
+  outcome state or a fourth claim status fails to compile. `npm run build` must be run by hand
+  before opening a PR that touches a page: it is the only thing that catches a
+  `useSearchParams` outside a Suspense boundary, and CI does not run it.
+- **The preview and the criterion record checked against real payloads** (by hand, over the
+  development store): key sets match the frontend's types exactly at all three levels —
+  document, criterion section and cell — with nothing missing and nothing extra; `publishedAt`
+  is absent from the preview; a published study answers `judgmentBasis: publishedReport`; and
+  of a real study's 145 cells, **63 passes carry 63 quotes**. `tsc` validates what the frontend
+  *believes*: both payloads are `dict[str, Any]` on the backend with no `response_model`, so a
+  renamed key would compile and render `undefined`. This check is the substitute, and it is
+  manual.
 - **The failure budget pinned at both edges and end to end** (suite, ADR-0037 PR 3): a
   failure under the budget becomes `execution_error` carrying `{task, kind, message}`
   while the other criteria and the successes' metrics survive; past the budget the
@@ -1173,6 +1242,39 @@ the data in the package).
 
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
+- **A judgment does not say who made it, and the report does not record it.** The sharpest
+  defect left in the studies area, and it is invisible until there are two assessors — which a
+  version bump already makes, since each `drafts-hybrid` version is its own identity.
+  `QualityJudgmentDTO` carries no `assessor_id`, `latest_judgments` takes the most recent
+  judgment per content *whoever produced it*, and `compose_report` emits the assessor nowhere:
+  `judgmentIdsUsed` pins **which** judgments, never **whose**. So evaluating half a study with
+  `:10`, bumping to `:11` to repair three courses and publishing yields an immutable report
+  that silently mixes two assessors. The same blindness makes `read_study_evaluations`'s count
+  disagree with the batch's skip set (one is per instrument version, the other per assessor) —
+  the console states that limit in words rather than pretending otherwise. The assessor is one
+  join away (`quality_judgments.evaluation_id` → `evaluations.assessor_id`, unique FK) and
+  Identity already publishes `list_assessors` batched, for exactly this. **Decided to be its
+  own PR; not started.**
+- **Studies cannot be deleted or renamed.** No `DELETE` and no `PATCH` anywhere in the app, and
+  `purpose` is write-once at declare. A study created and abandoned stays in the list forever.
+  It blocks nothing — the console's guided setup was chosen partly so a half-made study is
+  never orphaned mid-chain — but the hole is real and a composite create endpoint would have
+  needed it.
+- **The studies list has no headline column.** Name, status, instrument, counts and date, but
+  not "how far along" or a fitness figure, because both need a bulk read that does not exist:
+  studies pin different instrument versions, so the count is one query per study. Worth doing
+  before any cross-round comparison view, which a sortable column probably makes unnecessary.
+- **Composing a report is not batched.** `RegistryGateway.get_contents_by_ids` pulls every
+  content snapshot and filters in Python, and the gathering issues one `get_brief` per brief
+  and one `get_generator` per generator — about 25 round trips for 20 courses. The console
+  fetches the preview on demand and never on a timer, which is the mitigation. Fixing it means
+  widening `EvaluandRegistryQueries`.
+- **Some pass quotes arrive as serialized JSON.** Seen in the development store now that the
+  report shows the evidence behind a pass: a few come back as `["The learner can identify…"]`
+  rather than as prose, because the corpus a task quotes from was built with `json.dumps`. It
+  is the same class as the escaping defect `drafts-hybrid` v5 fixed for two other corpora — so
+  it is **assessor identity, a version bump**, not a report concern, and it is newly visible
+  rather than new.
 - **Contract change to keep in mind**: the canonical `import-learnpack` JSON uses
   `package_format` (formerly `generating_system`) and takes optional `artifacts` /
   `brief_id` / `edit_provenance` (the dead `metadata` key was dropped — ADR-0017);
