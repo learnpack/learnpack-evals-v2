@@ -21,6 +21,16 @@ is readable before it is signed, and the evidence behind every criterion lives o
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
+**ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
+built in three steps.** Step 1 is in: a study carries a `name` and an optional
+`description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
+and the act that closes a round is a **signature** — `signed_off` in the status, in both
+columns, in the event and in the console. Report `SCHEMA_VERSION` is 3; migration `0020`
+deleted every frozen report, once, under clause 11 — the last moment that was free of
+cost, and the clause says so. Still to come: the draft becomes editable and `open` is what
+pins (step 2), and the console's four setup steps become one form whose primary action is
+*Save & evaluate* (step 3).
+
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
 
@@ -303,12 +313,12 @@ reports already published keep their frozen caveat.
 
 **Block 7 delivered:** the `evaluation_studies` module (migration 0011: `studies`,
 `study_recipe`, `study_dataset`, `study_reports`) with the lifecycle
-declared → prepared → open → published, the report composed on-read at publish (ADR-0006
-style; caveats always, never a cross-claim aggregate), the composed queries **matching**
+declared → prepared → open → signed_off, the report composed on-read when the study is
+signed off (ADR-0006 style; caveats always, never a cross-claim aggregate), the composed queries **matching**
 (`GET /admin/instruments/{version}/matching?package_format=…`) and **readiness**
 (`GET /admin/studies/{id}/readiness` — gaps per claim plus the ADR-0019 study-level gap
 "no ratified assessor"; informs, never blocks), the CLI loop
-(`declare-study | pin-study | compose-dataset | open-study | publish-study | show-report`),
+(`declare-study | pin-study | compose-dataset | open-study | sign-off-study | show-report`),
 and the `/admin/studies` console. The brief intake (ADR-0022) landed in the same PR:
 registration derives the brief from `.learn/initialSyllabus.json`, hash identity pairs
 registrations automatically, and the intake dispatches through a **per-format adapter
@@ -1077,11 +1087,11 @@ the genetic-algorithm loop registers through. The repair act (`rename-generator`
 **not built**: published reports freeze the name, so a rename would fix the console and leave the
 typo permanent in every report already out — the ADR names the shape it would take.
 
-**Fourth pending input from the team (block 7): publish the first real study.** The loop is
+**Fourth pending input from the team (block 7): sign off the first real study.** The loop is
 live end to end: register real contents (the brief arrives mechanically when the package
 carries `.learn/initialSyllabus.json`), evaluate them, then
-`declare-study → pin-study → compose-dataset → open-study → publish-study` (CLI) or the
-same acts in `/admin/studies`. Publishing the first real study **ends the
+`declare-study → pin-study → compose-dataset → open-study → sign-off-study` (CLI) or the
+same acts in `/admin/studies`. Signing off the first real study **ends the
 disposable-instrument convention** — the pinned version becomes a reproducibility
 commitment. Readiness (`/admin/studies/{id}/readiness`) names the gaps beforehand;
 matching reports the ADR-0017 unmet demand (objectives/audience/prerequisites have no

@@ -1,10 +1,11 @@
 """StudyReport composition — pure, over local DTOs (13-code §3.6, ADR-0006 style).
 
-Composed at publish and materialized immutable, recording the judgment ids used. Content:
+Composed when the study is signed off and materialized immutable, recording the judgment
+ids used. Content:
 per content, claims with status; at generator level, the distribution of claim status
 across the dataset — **never a cross-claim aggregate** (ADR-0011), and every distribution
 travels with its coverage (ADR-0011 clause 3). Caveats are ALWAYS present, every kind,
-even when empty: publishing with caveats is legitimate and visible; publishing silently,
+even when empty: signing off with caveats is legitimate and visible; signing off silently,
 impossible (12-define invariant 4).
 """
 
@@ -24,17 +25,18 @@ from app.modules.evaluation_studies.application.dtos import (
 )
 from app.modules.evaluation_studies.domain.model import Study
 
-# 2 since the report names the assessor behind every judgment (ADR-0042). Reports frozen at
-# 1 carry no `assessor`, no `assessorsUsed` and no `mixedAssessors` caveat, and are read as
-# the records they are: the absence is a schema fact, not a study with no author.
-SCHEMA_VERSION = 2
+# 3 since the study is named rather than purposed and the closing act is a signature
+# (ADR-0043): `name` + `description` replace `purpose`, and `signedOffAt`/`signedOffBy`
+# replace `publishedAt`/`publishedBy`. No report at an earlier schema exists — ADR-0043 §11
+# deleted them, once, and said why that option expires the day one matters to somebody.
+SCHEMA_VERSION = 3
 
 # ADR-0021: the fail derived from absence carries no quote; the report must show its cause
 # so it is not read as an incomplete finding.
 QUOTE_ABSENT_CAUSE = "required data absent"
 
 PREVIEW_NOTE = (
-    "a preview is recomposed from today's data; once the study is published the record is "
+    "a preview is recomposed from today's data; once the study is signed off the record is "
     "the frozen report, and only that report is the study's result"
 )
 
@@ -256,8 +258,9 @@ def _caveats(
         },
         "unknownExclusions": {
             "contentIds": unknown_contents,
-            # Since ADR-0024 the state is declared, not an oversight, and it is repairable:
-            # reports published before it keep their old wording, frozen.
+            # Since ADR-0024 the state is declared, not an oversight, and it is repairable.
+            # No report carries the wording that preceded it: ADR-0043 §11 deleted every
+            # frozen document once, at the only moment that was still free of cost.
             "note": (
                 "generator declared unknown — excluded from generator-level accumulation; "
                 "attributable later"
@@ -292,7 +295,7 @@ def compose_report(
     findings: list[FindingInfo],
     capabilities: dict[str, CapabilityInfo | None],
     instrument: InstrumentInfo,
-    published_at: datetime,
+    signed_off_at: datetime,
 ) -> dict[str, Any]:
     current = latest_judgments(judgments)
     used_ids = {j.judgment_id for j in current.values()}
@@ -332,10 +335,11 @@ def compose_report(
     return {
         "schemaVersion": SCHEMA_VERSION,
         "studyId": str(study.id),
-        "purpose": study.purpose,
+        "name": study.name,
+        "description": study.description,
         "instrumentVersionId": study.instrument_version_id,
-        "publishedAt": published_at.isoformat(),
-        "publishedBy": str(study.published_by) if study.published_by else None,
+        "signedOffAt": signed_off_at.isoformat(),
+        "signedOffBy": str(study.signed_off_by) if study.signed_off_by else None,
         "dataset": {
             "size": len(contents),
             "briefIds": [str(b) for b in study.brief_ids],
@@ -366,7 +370,7 @@ def compose_preview(
     instrument: InstrumentInfo | None,
     composed_at: datetime,
 ) -> dict[str, Any]:
-    """What publishing WOULD write, composed on read — so nobody publishes blind.
+    """What signing off WOULD write, composed on read — so nobody signs blind.
 
     It sits beside `compose_report` and calls it, because the guarantee worth having is
     that the two say the same thing: a preview that composed differently would not be a
@@ -374,14 +378,14 @@ def compose_preview(
     PAYLOAD rather than only here:
 
     * `documentKind` — the reader is told what they are holding.
-    * `composedAt` instead of `publishedAt`. `compose_report` emits `publishedAt`
+    * `composedAt` instead of `signedOffAt`. `compose_report` emits `signedOffAt`
       unconditionally and the console renders it unguarded, so a preview filling it with
-      the composition's clock would read "Published <now>" about a study nobody published,
+      the composition's clock would read "Signed off <now>" about a study nobody signed,
       which is the exact misreading this resource exists to prevent. The key is REMOVED,
       not nulled: a null renders as the epoch, an absence renders as nothing.
-    * `frozenRecord` — whether the immutable report already exists, because after
-      publishing a recomposition may legitimately differ from it (the report reads the
-      registry live, so a generator attributed later shows up here and never there).
+    * `frozenRecord` — whether the immutable report already exists, because after signing
+      off a recomposition may legitimately differ from it (the report reads the registry
+      live, so a generator attributed later shows up here and never there).
 
     `instrument` is optional here where `compose_report` demands one: a study at
     `declared` or `prepared` gets the whole document with empty sections and its gaps
@@ -403,9 +407,9 @@ def compose_preview(
 
     header: dict[str, Any] = {
         "documentKind": "preview",
-        # Named for the act that produced it — a read, not the human act of publishing.
+        # Named for the act that produced it — a read, not the human act of signing off.
         "composedAt": composed_at.isoformat(),
-        "frozenRecord": {"exists": study.published_at is not None, "note": PREVIEW_NOTE},
+        "frozenRecord": {"exists": study.signed_off_at is not None, "note": PREVIEW_NOTE},
         "gaps": gaps,
     }
 
@@ -413,9 +417,10 @@ def compose_preview(
         return {
             "schemaVersion": SCHEMA_VERSION,
             "studyId": str(study.id),
-            "purpose": study.purpose,
+            "name": study.name,
+            "description": study.description,
             "instrumentVersionId": study.instrument_version_id,
-            "publishedBy": None,  # naturally absent: publishing is what sets it
+            "signedOffBy": None,  # naturally absent: signing off is what sets it
             "dataset": {
                 "size": len(contents),
                 "briefIds": [str(b) for b in study.brief_ids],
@@ -441,9 +446,9 @@ def compose_preview(
         instrument=instrument,
         # Passed only to be removed below. `compose_report`'s signature and output stay
         # untouched: what it writes is frozen jsonb, and being wrong inwards is unfixable.
-        published_at=composed_at,
+        signed_off_at=composed_at,
     )
     # `del` rather than `pop`: should `compose_report` ever stop emitting it, this must
     # fail loudly instead of quietly ceasing to protect.
-    del report["publishedAt"]
+    del report["signedOffAt"]
     return report | header

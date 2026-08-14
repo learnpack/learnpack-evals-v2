@@ -705,7 +705,7 @@ function useStudyAct<TBody = void>(path: (id: Uuid) => string) {
     mutationFn: ({ studyId, body }: { studyId: Uuid; body?: TBody }) =>
       api<StudyResponse>(path(studyId), { method: "POST", body: body ?? undefined }),
     // Pinning changes the instrument the count is taken under, composing changes what is
-    // counted, opening changes what may run, publishing makes the report exist. One act,
+    // counted, opening changes what may run, signing off makes the report exist. One act,
     // one refresh of the whole story.
     onSuccess: (_data, { studyId }) => invalidateStudy(qc, studyId),
   });
@@ -727,8 +727,8 @@ export function useOpenStudy() {
   return useStudyAct((id) => `/admin/studies/${id}/open`);
 }
 
-export function usePublishStudy() {
-  return useStudyAct((id) => `/admin/studies/${id}/publish`);
+export function useSignOffStudy() {
+  return useStudyAct((id) => `/admin/studies/${id}/sign-off`);
 }
 
 export function useStudyReport(id: Uuid, enabled: boolean) {
@@ -740,7 +740,7 @@ export function useStudyReport(id: Uuid, enabled: boolean) {
   });
 }
 
-/** What publishing would write, composed on read.
+/** What signing off would write, composed on read.
  *
  *  No `enabled` gate, deliberately unlike `useStudyReport` above: this one answers at every
  *  status with its gaps named, and gating it is what made the report invisible until an

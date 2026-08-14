@@ -25,7 +25,8 @@ from app.modules.evaluation_studies.domain.model import Study
 def _to_dto(study: Study) -> StudyDTO:
     return StudyDTO(
         study_id=study.id,
-        purpose=study.purpose,
+        name=study.name,
+        description=study.description,
         status=study.status,
         instrument_version_id=study.instrument_version_id,
         assessor_id=study.assessor_id,
@@ -33,8 +34,8 @@ def _to_dto(study: Study) -> StudyDTO:
         content_ids=study.content_ids,
         created_at=study.created_at,
         opened_at=study.opened_at,
-        published_at=study.published_at,
-        published_by=study.published_by,
+        signed_off_at=study.signed_off_at,
+        signed_off_by=study.signed_off_by,
     )
 
 

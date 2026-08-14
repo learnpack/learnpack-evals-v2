@@ -33,8 +33,8 @@ class StudyRepositoryPort(Protocol):
 class StudyReportRepositoryPort(Protocol):
     def get(self, study_id: UUID) -> StudyReportDTO | None: ...
 
-    def insert_once(self, study_id: UUID, report: dict[str, Any], published_at: datetime) -> bool:
-        """True if newly written; False if a report already exists (publish is once)."""
+    def insert_once(self, study_id: UUID, report: dict[str, Any], signed_off_at: datetime) -> bool:
+        """True if newly written; False if a report already exists (a study is signed once)."""
         ...
 
 

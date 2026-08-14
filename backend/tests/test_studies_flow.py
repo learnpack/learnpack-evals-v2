@@ -1,5 +1,5 @@
 """The slice end to end (13-code §10): register → profile → publish → ratify → evaluate →
-declare/pin/compose/open/publish → report with coverage and caveats.
+declare/pin/compose/open/sign-off → report with coverage and caveats.
 
 Two registrations of the frozen `introduction-to-generative-ai` package carry the same
 syllabus, so the brief intake (ADR-0022) pairs them automatically — one linked to a
@@ -63,11 +63,11 @@ from app.modules.evaluation_studies.application.pin_instrument import (
     PinInstrument,
     PinInstrumentCommand,
 )
-from app.modules.evaluation_studies.application.publish_study import (
-    PublishStudy,
-    PublishStudyCommand,
+from app.modules.evaluation_studies.application.sign_off_study import (
+    SignOffStudy,
+    SignOffStudyCommand,
 )
-from app.modules.evaluation_studies.domain.model import StudyAlreadyPublished
+from app.modules.evaluation_studies.domain.model import StudyAlreadySignedOff
 from app.modules.evaluation_studies.infrastructure.gateways import (
     DesignGateway,
     EvaluationGateway,
@@ -276,7 +276,7 @@ def test_the_first_increment_closes_the_loop(
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
         study = DeclareStudy(studies, uow.events, uow)(
-            DeclareStudyCommand(purpose=f"First paired round ({unique})")
+            DeclareStudyCommand(name=f"First paired round ({unique})")
         )
     cleanup["studies"].append(study.id)
 
@@ -301,10 +301,10 @@ def test_the_first_increment_closes_the_loop(
         uow, studies = _studies_wiring(s)
         OpenStudy(studies, uow.events, uow)(OpenStudyCommand(study_id=study.id))
 
-    def publish():
+    def sign_off():
         with SessionLocal() as s:
             uow, studies = _studies_wiring(s)
-            return PublishStudy(
+            return SignOffStudy(
                 studies=studies,
                 reports=SqlAlchemyStudyReportRepository(s),
                 registry=RegistryGateway(s),
@@ -313,9 +313,9 @@ def test_the_first_increment_closes_the_loop(
                 profiling=ProfilingGateway(s),
                 publisher=uow.events,
                 uow=uow,
-            )(PublishStudyCommand(study_id=study.id, published_by=admin_id))
+            )(SignOffStudyCommand(study_id=study.id, signed_off_by=admin_id))
 
-    publish()
+    sign_off()
 
     # --- the report
     report = SqlAlchemyStudyReportRepository(session).get(study.id).report
@@ -393,12 +393,12 @@ def test_the_first_increment_closes_the_loop(
         "InstrumentPinned",
         "AssessorPinned",
         "StudyOpened",
-        "StudyPublished",
+        "StudySignedOff",
     }
 
-    # --- published means immutable, in the domain and in the row
-    with pytest.raises(StudyAlreadyPublished):
-        publish()
+    # --- signed off means immutable, in the domain and in the row
+    with pytest.raises(StudyAlreadySignedOff):
+        sign_off()
     unchanged = SqlAlchemyStudyReportRepository(session).get(study.id).report
     assert unchanged == report
 
@@ -472,7 +472,7 @@ def test_the_first_increment_closes_the_loop(
 
     # --- the criterion matrix over the SAME study, and the evidence the report cannot carry
     matrix = _project_criterion_outcomes(session, study.id)
-    assert matrix["judgmentBasis"]["basis"] == "publishedReport"
+    assert matrix["judgmentBasis"]["basis"] == "signedOffReport"
 
     # A pass is quoted — the database has a CHECK constraint saying so — and a finding
     # exists only for a FAIL, so this is the only place that passage is readable.
@@ -490,10 +490,10 @@ def test_the_first_increment_closes_the_loop(
     assert {c["criterionId"] for c in matrix["criteria"]} == declared
     assert all(c["coverage"]["of"] == 2 for c in matrix["criteria"])
 
-    # Re-evaluating after publishing must not rewrite what the frozen report reflects.
+    # Re-evaluating after signing off must not rewrite what the frozen report reflects.
     assert run_evaluate(str(linked.id), version_id, assessor_arg, False) == 0
     after = _project_criterion_outcomes(session, study.id)
-    assert after["judgmentBasis"]["basis"] == "publishedReport"
+    assert after["judgmentBasis"]["basis"] == "signedOffReport"
     judged = {c["contentId"]: c["judgmentId"] for c in after["contents"]}
     assert judged[str(linked.id)] == report["judgmentIdsUsed"][str(linked.id)]
 
@@ -515,7 +515,7 @@ def test_an_attributed_content_enters_generator_level_accumulation(
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
         study = DeclareStudy(studies, uow.events, uow)(
-            DeclareStudyCommand(purpose=f"Attribution round ({unique})")
+            DeclareStudyCommand(name=f"Attribution round ({unique})")
         )
     cleanup["studies"].append(study.id)
     with SessionLocal() as s:
@@ -537,13 +537,13 @@ def test_an_attributed_content_enters_generator_level_accumulation(
         uow, studies = _studies_wiring(s)
         OpenStudy(studies, uow.events, uow)(OpenStudyCommand(study_id=study.id))
 
-    # The discovery lands after the dataset was fixed — the report is composed at publish
+    # The discovery lands after the dataset was fixed — the report is composed when signed
     # and reads the registry live, so it counts (ADR-0024, an accepted consequence).
     assert run_attribute_generator(orphan.id, generator_id, email) == 0
 
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
-        PublishStudy(
+        SignOffStudy(
             studies=studies,
             reports=SqlAlchemyStudyReportRepository(s),
             registry=RegistryGateway(s),
@@ -552,7 +552,7 @@ def test_an_attributed_content_enters_generator_level_accumulation(
             profiling=ProfilingGateway(s),
             publisher=uow.events,
             uow=uow,
-        )(PublishStudyCommand(study_id=study.id, published_by=admin_id))
+        )(SignOffStudyCommand(study_id=study.id, signed_off_by=admin_id))
 
     report = SqlAlchemyStudyReportRepository(session).get(study.id).report
     assert [g["generatorVersionId"] for g in report["generatorLevel"]] == [str(generator_id)]
@@ -590,7 +590,7 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
         study = DeclareStudy(studies, uow.events, uow)(
-            DeclareStudyCommand(purpose=f"Batch round ({unique})")
+            DeclareStudyCommand(name=f"Batch round ({unique})")
         )
     cleanup["studies"].append(study.id)
     with SessionLocal() as s:

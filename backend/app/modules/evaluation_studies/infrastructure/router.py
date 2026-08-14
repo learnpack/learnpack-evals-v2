@@ -42,9 +42,9 @@ from app.modules.evaluation_studies.application.pin_instrument import (
     PinInstrumentCommand,
     UnknownInstrument,
 )
-from app.modules.evaluation_studies.application.publish_study import (
-    PublishStudy,
-    PublishStudyCommand,
+from app.modules.evaluation_studies.application.sign_off_study import (
+    SignOffStudy,
+    SignOffStudyCommand,
 )
 from app.modules.evaluation_studies.domain.model import (
     AssessorAlreadyPinned,
@@ -55,7 +55,7 @@ from app.modules.evaluation_studies.domain.model import (
     InstrumentNotPinned,
     InvalidStudy,
     StudyAlreadyOpen,
-    StudyAlreadyPublished,
+    StudyAlreadySignedOff,
     StudyNotFound,
     StudyNotOpen,
 )
@@ -79,7 +79,8 @@ Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
 
 class DeclareStudyRequest(BaseModel):
-    purpose: str
+    name: str
+    description: str | None = None
 
 
 class PinInstrumentRequest(BaseModel):
@@ -96,7 +97,8 @@ class ComposeDatasetRequest(BaseModel):
 
 class StudyResponse(BaseModel):
     study_id: UUID
-    purpose: str
+    name: str
+    description: str | None
     status: str
     instrument_version_id: str | None
     # The id alone: what an assessor is called belongs to Identity, and the console already
@@ -106,13 +108,14 @@ class StudyResponse(BaseModel):
     content_ids: list[UUID]
     created_at: str | None
     opened_at: str | None
-    published_at: str | None
+    signed_off_at: str | None
 
     @classmethod
     def from_dto(cls, dto: StudyDTO) -> "StudyResponse":
         return cls(
             study_id=dto.study_id,
-            purpose=dto.purpose,
+            name=dto.name,
+            description=dto.description,
             status=dto.status,
             instrument_version_id=dto.instrument_version_id,
             assessor_id=dto.assessor_id,
@@ -120,14 +123,14 @@ class StudyResponse(BaseModel):
             content_ids=list(dto.content_ids),
             created_at=dto.created_at.isoformat() if dto.created_at else None,
             opened_at=dto.opened_at.isoformat() if dto.opened_at else None,
-            published_at=dto.published_at.isoformat() if dto.published_at else None,
+            signed_off_at=dto.signed_off_at.isoformat() if dto.signed_off_at else None,
         )
 
 
 class StudyReportResponse(BaseModel):
     study_id: UUID
     report: dict[str, Any]
-    published_at: str
+    signed_off_at: str
 
 
 def _study_response(uow: UnitOfWork, study_id: UUID) -> StudyResponse:
@@ -143,7 +146,7 @@ def declare_study(request: DeclareStudyRequest, admin: AdminAssessor, uow: Uow) 
         studies=SqlAlchemyStudyRepository(uow.session), publisher=uow.events, uow=uow
     )
     try:
-        study = use_case(DeclareStudyCommand(purpose=request.purpose))
+        study = use_case(DeclareStudyCommand(name=request.name, description=request.description))
     except InvalidStudy as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -180,7 +183,7 @@ def pin_instrument(
         )
     except StudyNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (InstrumentAlreadyPinned, DatasetLocked, StudyAlreadyPublished) as exc:
+    except (InstrumentAlreadyPinned, DatasetLocked, StudyAlreadySignedOff) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (UnknownInstrument, InstrumentNotPublished) as exc:
         raise HTTPException(
@@ -209,7 +212,7 @@ def pin_assessor(
         use_case(PinAssessorCommand(study_id=study_id, assessor_id=request.assessor_id))
     except StudyNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (AssessorAlreadyPinned, DatasetLocked, StudyAlreadyPublished) as exc:
+    except (AssessorAlreadyPinned, DatasetLocked, StudyAlreadySignedOff) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (InstrumentPinnedFirst, AssessorHasNotRatified) as exc:
         raise HTTPException(
@@ -231,7 +234,7 @@ def compose_dataset(
         use_case(ComposeDatasetCommand(study_id=study_id, brief_ids=request.brief_ids))
     except StudyNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (DatasetLocked, StudyAlreadyPublished) as exc:
+    except (DatasetLocked, StudyAlreadySignedOff) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except UnknownBrief as exc:
         raise HTTPException(
@@ -249,7 +252,7 @@ def open_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
         use_case(OpenStudyCommand(study_id=study_id))
     except StudyNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (StudyAlreadyOpen, StudyAlreadyPublished) as exc:
+    except (StudyAlreadyOpen, StudyAlreadySignedOff) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except (InstrumentNotPinned, AssessorNotPinned, DatasetEmpty) as exc:
         raise HTTPException(
@@ -258,9 +261,13 @@ def open_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
     return _study_response(uow, study_id)
 
 
-@router.post("/{study_id}/publish", response_model=StudyResponse)
-def publish_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
-    use_case = PublishStudy(
+@router.post("/{study_id}/sign-off", response_model=StudyResponse)
+def sign_off_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
+    """The human act that freezes the report — and names who takes responsibility for it.
+
+    The document was readable before this (ADR-0041); what the act adds is the signature.
+    """
+    use_case = SignOffStudy(
         studies=SqlAlchemyStudyRepository(uow.session),
         reports=SqlAlchemyStudyReportRepository(uow.session),
         registry=RegistryGateway(uow.session),
@@ -271,10 +278,10 @@ def publish_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyRespon
         uow=uow,
     )
     try:
-        use_case(PublishStudyCommand(study_id=study_id, published_by=admin.assessor_id))
+        use_case(SignOffStudyCommand(study_id=study_id, signed_off_by=admin.assessor_id))
     except StudyNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (StudyAlreadyPublished, StudyNotOpen) as exc:
+    except (StudyAlreadySignedOff, StudyNotOpen) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except UnknownInstrument as exc:
         raise HTTPException(
@@ -288,12 +295,12 @@ def get_report(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyReportRes
     dto = queries.get_report(SqlAlchemyStudyReportRepository(uow.session), study_id)
     if dto is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="the study has no published report"
+            status_code=status.HTTP_404_NOT_FOUND, detail="the study has no signed-off report"
         )
     return StudyReportResponse(
         study_id=dto.study_id,
         report=dto.report,
-        published_at=dto.published_at.isoformat(),
+        signed_off_at=dto.signed_off_at.isoformat(),
     )
 
 
@@ -329,9 +336,10 @@ def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any
     """The fitness projection (ADR-0023) — an optimization signal, never a judgment.
 
     Its own resource on purpose: it must not travel inside the study report, whose jsonb is
-    frozen at publish and whose coverage figures use a different denominator. Composed on
-    read like the report, and answering at any status — a study with nothing pinned gets the
-    same shape with its gaps named, the way readiness informs rather than blocks.
+    frozen when the study is signed off and whose coverage figures use a different
+    denominator. Composed on read like the report, and answering at any status — a study
+    with nothing pinned gets the same shape with its gaps named, the way readiness informs
+    rather than blocks.
     """
     study = SqlAlchemyStudyRepository(uow.session).get_by_id(study_id)
     if study is None:
@@ -386,17 +394,17 @@ def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any
 
 @router.get("/{study_id}/report/preview")
 def get_report_preview(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any]:
-    """What publishing would write, composed on read — so nobody publishes blind.
+    """What signing off would write, composed on read — so nobody signs blind.
 
     Its own resource, and deliberately not a mode of `/report`: that route serves the
     FROZEN row and keeps answering 404 until the human act happens, because the whole
     meaning of a study report is that somebody signed it off. This is the same
     `compose_report` over today's inputs — the same function, so what you read here is what
-    publishing writes — minus the one field a preview must not carry: `publishedAt` filled
-    with the composition's clock reads "Published now" about a study nobody published.
+    signing off writes — minus the one field a preview must not carry: `signedOffAt` filled
+    with the composition's clock reads "Signed off now" about a study nobody signed.
 
     It answers at every status with its gaps named, the way readiness informs rather than
-    blocks, and it writes nothing: no event, no row, no commit. The use case that publishes
+    blocks, and it writes nothing: no event, no row, no commit. The use case that signs off
     is not built here at all.
     """
     study = SqlAlchemyStudyRepository(uow.session).get_by_id(study_id)
@@ -434,7 +442,7 @@ def get_criterion_outcomes(study_id: UUID, admin: AdminAssessor, uow: Uow) -> di
     which counting findings cannot give (ADR-0011). Nothing here is aggregated across
     criteria: every distribution travels with its own coverage and stops there.
 
-    A published study answers with the judgments its frozen report recorded rather than
+    A signed-off study answers with the judgments its frozen report recorded rather than
     with today's most recent — re-evaluating a course afterwards must not silently rewrite
     what that report reflects. The payload says which of the two you are reading.
     """

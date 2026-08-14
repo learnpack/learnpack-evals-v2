@@ -157,7 +157,7 @@ def test_it_refuses_content_a_study_dataset_names(register_content, session, cle
     study_id = new_id()
     cleanup["studies"].append(study_id)
     session.execute(
-        text("INSERT INTO studies (id, purpose) VALUES (:id, 'a purpose')"),
+        text("INSERT INTO studies (id, name) VALUES (:id, 'a round')"),
         {"id": study_id},
     )
     session.execute(

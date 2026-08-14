@@ -1,11 +1,16 @@
-"""EvaluationStudy — the round with a purpose (12-define §Studies, 13-code §3.6).
+"""EvaluationStudy — the round, named (12-define §Studies, 13-code §3.6).
 
-Root aggregate; it owns the purpose, the **two pins**, the **recipe** (briefIds) and the
-**materialized dataset** (contentIds). Cycle: declared → prepared → open → published.
+Root aggregate; it owns the **name** (and an optional description), the **two pins**, the
+**recipe** (briefIds) and the **materialized dataset** (contentIds).
+Cycle: declared → prepared → open → signed_off.
 Invariants (12-define, amended by ADR-0042): the instrument **and the assessor** are each
 pinned ONCE, before opening, immutable afterwards · the dataset is fixed at open ·
-published means an immutable report, never re-emitted — publishing is a human act.
+signed off means an immutable report, never re-emitted — signing off is a human act, and
+what it adds is the signature, not the visibility (ADR-0041, ADR-0043 §8).
 `prepared` is derived: declared + both pins + composed, in any order.
+
+The name is not the study's *purpose*: the GLOSSARY reserves that word for a typology
+(initial / regression / comparison) nobody has needed to build (ADR-0043 §7).
 
 The second pin is what makes a study's result reproducible: it is the triple dataset ×
 instrument version × assessor, and only two thirds of it used to be fixed. `assessor_id`
@@ -19,7 +24,7 @@ from uuid import UUID
 
 
 class InvalidStudy(Exception):
-    """The study violates a domain invariant (blank purpose)."""
+    """The study violates a domain invariant (blank name)."""
 
 
 class StudyNotFound(Exception):
@@ -55,18 +60,20 @@ class StudyAlreadyOpen(Exception):
 
 
 class StudyNotOpen(Exception):
-    """Publishing reports on an open round; this study never opened."""
+    """Signing off reports on an open round; this study never opened."""
 
 
-class StudyAlreadyPublished(Exception):
-    """Published means immutable, never re-emitted."""
+class StudyAlreadySignedOff(Exception):
+    """Signed off means immutable, never re-emitted."""
 
 
 @dataclass
 class Study:
     id: UUID
-    purpose: str
+    name: str
     status: str = "declared"
+    # Optional, and never defaulted from the name: an absent description is absent.
+    description: str | None = None
     instrument_version_id: str | None = None
     # Null on studies declared before ADR-0042; every read then behaves as it did.
     assessor_id: UUID | None = None
@@ -74,15 +81,15 @@ class Study:
     content_ids: tuple[UUID, ...] = ()
     created_at: datetime | None = None
     opened_at: datetime | None = None
-    published_at: datetime | None = None
-    published_by: UUID | None = field(default=None)
+    signed_off_at: datetime | None = None
+    signed_off_by: UUID | None = field(default=None)
 
     def __post_init__(self) -> None:
-        if not self.purpose.strip():
-            raise InvalidStudy("purpose is required")
+        if not self.name.strip():
+            raise InvalidStudy("name is required")
 
     def pin_instrument(self, instrument_version_id: str) -> None:
-        # Pinned-once first: an open/published study is necessarily pinned, and THAT is
+        # Pinned-once first: an open or signed-off study is necessarily pinned, and THAT is
         # the answer the caller needs, not the lifecycle state.
         if self.instrument_version_id is not None:
             raise InstrumentAlreadyPinned(
@@ -111,8 +118,8 @@ class Study:
         self._maybe_prepare()
 
     def open(self, at: datetime) -> None:
-        if self.status == "published":
-            raise StudyAlreadyPublished(f"study {self.id} is published")
+        if self.status == "signed_off":
+            raise StudyAlreadySignedOff(f"study {self.id} is signed off")
         if self.status == "open":
             raise StudyAlreadyOpen(f"study {self.id} is already open")
         if self.instrument_version_id is None:
@@ -124,18 +131,18 @@ class Study:
         self.status = "open"
         self.opened_at = at
 
-    def publish(self, by: UUID, at: datetime) -> None:
-        if self.status == "published":
-            raise StudyAlreadyPublished(f"study {self.id} is published")
+    def sign_off(self, by: UUID, at: datetime) -> None:
+        if self.status == "signed_off":
+            raise StudyAlreadySignedOff(f"study {self.id} is signed off")
         if self.status != "open":
             raise StudyNotOpen(f"study {self.id} is {self.status}, not open")
-        self.status = "published"
-        self.published_by = by
-        self.published_at = at
+        self.status = "signed_off"
+        self.signed_off_by = by
+        self.signed_off_at = at
 
     def _require_mutable(self) -> None:
-        if self.status == "published":
-            raise StudyAlreadyPublished(f"study {self.id} is published")
+        if self.status == "signed_off":
+            raise StudyAlreadySignedOff(f"study {self.id} is signed off")
         if self.status == "open":
             raise DatasetLocked(f"study {self.id} is open; its composition is fixed")
 

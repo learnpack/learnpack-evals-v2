@@ -1,4 +1,4 @@
-"""Use case: declare a study — the round with a purpose (13-code §3.6)."""
+"""Use case: declare a study — the round, named (13-code §3.6, ADR-0043 §7)."""
 
 from dataclasses import dataclass
 
@@ -11,7 +11,8 @@ from app.shared.domain.ids import new_id
 
 @dataclass(frozen=True)
 class DeclareStudyCommand:
-    purpose: str
+    name: str
+    description: str | None = None
 
 
 class DeclareStudy:
@@ -26,7 +27,7 @@ class DeclareStudy:
         self._uow = uow
 
     def __call__(self, command: DeclareStudyCommand) -> Study:
-        study = Study(id=new_id(), purpose=command.purpose)
+        study = Study(id=new_id(), name=command.name, description=command.description)
         self._studies.add(study)
         # Aggregate + event in the same transaction (ADR-0003).
         self._publisher.publish(events.study_declared(study))

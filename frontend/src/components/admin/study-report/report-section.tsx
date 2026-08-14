@@ -18,8 +18,8 @@ import type { DocumentSource, ReportBody, StudyResponse } from "@/lib/api/types"
 
 /** The study's result, readable before it is signed.
  *
- *  One renderer, two sources. While the study is not published this shows the preview —
- *  what publishing would write, composed from today's judgments — and once it is, the
+ *  One renderer, two sources. While the study is not signed off this shows the preview —
+ *  what signing off would write, composed from today's judgments — and once it is, the
  *  frozen document. Only `DocumentBand` knows which; everything below it receives
  *  `ReportBody`, the shape the two payloads have in common, and could not tell them apart
  *  if it tried.
@@ -29,8 +29,8 @@ import type { DocumentSource, ReportBody, StudyResponse } from "@/lib/api/types"
  *  frozen document: the version is immutable, so the join is stable, and the report stays
  *  the size it is. */
 export function StudyReportSection({ study }: { study: StudyResponse }) {
-  const published = study.status === "published";
-  const frozen = useStudyReport(study.study_id, published);
+  const signedOff = study.status === "signed_off";
+  const frozen = useStudyReport(study.study_id, signedOff);
   const preview = useStudyReportPreview(study.study_id);
   const outcomes = useStudyCriterionOutcomes(study.study_id);
   const instruments = useInstruments();
@@ -40,8 +40,8 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
   );
 
   // The frozen document is the record once it exists; the preview stands in until then.
-  const body: ReportBody | undefined = published ? frozen.data?.report : preview.data;
-  const source = documentSource(published, frozen.data?.report, preview.data);
+  const body: ReportBody | undefined = signedOff ? frozen.data?.report : preview.data;
+  const source = documentSource(signedOff, frozen.data?.report, preview.data);
 
   if (!body || !source) return <LoadingState label="Composing the report…" />;
 
@@ -82,19 +82,19 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
 
 /** Which of the three things the reader is holding.
  *
- *  `recomposed` is the case the obvious two miss: a preview of an already published study
+ *  `recomposed` is the case the obvious two miss: a preview of an already signed-off study
  *  is the same composition making a different claim about itself, and the band must not
  *  offer it as the record. */
 function documentSource(
-  published: boolean,
-  frozen: { publishedAt: string; publishedBy: string | null } | undefined,
+  signedOff: boolean,
+  frozen: { signedOffAt: string; signedOffBy: string | null } | undefined,
   preview: { composedAt: string; gaps: { gap: string }[]; frozenRecord: { note: string } } | undefined,
 ): DocumentSource | null {
-  if (published && frozen) {
-    return { kind: "frozen", publishedAt: frozen.publishedAt, publishedBy: frozen.publishedBy };
+  if (signedOff && frozen) {
+    return { kind: "frozen", signedOffAt: frozen.signedOffAt, signedOffBy: frozen.signedOffBy };
   }
   if (!preview) return null;
-  if (published) {
+  if (signedOff) {
     return {
       kind: "recomposed",
       composedAt: preview.composedAt,

@@ -1,7 +1,7 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
-pin-study | pin-assessor | compose-dataset | open-study | publish-study | show-preview |
+pin-study | pin-assessor | compose-dataset | open-study | sign-off-study | show-preview |
 show-report | attribute-generator | register-generator | register-generator-version`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
@@ -188,11 +188,11 @@ from app.modules.evaluation_studies.application.pin_instrument import (
     PinInstrumentCommand,
     UnknownInstrument,
 )
-from app.modules.evaluation_studies.application.publish_study import (
-    PublishStudy,
-    PublishStudyCommand,
-)
 from app.modules.evaluation_studies.application.report import compose_preview
+from app.modules.evaluation_studies.application.sign_off_study import (
+    SignOffStudy,
+    SignOffStudyCommand,
+)
 from app.modules.evaluation_studies.domain.model import (
     AssessorAlreadyPinned,
     AssessorNotPinned,
@@ -202,7 +202,7 @@ from app.modules.evaluation_studies.domain.model import (
     InstrumentNotPinned,
     InvalidStudy,
     StudyAlreadyOpen,
-    StudyAlreadyPublished,
+    StudyAlreadySignedOff,
     StudyNotFound,
     StudyNotOpen,
 )
@@ -1725,16 +1725,16 @@ _STUDY_ERRORS = (
     DatasetEmpty,
     StudyAlreadyOpen,
     StudyNotOpen,
-    StudyAlreadyPublished,
+    StudyAlreadySignedOff,
 )
 
 
-def run_declare_study(purpose: str) -> int:
+def run_declare_study(name: str, description: str | None) -> int:
     with SessionLocal() as session:
         uow = UnitOfWork(session)
         try:
             study = DeclareStudy(SqlAlchemyStudyRepository(session), uow.events, uow)(
-                DeclareStudyCommand(purpose=purpose)
+                DeclareStudyCommand(name=name, description=description)
             )
         except _STUDY_ERRORS as exc:
             print(str(exc), file=sys.stderr)
@@ -1833,15 +1833,15 @@ def run_open_study(study_id: UUID) -> int:
     return 0
 
 
-def run_publish_study(study_id: UUID, email: str) -> int:
-    """The human act: compose the report from the current judgments and freeze it."""
+def run_sign_off_study(study_id: UUID, email: str) -> int:
+    """The human act: compose the report from the current judgments, freeze it and sign it."""
     with SessionLocal() as session:
         assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
         if assessor is None:
             print(f"no assessor with email {email!r}", file=sys.stderr)
             return 1
         uow = UnitOfWork(session)
-        use_case = PublishStudy(
+        use_case = SignOffStudy(
             studies=SqlAlchemyStudyRepository(session),
             reports=SqlAlchemyStudyReportRepository(session),
             registry=StudiesRegistryGateway(session),
@@ -1852,11 +1852,11 @@ def run_publish_study(study_id: UUID, email: str) -> int:
             uow=uow,
         )
         try:
-            study = use_case(PublishStudyCommand(study_id=study_id, published_by=assessor.id))
+            study = use_case(SignOffStudyCommand(study_id=study_id, signed_off_by=assessor.id))
         except _STUDY_ERRORS as exc:
             print(str(exc), file=sys.stderr)
             return 1
-    print(f"published study {study.id} (by {email}) — the report is now immutable")
+    print(f"signed off study {study.id} (by {email}) — the report is now immutable")
     return 0
 
 
@@ -1864,14 +1864,14 @@ def run_show_report(study_id: UUID) -> int:
     with SessionLocal() as session:
         dto = SqlAlchemyStudyReportRepository(session).get(study_id)
     if dto is None:
-        print(f"study {study_id} has no published report", file=sys.stderr)
+        print(f"study {study_id} has no signed-off report", file=sys.stderr)
         return 1
     print(json.dumps(dto.report, indent=2))
     return 0
 
 
 def run_show_preview(study_id: UUID) -> int:
-    """What publishing WOULD write, composed on demand — the report before the act.
+    """What signing off WOULD write, composed on demand — the report before the act.
 
     A command of its own rather than a flag on `show-report`: that one prints the frozen
     row and says so when there is none, and a flag that silently changes which of two
@@ -2690,9 +2690,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     declare_study_parser = subparsers.add_parser(
-        "declare-study", help="declare an evaluation study (the round with a purpose)"
+        "declare-study", help="declare an evaluation study (one named round)"
     )
-    declare_study_parser.add_argument("--purpose", required=True)
+    declare_study_parser.add_argument("--name", required=True)
+    declare_study_parser.add_argument(
+        "--description", default=None, help="optional: what this round is for"
+    )
 
     pin_study_parser = subparsers.add_parser(
         "pin-study", help="pin a published instrument version to a study (once, before open)"
@@ -2722,16 +2725,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     open_study_parser.add_argument("--study-id", required=True)
 
-    publish_study_parser = subparsers.add_parser(
-        "publish-study", help="publish the study: compose and freeze the report (human act)"
+    sign_off_study_parser = subparsers.add_parser(
+        "sign-off-study",
+        help="sign off the study: compose, freeze and sign the report (human act)",
     )
-    publish_study_parser.add_argument("--study-id", required=True)
-    publish_study_parser.add_argument(
-        "--email", required=True, help="the admin performing the act (published_by)"
+    sign_off_study_parser.add_argument("--study-id", required=True)
+    sign_off_study_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (signed_off_by)"
     )
 
     show_report_parser = subparsers.add_parser(
-        "show-report", help="print a published study report as JSON"
+        "show-report", help="print a signed-off study report as JSON"
     )
     show_report_parser.add_argument("--study-id", required=True)
 
@@ -2872,7 +2876,7 @@ def main(argv: list[str] | None = None) -> int:
             UUID(args.study_id), args.assessor, args.concurrency, args.re_evaluate
         )
     elif args.command == "declare-study":
-        return run_declare_study(args.purpose)
+        return run_declare_study(args.name, args.description)
     elif args.command == "pin-study":
         return run_pin_study(UUID(args.study_id), args.instrument_version_id)
     elif args.command == "pin-assessor":
@@ -2881,8 +2885,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_compose_dataset(UUID(args.study_id), [UUID(b) for b in args.brief_ids])
     elif args.command == "open-study":
         return run_open_study(UUID(args.study_id))
-    elif args.command == "publish-study":
-        return run_publish_study(UUID(args.study_id), args.email)
+    elif args.command == "sign-off-study":
+        return run_sign_off_study(UUID(args.study_id), args.email)
     elif args.command == "show-report":
         return run_show_report(UUID(args.study_id))
     elif args.command == "show-preview":

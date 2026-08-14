@@ -438,18 +438,19 @@ status ≠ `cancelled`). Campaigns do not own evaluations; the assignment is the
 erDiagram
     studies ||--o{ study_recipe : "briefs"
     studies ||--o{ study_dataset : "materialized"
-    studies ||--o| study_reports : "published"
+    studies ||--o| study_reports : "signed off"
 
     studies {
         uuid id PK
-        text purpose
-        text status "declared | prepared | open | published"
+        text name
+        text description "null; never defaulted from the name"
+        text status "declared | prepared | open | signed_off"
         text instrument_version_id "null until pin"
         uuid assessor_id FK "null until pin; null forever on studies older than it"
         timestamptz created_at
         timestamptz opened_at
-        timestamptz published_at
-        uuid published_by
+        timestamptz signed_off_at
+        uuid signed_off_by
     }
 
     study_recipe {
@@ -465,11 +466,11 @@ erDiagram
     study_reports {
         uuid study_id PK_FK
         jsonb report
-        timestamptz published_at
+        timestamptz signed_off_at
     }
 ```
 
-`brief_id`, `content_id`, `instrument_version_id` and `published_by` are app-validated
+`brief_id`, `content_id`, `instrument_version_id` and `signed_off_by` are app-validated
 (no FK); `assessor_id` has one, because it is the third leg of the triple a study's result
 is defined by (ADR-0042) and every read of the study filters its judgments by it. The
 fitness projection is computed on read and persists nothing.

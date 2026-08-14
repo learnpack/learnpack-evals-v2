@@ -752,8 +752,8 @@ away.
 
 `register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
 instrument is a draft → `declare-study | pin-study | pin-assessor | compose-dataset |
-open-study` → `evaluate-study` (the whole dataset in one run) → `show-preview` (what
-publishing would write, readable before the irreversible act) → `publish-study` →
+open-study` → `evaluate-study` (the whole dataset in one run) → `show-preview` (what signing
+off would write, readable before the irreversible act) → `sign-off-study` →
 `show-report` / `show-fitness`.
 
 ### What you never touch
@@ -945,7 +945,7 @@ the **only** way to exercise an instrument whose lineage has no assessor yet: th
 not compare lineages, so any registered package's executors can be pointed at any version.
 Then the study path:
 `declare-study | pin-study | pin-assessor | compose-dataset | open-study` →
-`evaluate-study` → `show-preview` → `publish-study` → `show-report`.
+`evaluate-study` → `show-preview` → `sign-off-study` → `show-report`.
 
 ### What you never touch
 

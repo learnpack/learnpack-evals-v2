@@ -167,12 +167,15 @@
   adapter's mapping (Content Profiling). Claims and evidence models are portable; only the
   binding is redone per type — reusing an instrument on a new type = **a new version that adds
   the binding**.
-- **EvaluationStudy** — the **commission**: an evaluation round with a purpose (initial /
-  regression / comparison). Lifecycle: `Declared` (purpose, pins pending) →
+- **EvaluationStudy** — the **commission**: an evaluation round, carrying a `name` and an
+  optional `description`. Its *purpose* (initial / regression / comparison) is a typology the
+  model names and does not yet build — the word is reserved for it, never for the title
+  (ADR-0043 §7). Lifecycle: `Declared` (named, pins pending) →
   `Prepared` (instrument **and assessor**, each **pinned** once, immutable; set composed) →
   `Open` (set fixed) →
-  `Published` (human act; immutable report, never re-issued, always with coverage and
-  caveats). **Its result is a triple** — dataset × `instrumentVersion` × `Assessor`
+  `SignedOff` (human act; immutable report, never re-issued, always with coverage and
+  caveats — the document was readable before the act, so what the signature adds is who
+  takes responsibility for it, ADR-0041 and ADR-0043 §8). **Its result is a triple** — dataset × `instrumentVersion` × `Assessor`
   (ADR-0042): the assessor is pinned before opening the way the norm is, only that
   assessor's judgments count, and a study that predates the pin reads by recency with its
   mixture declared in the report. Comparing rounds (`CompareStudies`) requires the same
@@ -328,7 +331,7 @@
   `ContentVersionRegistered` · `ContentProfiled` / `ContentProfilingFailed` ·
   `ExtractionAccepted` · `InstrumentVersionPublished` · `InstrumentDefectIdentified` ·
   `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` · `FindingRaised` ·
-  `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudyPublished` /
+  `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudySignedOff` /
   `StudiesCompared` · human path: `AssignmentCreated`/`AssignmentCancelled`,
   `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` · `SourceCalibrated`
   `[future]`. Killed by Define: `EvaluationRunStarted` (DP28) · `MetricComputed` as an event

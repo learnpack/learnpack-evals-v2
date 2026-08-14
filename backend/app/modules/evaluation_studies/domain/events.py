@@ -1,7 +1,7 @@
 """Domain events of Evaluation Studies (13-code §3.6/§5).
 
 `ComposeDataset` publishes nothing: the recipe evolves freely until `open` fixes it —
-the three lifecycle acts and the publication are the record.
+the three lifecycle acts and the signature are the record.
 """
 
 from uuid import UUID
@@ -17,7 +17,11 @@ def study_declared(study: Study) -> DomainEvent:
         event_type="StudyDeclared",
         aggregate_type=AGGREGATE_TYPE,
         aggregate_id=str(study.id),
-        payload={"studyId": str(study.id), "purpose": study.purpose},
+        payload={
+            "studyId": str(study.id),
+            "name": study.name,
+            "description": study.description,
+        },
     )
 
 
@@ -61,15 +65,15 @@ def study_opened(study: Study) -> DomainEvent:
     )
 
 
-def study_published(study: Study, judgment_ids: list[UUID]) -> DomainEvent:
+def study_signed_off(study: Study, judgment_ids: list[UUID]) -> DomainEvent:
     return DomainEvent(
-        event_type="StudyPublished",
+        event_type="StudySignedOff",
         aggregate_type=AGGREGATE_TYPE,
         aggregate_id=str(study.id),
         payload={
             "studyId": str(study.id),
             "instrumentVersionId": study.instrument_version_id,
-            "publishedBy": str(study.published_by),
+            "signedOffBy": str(study.signed_off_by),
             "judgmentIdsUsed": [str(j) for j in judgment_ids],
         },
     )

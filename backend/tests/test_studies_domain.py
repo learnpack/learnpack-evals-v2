@@ -1,4 +1,4 @@
-"""Study invariants (13-code §10): pin once · dataset fixed at open · publish immutable.
+"""Study invariants (13-code §10): pin once · dataset fixed at open · signed off immutable.
 
 Pure domain — no DB, no fixtures. The report/matching/readiness composition is specified
 here too once it lands (also pure, over local DTOs).
@@ -19,7 +19,7 @@ from app.modules.evaluation_studies.domain.model import (
     InvalidStudy,
     Study,
     StudyAlreadyOpen,
-    StudyAlreadyPublished,
+    StudyAlreadySignedOff,
     StudyNotOpen,
 )
 
@@ -27,7 +27,7 @@ NOW = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
 
 
 def study(**overrides) -> Study:
-    defaults = {"id": uuid4(), "purpose": "First LearnpackV1 QA round"}
+    defaults = {"id": uuid4(), "name": "First LearnpackV1 QA round"}
     return Study(**{**defaults, **overrides})
 
 
@@ -48,15 +48,22 @@ def open_study() -> Study:
 # ----------------------------------------------------------------------- declaration
 
 
-def test_a_study_declares_with_a_purpose():
+def test_a_study_declares_with_a_name():
     s = study()
     assert s.status == "declared"
     assert s.instrument_version_id is None
 
 
-def test_a_blank_purpose_is_invalid():
+def test_a_blank_name_is_invalid():
     with pytest.raises(InvalidStudy):
-        study(purpose="   ")
+        study(name="   ")
+
+
+def test_a_description_is_optional_and_never_defaulted_from_the_name():
+    """Absent is absent (ADR-0043 §7). Copying the name into it would put a sentence
+    nobody wrote in front of whoever reads the report later."""
+    assert study().description is None
+    assert study(description="Does 2.0.0 hold the bar?").description == "Does 2.0.0 hold the bar?"
 
 
 # ----------------------------------------------------------------------- pin once
@@ -183,33 +190,33 @@ def test_open_records_when():
     assert s.opened_at == NOW
 
 
-# ----------------------------------------------------------------------- publish immutable
+# --------------------------------------------------------------------- signed off immutable
 
 
-def test_publish_requires_an_open_round():
+def test_signing_off_requires_an_open_round():
     s = composed_study()
     with pytest.raises(StudyNotOpen):
-        s.publish(uuid4(), NOW)
+        s.sign_off(uuid4(), NOW)
 
 
-def test_publish_records_the_human_act():
+def test_signing_off_records_the_human_act():
     s = open_study()
     who = uuid4()
-    s.publish(who, NOW)
-    assert s.status == "published"
-    assert s.published_by == who
-    assert s.published_at == NOW
+    s.sign_off(who, NOW)
+    assert s.status == "signed_off"
+    assert s.signed_off_by == who
+    assert s.signed_off_at == NOW
 
 
-def test_published_is_immutable():
+def test_a_signed_off_study_is_immutable():
     s = open_study()
-    s.publish(uuid4(), NOW)
+    s.sign_off(uuid4(), NOW)
 
-    with pytest.raises(StudyAlreadyPublished):
-        s.publish(uuid4(), NOW)
-    with pytest.raises(StudyAlreadyPublished):
+    with pytest.raises(StudyAlreadySignedOff):
+        s.sign_off(uuid4(), NOW)
+    with pytest.raises(StudyAlreadySignedOff):
         s.open(NOW)
-    with pytest.raises(StudyAlreadyPublished):
+    with pytest.raises(StudyAlreadySignedOff):
         s.compose_dataset((), (uuid4(),))
     with pytest.raises(InstrumentAlreadyPinned):
         s.pin_instrument("another")
@@ -295,13 +302,13 @@ def judgment(content_id, *claims, derived_at=NOW, excluded=(), assessor=HYBRID_1
     )
 
 
-def published_study(content_ids, brief_ids=()):
+def signed_off_study(content_ids, brief_ids=()):
     s = study()
     s.pin_instrument("qa-v1")
     s.pin_assessor(HYBRID_10.assessor_id)
     s.compose_dataset(tuple(brief_ids), tuple(content_ids))
     s.open(NOW)
-    s.publish(uuid4(), NOW)
+    s.sign_off(uuid4(), NOW)
     return s
 
 
@@ -313,6 +320,36 @@ def content(content_id, brief_id=None, generator_version_id=None):
         brief_id=brief_id,
         generator_version_id=generator_version_id,
     )
+
+
+def test_the_report_names_the_study_and_who_signed_it():
+    """Schema 3 (ADR-0043): the document carries the round's own name and description, and
+    the act that froze it is a signature — `signedOffAt` with `signedOffBy` beside it, not
+    a publication nobody performed."""
+    cid = uuid4()
+    s = signed_off_study([cid])
+    s.description = "Does the 2.0.0 generator hold the bar 1.x set?"
+
+    report = compose_report(
+        study=s,
+        contents=[content(cid)],
+        briefs={},
+        generators={},
+        judgments=[],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        signed_off_at=NOW,
+    )
+
+    assert report["schemaVersion"] == 3
+    assert report["name"] == s.name
+    assert report["description"] == "Does the 2.0.0 generator hold the bar 1.x set?"
+    assert report["signedOffAt"] == NOW.isoformat()
+    assert report["signedOffBy"] == str(s.signed_off_by)
+    # The words the act was called by before it was called what it is.
+    assert "purpose" not in report
+    assert "publishedAt" not in report and "publishedBy" not in report
 
 
 def test_the_report_uses_the_latest_judgment_per_content():
@@ -328,7 +365,7 @@ def test_the_report_uses_the_latest_judgment_per_content():
     assert current[cid].judgment_id == newer.judgment_id
 
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -336,7 +373,7 @@ def test_the_report_uses_the_latest_judgment_per_content():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     assert report["judgmentIdsUsed"] == {str(cid): str(newer.judgment_id)}
     assert report["contents"][0]["claims"][0]["status"] == "supported"
@@ -348,7 +385,7 @@ def test_the_report_names_the_assessor_behind_every_judgment():
     `name:version` travels beside it (ADR-0042 §1)."""
     cid, other = uuid4(), uuid4()
     report = compose_report(
-        study=published_study([cid, other]),
+        study=signed_off_study([cid, other]),
         contents=[content(cid), content(other)],
         briefs={},
         generators={},
@@ -356,7 +393,7 @@ def test_the_report_names_the_assessor_behind_every_judgment():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     judged, unjudged = sorted(report["contents"], key=lambda c: c["judgmentId"] is None)
     assert judged["assessor"] == {
@@ -368,16 +405,16 @@ def test_the_report_names_the_assessor_behind_every_judgment():
     # was judged, and "nobody judged this" is a fact rather than a missing key.
     assert unjudged["assessor"] is None
     assert report["assessorsUsed"] == [judged["assessor"]]
-    assert report["schemaVersion"] == 2
+    assert report["schemaVersion"] == 3
 
 
 def test_two_assessors_over_one_dataset_is_a_caveat_and_not_a_silence():
     """The state this exists to make visible: half a study judged by `:10`, three courses
-    repaired with `:11`, published. Every distribution in that document pools two
+    repaired with `:11`, signed off. Every distribution in that document pools two
     populations, and nothing else in it can say so."""
     a, b = uuid4(), uuid4()
     report = compose_report(
-        study=published_study([a, b]),
+        study=signed_off_study([a, b]),
         contents=[content(a), content(b)],
         briefs={},
         generators={},
@@ -388,7 +425,7 @@ def test_two_assessors_over_one_dataset_is_a_caveat_and_not_a_silence():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     assert [a["version"] for a in report["assessorsUsed"]] == ["10", "11"]
     assert [a["version"] for a in report["caveats"]["mixedAssessors"]["assessors"]] == ["10", "11"]
@@ -401,7 +438,7 @@ def test_repeats_by_one_assessor_are_one_author_not_two():
     keeps re-evaluating a course off the caveat it has nothing to do with."""
     cid = uuid4()
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -416,7 +453,7 @@ def test_repeats_by_one_assessor_are_one_author_not_two():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     assert len(report["assessorsUsed"]) == 1
     assert report["caveats"]["mixedAssessors"]["assessors"] == []
@@ -428,7 +465,7 @@ def test_a_superseded_judgment_takes_its_author_out_of_the_report_with_it():
     touched the dataset."""
     cid = uuid4()
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -444,7 +481,7 @@ def test_a_superseded_judgment_takes_its_author_out_of_the_report_with_it():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     assert [a["version"] for a in report["assessorsUsed"]] == ["10"]
     assert report["caveats"]["mixedAssessors"]["assessors"] == []
@@ -458,7 +495,7 @@ def test_insufficiency_is_qualified_by_cause():
         ClaimJudgment("cl-objectives", "insufficient", BASIS_NO_EVIDENCE),
     )
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -466,7 +503,7 @@ def test_insufficiency_is_qualified_by_cause():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     causes = {c["claimId"]: c["insufficiencyCause"] for c in report["contents"][0]["claims"]}
     assert causes == {"cl-structure": "not_assessed", "cl-objectives": "no_evidence"}
@@ -494,7 +531,7 @@ def test_execution_error_is_a_named_insufficiency_cause_and_a_caveat():
         ),
     )
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -502,7 +539,7 @@ def test_execution_error_is_a_named_insufficiency_cause_and_a_caveat():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     causes = {c["claimId"]: c["insufficiencyCause"] for c in report["contents"][0]["claims"]}
     # Never "unknown": the run's failure is a named cause; two causes at once read mixed.
@@ -526,7 +563,7 @@ def test_a_quoteless_finding_shows_its_cause():
         locator=None,
     )
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -534,7 +571,7 @@ def test_a_quoteless_finding_shows_its_cause():
         findings=[derived_fail],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     finding = report["contents"][0]["findings"][0]
     assert finding["quote"] is None
@@ -549,7 +586,7 @@ def test_unknown_generators_stay_out_of_generator_level():
         judgment(orphan, ClaimJudgment("cl-structure", "supported", BASIS_OK)),
     ]
     report = compose_report(
-        study=published_study([linked, orphan]),
+        study=signed_off_study([linked, orphan]),
         contents=[content(linked, generator_version_id=known_gen), content(orphan)],
         briefs={},
         generators={known_gen: GeneratorInfo(known_gen, "learnpack-generator", "1.0.0")},
@@ -557,7 +594,7 @@ def test_unknown_generators_stay_out_of_generator_level():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     assert len(report["generatorLevel"]) == 1
     section = report["generatorLevel"][0]
@@ -579,7 +616,7 @@ def test_generator_level_distributes_per_claim_with_coverage():
         # c never evaluated
     ]
     report = compose_report(
-        study=published_study([a, b, c]),
+        study=signed_off_study([a, b, c]),
         contents=[
             content(a, generator_version_id=gen),
             content(b, generator_version_id=gen),
@@ -591,7 +628,7 @@ def test_generator_level_distributes_per_claim_with_coverage():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     per_claim = {p["claimId"]: p for p in report["generatorLevel"][0]["perClaim"]}
 
@@ -610,7 +647,7 @@ def test_generator_level_distributes_per_claim_with_coverage():
 
 def test_a_preview_is_the_report_it_would_write_minus_the_act_that_did_not_happen():
     """The guarantee that makes a preview worth reading: the same composition, so what the
-    console shows is what publishing writes.
+    console shows is what signing off writes.
 
     Structural on purpose. The day somebody adds a key to `compose_report`, this fails
     unless the preview learned it too — which is the only way a preview stays a preview
@@ -618,7 +655,7 @@ def test_a_preview_is_the_report_it_would_write_minus_the_act_that_did_not_happe
     """
     cid = uuid4()
     inputs = {
-        "study": published_study([cid]),
+        "study": signed_off_study([cid]),
         "contents": [content(cid, generator_version_id=uuid4())],
         "briefs": {},
         "generators": {},
@@ -627,28 +664,28 @@ def test_a_preview_is_the_report_it_would_write_minus_the_act_that_did_not_happe
         "capabilities": {"LearnpackV1": CAPABILITY},
         "instrument": INSTRUMENT,
     }
-    published = compose_report(**inputs, published_at=NOW)
+    signed = compose_report(**inputs, signed_off_at=NOW)
     preview = compose_preview(**inputs, composed_at=NOW)
 
     markers = {"documentKind", "composedAt", "frozenRecord", "gaps"}
-    assert set(preview) - markers == set(published) - {"publishedAt"}
-    for key in set(published) - {"publishedAt"}:
-        assert preview[key] == published[key], key
+    assert set(preview) - markers == set(signed) - {"signedOffAt"}
+    for key in set(signed) - {"signedOffAt"}:
+        assert preview[key] == signed[key], key
     assert preview["documentKind"] == "preview"
     assert preview["gaps"] == []
 
 
-def test_a_preview_never_says_it_was_published_even_when_the_study_was():
-    """`compose_report` emits `publishedAt` unconditionally and the console renders it
+def test_a_preview_never_says_it_was_signed_off_even_when_the_study_was():
+    """`compose_report` emits `signedOffAt` unconditionally and the console renders it
     unguarded, so a preview carrying the composition's clock would read "Published <now>"
-    about a study nobody published — and a preview of an ALREADY published study would
+    about a study nobody signed — and a preview of an ALREADY signed-off study would
     claim the recomposition's clock as the act's.
 
     The key is absent rather than null: a null renders as the epoch.
     """
     cid = uuid4()
     preview = compose_preview(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid)],
         briefs={},
         generators={},
@@ -658,7 +695,7 @@ def test_a_preview_never_says_it_was_published_even_when_the_study_was():
         instrument=INSTRUMENT,
         composed_at=NOW,
     )
-    assert "publishedAt" not in preview
+    assert "signedOffAt" not in preview
     assert preview["composedAt"] == NOW.isoformat()
     # The frozen record exists — and the preview says so instead of impersonating it.
     assert preview["frozenRecord"]["exists"] is True
@@ -687,7 +724,7 @@ def test_a_study_with_nothing_pinned_previews_with_its_gaps_and_every_caveat_kin
     ]
     assert preview["contents"] == [] and preview["generatorLevel"] == []
     assert preview["judgmentIdsUsed"] == {}
-    assert "publishedAt" not in preview
+    assert "signedOffAt" not in preview
     assert preview["frozenRecord"]["exists"] is False
     assert set(preview["caveats"]) == {
         "insufficientEvidence",
@@ -707,7 +744,7 @@ def test_the_unpinned_preview_has_the_same_keys_as_the_pinned_one():
     and that is the whole hazard: a key added to the document reaches it only if somebody
     remembers. A consumer that walks the document must read ONE shape at every status, or
     it learns to guess — so the two previews are compared key for key here, which is the
-    check the published-vs-preview test performs only for a study that pins something."""
+    check the signed-off-vs-preview test performs only for a study that pins something."""
     cid = uuid4()
     common = {
         "contents": [content(cid)],
@@ -718,7 +755,7 @@ def test_the_unpinned_preview_has_the_same_keys_as_the_pinned_one():
         "capabilities": {"LearnpackV1": CAPABILITY},
         "composed_at": NOW,
     }
-    pinned = compose_preview(study=published_study([cid]), instrument=INSTRUMENT, **common)
+    pinned = compose_preview(study=signed_off_study([cid]), instrument=INSTRUMENT, **common)
     unpinned = compose_preview(study=study(), instrument=None, **common)
 
     assert set(unpinned) == set(pinned)
@@ -748,7 +785,7 @@ def test_a_pinned_version_that_cannot_be_read_is_its_own_gap():
 def test_every_caveat_kind_is_always_present():
     cid = uuid4()
     report = compose_report(
-        study=published_study([cid]),
+        study=signed_off_study([cid]),
         contents=[content(cid, generator_version_id=uuid4())],
         briefs={},
         generators={},
@@ -756,7 +793,7 @@ def test_every_caveat_kind_is_always_present():
         findings=[],
         capabilities={"LearnpackV1": CAPABILITY},
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     caveats = report["caveats"]
     assert set(caveats) == {
@@ -780,7 +817,7 @@ def test_caveats_carry_brief_completeness_and_adapter_acceptance():
     cid = uuid4()
     brief_id = uuid4()
     report = compose_report(
-        study=published_study([cid], brief_ids=[brief_id]),
+        study=signed_off_study([cid], brief_ids=[brief_id]),
         contents=[content(cid, brief_id=brief_id)],
         briefs={
             brief_id: BriefInfo(
@@ -796,7 +833,7 @@ def test_caveats_carry_brief_completeness_and_adapter_acceptance():
             "LearnpackV1": CapabilityInfo("LearnpackV1", "2", ("lesson_inventory",), False)
         },
         instrument=INSTRUMENT,
-        published_at=NOW,
+        signed_off_at=NOW,
     )
     caveats = report["caveats"]
     assert caveats["briefCompleteness"] == [
