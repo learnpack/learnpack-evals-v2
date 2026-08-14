@@ -445,6 +445,7 @@ erDiagram
         text purpose
         text status "declared | prepared | open | published"
         text instrument_version_id "null until pin"
+        uuid assessor_id FK "null until pin; null forever on studies older than it"
         timestamptz created_at
         timestamptz opened_at
         timestamptz published_at
@@ -469,7 +470,9 @@ erDiagram
 ```
 
 `brief_id`, `content_id`, `instrument_version_id` and `published_by` are app-validated
-(no FK). The fitness projection is computed on read and persists nothing.
+(no FK); `assessor_id` has one, because it is the third leg of the triple a study's result
+is defined by (ADR-0042) and every read of the study filters its judgments by it. The
+fitness projection is computed on read and persists nothing.
 
 ## 9. platform — events outbox
 
