@@ -77,6 +77,12 @@ class CriterionOutcomeDTO:
     and pre-aggregated — a consumer that must attribute a criterion to something other than
     its claim (ADR-0023: to a quality, deduplicated) needs the criterion's identity, which a
     count has lost. `derived` marks the absence-derived `fail` (ADR-0021).
+
+    The evidence travels with it because the row already carries it and nothing else can:
+    `findings` are minted one per FAILING criterion, so the quote that grounds a pass —
+    persisted for every pass, guaranteed by `ck_criterion_outcomes_pass_quoted` — is
+    otherwise readable by nobody. `execution_cause` crosses as raw jsonb, like `locator`:
+    the domain's `ExecutionCause` is not this boundary's business.
     """
 
     judgment_id: UUID
@@ -84,6 +90,11 @@ class CriterionOutcomeDTO:
     criterion_id: str
     outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed | execution_error
     derived: bool
+    quote: str | None = None
+    locator: dict[str, Any] | None = None
+    failure_mode: str | None = None  # only ever accompanies a fail (CHECK constraint)
+    comment: str | None = None
+    execution_cause: dict[str, Any] | None = None  # {task, kind, message}, ADR-0037
 
 
 @dataclass(frozen=True)
