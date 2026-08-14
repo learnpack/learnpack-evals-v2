@@ -362,8 +362,11 @@ function StartEvaluation({
               <span>
                 Re-evaluate courses this assessor already judged
                 <span className="block text-xs text-muted-foreground">
-                  Off by default, which is what makes running it again the way to resume an
-                  interrupted batch.
+                  For repairing a course that finished degraded: a criterion that errored is
+                  this run&apos;s failure, not the course&apos;s. It replaces the previous
+                  judgment rather than adding to it, so it never samples the judge — that is
+                  what a calibration dry run is for. Off by default, which is what makes
+                  running the batch again the way to resume an interrupted one.
                 </span>
               </span>
             </label>
