@@ -27,7 +27,7 @@ from app.modules.evaluation_studies.application.dtos import (
     InstrumentInfo,
     JudgmentInfo,
 )
-from app.modules.evaluation_studies.application.report import latest_judgments
+from app.modules.evaluation_studies.application.report import assessors_used, latest_judgments
 from app.modules.evaluation_studies.domain.model import Study
 
 # The same camelCase vocabulary `evidence_basis` uses. Spelled again here rather than
@@ -133,6 +133,10 @@ def compute_criterion_outcomes(
         # denominator, never a score — ADR-0011 retired the cross-criterion total.
         "signal": "evidence",
         "judgmentBasis": {"basis": basis, "note": JUDGMENT_BASIS_NOTE[basis]},
+        # Whose evidence this is (ADR-0042). It belongs beside `judgmentBasis` because the
+        # two answer the same shape of question — which judgments am I looking at, and
+        # whose — and a cell's quote means nothing without the second half.
+        "assessorsUsed": assessors_used(current),
         "gaps": gaps,
     }
     if instrument is None:

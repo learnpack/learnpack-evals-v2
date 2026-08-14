@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
+from app.modules.evaluation_studies.application.dtos import JudgmentInfo
 from app.modules.evaluation_studies.application.report import latest_judgments
 from app.modules.evaluation_studies.infrastructure.gateways import (
     EvaluationGateway,
@@ -143,6 +144,15 @@ class BatchRunResponse(BaseModel):
         )
 
 
+class AssessorProgress(BaseModel):
+    """How far ONE assessor has got with this study."""
+
+    assessor_id: UUID
+    name: str | None
+    version: str | None
+    evaluated: int
+
+
 class StudyEvaluationsResponse(BaseModel):
     """What the page opens with: the durable count, and the runs this process remembers."""
 
@@ -152,6 +162,12 @@ class StudyEvaluationsResponse(BaseModel):
     # the pinned instrument. Survives a restart and counts a batch run from the CLI.
     courses: int
     evaluated: int
+    # The same count, split by who produced it (ADR-0042). `evaluated` answers "how much of
+    # this study has been judged at all"; this answers "how much would the assessor I am
+    # about to run skip" — which is the question the start dialog is really asking, and the
+    # one a single instrument-wide number could never answer. Where the split has more than
+    # one entry, the study has been judged by more than one artifact.
+    evaluated_by_assessor: list[AssessorProgress]
     default_concurrency: int
     runs: list[BatchRunResponse]
 
@@ -169,19 +185,38 @@ def read_study_evaluations(
 ) -> StudyEvaluationsResponse:
     """How far this study has been evaluated, and what this process is running for it."""
     study = _study_or_404(uow, study_id)
-    evaluated = 0
+    current: dict[UUID, JudgmentInfo] = {}
     if study.instrument_version_id is not None and study.content_ids:
         judgments = EvaluationGateway(uow.session).get_judgments(
             list(study.content_ids), study.instrument_version_id
         )
         # One judgment per content, the current one — the same read the report and the
         # fitness take, so three views of the same study cannot disagree about it.
-        evaluated = len(latest_judgments(judgments))
+        current = latest_judgments(judgments)
+
+    per_assessor: dict[UUID, AssessorProgress] = {}
+    for judgment in current.values():
+        if judgment.assessor is None:
+            continue
+        entry = per_assessor.get(judgment.assessor.assessor_id)
+        if entry is None:
+            per_assessor[judgment.assessor.assessor_id] = AssessorProgress(
+                assessor_id=judgment.assessor.assessor_id,
+                name=judgment.assessor.name,
+                version=judgment.assessor.version,
+                evaluated=1,
+            )
+        else:
+            entry.evaluated += 1
+
     return StudyEvaluationsResponse(
         study_id=study_id,
         instrument_version_id=study.instrument_version_id,
         courses=len(study.content_ids),
-        evaluated=evaluated,
+        evaluated=len(current),
+        evaluated_by_assessor=sorted(
+            per_assessor.values(), key=lambda a: (-a.evaluated, str(a.assessor_id))
+        ),
         default_concurrency=get_settings().llm_max_concurrency,
         runs=[BatchRunResponse.from_view(run.view()) for run in batch_runs.for_study(study_id)],
     )

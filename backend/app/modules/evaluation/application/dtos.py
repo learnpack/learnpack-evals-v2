@@ -44,10 +44,23 @@ class JudgmentClaimDTO:
 
 @dataclass(frozen=True)
 class QualityJudgmentDTO:
-    """Append-only; the most recent per (content, instrument) is the current one."""
+    """Append-only; the most recent per (content, instrument) is the current one.
+
+    The assessor travels with it because provenance is half of what a judgment IS
+    (GLOSSARY, `QualityJudgment`): a per-criterion profile, its coverage, and **whose** it
+    is. It is read through `evaluation_id` rather than stored on the judgment row — the
+    coordinate already exists, with a unique FK, and a second copy of it could drift from
+    the first.
+
+    The id and nothing else. What an assessor is CALLED (`name:version` for an automated
+    one, a display name for a human) is Identity's to say, and a consumer that needs a
+    label asks Identity for it — the same reason this DTO carries `content_id` and not a
+    course's title.
+    """
 
     judgment_id: UUID
     evaluation_id: UUID
+    assessor_id: UUID
     content_id: UUID
     instrument_version_id: str
     derived_at: datetime

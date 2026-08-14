@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from app.modules.evaluation_studies.application.dtos import (
+    AssessorInfo,
     BriefInfo,
     CapabilityInfo,
     ContentInfo,
@@ -23,7 +24,10 @@ from app.modules.evaluation_studies.application.dtos import (
 )
 from app.modules.evaluation_studies.domain.model import Study
 
-SCHEMA_VERSION = 1
+# 2 since the report names the assessor behind every judgment (ADR-0042). Reports frozen at
+# 1 carry no `assessor`, no `assessorsUsed` and no `mixedAssessors` caveat, and are read as
+# the records they are: the absence is a schema fact, not a study with no author.
+SCHEMA_VERSION = 2
 
 # ADR-0021: the fail derived from absence carries no quote; the report must show its cause
 # so it is not read as an incomplete finding.
@@ -41,6 +45,37 @@ def latest_judgments(judgments: list[JudgmentInfo]) -> dict[UUID, JudgmentInfo]:
     for judgment in sorted(judgments, key=lambda j: (j.derived_at, str(j.judgment_id))):
         current[judgment.content_id] = judgment
     return current
+
+
+def _assessor_section(assessor: AssessorInfo | None) -> dict[str, Any] | None:
+    """Whose judgment this is, in both forms (ADR-0042 §1)."""
+    if assessor is None:
+        return None
+    return {
+        "assessorId": str(assessor.assessor_id),
+        "name": assessor.name,
+        "version": assessor.version,
+    }
+
+
+def assessors_used(current: dict[UUID, JudgmentInfo]) -> list[dict[str, Any]]:
+    """The distinct authors of a set of current judgments — public, like `latest_judgments`.
+
+    Public because the fitness projection publishes the same list for the same reason, and
+    two implementations of "who judged this study" could disagree about a study while
+    sitting on one screen.
+
+    Ordered by the pair that reads, not by the uuid: a person scanning the header is
+    looking for `drafts-hybrid:10`, and a report that lists two assessors is a report whose
+    numbers pool two populations — which is what the `mixedAssessors` caveat says out loud.
+    """
+    by_id: dict[UUID, AssessorInfo] = {
+        judgment.assessor.assessor_id: judgment.assessor
+        for judgment in current.values()
+        if judgment.assessor is not None
+    }
+    ordered = sorted(by_id.values(), key=lambda a: (a.display_name, str(a.assessor_id)))
+    return [section for a in ordered if (section := _assessor_section(a)) is not None]
 
 
 def _insufficiency_cause(evidence_basis: dict[str, int]) -> str:
@@ -200,10 +235,25 @@ def _caveats(
         if (count := judgment.coverage.get("criteria", {}).get("executionError", 0)) > 0
     ]
 
+    authors = assessors_used(current)
+
     return {
         "insufficientEvidence": insufficient,
         # Inert in the first increment (single automated assessor) — present on purpose.
         "unresolvedDisagreements": [],
+        "mixedAssessors": {
+            # Empty below two: one author is the normal case and needs no caveat, and a
+            # study nothing judged has no author to name.
+            "assessors": authors if len(authors) > 1 else [],
+            # ADR-0042: the reader is told what the mixture costs, because nothing else in
+            # the document can. Every distribution here pools courses judged by different
+            # artifacts, and a criterion's states come from whichever one reached it last.
+            "note": (
+                "more than one assessor produced the judgments in this report — the "
+                "distributions pool populations judged by different artifacts, so read "
+                "them per assessor or re-evaluate the dataset with one"
+            ),
+        },
         "unknownExclusions": {
             "contentIds": unknown_contents,
             # Since ADR-0024 the state is declared, not an oversight, and it is repairable:
@@ -265,10 +315,12 @@ def compose_report(
         }
         if judgment is None:
             section["judgmentId"] = None
+            section["assessor"] = None
         else:
             section.update(
                 {
                     "judgmentId": str(judgment.judgment_id),
+                    "assessor": _assessor_section(judgment.assessor),
                     "derivedAt": judgment.derived_at.isoformat(),
                     "coverage": judgment.coverage,
                     "claims": _claim_section(judgment),
@@ -289,11 +341,14 @@ def compose_report(
             "briefIds": [str(b) for b in study.brief_ids],
             "contentIds": [str(c) for c in study.content_ids],
         },
-        # The immutable record of exactly which judgments this report reflects.
+        # The immutable record of exactly which judgments this report reflects — and, since
+        # ADR-0042, of WHOSE. The ids pin the rows; this pins the artifacts, which is the
+        # half that still means something once the store they were minted in is gone.
         "judgmentIdsUsed": {
             str(content_id): str(judgment.judgment_id)
             for content_id, judgment in sorted(current.items(), key=lambda kv: str(kv[0]))
         },
+        "assessorsUsed": assessors_used(current),
         "contents": content_sections,
         "generatorLevel": _generator_level(instrument, contents, generators, current),
         "caveats": _caveats(contents, briefs, capabilities, current),
@@ -362,6 +417,7 @@ def compose_preview(
                 "contentIds": [str(c) for c in study.content_ids],
             },
             "judgmentIdsUsed": {},
+            "assessorsUsed": [],
             "contents": [],
             "generatorLevel": [],
             # Every caveat kind, even here (12-define invariant 4): a consumer that walks

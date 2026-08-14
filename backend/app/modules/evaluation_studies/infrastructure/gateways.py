@@ -14,6 +14,7 @@ from app.modules.evaluand_registry.public import ContentSnapshot, EvaluandRegist
 from app.modules.evaluation.public import EvaluationQueries
 from app.modules.evaluation_design.public import InstrumentQueries
 from app.modules.evaluation_studies.application.dtos import (
+    AssessorInfo,
     BriefInfo,
     CapabilityInfo,
     ClaimJudgment,
@@ -27,6 +28,20 @@ from app.modules.evaluation_studies.application.dtos import (
     JudgmentInfo,
     RatificationInfo,
 )
+from app.modules.identity.public import AssessorDTO, IdentityQueries
+
+
+def _assessor_info(assessor_id: UUID, dto: AssessorDTO | None) -> AssessorInfo:
+    """The author of a judgment, named where Identity can name it.
+
+    An id with no row answers with the id alone rather than with nothing: the judgment
+    exists and its author is recorded — losing the provenance because a label could not be
+    fetched would be the exact failure this whole change exists to end.
+    """
+    automated = dto.automated if dto is not None else None
+    if automated is None:
+        return AssessorInfo(assessor_id=assessor_id)
+    return AssessorInfo(assessor_id=assessor_id, name=automated.name, version=automated.version)
 
 
 class RegistryGateway:
@@ -78,14 +93,25 @@ class RegistryGateway:
 
 
 class EvaluationGateway:
-    """`EvaluationGatewayPort`: judgments/findings/ratifications, translated."""
+    """`EvaluationGatewayPort`: judgments/findings/ratifications, translated.
+
+    It crosses to TWO modules, and that is what a gateway is for. Evaluation says which
+    assessor produced a judgment; Identity says what that assessor is called. Neither
+    module has to learn the other's vocabulary, and the join that used to be impossible
+    from the application layer happens here, where crossing is legal (ARCHITECTURE §3).
+    """
 
     def __init__(self, session: Session) -> None:
         self._queries = EvaluationQueries(session)
+        self._identities = IdentityQueries(session)
 
     def get_judgments(
         self, content_ids: list[UUID], instrument_version_id: str
     ) -> list[JudgmentInfo]:
+        dtos = self._queries.get_judgments(content_ids, instrument_version_id)
+        # One batched lookup for the whole set, whatever its size (ADR-0006): a study of
+        # twenty courses has at most a handful of distinct authors.
+        assessors = self._identities.list_assessors(sorted({dto.assessor_id for dto in dtos}))
         return [
             JudgmentInfo(
                 judgment_id=dto.judgment_id,
@@ -100,8 +126,9 @@ class EvaluationGateway:
                     )
                     for claim in dto.claims
                 ),
+                assessor=_assessor_info(dto.assessor_id, assessors.get(dto.assessor_id)),
             )
-            for dto in self._queries.get_judgments(content_ids, instrument_version_id)
+            for dto in dtos
         ]
 
     def get_findings(

@@ -174,6 +174,7 @@ def test_published_is_immutable():
 from datetime import timedelta  # noqa: E402
 
 from app.modules.evaluation_studies.application.dtos import (  # noqa: E402
+    AssessorInfo,
     BriefInfo,
     CapabilityInfo,
     ClaimJudgment,
@@ -233,13 +234,18 @@ BASIS_EXECUTION_ERROR = {
 }
 
 
-def judgment(content_id, *claims, derived_at=NOW, excluded=()):
+HYBRID_10 = AssessorInfo(assessor_id=uuid4(), name="drafts-hybrid", version="10")
+HYBRID_11 = AssessorInfo(assessor_id=uuid4(), name="drafts-hybrid", version="11")
+
+
+def judgment(content_id, *claims, derived_at=NOW, excluded=(), assessor=HYBRID_10):
     return JudgmentInfo(
         judgment_id=uuid4(),
         content_id=content_id,
         derived_at=derived_at,
         coverage={"criteria": {}, "excludedClaims": list(excluded)},
         claims=tuple(claims),
+        assessor=assessor,
     )
 
 
@@ -287,6 +293,114 @@ def test_the_report_uses_the_latest_judgment_per_content():
     )
     assert report["judgmentIdsUsed"] == {str(cid): str(newer.judgment_id)}
     assert report["contents"][0]["claims"][0]["status"] == "supported"
+
+
+def test_the_report_names_the_assessor_behind_every_judgment():
+    """`judgmentIdsUsed` pins WHICH judgments; without this it never pinned WHOSE — and a
+    uuid minted in one store means nothing in another, which is why the artifact's
+    `name:version` travels beside it (ADR-0042 §1)."""
+    cid, other = uuid4(), uuid4()
+    report = compose_report(
+        study=published_study([cid, other]),
+        contents=[content(cid), content(other)],
+        briefs={},
+        generators={},
+        judgments=[judgment(cid, ClaimJudgment("cl-structure", "supported", BASIS_OK))],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        published_at=NOW,
+    )
+    judged, unjudged = sorted(report["contents"], key=lambda c: c["judgmentId"] is None)
+    assert judged["assessor"] == {
+        "assessorId": str(HYBRID_10.assessor_id),
+        "name": "drafts-hybrid",
+        "version": "10",
+    }
+    # Present and null, never absent: a consumer reads one shape whether or not a course
+    # was judged, and "nobody judged this" is a fact rather than a missing key.
+    assert unjudged["assessor"] is None
+    assert report["assessorsUsed"] == [judged["assessor"]]
+    assert report["schemaVersion"] == 2
+
+
+def test_two_assessors_over_one_dataset_is_a_caveat_and_not_a_silence():
+    """The state this exists to make visible: half a study judged by `:10`, three courses
+    repaired with `:11`, published. Every distribution in that document pools two
+    populations, and nothing else in it can say so."""
+    a, b = uuid4(), uuid4()
+    report = compose_report(
+        study=published_study([a, b]),
+        contents=[content(a), content(b)],
+        briefs={},
+        generators={},
+        judgments=[
+            judgment(a, ClaimJudgment("cl-structure", "supported", BASIS_OK)),
+            judgment(b, ClaimJudgment("cl-structure", "refuted", BASIS_FAIL), assessor=HYBRID_11),
+        ],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        published_at=NOW,
+    )
+    assert [a["version"] for a in report["assessorsUsed"]] == ["10", "11"]
+    assert [a["version"] for a in report["caveats"]["mixedAssessors"]["assessors"]] == ["10", "11"]
+    assert report["caveats"]["mixedAssessors"]["note"]
+
+
+def test_repeats_by_one_assessor_are_one_author_not_two():
+    """Two versions of one artifact are two assessors; two runs of one artifact are one.
+    The distinction is the assessor's ID, never the count of judgments — which is what
+    keeps re-evaluating a course off the caveat it has nothing to do with."""
+    cid = uuid4()
+    report = compose_report(
+        study=published_study([cid]),
+        contents=[content(cid)],
+        briefs={},
+        generators={},
+        judgments=[
+            judgment(
+                cid,
+                ClaimJudgment("cl-structure", "refuted", BASIS_FAIL),
+                derived_at=NOW - timedelta(days=1),
+            ),
+            judgment(cid, ClaimJudgment("cl-structure", "supported", BASIS_OK)),
+        ],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        published_at=NOW,
+    )
+    assert len(report["assessorsUsed"]) == 1
+    assert report["caveats"]["mixedAssessors"]["assessors"] == []
+
+
+def test_a_superseded_judgment_takes_its_author_out_of_the_report_with_it():
+    """`assessorsUsed` is computed over the CURRENT judgments, so an assessor whose every
+    judgment was replaced is not named — the report says who it reflects, not who ever
+    touched the dataset."""
+    cid = uuid4()
+    report = compose_report(
+        study=published_study([cid]),
+        contents=[content(cid)],
+        briefs={},
+        generators={},
+        judgments=[
+            judgment(
+                cid,
+                ClaimJudgment("cl-structure", "refuted", BASIS_FAIL),
+                derived_at=NOW - timedelta(days=1),
+                assessor=HYBRID_11,
+            ),
+            judgment(cid, ClaimJudgment("cl-structure", "supported", BASIS_OK)),
+        ],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        published_at=NOW,
+    )
+    assert [a["version"] for a in report["assessorsUsed"]] == ["10"]
+    assert report["caveats"]["mixedAssessors"]["assessors"] == []
 
 
 def test_insufficiency_is_qualified_by_cause():
@@ -536,7 +650,31 @@ def test_a_study_with_nothing_pinned_previews_with_its_gaps_and_every_caveat_kin
         "contentsWithoutJudgment",
         "taskVariablePatterns",
         "executionErrors",
+        "mixedAssessors",
     }
+
+
+def test_the_unpinned_preview_has_the_same_keys_as_the_pinned_one():
+    """The no-instrument branch is a hand-written literal, not a call to `compose_report`,
+    and that is the whole hazard: a key added to the document reaches it only if somebody
+    remembers. A consumer that walks the document must read ONE shape at every status, or
+    it learns to guess — so the two previews are compared key for key here, which is the
+    check the published-vs-preview test performs only for a study that pins something."""
+    cid = uuid4()
+    common = {
+        "contents": [content(cid)],
+        "briefs": {},
+        "generators": {},
+        "judgments": [judgment(cid, ClaimJudgment("cl-structure", "supported", BASIS_OK))],
+        "findings": [],
+        "capabilities": {"LearnpackV1": CAPABILITY},
+        "composed_at": NOW,
+    }
+    pinned = compose_preview(study=published_study([cid]), instrument=INSTRUMENT, **common)
+    unpinned = compose_preview(study=study(), instrument=None, **common)
+
+    assert set(unpinned) == set(pinned)
+    assert set(unpinned["caveats"]) == set(pinned["caveats"])
 
 
 def test_a_pinned_version_that_cannot_be_read_is_its_own_gap():
@@ -582,10 +720,12 @@ def test_every_caveat_kind_is_always_present():
         "contentsWithoutJudgment",
         "taskVariablePatterns",
         "executionErrors",
+        "mixedAssessors",
     }
     assert caveats["unresolvedDisagreements"] == []  # inert, present on purpose
     assert caveats["taskVariablePatterns"]["status"] == "deferred"  # non-silent deferral
     assert caveats["executionErrors"]["perContent"] == []  # present even when empty
+    assert caveats["mixedAssessors"]["assessors"] == []  # one author is not a caveat
 
 
 def test_caveats_carry_brief_completeness_and_adapter_acceptance():
