@@ -1275,6 +1275,15 @@ the data in the package).
   is the same class as the escaping defect `drafts-hybrid` v5 fixed for two other corpora — so
   it is **assessor identity, a version bump**, not a report concern, and it is newly visible
   rather than new.
+- **The local database ports moved to 15433 (tests) and 15434 (development).** Anyone with an
+  existing checkout must update the two URLs in their own `backend/.env`; `docker compose up
+  -d` republishes the containers and the named dev volume keeps its data. They were on
+  5433/5434, which dodged Postgres's default 5432 and landed on exactly what the Windows
+  installer hands a *second* native instance — it scans upward — so a machine with two
+  Postgres versions shadowed the container and `localhost` reached the wrong server. It
+  presents as `password authentication failed`, never as a refused connection, which reads as
+  a credentials problem and is not one; it cost an afternoon twice. `conftest` now stops at
+  the door and names the cause. CI is unaffected: it uses 5432 against a service container.
 - **Contract change to keep in mind**: the canonical `import-learnpack` JSON uses
   `package_format` (formerly `generating_system`) and takes optional `artifacts` /
   `brief_id` / `edit_provenance` (the dead `metadata` key was dropped — ADR-0017);

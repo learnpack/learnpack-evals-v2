@@ -12,7 +12,7 @@ from app.config import Settings, get_settings, parse_source_roots
 from app.modules.evaluand_registry.infrastructure import local_sources
 from app.modules.evaluand_registry.infrastructure.local_sources import LocalSourceError
 
-LOCAL_DB = "postgresql+psycopg://postgres:postgres@localhost:5434/learnpack_evals_dev"
+LOCAL_DB = "postgresql+psycopg://postgres:postgres@localhost:15434/learnpack_evals_dev"
 
 
 @pytest.fixture

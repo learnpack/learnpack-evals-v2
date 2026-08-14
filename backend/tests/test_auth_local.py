@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from app.config import LOCAL_DATABASE_HOSTS, Settings, database_host, get_settings
 from app.platform.auth_local import DEV_USER_HEADER, display_name_for
 
-LOCAL_DB = "postgresql+psycopg://postgres:postgres@localhost:5434/learnpack_evals_dev"
+LOCAL_DB = "postgresql+psycopg://postgres:postgres@localhost:15434/learnpack_evals_dev"
 REMOTE_DB = "postgresql+psycopg://user:pw@ep-x.us-east-1.aws.neon.tech/db?sslmode=require"
 
 

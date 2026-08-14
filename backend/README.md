@@ -44,7 +44,7 @@ Below the claim **it is the same code in both modes**: `ResolveAssessor`, `asses
 comes from — the same cut the test suite uses.
 
 ```bash
-docker compose up -d                       # starts db (5433, tests) and db-dev (5434, development)
+docker compose up -d                       # starts db (15433, tests) and db-dev (15434, development)
 cp .env.example .env                       # the example ships in local mode
 uv run alembic upgrade head
 uv run python -m app.cli seed
