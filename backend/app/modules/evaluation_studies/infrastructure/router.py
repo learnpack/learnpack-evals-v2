@@ -12,7 +12,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.modules.evaluation_studies.application import fitness, queries
+from app.modules.evaluation_studies.application import (
+    criterion_outcomes,
+    fitness,
+    gathering,
+    queries,
+    report,
+)
 from app.modules.evaluation_studies.application.compose_dataset import (
     ComposeDataset,
     ComposeDatasetCommand,
@@ -329,6 +335,81 @@ def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any
         judgments=judgments,
         outcomes=outcomes,
         ratifications=ratifications,
+        computed_at=datetime.now(UTC),
+    )
+
+
+@router.get("/{study_id}/report/preview")
+def get_report_preview(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any]:
+    """What publishing would write, composed on read — so nobody publishes blind.
+
+    Its own resource, and deliberately not a mode of `/report`: that route serves the
+    FROZEN row and keeps answering 404 until the human act happens, because the whole
+    meaning of a study report is that somebody signed it off. This is the same
+    `compose_report` over today's inputs — the same function, so what you read here is what
+    publishing writes — minus the one field a preview must not carry: `publishedAt` filled
+    with the composition's clock reads "Published now" about a study nobody published.
+
+    It answers at every status with its gaps named, the way readiness informs rather than
+    blocks, and it writes nothing: no event, no row, no commit. The use case that publishes
+    is not built here at all.
+    """
+    study = SqlAlchemyStudyRepository(uow.session).get_by_id(study_id)
+    if study is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="study not found")
+
+    inputs = gathering.gather_report_inputs(
+        study,
+        RegistryGateway(uow.session),
+        EvaluationGateway(uow.session),
+        DesignGateway(uow.session),
+        ProfilingGateway(uow.session),
+    )
+    return report.compose_preview(
+        study=study,
+        contents=inputs.contents,
+        briefs=inputs.briefs,
+        generators=inputs.generators,
+        judgments=inputs.judgments,
+        findings=inputs.findings,
+        capabilities=inputs.capabilities,
+        instrument=inputs.instrument,
+        composed_at=datetime.now(UTC),
+    )
+
+
+@router.get("/{study_id}/criterion-outcomes")
+def get_criterion_outcomes(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any]:
+    """The per-criterion record across the dataset — what the report structurally cannot say.
+
+    Its own resource for two reasons, both about evidence. The report carries evidence only
+    for FAILURES: findings are minted one per failing criterion, so the quote grounding a
+    pass — persisted for every pass, guaranteed by a CHECK constraint — is readable
+    nowhere. And "which check fails most across these twenty courses" needs a denominator,
+    which counting findings cannot give (ADR-0011). Nothing here is aggregated across
+    criteria: every distribution travels with its own coverage and stops there.
+
+    A published study answers with the judgments its frozen report recorded rather than
+    with today's most recent — re-evaluating a course afterwards must not silently rewrite
+    what that report reflects. The payload says which of the two you are reading.
+    """
+    study = SqlAlchemyStudyRepository(uow.session).get_by_id(study_id)
+    if study is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="study not found")
+
+    version_id = study.instrument_version_id
+    instrument = DesignGateway(uow.session).get_instrument(version_id) if version_id else None
+    contents = RegistryGateway(uow.session).get_contents_by_ids(list(study.content_ids))
+    content_ids = [content.content_id for content in contents]
+    evaluation = EvaluationGateway(uow.session)
+    frozen = queries.get_report(SqlAlchemyStudyReportRepository(uow.session), study_id)
+    return criterion_outcomes.compute_criterion_outcomes(
+        study=study,
+        instrument=instrument,
+        contents=contents,
+        judgments=evaluation.get_judgments(content_ids, version_id) if version_id else [],
+        outcomes=(evaluation.get_criterion_outcomes(content_ids, version_id) if version_id else []),
+        frozen_report=frozen.report if frozen is not None else None,
         computed_at=datetime.now(UTC),
     )
 
