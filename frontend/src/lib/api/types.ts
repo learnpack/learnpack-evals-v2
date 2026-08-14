@@ -337,9 +337,14 @@ export interface StudyResponse {
   published_at: string | null;
 }
 
+/** The three states a claim can be in, named once. The report's per-content claims, the
+ *  dry run's, and the generator-level distribution are one vocabulary — extracted so a
+ *  palette can be `Record<ClaimStatus, …>` and a fourth state cannot be forgotten. */
+export type ClaimStatus = "supported" | "refuted" | "insufficient";
+
 export interface StudyReportClaim {
   claimId: string;
-  status: "supported" | "refuted" | "insufficient";
+  status: ClaimStatus;
   evidenceBasis: Record<string, number>;
   insufficiencyCause?: string;
 }
@@ -414,6 +419,112 @@ export interface StudyReportResponse {
   study_id: Uuid;
   report: StudyReport;
   published_at: string;
+}
+
+/** A gap a composed-on-read document names instead of refusing to answer: the study is not
+ *  finished being set up, and saying so beats a 404 (the readiness stance). */
+export interface StudyGap {
+  gap: string;
+}
+
+export interface FrozenRecord {
+  exists: boolean;
+  note: string;
+}
+
+/** What publishing WOULD write, composed on read. The same document as `StudyReport` minus
+ *  `publishedAt` — removed rather than nulled, because a null renders as the epoch — plus
+ *  what it says about itself. With no instrument pinned, `contents` and `generatorLevel`
+ *  come back empty and `gaps` says why. */
+export interface StudyReportPreview extends Omit<StudyReport, "publishedAt" | "instrumentVersionId"> {
+  instrumentVersionId: string | null;
+  documentKind: "preview";
+  composedAt: string;
+  frozenRecord: FrozenRecord;
+  gaps: StudyGap[];
+}
+
+/** The body every layer of the report renders: exactly what the two payloads have in common.
+ *
+ *  Both are assignable to it — `StudyReport` structurally, the preview by construction — so
+ *  neither needs an adapter. And `publishedAt` is not merely absent here, it is UNREADABLE,
+ *  which turns the unguarded `new Date(report.publishedAt)` this rewrite replaces into a
+ *  compile error rather than a screen that says "Published" about a study nobody published. */
+export type ReportBody = Omit<StudyReport, "publishedAt" | "instrumentVersionId"> & {
+  instrumentVersionId: string | null;
+};
+
+/** The difference between the two documents, isolated in a union exactly one component reads.
+ *
+ *  `recomposed` is a preview of a study that already HAS a frozen record: the same content,
+ *  a different claim about itself, and the band must not say the same thing about both. */
+export type DocumentSource =
+  | { kind: "frozen"; publishedAt: string; publishedBy: string | null }
+  | { kind: "preview"; composedAt: string; gaps: StudyGap[] }
+  | { kind: "recomposed"; composedAt: string; gaps: StudyGap[]; note: string };
+
+// --- the per-criterion record across a study's dataset -----------------------------------
+// Composed on read like fitness, and for its reason: it must not travel inside the report's
+// frozen jsonb. It is the only place the quote grounding a PASS is readable, and the only
+// one with a denominator per criterion.
+
+export interface CriterionOutcomeCell {
+  contentId: string;
+  outcome: CriterionOutcomeState;
+  /** True when the state was derived mechanically; false when an executor judged it. */
+  derived: boolean;
+  quote: string | null;
+  locator: Record<string, unknown> | null;
+  failureMode: string | null;
+  comment: string | null;
+  executionCause: ExecutionCause | null;
+}
+
+/** The same six states as `CriterionOutcomeState`, in the camelCase spelling the domain
+ *  counts them with (`evidence_basis` uses it too). Two spellings of one vocabulary is not
+ *  ideal, but they are two different things — one names a state, one names a tally — and
+ *  inventing a third would not fix it. */
+export type OutcomeTally =
+  | "pass"
+  | "fail"
+  | "noEvidence"
+  | "notApplicable"
+  | "notAssessed"
+  | "executionError";
+
+export interface CriterionOutcomeSection {
+  criterionId: string;
+  claimIds: string[];
+  distribution: Record<OutcomeTally, number>;
+  /** `observed` of `of`: the denominator is the DATASET, so a criterion nothing judged
+   *  reads `0 of 20` rather than going missing. */
+  coverage: { observed: number; of: number };
+  outcomes: CriterionOutcomeCell[];
+}
+
+export interface CriterionOutcomeContent {
+  contentId: string;
+  externalId: string;
+  briefId: string | null;
+  generatorVersionId: string | null;
+  judgmentId: string | null;
+  derivedAt: string | null;
+}
+
+export interface CriterionOutcomes {
+  studyId: string;
+  status: StudyStatus;
+  instrumentVersionId: string | null;
+  computedAt: string;
+  signal: "evidence";
+  /** Which judgment each course is read through. A published study answers through the ones
+   *  its frozen report recorded, so re-evaluating afterwards cannot make the evidence
+   *  disagree with the document it explains. */
+  judgmentBasis: { basis: "current" | "publishedReport"; note: string };
+  gaps: StudyGap[];
+  contents: CriterionOutcomeContent[];
+  criteria: CriterionOutcomeSection[];
+  contentsWithoutJudgment: string[];
 }
 
 export interface StudyReadinessGap {
