@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useProfiles, useProfilingCapabilities } from "@/lib/api/hooks";
+import { describeLocator } from "@/lib/locator";
 import type {
   ProfileCapabilitiesResponse,
   ProfileEntryResponse,
@@ -273,32 +274,6 @@ function ProvenanceLegend({
       ) : null}
     </div>
   );
-}
-
-/** A readable "where this came from" line for the locator shapes the adapters emit. */
-function describeLocator(locator: Record<string, unknown> | null): string {
-  if (!locator) return "unknown source";
-  const {
-    source,
-    key,
-    kind,
-    kinds,
-    locator: path,
-    path: jsonPath,
-  } = locator as {
-    source?: string;
-    key?: string;
-    kind?: string;
-    kinds?: string[];
-    locator?: string;
-    path?: string;
-  };
-  if (source === "metadata" && key) return `declared metadata · ${key}`;
-  if (source === "artifact" && kind) {
-    return `artifact ${kind} · ${path ?? ""}${jsonPath ? ` · ${jsonPath}` : ""}`;
-  }
-  if (source === "artifacts" && kinds) return `artifacts · ${kinds.join(", ")}`;
-  return JSON.stringify(locator);
 }
 
 function ProfileEntry({ entry }: { entry: ProfileEntryResponse }) {
