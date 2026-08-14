@@ -16,6 +16,8 @@ import type {
   AttributeGeneratorRequest,
   AssignmentDetail,
   AssignmentResponse,
+  BatchRun,
+  BatchRunStarted,
   BriefResponse,
   BrowseResponse,
   CampaignProgress,
@@ -52,6 +54,8 @@ import type {
   ScanResponse,
   ScoresReport,
   SourceRootResponse,
+  StartBatchRequest,
+  StudyEvaluations,
   StudyFitness,
   StudyReadiness,
   StudyReportResponse,
@@ -100,6 +104,9 @@ export const queryKeys = {
   studyReport: (id: Uuid) => ["admin", "studies", id, "report"] as const,
   studyReadiness: (id: Uuid) => ["admin", "studies", id, "readiness"] as const,
   studyFitness: (id: Uuid) => ["admin", "studies", id, "fitness"] as const,
+  studyEvaluations: (id: Uuid) => ["admin", "studies", id, "evaluations"] as const,
+  studyEvaluationRun: (id: Uuid, runId: Uuid | string) =>
+    ["admin", "studies", id, "evaluations", runId] as const,
   localSourceRoots: ["dev", "local-courses", "roots"] as const,
   localSourceFolder: (root: string, path: string) =>
     ["dev", "local-courses", "browse", root, path] as const,
@@ -485,6 +492,64 @@ export function usePreviewRunTrace(runId: Uuid | null, ended: boolean) {
     refetchOnWindowFocus: false,
     staleTime: Infinity,
     retry: false,
+  });
+}
+
+// --------------------------------------------------- evaluating a study in batch (ADR-0040)
+
+/** How far the study has been evaluated, plus the runs this backend remembers.
+ *
+ * The count comes from the database, so it is still right after a restart and counts a
+ * batch someone ran from the CLI. Polled only while one of its runs is going. */
+export function useStudyEvaluations(studyId: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyEvaluations(studyId),
+    queryFn: () => api<StudyEvaluations>(`/admin/studies/${studyId}/evaluations`),
+  });
+}
+
+/** Starts the batch and hands back its id. Never retried: every course spends real LLM
+ *  calls, so a second start is a second bill, not a recovery. */
+export function useStartStudyEvaluation(studyId: Uuid) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (body: StartBatchRequest) =>
+      api<BatchRunStarted>(`/admin/studies/${studyId}/evaluations`, { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId) }),
+  });
+}
+
+/** The run as it stands, polled while it advances and left alone once it ends — the same
+ *  cadence the dry run is watched at. */
+export function useStudyEvaluationRun(studyId: Uuid, runId: Uuid | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyEvaluationRun(studyId, runId ?? ""),
+    queryFn: () => api<BatchRun>(`/admin/studies/${studyId}/evaluations/${runId}`),
+    enabled: runId !== null,
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 1000 : false),
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+/** Stop starting new work. What finished stays persisted, so this is safe to click twice —
+ *  the endpoint answers with the run rather than an error. */
+export function useCancelStudyEvaluation(studyId: Uuid) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (runId: Uuid) =>
+      api<BatchRun>(`/admin/studies/${studyId}/evaluations/${runId}/cancel`, { method: "POST" }),
+    onSuccess: (run) => {
+      qc.setQueryData(queryKeys.studyEvaluationRun(studyId, run.run_id), run);
+      qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId) });
+    },
   });
 }
 

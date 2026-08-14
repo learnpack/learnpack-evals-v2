@@ -1,10 +1,13 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Info, TrendingUp } from "lucide-react";
+import { toast } from "sonner";
+import { ArrowLeft, Info, Play, Square, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -13,20 +16,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { ApiError } from "@/lib/api/client";
 import {
+  useAssessorPackages,
+  useCancelStudyEvaluation,
+  useStartStudyEvaluation,
   useStudy,
+  useStudyEvaluationRun,
+  useStudyEvaluations,
   useStudyFitness,
   useStudyReadiness,
   useStudyReport,
 } from "@/lib/api/hooks";
 import type {
+  BatchCourseStatus,
+  BatchRun,
   FitnessLevel,
   StudyFitness,
   StudyReadiness,
   StudyReport,
   StudyReportContent,
   StudyReportGenerator,
+  StudyResponse,
   Uuid,
 } from "@/lib/api/types";
 
@@ -66,6 +78,8 @@ export default function StudyDetailPage({
 
       {readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
+      <EvaluationPanel study={study} />
+
       {study.status === "published" ? (
         report.isLoading ? (
           <LoadingState label="Loading the report…" />
@@ -84,6 +98,317 @@ export default function StudyDetailPage({
           is not the report's. */}
       {fitness.data ? <FitnessPanel fitness={fitness.data} /> : null}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ evaluation (ADR-0040)
+
+const COURSE_BADGE: Record<BatchCourseStatus, "default" | "secondary" | "outline"> = {
+  evaluated: "default",
+  skipped: "secondary",
+  failed: "outline",
+  cancelled: "outline",
+};
+
+function seconds(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
+}
+
+/** Starting, watching and stopping a batch (ADR-0040), plus the count that outlives it.
+ *
+ * The durable count comes from the database, so it is still right after a restart and
+ * counts a batch someone ran from the CLI. The live half exists only while this backend is
+ * running one. */
+function EvaluationPanel({ study }: { study: StudyResponse }) {
+  const evaluations = useStudyEvaluations(study.study_id);
+  const [watching, setWatching] = useState<Uuid | null>(null);
+  const run = useStudyEvaluationRun(study.study_id, watching);
+  const cancel = useCancelStudyEvaluation(study.study_id);
+
+  // The newest run this backend remembers is what to show when the page is opened again
+  // while one is going — a reload must not lose sight of a batch that is still spending.
+  const latest = evaluations.data?.runs[0] ?? null;
+  const shown = run.data ?? latest;
+  useEffect(() => {
+    if (watching === null && latest?.status === "running") setWatching(latest.run_id);
+  }, [latest, watching]);
+
+  const running = shown?.status === "running";
+  const blocked =
+    !study.instrument_version_id
+      ? "no instrument pinned"
+      : study.content_ids.length === 0
+        ? "no dataset composed"
+        : study.status !== "open"
+          ? `the study is ${study.status} — a batch evaluates an open study`
+          : null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+          <Play className="h-4 w-4 text-muted-foreground" /> Evaluation
+          {evaluations.data ? (
+            <span className="text-xs font-normal text-muted-foreground">
+              {evaluations.data.evaluated} of {evaluations.data.courses} courses judged
+              {evaluations.data.instrument_version_id
+                ? ` under ${evaluations.data.instrument_version_id}`
+                : ""}
+            </span>
+          ) : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        {blocked ? (
+          <p className="text-muted-foreground">Nothing to evaluate yet: {blocked}.</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <StartEvaluation
+              study={study}
+              courses={evaluations.data?.courses ?? study.content_ids.length}
+              disabled={running}
+              onStarted={setWatching}
+            />
+            {running && shown ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={cancel.isPending}
+                onClick={() =>
+                  cancel.mutate(shown.run_id, {
+                    onSuccess: () =>
+                      toast.success("Cancelling", {
+                        description:
+                          "No further course starts. What finished stays evaluated; what was in flight persists nothing.",
+                      }),
+                    onError: (err) =>
+                      toast.error("Could not cancel.", { description: (err as Error).message }),
+                  })
+                }
+              >
+                {cancel.isPending ? <Spinner /> : <Square className="h-3.5 w-3.5" />} Stop
+              </Button>
+            ) : null}
+          </div>
+        )}
+
+        {shown ? <RunProgress run={shown} /> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunProgress({ run }: { run: BatchRun }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <Badge
+          variant={
+            run.status === "running"
+              ? "default"
+              : run.status === "done"
+                ? "secondary"
+                : "outline"
+          }
+        >
+          {run.status}
+        </Badge>
+        <span className="tabular-nums">
+          {run.done} of {run.total} courses · {run.evaluated} evaluated
+          {run.failed > 0 ? ` · ${run.failed} failed` : ""}
+          {run.skipped > 0 ? ` · ${run.skipped} skipped` : ""}
+        </span>
+        <span>{run.assessor}</span>
+        <span className="tabular-nums">{seconds(run.elapsed_ms)} elapsed</span>
+        {run.remaining_ms_estimate ? (
+          <span className="tabular-nums">
+            ~{seconds(run.remaining_ms_estimate[0])}–{seconds(run.remaining_ms_estimate[1])} left
+          </span>
+        ) : null}
+      </div>
+
+      {run.status === "running" && run.current_activity ? (
+        <p className="truncate text-xs text-muted-foreground" title={run.current_activity}>
+          <Spinner /> {run.current_activity}
+        </p>
+      ) : null}
+      {run.error ? <p className="text-xs text-destructive">{run.error}</p> : null}
+
+      {run.courses.length > 0 ? (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Course</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Took</TableHead>
+                <TableHead className="text-right">LLM calls</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {run.courses.map((course) => (
+                <TableRow key={course.content_id}>
+                  <TableCell>
+                    {course.external_id}
+                    {course.cause ? (
+                      <span
+                        className="ml-2 text-xs text-muted-foreground"
+                        title={course.cause}
+                      >
+                        {course.cause.length > 80
+                          ? `${course.cause.slice(0, 80)}…`
+                          : course.cause}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={COURSE_BADGE[course.status]}>{course.status}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {course.duration_ms ? seconds(course.duration_ms) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {course.llm_calls || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The dialog states what is being committed to before it is: real LLM calls per course, on
+ *  the backend's key. Only assessors that have RATIFIED the pinned version are offered —
+ *  the others would be refused by the endpoint, and an option that cannot work is worse
+ *  than no option (ADR-0019, ADR-0036's stance). */
+function StartEvaluation({
+  study,
+  courses,
+  disabled,
+  onStarted,
+}: {
+  study: StudyResponse;
+  courses: number;
+  disabled: boolean;
+  onStarted: (runId: Uuid) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [reEvaluate, setReEvaluate] = useState(false);
+  const packages = useAssessorPackages();
+  const start = useStartStudyEvaluation(study.study_id);
+
+  const eligible = (packages.data ?? []).filter((pkg) =>
+    pkg.lineage_versions.some(
+      (version) =>
+        version.instrument_version_id === study.instrument_version_id && version.ratified,
+    ),
+  );
+  const chosen = eligible.find((pkg) => `${pkg.name}:${pkg.version}` === selected);
+
+  return (
+    <>
+      <Button size="sm" disabled={disabled} onClick={() => setOpen(true)}>
+        <Play className="h-3.5 w-3.5" /> Evaluate the dataset
+      </Button>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Evaluate every course of this study"
+        description="Each course is a real evaluation: it spends LLM calls on the backend's key and persists its judgment. It can be stopped at any time — what finished stays."
+      >
+        {eligible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No assessor has ratified {study.instrument_version_id}. Ratifying is a human act
+            (ADR-0019) and lives in /admin/assessors — without it no judgment may persist.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <ul className="space-y-2">
+              {eligible.map((pkg) => {
+                const key = `${pkg.name}:${pkg.version}`;
+                return (
+                  <li key={key}>
+                    <label className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm">
+                      <input
+                        type="radio"
+                        name="assessor"
+                        checked={selected === key}
+                        onChange={() => setSelected(key)}
+                        className="mt-1"
+                      />
+                      <span>
+                        {pkg.display_name}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {pkg.executes.length} criteria executed
+                          {pkg.uses_llm ? " · spends LLM calls" : " · no LLM calls"}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={reEvaluate}
+                onChange={(event) => setReEvaluate(event.target.checked)}
+                className="mt-1"
+              />
+              <span>
+                Re-evaluate courses this assessor already judged
+                <span className="block text-xs text-muted-foreground">
+                  For repairing a course that finished degraded: a criterion that errored is
+                  this run&apos;s failure, not the course&apos;s. It replaces the previous
+                  judgment rather than adding to it, so it never samples the judge — that is
+                  what a calibration dry run is for. Off by default, which is what makes
+                  running the batch again the way to resume an interrupted one.
+                </span>
+              </span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {courses} course{courses === 1 ? "" : "s"} in the dataset
+              {chosen?.uses_llm
+                ? " · each spends real LLM calls, so this costs money and minutes"
+                : ""}
+            </p>
+          </div>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!selected || start.isPending}
+            onClick={() => {
+              const [name, version] = (selected ?? "").split(":");
+              start.mutate(
+                { assessor_name: name, assessor_version: version, re_evaluate: reEvaluate },
+                {
+                  onSuccess: (started) => {
+                    setOpen(false);
+                    onStarted(started.run_id);
+                    toast.success("Evaluating", {
+                      description: "It reports as it goes, and can be stopped at any time.",
+                    });
+                  },
+                  onError: (err) => {
+                    const detail = (err as ApiError).message;
+                    toast.error("Could not start.", { description: detail });
+                  },
+                },
+              );
+            }}
+          >
+            {start.isPending ? <Spinner /> : null} Evaluate
+          </Button>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

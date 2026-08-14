@@ -374,9 +374,12 @@ to know how a generation went. The statuses mean:
 **It refuses before it spends.** A study that is not open, no instrument pinned, an empty
 dataset, an assessor that is unregistered or has not ratified the pinned version: each would
 fail identically for every course, so the command ends with the cause named and nothing paid
-for. The same reasoning applies while it runs — a configuration failure or a coverage bug
-ends the batch on the first course, and three consecutive transport deaths end it too (any
-course that completes clears that streak).
+for. The same reasoning applies while it runs — a configuration failure, a coverage bug or
+any failure this loop cannot place (a database one migration behind, say) ends the batch on
+the first course, and three consecutive transport deaths end it too (any course that
+completes clears that streak). A run that ends this way reports `failed` and names the course
+that met it; `cancelled` is reserved for a human stopping it, because only one of the two is
+a reason to go looking for a cause.
 
 **Re-running resumes it.** What this assessor already evaluated is skipped, so a batch
 interrupted at course twelve of twenty is continued by running the same command again.
@@ -393,6 +396,23 @@ can never multiply into a burst nobody chose. Default 4; raising it past ~7 also
 database pool raised, since each worker uses up to two sessions. If the endpoint pushes
 back, the transport already backs off on 429 honouring `Retry-After` — the first real batch
 is how the account's actual limit gets measured, rather than guessed.
+
+**The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with
+the identical work behind it — one use case, two doors, so they cannot answer differently.
+It opens on the **durable** count ("12 of 20 courses judged"), which is a query over the
+judgments rather than a run's memory: it is still right after a restart, and it counts a
+batch someone ran from a terminal. Starting states what it commits to before asking, and
+only offers assessors that have **ratified the pinned version** — the option that would be
+refused is not shown. While it runs, the page reads it once a second (`POST
+/admin/studies/{id}/evaluations` returns a run id; `GET …/{run_id}` reads it; `POST
+…/{run_id}/cancel` stops it), showing a row per course, the current activity and a range for
+what is left. A run is refused with **409** while another one over the same courses is alive:
+two batches over one course would decide by arrival order, since every reader takes the most
+recent judgment.
+
+What the console cannot do, on purpose: watch or cancel a batch started from the CLI. They
+are different processes and runs live in memory — the durable count reflects it all the same.
+Runs are forgotten on restart; what they wrote is not.
 
 ### Reading a calibration trace
 
