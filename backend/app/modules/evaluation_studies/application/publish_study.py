@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from app.modules.evaluation_studies.application.gathering import gather_report_inputs
 from app.modules.evaluation_studies.application.pin_instrument import UnknownInstrument
 from app.modules.evaluation_studies.application.ports import (
     DesignGatewayPort,
@@ -76,42 +77,24 @@ class PublishStudy:
 
     def _compose(self, study: Study, now: datetime) -> dict[str, Any]:
         assert study.instrument_version_id is not None  # guaranteed: open requires the pin
-        instrument = self._design.get_instrument(study.instrument_version_id)
-        if instrument is None:
+        inputs = gather_report_inputs(
+            study, self._registry, self._evaluation, self._design, self._profiling
+        )
+        if inputs.instrument is None:
+            # The gathering reports the absence; refusing to publish over it is THIS
+            # caller's rule — a preview reports the same absence as a gap and answers.
             raise UnknownInstrument(
                 f"instrument version {study.instrument_version_id} does not exist"
             )
 
-        content_ids = list(study.content_ids)
-        contents = self._registry.get_contents_by_ids(content_ids)
-
-        briefs = {}
-        for brief_id in {c.brief_id for c in contents if c.brief_id is not None}:
-            brief = self._registry.get_brief(brief_id)
-            if brief is not None:
-                briefs[brief_id] = brief
-
-        generators = {}
-        for generator_id in {
-            c.generator_version_id for c in contents if c.generator_version_id is not None
-        }:
-            generator = self._registry.get_generator(generator_id)
-            if generator is not None:
-                generators[generator_id] = generator
-
-        capabilities = {
-            package_format: self._profiling.get_capabilities(package_format)
-            for package_format in {c.package_format for c in contents}
-        }
-
         return compose_report(
             study=study,
-            contents=contents,
-            briefs=briefs,
-            generators=generators,
-            judgments=self._evaluation.get_judgments(content_ids, study.instrument_version_id),
-            findings=self._evaluation.get_findings(content_ids, study.instrument_version_id),
-            capabilities=capabilities,
-            instrument=instrument,
+            contents=inputs.contents,
+            briefs=inputs.briefs,
+            generators=inputs.generators,
+            judgments=inputs.judgments,
+            findings=inputs.findings,
+            capabilities=inputs.capabilities,
+            instrument=inputs.instrument,
             published_at=now,
         )
