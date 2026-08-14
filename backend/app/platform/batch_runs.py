@@ -61,7 +61,7 @@ from app.modules.evaluation.application.evaluate_content import (
     ProfileNotAvailable,
 )
 from app.modules.evaluation.domain.model import InvalidAutomatedEvaluation
-from app.modules.evaluation.infrastructure.assessors import AssessorPackage
+from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS, AssessorPackage
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.evaluation.infrastructure.gateways import DesignInstrumentGateway, ProfilingGateway
 from app.modules.evaluation.infrastructure.preview_runs import RunStep, with_progress
@@ -338,7 +338,7 @@ class BatchRun:
 def prepare(
     *,
     study_id: UUID,
-    package: AssessorPackage,
+    package: AssessorPackage | None = None,
     workers: int,
     re_evaluate: bool = False,
 ) -> BatchRun:
@@ -347,6 +347,11 @@ def prepare(
     Each check below fails identically for every course in the dataset, which is what makes
     it belong here rather than in the loop: discovering it on course nineteen would cost
     eighteen courses' worth of money to learn what course one already knew.
+
+    **The study says which assessor** (ADR-0042 §10). `package` is what the caller asked
+    for, and it is now optional: a caller that names one is checked against the pin rather
+    than obeyed, so a script written before the pin keeps working and a disagreement is
+    stated instead of silently resolved one way or the other.
     """
     with SessionLocal() as session:
         study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
@@ -370,17 +375,50 @@ def prepare(
                 kind="dataset_empty",
             )
 
-        assessor = SqlAlchemyAssessorRepository(session).get_automated(
-            package.name, package.version
-        )
-        if assessor is None:
+        if study.assessor_id is None:
             raise BatchRefused(
-                f"{package.display_name} is not registered — run ratify-assessor first",
+                f"study {study_id} has no assessor pinned — pin-assessor first; a study's "
+                "result is its dataset, its instrument version AND its judge (ADR-0042)",
+                kind="assessor_not_pinned",
+            )
+        assessor = SqlAlchemyAssessorRepository(session).get_by_id(study.assessor_id)
+        config = assessor.source_config if assessor is not None else {}
+        pinned_name, pinned_version = (config or {}).get("name"), (config or {}).get("version")
+        # The identity, not just the row: an automated assessor IS `(name, version)` inside
+        # `source_config` (ADR-0016), and a row missing either is one nothing can resolve to
+        # a package. Refused with the rest, because a run that dies of a KeyError here says
+        # nothing about which act would fix it.
+        if assessor is None or pinned_name is None or pinned_version is None:
+            raise BatchRefused(
+                f"study {study_id} pins assessor {study.assessor_id}, which is not a "
+                "registered automated assessor",
+                kind="assessor_not_registered",
+            )
+        if package is not None and (package.name, package.version) != (
+            pinned_name,
+            pinned_version,
+        ):
+            # Refused rather than reconciled: one of the two is what the operator meant, and
+            # guessing which would either evaluate under a judge nobody chose or ignore what
+            # they typed. Both are silent; this is not.
+            raise BatchRefused(
+                f"study {study_id} pins {pinned_name}:{pinned_version}, but this run asked "
+                f"for {package.display_name} — a study is evaluated by the assessor it pins",
+                kind="assessor_mismatch",
+            )
+        package = AUTOMATED_ASSESSORS.get((pinned_name, pinned_version))
+        if package is None:
+            raise BatchRefused(
+                f"study {study_id} pins {pinned_name}:{pinned_version}, which this checkout "
+                "does not declare — an assessor package is code, so a build that lacks it "
+                "cannot run this study",
                 kind="assessor_not_registered",
             )
         if not SqlAlchemyRatificationRepository(session).is_ratified(
             assessor.id, instrument_version_id
         ):
+            # Unreachable through `pin-assessor`, which demands it. Kept because the run is
+            # what spends money, and this is the one guarantee it must not inherit on trust.
             raise BatchRefused(
                 f"{package.display_name} has not ratified {instrument_version_id} (ADR-0019) — "
                 "run ratify-assessor first; without it no judgment may persist",

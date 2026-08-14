@@ -558,6 +558,10 @@ def test_a_study_with_nothing_pinned_answers_with_its_gaps():
         computed_at=NOW,
     )
 
-    assert [g["gap"] for g in result["gaps"]] == ["instrument_not_pinned", "dataset_not_composed"]
+    assert [g["gap"] for g in result["gaps"]] == [
+        "instrument_not_pinned",
+        "assessor_not_pinned",
+        "dataset_not_composed",
+    ]
     assert result["study"] == {}
     assert result["briefs"] == []

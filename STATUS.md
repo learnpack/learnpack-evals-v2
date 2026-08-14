@@ -19,8 +19,7 @@ ADR-0037 (execution failure is an outcome — realized end to end, see below) an
 ADR-0041 (the frozen report is the record, not the reading surface — a study's result
 is readable before it is signed, and the evidence behind every criterion lives outside
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
-triple — the provenance half is realized, the study's assessor pin is decided and not
-built, see Open) on top of it.**
+triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -244,6 +243,35 @@ here it changed) — and since nothing branches on it, the real protection is th
 frontend field is optional and read defensively: a report frozen at version 1 is the record it
 is. The caveats line stopped spelling its own count in prose, which had been wrong once
 already.
+
+**And now a study pins its judge (ADR-0042, second of two PRs).** A study fixed two thirds of
+what defines its result — the dataset and the norm — and left the third to whoever ran the
+batch. `studies.assessor_id` (migration 0019) is the third: pinned once, before opening,
+refused unless that assessor has ratified the pinned version, and `open()` refuses without
+it. `prepared` now derives from **both** pins plus a composed dataset, so a study cannot read
+"ready" and then decline to open. Every study read — report, preview, fitness, matrix, the
+durable count — filters judgments by the pin, **in SQL**: a judgment by anyone else is not
+this study's result, and transferring its quotes in order to drop them would be paying for
+the wrong answer. One clause with a null-means-everyone parameter, not a second statement
+built by branching, because the same reads still serve studies that predate the pin.
+
+**The backfill is the part that had to be right the first time.** It fills the pin only where
+the author is unambiguous, and it reads a **published** study through the judgments its frozen
+report recorded rather than through today's most recent (ADR-0041 §6): pinning whoever
+re-evaluated a course after publication would make every read of that study filter out the
+very judgments its document is composed from — a matrix reading `0 of 20` with `basis:
+publishedReport`, indistinguishable from a report that legitimately reflects none. Its three
+shapes are pinned by a test that imports the statement from the migration.
+
+**The batch stops asking.** `evaluate-study --assessor` and the HTTP field become optional and
+are **refused on a disagreement** rather than obeyed or ignored — both of those are silent,
+and this is the one thing a run about to spend money must not resolve on its own. The
+single-content `evaluate` stays study-agnostic by design: it does not know which studies a
+content belongs to, and under the filter a stray judgment simply does not count, which is the
+property the pin buys. In the console, setup becomes four steps (the assessor is pinned
+**second**, since the list it offers is filtered by ratification against the pinned version)
+and the evaluate dialog loses its picker — the last place where "whose result is this?" was
+answered by whoever clicked.
 
 **A stale schema now refuses at the door, and the incident that asked for it.** The first real
 batch died mid-course on `UndefinedColumn: execution_cause`: the development database was at
@@ -1268,15 +1296,13 @@ the data in the package).
 
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
-- **The study does not pin its assessor yet** — the second half of ADR-0042, decided and not
-  built. The judgment now names its author everywhere (see above), so a mixture is visible;
-  what is still legal is producing one. Clauses 8–11: the study pins one assessor before
-  opening, `open()` refuses without it, every read filters by it, the batch takes it from the
-  study, and studies that predate the pin are backfilled where the answer is unambiguous and
-  left unpinned where it is not. It needs migration 0019 (`studies.assessor_id`), a
-  `pin-assessor` act at all three doors, an `assessor_not_pinned` readiness gap, and the
-  console's setup gaining a step. **Until it lands, the console's per-assessor split is what
-  keeps a mixture from being invisible, not what prevents one.**
+- **Studies that predate the pin stay unpinned, and mixed ones stay mixed.** Migration 0019
+  fills the pin only where the answer is unambiguous; a study whose judgments already come
+  from two assessors is left null on purpose (ADR-0042 §11 — choosing one afterwards would
+  disown half its evidence). Those studies read by recency, as they always did, and say so
+  through the `assessor_not_pinned` gap and the `mixedAssessors` caveat. Re-evaluating one
+  under a single assessor, or declaring a new study over the same contents, are the two
+  exits; neither is automated and neither should be.
 - **Studies cannot be deleted or renamed.** No `DELETE` and no `PATCH` anywhere in the app, and
   `purpose` is write-once at declare. A study created and abandoned stays in the list forever.
   It blocks nothing — the console's guided setup was chosen partly so a half-made study is

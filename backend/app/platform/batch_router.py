@@ -50,8 +50,12 @@ Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
 
 class StartBatchRequest(BaseModel):
-    assessor_name: str
-    assessor_version: str
+    # Optional since the study pins its assessor (ADR-0042 §10). A caller that still names
+    # one is checked against the pin and refused on a disagreement — which keeps a script
+    # written before the pin working, and turns a mismatch into an answer instead of a
+    # silently different run.
+    assessor_name: str | None = None
+    assessor_version: str | None = None
     # Courses already evaluated by this assessor under this version are skipped unless this
     # says otherwise — which is what makes re-running the way to resume (ADR-0040 §6).
     re_evaluate: bool = False
@@ -183,39 +187,57 @@ def _study_or_404(uow: UnitOfWork, study_id: UUID):  # noqa: ANN202 — the doma
 def read_study_evaluations(
     study_id: UUID, admin: AdminAssessor, uow: Uow
 ) -> StudyEvaluationsResponse:
-    """How far this study has been evaluated, and what this process is running for it."""
+    """How far this study has been evaluated, and what this process is running for it.
+
+    Read over EVERY author and counted over the pinned one. The breakdown is the whole
+    point of reading widely — a study judged by somebody who is not its assessor is exactly
+    what a reader has to be able to see — while the headline count has to mean what the
+    report means, or the card says "20 of 20 judged" beside a document composed from none
+    of them.
+    """
     study = _study_or_404(uow, study_id)
-    current: dict[UUID, JudgmentInfo] = {}
+    judgments: list[JudgmentInfo] = []
     if study.instrument_version_id is not None and study.content_ids:
         judgments = EvaluationGateway(uow.session).get_judgments(
             list(study.content_ids), study.instrument_version_id
         )
-        # One judgment per content, the current one — the same read the report and the
-        # fitness take, so three views of the same study cannot disagree about it.
-        current = latest_judgments(judgments)
 
-    per_assessor: dict[UUID, AssessorProgress] = {}
-    for judgment in current.values():
-        if judgment.assessor is None:
-            continue
-        entry = per_assessor.get(judgment.assessor.assessor_id)
-        if entry is None:
-            per_assessor[judgment.assessor.assessor_id] = AssessorProgress(
-                assessor_id=judgment.assessor.assessor_id,
-                name=judgment.assessor.name,
-                version=judgment.assessor.version,
-                evaluated=1,
-            )
-        else:
-            entry.evaluated += 1
+    # Grouped by author FIRST, and only then reduced to the current judgment per course.
+    # The other order silently loses judgments: a course judged by its own assessor and
+    # then by somebody else has one most-recent judgment, and taking it before splitting
+    # would report the study's judge as not having reached that course at all. Every other
+    # reader filters in SQL and never meets the question; this one reads widely on purpose,
+    # so it has to answer it here.
+    by_author: dict[UUID, list[JudgmentInfo]] = {}
+    for judgment in judgments:
+        if judgment.assessor is not None:
+            by_author.setdefault(judgment.assessor.assessor_id, []).append(judgment)
+
+    per_assessor = [
+        AssessorProgress(
+            assessor_id=assessor_id,
+            name=theirs[0].assessor.name if theirs[0].assessor else None,
+            version=theirs[0].assessor.version if theirs[0].assessor else None,
+            evaluated=len(latest_judgments(theirs)),
+        )
+        for assessor_id, theirs in by_author.items()
+    ]
+
+    # A study with no pin counts every author, which is what it always did and what its
+    # own report still does.
+    counted = (
+        len(latest_judgments(judgments))
+        if study.assessor_id is None
+        else len(latest_judgments(by_author.get(study.assessor_id, [])))
+    )
 
     return StudyEvaluationsResponse(
         study_id=study_id,
         instrument_version_id=study.instrument_version_id,
         courses=len(study.content_ids),
-        evaluated=len(current),
+        evaluated=counted,
         evaluated_by_assessor=sorted(
-            per_assessor.values(), key=lambda a: (-a.evaluated, str(a.assessor_id))
+            per_assessor, key=lambda a: (-a.evaluated, str(a.assessor_id))
         ),
         default_concurrency=get_settings().llm_max_concurrency,
         runs=[BatchRunResponse.from_view(run.view()) for run in batch_runs.for_study(study_id)],
@@ -237,12 +259,30 @@ def start_study_evaluation(
     refused here, before a single call is paid for (ADR-0040 §4).
     """
     _study_or_404(uow, study_id)
-    package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
-    if package is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"unknown assessor {request.assessor_name}:{request.assessor_version}",
-        )
+    package = None
+    named = request.assessor_name is not None or request.assessor_version is not None
+    if named:
+        # Half a declaration is not silence. Both fields together name an assessor, which
+        # `prepare` then checks against the pin; one on its own names nothing, and letting
+        # it through would run under the pin while the caller believes it asked for
+        # something else — the silent outcome this whole path refuses.
+        if request.assessor_name is None or request.assessor_version is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "kind": "assessor_half_named",
+                    "message": (
+                        "name and version together name an assessor; pass both, or neither "
+                        "and let the study's pinned assessor decide"
+                    ),
+                },
+            )
+        package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
+        if package is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"unknown assessor {request.assessor_name}:{request.assessor_version}",
+            )
     workers = request.concurrency or get_settings().llm_max_concurrency
 
     try:

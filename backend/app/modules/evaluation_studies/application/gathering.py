@@ -64,6 +64,11 @@ def gather_report_inputs(
     fitness projection uses (ADR-0039 §3): `caveats.briefCompleteness` is computed from
     this dict and is frozen into published reports, so widening it here would silently
     change what publishing writes.
+
+    The judgment and finding reads are narrowed to the study's pinned assessor (ADR-0042
+    §9), in SQL rather than after the fact — a judgment by anyone else is not this study's
+    result, and transferring its quotes to discard them would be paying for the wrong
+    answer. A study with no pin reads every author, exactly as it did.
     """
     version_id = study.instrument_version_id
     instrument = design.get_instrument(version_id) if version_id is not None else None
@@ -96,10 +101,14 @@ def gather_report_inputs(
         briefs=briefs,
         generators=generators,
         judgments=(
-            evaluation.get_judgments(content_ids, version_id) if version_id is not None else []
+            evaluation.get_judgments(content_ids, version_id, study.assessor_id)
+            if version_id is not None
+            else []
         ),
         findings=(
-            evaluation.get_findings(content_ids, version_id) if version_id is not None else []
+            evaluation.get_findings(content_ids, version_id, study.assessor_id)
+            if version_id is not None
+            else []
         ),
         capabilities=capabilities,
     )

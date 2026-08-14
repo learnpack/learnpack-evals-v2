@@ -37,6 +37,7 @@ import {
   useComposeStudyDataset,
   useInstruments,
   useOpenStudy,
+  usePinStudyAssessor,
   usePinStudyInstrument,
   usePublishStudy,
   useStartStudyEvaluation,
@@ -118,6 +119,10 @@ export default function StudyDetailPage({
 }
 
 function StudyHeader({ study }: { study: StudyResponse }) {
+  // The triple a result is defined by, in one line: the norm, the judge and the dataset.
+  const { data: packages } = useAssessorPackages();
+  const assessor = (packages ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
+
   return (
     <div>
       <Link
@@ -131,8 +136,11 @@ function StudyHeader({ study }: { study: StudyResponse }) {
         <StudyStatusBadge status={study.status} />
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        {study.instrument_version_id ?? "no instrument pinned"} · {study.brief_ids.length} briefs
-        → {study.content_ids.length} courses
+        {study.instrument_version_id ?? "no instrument pinned"} ·{" "}
+        {study.assessor_id
+          ? (assessor?.display_name ?? study.assessor_id)
+          : "no assessor pinned"}{" "}
+        · {study.brief_ids.length} briefs → {study.content_ids.length} courses
       </p>
     </div>
   );
@@ -156,6 +164,7 @@ function actError(err: unknown) {
  *  opening and never after, and opening fixes the dataset. */
 function SetupCard({ study }: { study: StudyResponse }) {
   const pinned = study.instrument_version_id !== null;
+  const judged = study.assessor_id !== null;
   const composed = study.content_ids.length > 0;
 
   return (
@@ -164,7 +173,7 @@ function SetupCard({ study }: { study: StudyResponse }) {
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <ListChecks className="h-4 w-4 text-muted-foreground" /> Setup
           <span className="text-xs font-normal text-muted-foreground">
-            three steps, in order — the last one freezes the dataset
+            four steps, in order — the last one freezes the dataset
           </span>
         </CardTitle>
       </CardHeader>
@@ -184,8 +193,19 @@ function SetupCard({ study }: { study: StudyResponse }) {
           )}
         </SetupStep>
 
+        {/* Second, not last: it can only offer assessors that ratified the pinned version,
+            so there is nothing to choose from until step 1 is done. */}
         <SetupStep
           n={2}
+          done={judged}
+          title="Pin the assessor"
+          hint="Which judge's verdicts are this study's result. Pinned once, like the instrument — a round judged half by one assessor and half by another is not one result. Only assessors that have ratified the pinned version can be picked."
+        >
+          <PinAssessorStep study={study} />
+        </SetupStep>
+
+        <SetupStep
+          n={3}
           done={composed}
           title="Compose the dataset"
           hint="Briefs select the courses registered from them. Replaceable until the study opens, and fixed forever after."
@@ -194,12 +214,12 @@ function SetupCard({ study }: { study: StudyResponse }) {
         </SetupStep>
 
         <SetupStep
-          n={3}
+          n={4}
           done={false}
           title="Open the study"
           hint="Opening freezes the dataset and lets the batch run. There is no un-opening."
         >
-          <OpenStep study={study} pinned={pinned} composed={composed} />
+          <OpenStep study={study} pinned={pinned} judged={judged} composed={composed} />
         </SetupStep>
       </CardContent>
     </Card>
@@ -263,6 +283,74 @@ function PinStep({ study }: { study: StudyResponse }) {
             { studyId: study.study_id, body: { instrument_version_id: selected } },
             {
               onSuccess: () => toast.success("Instrument pinned — once and forever."),
+              onError: actError,
+            },
+          )
+        }
+      >
+        {pin.isPending ? <Spinner /> : null} Pin
+      </Button>
+    </div>
+  );
+}
+
+/** Step 2, built like step 1 with one difference that matters: the list is filtered by
+ *  RATIFICATION against the pinned version, not by existence. An assessor that has not
+ *  ratified would be refused by the endpoint, and an option that cannot work is worse than
+ *  no option (the ADR-0036 stance, which the evaluate dialog already took). */
+function PinAssessorStep({ study }: { study: StudyResponse }) {
+  const { data: packages } = useAssessorPackages();
+  const pin = usePinStudyAssessor();
+  const [selected, setSelected] = useState("");
+
+  const eligible = (packages ?? []).filter(
+    (pkg) =>
+      pkg.assessor_id !== null &&
+      pkg.lineage_versions.some(
+        (version) =>
+          version.instrument_version_id === study.instrument_version_id && version.ratified,
+      ),
+  );
+  const current = (packages ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
+
+  if (study.assessor_id) {
+    return (
+      <p className="text-muted-foreground">
+        Pinned: <code>{current ? current.display_name : study.assessor_id}</code>
+      </p>
+    );
+  }
+  if (!study.instrument_version_id) {
+    return <p className="text-muted-foreground">Pin the instrument first.</p>;
+  }
+  if (eligible.length === 0) {
+    return (
+      <p className="text-muted-foreground">
+        No assessor has ratified <code>{study.instrument_version_id}</code>. Ratifying is a
+        human act and lives in /admin/assessors — without it no judgment may persist.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-72">
+        <option value="">Pin a ratified assessor…</option>
+        {eligible.map((pkg) => (
+          <option key={pkg.assessor_id ?? pkg.name} value={pkg.assessor_id ?? ""}>
+            {pkg.display_name}
+          </option>
+        ))}
+      </Select>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!selected || pin.isPending}
+        onClick={() =>
+          pin.mutate(
+            { studyId: study.study_id, body: { assessor_id: selected } },
+            {
+              onSuccess: () => toast.success("Assessor pinned — once and forever."),
               onError: actError,
             },
           )
@@ -355,10 +443,12 @@ function ComposeStep({ study }: { study: StudyResponse }) {
 function OpenStep({
   study,
   pinned,
+  judged,
   composed,
 }: {
   study: StudyResponse;
   pinned: boolean;
+  judged: boolean;
   composed: boolean;
 }) {
   const openStudy = useOpenStudy();
@@ -366,7 +456,7 @@ function OpenStep({
     <>
       <Button
         size="sm"
-        disabled={!pinned || !composed || openStudy.isPending}
+        disabled={!pinned || !judged || !composed || openStudy.isPending}
         onClick={() =>
           openStudy.mutate(
             { studyId: study.study_id },
@@ -382,10 +472,10 @@ function OpenStep({
       >
         {openStudy.isPending ? <Spinner /> : null} Open the study
       </Button>
-      {!pinned || !composed ? (
+      {!pinned || !judged || !composed ? (
         <p className="text-xs text-muted-foreground">
-          Do steps 1 and 2 first: a study opens onto a pinned instrument and a non-empty
-          dataset.
+          Do steps 1 to 3 first: opening fixes the whole triple a result is defined by — the
+          instrument, the assessor and a non-empty dataset.
         </p>
       ) : null}
     </>
@@ -712,9 +802,8 @@ function RunProgress({ run }: { run: BatchRun }) {
 }
 
 /** The dialog states what is being committed to before it is: real LLM calls per course, on
- *  the backend's key. Only assessors that have RATIFIED the pinned version are offered —
- *  the others would be refused by the endpoint, and an option that cannot work is worse
- *  than no option (ADR-0019, ADR-0036's stance). */
+ *  the backend's key. It no longer asks WHO judges — the study pinned that before it opened
+ *  (ADR-0042 §8), so the one question left is whether to redo what is already judged. */
 function StartEvaluation({
   study,
   courses,
@@ -733,26 +822,20 @@ function StartEvaluation({
   onStarted: (runId: Uuid) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
   const [reEvaluate, setReEvaluate] = useState(false);
   const packages = useAssessorPackages();
   const start = useStartStudyEvaluation(study.study_id);
 
-  const eligible = (packages.data ?? []).filter((pkg) =>
-    pkg.lineage_versions.some(
-      (version) =>
-        version.instrument_version_id === study.instrument_version_id && version.ratified,
-    ),
-  );
-  const chosen = eligible.find((pkg) => `${pkg.name}:${pkg.version}` === selected);
-  // The exact number, because here — and only here — the assessor is known. The run skips
-  // what THIS assessor already judged, so its own count is the one that predicts the work;
-  // the card's total counts every judge and would promise a batch that never happens.
-  const judgedByChosen = chosen
-    ? (byAssessor.find((e) => e.name === chosen.name && e.version === chosen.version)
-        ?.evaluated ?? 0)
-    : null;
-  const toEvaluate = judgedByChosen === null ? remaining : Math.max(courses - judgedByChosen, 0);
+  const chosen = (packages.data ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
+  // The run skips what THIS assessor already judged, so its own count is the one that
+  // predicts the work; the card's total counts every judge and would promise a batch that
+  // never happens.
+  // Absent means this assessor has judged NOTHING, so the whole dataset is ahead of it —
+  // falling back to `remaining` would subtract courses judged by somebody else and promise
+  // a smaller batch than the one about to run.
+  const judgedByPinned =
+    byAssessor.find((entry) => entry.assessor_id === study.assessor_id)?.evaluated ?? 0;
+  const toEvaluate = Math.max(courses - judgedByPinned, 0);
 
   return (
     <>
@@ -772,13 +855,21 @@ function StartEvaluation({
         title="Evaluate every course of this study"
         description="Each course is a real evaluation: it spends LLM calls on the backend's key and persists its judgment. It can be stopped at any time — what finished stays."
       >
-        {eligible.length === 0 ? (
+        {study.assessor_id === null ? (
           <p className="text-sm text-muted-foreground">
-            No assessor has ratified {study.instrument_version_id}. Ratifying is a human act
-            (ADR-0019) and lives in /admin/assessors — without it no judgment may persist.
+            This study pins no assessor. It predates the pin, so nothing here can say whose
+            result a run would be — evaluate it from the CLI, or declare a new study.
           </p>
         ) : (
           <div className="space-y-3">
+            <p className="rounded border p-2 text-sm">
+              Judged by <span className="font-medium">{chosen?.display_name ?? study.assessor_id}</span>
+              <span className="block text-xs text-muted-foreground">
+                The study pinned it before opening, and it cannot change: a round judged half
+                by one assessor and half by another is not one result.
+                {chosen ? ` ${chosen.executes.length} criteria executed.` : ""}
+              </span>
+            </p>
             {phase === "all" && !reEvaluate ? (
               <p className="rounded bg-muted/40 p-2 text-sm text-muted-foreground">
                 Every course in this dataset already carries a judgment. As it stands this
@@ -787,31 +878,6 @@ function StartEvaluation({
                 again.
               </p>
             ) : null}
-            <ul className="space-y-2">
-              {eligible.map((pkg) => {
-                const key = `${pkg.name}:${pkg.version}`;
-                return (
-                  <li key={key}>
-                    <label className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm">
-                      <input
-                        type="radio"
-                        name="assessor"
-                        checked={selected === key}
-                        onChange={() => setSelected(key)}
-                        className="mt-1"
-                      />
-                      <span>
-                        {pkg.display_name}
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {pkg.executes.length} criteria executed
-                          {pkg.uses_llm ? " · spends LLM calls" : " · no LLM calls"}
-                        </span>
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
             <label className="flex cursor-pointer items-start gap-2 text-sm">
               <input
                 type="checkbox"
@@ -836,9 +902,7 @@ function StartEvaluation({
             <p className="text-xs text-muted-foreground">
               {reEvaluate
                 ? `All ${courses} course${courses === 1 ? "" : "s"} will be evaluated again`
-                : chosen
-                  ? `${toEvaluate} of ${courses} course${courses === 1 ? "" : "s"} will be evaluated — the other ${courses - toEvaluate} already carry a judgment from ${chosen.display_name} and get skipped`
-                  : "Pick an assessor to see how many courses this would evaluate"}
+                : `${toEvaluate} of ${courses} course${courses === 1 ? "" : "s"} will be evaluated — the other ${courses - toEvaluate} already carry a judgment from this assessor and get skipped`}
               {chosen?.uses_llm && (reEvaluate || toEvaluate > 0)
                 ? " · each spends real LLM calls, so this costs money and minutes"
                 : ""}
@@ -850,11 +914,10 @@ function StartEvaluation({
             Cancel
           </Button>
           <Button
-            disabled={!selected || start.isPending}
+            disabled={study.assessor_id === null || start.isPending}
             onClick={() => {
-              const [name, version] = (selected ?? "").split(":");
               start.mutate(
-                { assessor_name: name, assessor_version: version, re_evaluate: reEvaluate },
+                { re_evaluate: reEvaluate },
                 {
                   onSuccess: (started) => {
                     setOpen(false);

@@ -21,7 +21,7 @@ import {
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { StudyStatusBadge } from "@/components/admin/study-status";
 import { ApiError } from "@/lib/api/client";
-import { useDeclareStudy, useStudies } from "@/lib/api/hooks";
+import { useAssessorPackages, useDeclareStudy, useStudies } from "@/lib/api/hooks";
 import type { StudyResponse } from "@/lib/api/types";
 
 /** A list, and only a list. Every act on a study — pinning, composing, opening, evaluating,
@@ -65,6 +65,7 @@ export default function StudiesPage() {
                   <TableHead>Study</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Instrument</TableHead>
+                  <TableHead>Assessor</TableHead>
                   <TableHead className="text-right">Briefs → courses</TableHead>
                   <TableHead className="text-right">Created</TableHead>
                 </TableRow>
@@ -90,6 +91,11 @@ export default function StudiesPage() {
 }
 
 function StudyRow({ study }: { study: StudyResponse }) {
+  // The two pins side by side, because together they are what makes two rounds comparable:
+  // same norm and same judge, or the numbers are not measuring the same thing (ADR-0042).
+  const { data: packages } = useAssessorPackages();
+  const assessor = (packages ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
+
   return (
     <TableRow>
       <TableCell className="font-medium">
@@ -102,6 +108,9 @@ function StudyRow({ study }: { study: StudyResponse }) {
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {study.instrument_version_id ? <code>{study.instrument_version_id}</code> : "—"}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {study.assessor_id ? <code>{assessor?.display_name ?? study.assessor_id}</code> : "—"}
       </TableCell>
       <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
         {study.brief_ids.length} → {study.content_ids.length}

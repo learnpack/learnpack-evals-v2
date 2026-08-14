@@ -18,6 +18,9 @@ class StudyDTO:
     purpose: str
     status: str
     instrument_version_id: str | None
+    # The third leg of the triple (ADR-0042). The id only: what an assessor is CALLED is
+    # Identity's to say, and a consumer that needs the label resolves it there.
+    assessor_id: UUID | None
     brief_ids: tuple[UUID, ...]
     content_ids: tuple[UUID, ...]
     created_at: datetime | None

@@ -256,6 +256,13 @@ class SqlAlchemyAutomatedEvaluationRepository:
         )
 
 
+# A study pins one assessor and only its judgments are that study's result (ADR-0042 §9),
+# but the same reads serve studies that predate the pin. One statement rather than two:
+# `None` means every author, which is exactly what those studies want, and a second SQL
+# string built by branching is how two queries drift apart.
+_BY_ASSESSOR = "AND (cast(:assessor_id as uuid) IS NULL OR e.assessor_id = :assessor_id)"
+
+
 class SqlAlchemyJudgmentRepository:
     """Judgments append-only; the conditional insert on evaluation_id is the policy
     idempotence (ADR-0003 pattern)."""
@@ -323,7 +330,7 @@ class SqlAlchemyJudgmentRepository:
         return True
 
     def list_for_contents(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self, content_ids: list[UUID], instrument_version_id: str, assessor_id: UUID | None = None
     ) -> list[QualityJudgmentDTO]:
         """Two queries regardless of how many contents (ADR-0006).
 
@@ -345,17 +352,22 @@ class SqlAlchemyJudgmentRepository:
         rows = (
             self._session.execute(
                 text(
-                    """
+                    f"""
                     SELECT j.id, j.evaluation_id, j.content_id, j.instrument_version_id,
                            j.derived_at, j.coverage, e.assessor_id
                       FROM quality_judgments j
                       JOIN evaluations e ON e.id = j.evaluation_id
                      WHERE j.content_id = ANY(:content_ids)
                        AND j.instrument_version_id = :instrument_version_id
+                       {_BY_ASSESSOR}
                      ORDER BY j.derived_at, j.id
-                    """
+                    """  # noqa: S608 — no interpolated value, a constant clause
                 ),
-                {"content_ids": content_ids, "instrument_version_id": instrument_version_id},
+                {
+                    "content_ids": content_ids,
+                    "instrument_version_id": instrument_version_id,
+                    "assessor_id": assessor_id,
+                },
             )
             .mappings()
             .all()
@@ -401,7 +413,7 @@ class SqlAlchemyJudgmentRepository:
         ]
 
     def list_criterion_outcomes_for_contents(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self, content_ids: list[UUID], instrument_version_id: str, assessor_id: UUID | None = None
     ) -> list[CriterionOutcomeDTO]:
         """The outcomes behind the published judgments, one row per criterion. One query.
 
@@ -413,18 +425,24 @@ class SqlAlchemyJudgmentRepository:
         rows = (
             self._session.execute(
                 text(
-                    """
+                    f"""
                     SELECT j.id AS judgment_id, j.content_id, o.criterion_id, o.outcome,
                            o.derived, o.quote, o.locator, o.failure_mode, o.comment,
                            o.execution_cause
                       FROM criterion_outcomes o
                       JOIN quality_judgments j ON j.evaluation_id = o.evaluation_id
+                      JOIN evaluations e ON e.id = j.evaluation_id
                      WHERE j.content_id = ANY(:content_ids)
                        AND j.instrument_version_id = :instrument_version_id
+                       {_BY_ASSESSOR}
                      ORDER BY j.content_id, o.criterion_id
-                    """
+                    """  # noqa: S608 — no interpolated value, a constant clause
                 ),
-                {"content_ids": content_ids, "instrument_version_id": instrument_version_id},
+                {
+                    "content_ids": content_ids,
+                    "instrument_version_id": instrument_version_id,
+                    "assessor_id": assessor_id,
+                },
             )
             .mappings()
             .all()
@@ -446,24 +464,30 @@ class SqlAlchemyJudgmentRepository:
         ]
 
     def list_findings_for_contents(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self, content_ids: list[UUID], instrument_version_id: str, assessor_id: UUID | None = None
     ) -> list[FindingDTO]:
         if not content_ids:
             return []
         rows = (
             self._session.execute(
                 text(
-                    """
+                    f"""
                     SELECT f.id, f.judgment_id, j.content_id, f.claim_id, f.criterion_id,
                            f.quote, f.locator, f.failure_mode, f.raised_at
                       FROM findings f
                       JOIN quality_judgments j ON j.id = f.judgment_id
+                      JOIN evaluations e ON e.id = j.evaluation_id
                      WHERE j.content_id = ANY(:content_ids)
                        AND j.instrument_version_id = :instrument_version_id
+                       {_BY_ASSESSOR}
                      ORDER BY f.raised_at, f.id
-                    """
+                    """  # noqa: S608 — no interpolated value, a constant clause
                 ),
-                {"content_ids": content_ids, "instrument_version_id": instrument_version_id},
+                {
+                    "content_ids": content_ids,
+                    "instrument_version_id": instrument_version_id,
+                    "assessor_id": assessor_id,
+                },
             )
             .mappings()
             .all()

@@ -369,9 +369,15 @@ A generation of the optimization experiment is a whole study's worth of courses,
 one command (ADR-0040):
 
 ```
-uv run python -m app.cli evaluate-study --study-id <id> --assessor <name>:<version>
+uv run python -m app.cli evaluate-study --study-id <id>
+                                        [--assessor <name>:<version>]
                                         [--concurrency N] [--re-evaluate]
 ```
+
+**The study decides the assessor** (ADR-0042): it pinned one before it opened, and the run
+uses it. `--assessor` is optional and is *checked* rather than obeyed — passing one that
+disagrees with the pin is refused, so a script written before the pin keeps working and a
+mismatch is stated instead of silently resolved.
 
 **Progress goes to stderr, the summary to stdout** — one JSON document naming every course
 with its `briefId`, its status, its duration and what it spent, which is what a script reads
@@ -384,8 +390,9 @@ to know how a generation went. The statuses mean:
 | `failed` | this course could not be judged; `cause` says why, and the others carried on |
 | `cancelled` | the run stopped before reaching it; nothing was written for it |
 
-**It refuses before it spends.** A study that is not open, no instrument pinned, an empty
-dataset, an assessor that is unregistered or has not ratified the pinned version: each would
+**It refuses before it spends.** A study that is not open, no instrument pinned, no assessor
+pinned, an empty dataset, an assessor that is unregistered or has not ratified the pinned
+version, or a `--assessor` that disagrees with the pin: each would
 fail identically for every course, so the command ends with the cause named and nothing paid
 for. The same reasoning applies while it runs — a configuration failure, a coverage bug or
 any failure this loop cannot place (a database one migration behind, say) ends the batch on
@@ -744,10 +751,10 @@ away.
 ### Step 7 — Verify end to end
 
 `register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
-instrument is a draft → `declare-study | pin-study | compose-dataset | open-study` →
-`evaluate-study` (the whole dataset in one run) → `show-preview` (what publishing would
-write, readable before the irreversible act) → `publish-study` → `show-report` /
-`show-fitness`.
+instrument is a draft → `declare-study | pin-study | pin-assessor | compose-dataset |
+open-study` → `evaluate-study` (the whole dataset in one run) → `show-preview` (what
+publishing would write, readable before the irreversible act) → `publish-study` →
+`show-report` / `show-fitness`.
 
 ### What you never touch
 
@@ -937,8 +944,8 @@ can read what your criteria actually do against real content before freezing the
 the **only** way to exercise an instrument whose lineage has no assessor yet: the dry run does
 not compare lineages, so any registered package's executors can be pointed at any version.
 Then the study path:
-`declare-study | pin-study | compose-dataset | open-study` → `evaluate-study` →
-`show-preview` → `publish-study` → `show-report`.
+`declare-study | pin-study | pin-assessor | compose-dataset | open-study` →
+`evaluate-study` → `show-preview` → `publish-study` → `show-report`.
 
 ### What you never touch
 

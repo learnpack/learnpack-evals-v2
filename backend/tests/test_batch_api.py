@@ -22,6 +22,7 @@ from test_automated_evaluation_flow import (  # noqa: F401 — fixtures resolved
 from test_studies_api import declare, register_brief, register_content
 
 from app.cli import run_ratify_assessor
+from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
 from app.platform import batch_runs as module
 
 
@@ -45,13 +46,15 @@ def open_study(admin, cleanup, unique, patched_package):
         )
         == 0
     )
-    track_automated(cleanup, patched_package.name)
+    assessor_id = track_automated(cleanup, patched_package.name)
 
     study_id = declare(admin, cleanup)
     brief_id = register_brief(admin, cleanup)
     register_content(admin, cleanup, unique, "one", brief_id)
     register_content(admin, cleanup, unique, "two", brief_id)
     admin.post(f"/admin/studies/{study_id}/pin", json={"instrument_version_id": version_id})
+    pinned = admin.post(f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id})
+    assert pinned.status_code == 200, pinned.text
     admin.post(f"/admin/studies/{study_id}/dataset", json={"brief_ids": [brief_id]})
     admin.post(f"/admin/studies/{study_id}/open")
     return study_id, version_id
@@ -95,6 +98,48 @@ def test_starting_answers_202_with_an_id_and_the_run_reports_every_course(
     assert body["assessor"] == patched_package.display_name
     assert {c["status"] for c in body["courses"]} == {"evaluated"}
     assert all(c["brief_id"] for c in body["courses"])  # the fitness axis travels here too
+
+
+def test_the_study_decides_the_assessor_and_a_disagreement_is_refused(
+    admin, open_study, patched_package, monkeypatch
+):
+    """The request no longer chooses (ADR-0042 §10). Naming nobody runs the study's own
+    judge; naming somebody else is refused rather than reconciled, because either answer
+    would be silent — one evaluates under a judge nobody picked, the other ignores what was
+    typed."""
+    monkeypatch.setattr(module, "_run_use_case", lambda run, course: uuid4())
+    study_id, _ = open_study
+
+    silent = admin.post(f"/admin/studies/{study_id}/evaluations", json={})
+    assert silent.status_code == 202, silent.text
+    assert finished(admin, study_id, silent.json()["run_id"])["assessor"] == (
+        patched_package.display_name
+    )
+
+    agreeing = admin.post(
+        f"/admin/studies/{study_id}/evaluations", json=start_body(patched_package)
+    )
+    assert agreeing.status_code == 202, agreeing.text
+    finished(admin, study_id, agreeing.json()["run_id"])
+
+    stranger_name, stranger_version = next(
+        key for key in sorted(AUTOMATED_ASSESSORS) if key[0] != patched_package.name
+    )
+    disagreeing = admin.post(
+        f"/admin/studies/{study_id}/evaluations",
+        json={"assessor_name": stranger_name, "assessor_version": stranger_version},
+    )
+    assert disagreeing.status_code == 422, disagreeing.text
+    assert disagreeing.json()["detail"]["kind"] == "assessor_mismatch"
+
+    # Half a declaration is refused too. Ignoring it would run under the pin while the
+    # caller believes it asked for something else, which is the outcome this path exists
+    # to make impossible.
+    half = admin.post(
+        f"/admin/studies/{study_id}/evaluations", json={"assessor_name": stranger_name}
+    )
+    assert half.status_code == 422, half.text
+    assert half.json()["detail"]["kind"] == "assessor_half_named"
 
 
 def test_an_unknown_assessor_is_404_and_a_study_that_cannot_run_is_422(

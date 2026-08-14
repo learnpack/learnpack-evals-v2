@@ -10,6 +10,7 @@ finding ('05'/'06') with its quote.
 
 import json
 from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -54,6 +55,10 @@ from app.modules.evaluation_studies.application.declare_study import (
 )
 from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
+from app.modules.evaluation_studies.application.pin_assessor import (
+    PinAssessor,
+    PinAssessorCommand,
+)
 from app.modules.evaluation_studies.application.pin_instrument import (
     PinInstrument,
     PinInstrumentCommand,
@@ -73,6 +78,7 @@ from app.modules.evaluation_studies.infrastructure.repository import (
     SqlAlchemyStudyReportRepository,
     SqlAlchemyStudyRepository,
 )
+from app.platform.batch_router import read_study_evaluations
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.infrastructure.fetchers import FilesystemFetcher
@@ -135,6 +141,62 @@ def _register_course(cleanup, unique, suffix, generator_version_id=None):
     return content
 
 
+def _stray_judgment(session, cleanup, unique, content_id, version_id):
+    """A judgment on one of the study's courses, by an assessor the study did not pin.
+
+    Written as rows rather than through `evaluate`: producing one that way needs a second
+    package ratified against this throwaway lineage, which is a lot of scaffolding for a
+    fact the readers only have to *ignore*. Returns the intruder's id.
+    """
+    assessor_id, evaluation_id = uuid4(), uuid4()
+    name = f"intruder-{unique}"
+    session.execute(
+        text(
+            """
+            INSERT INTO assessors (id, role, kind, display_name, source_config)
+            VALUES (:id, 'evaluator', 'automated', :name, cast(:config as jsonb))
+            """
+        ),
+        {
+            "id": assessor_id,
+            "name": name,
+            "config": json.dumps({"name": name, "version": "1", "instrumentId": "qa"}),
+        },
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO evaluations (id, assessor_id, content_id, instrument_version_id, attempt)
+            VALUES (:id, :assessor_id, :content_id, :version_id, 9)
+            """
+        ),
+        {
+            "id": evaluation_id,
+            "assessor_id": assessor_id,
+            "content_id": content_id,
+            "version_id": version_id,
+        },
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO quality_judgments
+                (id, evaluation_id, content_id, instrument_version_id, coverage)
+            VALUES (:id, :evaluation_id, :content_id, :version_id, '{}'::jsonb)
+            """
+        ),
+        {
+            "id": uuid4(),
+            "evaluation_id": evaluation_id,
+            "content_id": content_id,
+            "version_id": version_id,
+        },
+    )
+    session.commit()
+    cleanup["assessors"].append(str(assessor_id))
+    return assessor_id
+
+
 def _studies_wiring(session):
     uow = UnitOfWork(session)
     return uow, SqlAlchemyStudyRepository(session)
@@ -162,8 +224,8 @@ def _project_fitness(session, study_id):
             if c.generator_version_id
             and (generator := registry.get_generator(c.generator_version_id))
         },
-        judgments=evaluation.get_judgments(content_ids, version_id),
-        outcomes=evaluation.get_criterion_outcomes(content_ids, version_id),
+        judgments=evaluation.get_judgments(content_ids, version_id, study.assessor_id),
+        outcomes=evaluation.get_criterion_outcomes(content_ids, version_id, study.assessor_id),
         ratifications=evaluation.list_ratifications(version_id),
         computed_at=datetime.now(UTC),
     )
@@ -181,8 +243,8 @@ def _project_criterion_outcomes(session, study_id):
         study=study,
         instrument=DesignGateway(session).get_instrument(version_id),
         contents=contents,
-        judgments=evaluation.get_judgments(content_ids, version_id),
-        outcomes=evaluation.get_criterion_outcomes(content_ids, version_id),
+        judgments=evaluation.get_judgments(content_ids, version_id, study.assessor_id),
+        outcomes=evaluation.get_criterion_outcomes(content_ids, version_id, study.assessor_id),
         frozen_report=frozen.report if frozen is not None else None,
         computed_at=datetime.now(UTC),
     )
@@ -203,7 +265,7 @@ def test_the_first_increment_closes_the_loop(
     # --- the norm: a published copy of the real instrument, ratified for the assessor
     version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
     assert run_ratify_assessor(patched_package.name, "1", version_id, email, []) == 0
-    assessor_id = track_automated(cleanup, patched_package.name)
+    assessor_row_id = track_automated(cleanup, patched_package.name)
 
     # --- the judgments
     assessor_arg = f"{patched_package.name}:1"
@@ -222,6 +284,11 @@ def test_the_first_increment_closes_the_loop(
         uow, studies = _studies_wiring(s)
         PinInstrument(studies, DesignGateway(s), uow.events, uow)(
             PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
+        )
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        PinAssessor(studies, EvaluationGateway(s), uow.events, uow)(
+            PinAssessorCommand(study_id=study.id, assessor_id=UUID(assessor_row_id))
         )
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
@@ -269,7 +336,7 @@ def test_the_first_increment_closes_the_loop(
     # judgment; the label comes from Identity — so this is the whole chain, from the row
     # the CLI wrote to the frozen document, not a DTO a test built by hand.
     author = {
-        "assessorId": assessor_id,
+        "assessorId": assessor_row_id,
         "name": patched_package.name,
         "version": "1",
     }
@@ -321,7 +388,13 @@ def test_the_first_increment_closes_the_loop(
             {"id": str(study.id)},
         )
     }
-    assert event_types == {"StudyDeclared", "InstrumentPinned", "StudyOpened", "StudyPublished"}
+    assert event_types == {
+        "StudyDeclared",
+        "InstrumentPinned",
+        "AssessorPinned",
+        "StudyOpened",
+        "StudyPublished",
+    }
 
     # --- published means immutable, in the domain and in the row
     with pytest.raises(StudyAlreadyPublished):
@@ -436,7 +509,7 @@ def test_an_attributed_content_enters_generator_level_accumulation(
 
     version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
     assert run_ratify_assessor(patched_package.name, "1", version_id, email, []) == 0
-    track_automated(cleanup, patched_package.name)
+    assessor_row_id = track_automated(cleanup, patched_package.name)
     assert run_evaluate(str(orphan.id), version_id, f"{patched_package.name}:1", False) == 0
 
     with SessionLocal() as s:
@@ -449,6 +522,11 @@ def test_an_attributed_content_enters_generator_level_accumulation(
         uow, studies = _studies_wiring(s)
         PinInstrument(studies, DesignGateway(s), uow.events, uow)(
             PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
+        )
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
+        PinAssessor(studies, EvaluationGateway(s), uow.events, uow)(
+            PinAssessorCommand(study_id=study.id, assessor_id=UUID(assessor_row_id))
         )
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
@@ -522,6 +600,11 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
         )
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
+        PinAssessor(studies, EvaluationGateway(s), uow.events, uow)(
+            PinAssessorCommand(study_id=study.id, assessor_id=UUID(assessor_row_id))
+        )
+    with SessionLocal() as s:
+        uow, studies = _studies_wiring(s)
         ComposeDataset(studies, RegistryGateway(s), uow)(
             ComposeDatasetCommand(study_id=study.id, brief_ids=[first.brief_id])
         )
@@ -566,9 +649,36 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
     named = EvaluationGateway(session).get_judgments([first.id, second.id], version_id)
     assert {j.assessor.display_name for j in named} == {f"{patched_package.name}:1"}
 
+    # And the filter every study read now applies (ADR-0042 §9), against real rows: the
+    # study's own judge sees its two judgments, anyone else's pin sees none of them. This
+    # is what makes a stray judgment harmless rather than something to guard against.
+    gateway = EvaluationGateway(session)
+    mine = gateway.get_judgments([first.id, second.id], version_id, UUID(assessor_row_id))
+    stranger = gateway.get_judgments([first.id, second.id], version_id, uuid4())
+    assert {j.content_id for j in mine} == {first.id, second.id}
+    assert stranger == []
+    assert gateway.get_criterion_outcomes([first.id, second.id], version_id, uuid4()) == []
+    assert gateway.get_findings([first.id, second.id], version_id, uuid4()) == []
+
     # Running it again does the expensive half zero times: what this assessor already
     # evaluated is skipped, which is what makes an interrupted batch resumable.
     capsys.readouterr()
     assert run_evaluate_study(study.id, f"{patched_package.name}:1", 2, False) == 0
     resumed = json.loads(capsys.readouterr().out)
     assert resumed["totals"]["skipped"] == 2 and resumed["totals"]["evaluated"] == 0
+
+    # --- the count on the page means what the report means
+    # A judgment by somebody who is not this study's judge — reachable through the
+    # per-content `evaluate`, which is study-agnostic by design (ADR-0042 §10). It must not
+    # raise the headline count, or the card would read "3 of 2 judged" beside a report
+    # composed from two. The breakdown still shows it, because that is the reading that
+    # makes a stray judgment visible at all.
+    stray = _stray_judgment(session, cleanup, unique, first.id, version_id)
+    with SessionLocal() as s:
+        # `admin` is FastAPI's auth gate and is not read by the body; the study is.
+        progress = read_study_evaluations(study.id, admin=None, uow=UnitOfWork(s))
+    assert (progress.courses, progress.evaluated) == (2, 2)
+    split = {str(e.assessor_id): e.evaluated for e in progress.evaluated_by_assessor}
+    # The intruder's judgment is the most recent one on that course. Counted per author,
+    # so it neither hides the study's own judgment of it nor inflates the headline.
+    assert split == {assessor_row_id: 2, str(stray): 1}

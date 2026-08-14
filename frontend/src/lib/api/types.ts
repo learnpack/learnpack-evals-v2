@@ -330,6 +330,11 @@ export interface StudyResponse {
   purpose: string;
   status: StudyStatus;
   instrument_version_id: string | null;
+  /** The judge whose verdicts are this study's result (ADR-0042). Pinned once, before
+   *  opening, like the instrument. Null on studies declared before the pin existed — those
+   *  read every author, which is what they always did. The id only: the label is joined
+   *  from the assessor-package list, which is keyed by it. */
+  assessor_id: Uuid | null;
   brief_ids: Uuid[];
   content_ids: Uuid[];
   created_at: string | null;
@@ -665,8 +670,10 @@ export interface AssessorProgress {
 }
 
 export interface StartBatchRequest {
-  assessor_name: string;
-  assessor_version: string;
+  /** Omitted now that the study pins its assessor (ADR-0042 §10). Sending one is still
+   *  accepted and is checked against the pin — a disagreement is refused, not resolved. */
+  assessor_name?: string;
+  assessor_version?: string;
   re_evaluate?: boolean;
   concurrency?: number;
 }
@@ -729,6 +736,10 @@ export interface StudyFitness {
 
 export interface DeclareStudyRequest {
   purpose: string;
+}
+
+export interface PinStudyAssessorRequest {
+  assessor_id: Uuid;
 }
 
 export interface PinStudyInstrumentRequest {

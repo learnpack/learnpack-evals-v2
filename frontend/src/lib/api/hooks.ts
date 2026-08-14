@@ -34,6 +34,7 @@ import type {
   InstrumentResponse,
   Me,
   OpenCampaignRequest,
+  PinStudyAssessorRequest,
   PinStudyInstrumentRequest,
   PreviewEvaluationRequest,
   PreviewRun,
@@ -712,6 +713,10 @@ function useStudyAct<TBody = void>(path: (id: Uuid) => string) {
 
 export function usePinStudyInstrument() {
   return useStudyAct<PinStudyInstrumentRequest>((id) => `/admin/studies/${id}/pin`);
+}
+
+export function usePinStudyAssessor() {
+  return useStudyAct<PinStudyAssessorRequest>((id) => `/admin/studies/${id}/assessor`);
 }
 
 export function useComposeStudyDataset() {

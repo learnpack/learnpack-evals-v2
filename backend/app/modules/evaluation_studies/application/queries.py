@@ -28,6 +28,7 @@ def _to_dto(study: Study) -> StudyDTO:
         purpose=study.purpose,
         status=study.status,
         instrument_version_id=study.instrument_version_id,
+        assessor_id=study.assessor_id,
         brief_ids=study.brief_ids,
         content_ids=study.content_ids,
         created_at=study.created_at,
@@ -120,6 +121,11 @@ def compute_readiness(
     study_gaps: list[dict[str, Any]] = []
     if study.instrument_version_id is None:
         study_gaps.append({"gap": "instrument_not_pinned"})
+    if study.assessor_id is None:
+        # Distinct from `no_ratified_assessor` below: that one says nobody COULD judge with
+        # this norm, this one says nobody has been named to (ADR-0042 §8). A study that
+        # predates the pin carries it for good, and it is why its reads are unfiltered.
+        study_gaps.append({"gap": "assessor_not_pinned"})
     if not study.content_ids:
         study_gaps.append({"gap": "dataset_not_composed"})
     if study.instrument_version_id is not None and not ratifications:
