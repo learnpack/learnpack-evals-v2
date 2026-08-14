@@ -260,7 +260,23 @@ def start_study_evaluation(
     """
     _study_or_404(uow, study_id)
     package = None
-    if request.assessor_name is not None and request.assessor_version is not None:
+    named = request.assessor_name is not None or request.assessor_version is not None
+    if named:
+        # Half a declaration is not silence. Both fields together name an assessor, which
+        # `prepare` then checks against the pin; one on its own names nothing, and letting
+        # it through would run under the pin while the caller believes it asked for
+        # something else — the silent outcome this whole path refuses.
+        if request.assessor_name is None or request.assessor_version is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "kind": "assessor_half_named",
+                    "message": (
+                        "name and version together name an assessor; pass both, or neither "
+                        "and let the study's pinned assessor decide"
+                    ),
+                },
+            )
         package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
         if package is None:
             raise HTTPException(

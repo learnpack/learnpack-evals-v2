@@ -132,6 +132,15 @@ def test_the_study_decides_the_assessor_and_a_disagreement_is_refused(
     assert disagreeing.status_code == 422, disagreeing.text
     assert disagreeing.json()["detail"]["kind"] == "assessor_mismatch"
 
+    # Half a declaration is refused too. Ignoring it would run under the pin while the
+    # caller believes it asked for something else, which is the outcome this path exists
+    # to make impossible.
+    half = admin.post(
+        f"/admin/studies/{study_id}/evaluations", json={"assessor_name": stranger_name}
+    )
+    assert half.status_code == 422, half.text
+    assert half.json()["detail"]["kind"] == "assessor_half_named"
+
 
 def test_an_unknown_assessor_is_404_and_a_study_that_cannot_run_is_422(
     admin, cleanup, unique, patched_package
