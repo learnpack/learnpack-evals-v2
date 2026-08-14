@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import re
 import uuid
 from collections.abc import Iterator
 
@@ -144,6 +145,45 @@ os.environ["LLM_TRACE_DIR"] = ""
 get_settings.cache_clear()
 
 
+def _explain_unreachable_database(error: Exception) -> str:
+    """Turn a connection failure into the remedy, because the default reading is wrong.
+
+    Three states, three remedies — and the middle one is the reason this exists. A wrong
+    server on the right port answers and REFUSES, so the suite reports an authentication
+    problem, which sends a reader looking for a bad password. Nothing is wrong with the
+    password: they reached somebody else's Postgres. It has happened twice.
+    """
+    detail = str(error)
+    # The host and port are the whole diagnosis; the credentials are not, and a password is
+    # not a thing to print to a terminal even when it is `postgres`.
+    where = f"`{re.sub(r'//[^@/]*@', '//', _TEST_URL or '')}`"
+
+    if "password authentication failed" in detail:
+        return (
+            f"Something is listening on that port and it is NOT this repo's container: it "
+            f"answered and refused the credentials ({where}).\n\n"
+            "The usual cause is a Postgres installed natively on this machine. Its installer "
+            "assigns 5432 to the first instance and scans upward for the next, so a second "
+            "one lands near it; published container ports in that neighbourhood get shadowed, "
+            "and `localhost` reaches the native server. Stop that service, or move it.\n\n"
+            "Note that a refused connection would mean nothing is there. This is the opposite: "
+            "somebody answered."
+        )
+    # A refused connection and a timeout are one state with one remedy. Windows usually
+    # produces the timeout — which is also why this takes a while to arrive.
+    if any(
+        symptom in detail
+        for symptom in ("Connection refused", "connection refused", "could not connect", "timeout")
+    ):
+        return (
+            f"Nothing is listening at {where}.\n\n"
+            "Run `docker compose up -d` in `backend/`. The suite needs the local Postgres; it "
+            "errors rather than skipping, on purpose — a green run that silently tested "
+            "nothing is worse than a red one."
+        )
+    return f"The test database at {where} could not be reached.\n\n{detail}"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _prepare_database() -> None:
     """Bring the local test database up to date once per session.
@@ -155,6 +195,7 @@ def _prepare_database() -> None:
         return
 
     from alembic.config import Config
+    from sqlalchemy.exc import OperationalError
 
     from alembic import command
     from app.cli import DEFAULT_SEED_FILE, run_seed
@@ -162,8 +203,16 @@ def _prepare_database() -> None:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     config = Config(os.path.join(root, "alembic.ini"))
     config.set_main_option("script_location", os.path.join(root, "alembic"))
-    command.upgrade(config, "head")
-    run_seed(DEFAULT_SEED_FILE)
+    try:
+        command.upgrade(config, "head")
+        run_seed(DEFAULT_SEED_FILE)
+    except OperationalError as error:
+        # Stop at the door rather than letting every test fail with the same stack: nine
+        # hundred identical tracebacks bury the one line that says what to do.
+        pytest.exit(
+            f"\n\nThe test database is unreachable.\n\n{_explain_unreachable_database(error)}\n",
+            returncode=1,
+        )
 
 
 @pytest.fixture(scope="session")
