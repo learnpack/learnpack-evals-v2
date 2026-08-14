@@ -15,7 +15,11 @@ from app.config import get_settings
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # `disable_existing_loggers=False` because this runs in-process too: the test suite
+    # migrates at session start (`tests/conftest.py`), and the default would switch OFF every
+    # application logger created before that — silencing the whole suite's warnings, this
+    # module's schema check included, for the rest of the run.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = None
 

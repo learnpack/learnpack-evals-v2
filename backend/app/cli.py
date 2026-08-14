@@ -230,7 +230,7 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
 )
-from app.platform import batch_runs, observability
+from app.platform import batch_runs, observability, schema_version
 from app.platform.db import SessionLocal
 from app.platform.events import dispatcher
 from app.platform.policies import register_all_policies
@@ -2405,6 +2405,9 @@ def main(argv: list[str] | None = None) -> int:
     # The CLI is its own process and wires the SAME policies as the API: one list, so the
     # two cannot drift again (ADR-0029 §1).
     register_all_policies(dispatcher)
+    # And the same schema check, for the same reason: this is the door `evaluate-study` comes
+    # through, and a database behind the code turns a paid batch into a traceback halfway.
+    schema_version.verify(refuse=get_settings().is_local_auth)
 
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
