@@ -39,7 +39,7 @@ import {
   useOpenStudy,
   usePinStudyAssessor,
   usePinStudyInstrument,
-  usePublishStudy,
+  useSignOffStudy,
   useStartStudyEvaluation,
   useStudy,
   useStudyEvaluationRun,
@@ -70,7 +70,7 @@ export default function StudyDetailPage({
 }) {
   const { studyId } = use(params);
   const { data: study, isLoading, error } = useStudy(studyId);
-  // Hoisted: the evaluation card and the publish card must quote the same two numbers.
+  // Hoisted: the evaluation card and the sign-off card must quote the same two numbers.
   const evaluations = useStudyEvaluations(studyId);
   const readiness = useStudyReadiness(studyId);
   const fitness = useStudyFitness(studyId);
@@ -79,10 +79,10 @@ export default function StudyDetailPage({
   if (error) return <ErrorState message={(error as Error).message} />;
   if (!study) return <EmptyState title="Study not found" />;
 
-  // A study before its opening has one job, an open one another, and a published one none
+  // A study before its opening has one job, an open one another, and a signed-off one none
   // at all — every card below appears only while it has something a reader can act on.
   const inSetup = study.status === "declared" || study.status === "prepared";
-  const published = study.status === "published";
+  const signedOff = study.status === "signed_off";
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -90,25 +90,25 @@ export default function StudyDetailPage({
 
       {inSetup ? <SetupCard study={study} /> : null}
 
-      {/* Evaluating and publishing are what an OPEN study is for. Once it is published a
+      {/* Evaluating and signing off are what an OPEN study is for. Once it is signed off a
           batch is refused and the report already states how many judgments it used, so the
           card would be a count you have and a paragraph about an act you cannot perform. */}
       {study.status === "open" ? (
         <>
           <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
-          <PublishCard study={study} evaluations={evaluations.data ?? null} />
+          <SignOffCard study={study} evaluations={evaluations.data ?? null} />
         </>
       ) : null}
 
-      {/* Readable before the irreversible act: publishing freezes a report, it does not
+      {/* Readable before the irreversible act: signing off freezes a report, it does not
           reveal one. Not while still being set up, though — there is nothing to report yet
           and the setup card is the whole job. */}
       {inSetup ? null : <StudyReportSection study={study} />}
 
-      {/* Below the phase it informs, never above it, and never on a published study: it is
+      {/* Below the phase it informs, never above it, and never on a signed-off study: it is
           computed from TODAY's ratifications and adapters, so on a frozen report it can
           contradict the document it sits next to. */}
-      {!published && readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
+      {!signedOff && readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
       {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
           conflation is not — the report publishes no aggregate score, and this denominator
@@ -132,7 +132,7 @@ function StudyHeader({ study }: { study: StudyResponse }) {
         <ArrowLeft className="h-3.5 w-3.5" /> Studies
       </Link>
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{study.purpose}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{study.name}</h1>
         <StudyStatusBadge status={study.status} />
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
@@ -591,7 +591,7 @@ function EvaluationCard({
             courses={courses}
             instrument={evaluations.instrument_version_id}
             byAssessor={evaluations.evaluated_by_assessor}
-            canPublish={study.status === "open"}
+            canSignOff={study.status === "open"}
           />
         ) : null}
 
@@ -648,14 +648,14 @@ function ProgressLine({
   courses,
   instrument,
   byAssessor,
-  canPublish,
+  canSignOff,
 }: {
   phase: EvaluationPhase;
   judged: number;
   courses: number;
   instrument: string | null;
   byAssessor: AssessorProgress[];
-  canPublish: boolean;
+  canSignOff: boolean;
 }) {
   const under = instrument ? (
     <>
@@ -681,7 +681,7 @@ function ProgressLine({
           All {courses} courses carry a judgment{under}. Running the batch again would skip
           every one of them and cost nothing — to <em>replace</em> those judgments instead,
           tick “Re-evaluate” in the dialog, which spends the calls again.
-          {canPublish ? " Publishing is what turns these judgments into a report." : ""}
+          {canSignOff ? " Signing off is what turns these judgments into a report." : ""}
         </p>
       )}
 
@@ -696,7 +696,7 @@ function ProgressLine({
             .map((entry) => `${assessorLabel(entry)} ${entry.evaluated} of ${courses}`)
             .join(" · ")}
           {byAssessor.length > 1
-            ? " — this study has been judged by more than one assessor, and a report published now would say so"
+            ? " — this study has been judged by more than one assessor, and a report signed off now would say so"
             : ""}
         </p>
       ) : null}
@@ -942,11 +942,11 @@ function StartEvaluation({
   );
 }
 
-// ---------------------------------------------------------------------- publish
+// --------------------------------------------------------------------- sign off
 
 /** Signing off, next to the judgments being signed off — and saying how many courses carry
  *  none, because that is the caveat about to be frozen into the report. */
-function PublishCard({
+function SignOffCard({
   study,
   evaluations,
 }: {
@@ -962,7 +962,7 @@ function PublishCard({
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            <FileCheck className="h-4 w-4 text-muted-foreground" /> Publish the report
+            <FileCheck className="h-4 w-4 text-muted-foreground" /> Sign off the report
             {unjudged > 0 ? (
               <Badge variant="warning">
                 {unjudged} course{unjudged === 1 ? "" : "s"} unjudged
@@ -975,20 +975,20 @@ function PublishCard({
         <CardContent className="space-y-3 text-sm">
           <p className="text-muted-foreground">
             {unjudged === 0
-              ? "Every course carries a judgment. Publishing composes the report from them, records exactly which ones it used, and never changes again."
-              : `Publishing composes the report from the judgments that exist at that moment. ${unjudged} of ${courses} course${unjudged === 1 ? " carries" : "s carry"} none yet, and would be published as a caveat — visibly. Publishing with caveats is legitimate; publishing silently is impossible.`}
+              ? "Every course carries a judgment. Signing off composes the report from them, records exactly which ones it used, and never changes again. The document is readable above already: what the signature adds is who takes responsibility for it."
+              : `Signing off composes the report from the judgments that exist at that moment. ${unjudged} of ${courses} course${unjudged === 1 ? " carries" : "s carry"} none yet, and would be recorded as a caveat — visibly. Signing off with caveats is legitimate; doing it silently is impossible.`}
           </p>
           <Button
             variant={unjudged > 0 ? "outline" : "default"}
             onClick={() => setConfirmOpen(true)}
           >
-            Publish…
+            Sign off…
           </Button>
         </CardContent>
       </Card>
       {/* Outside the Card, for the reason the assessors page states: nothing that could
           unmount may take an in-flight act with it. */}
-      <PublishDialog
+      <SignOffDialog
         study={study}
         courses={courses}
         unjudged={unjudged}
@@ -999,7 +999,7 @@ function PublishCard({
   );
 }
 
-function PublishDialog({
+function SignOffDialog({
   study,
   courses,
   unjudged,
@@ -1012,39 +1012,39 @@ function PublishDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const publish = usePublishStudy();
+  const signOff = useSignOffStudy();
 
   return (
-    <Dialog open={open} onClose={onClose} title={`Publish "${study.purpose}"?`}>
+    <Dialog open={open} onClose={onClose} title={`Sign off "${study.name}"?`}>
       <p className="text-sm text-muted-foreground">
-        Publishing is a human act and it is irreversible: the report is composed from the
-        current judgments, records exactly which ones it used, and never changes again.
-        Caveats — insufficient evidence, unknown generators, unaccepted adapters — are
-        published with it, visibly: publishing with caveats is legitimate; publishing
-        silently is impossible.
+        Signing off is a human act and it is irreversible: the report is composed from the
+        current judgments, records exactly which ones it used, records who signed it, and
+        never changes again. Caveats — insufficient evidence, unknown generators, unaccepted
+        adapters — are frozen with it, visibly: signing off with caveats is legitimate;
+        doing it silently is impossible.
       </p>
       {unjudged > 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
           It will record {unjudged} of {courses} courses as carrying no judgment. That caveat
           is part of the report and cannot be removed afterwards — evaluating them first is
-          still possible; publishing is not undoable.
+          still possible; signing off is not undoable.
         </p>
       ) : null}
       <div className="mt-4 flex justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onClose} disabled={publish.isPending}>
+        <Button variant="outline" onClick={onClose} disabled={signOff.isPending}>
           Cancel
         </Button>
         <Button
-          disabled={publish.isPending}
+          disabled={signOff.isPending}
           onClick={() =>
-            publish.mutate(
+            signOff.mutate(
               { studyId: study.study_id },
               {
                 onSuccess: () => {
                   onClose();
-                  toast.success("Study published — the report is immutable.");
+                  toast.success("Study signed off — the report is immutable.");
                 },
-                onError: (err) => {
+                onError: (err: unknown) => {
                   onClose();
                   actError(err);
                 },
@@ -1052,7 +1052,7 @@ function PublishDialog({
             )
           }
         >
-          {publish.isPending ? <Spinner /> : null} Publish permanently
+          {signOff.isPending ? <Spinner /> : null} Sign off permanently
         </Button>
       </div>
     </Dialog>

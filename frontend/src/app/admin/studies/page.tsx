@@ -25,7 +25,7 @@ import { useAssessorPackages, useDeclareStudy, useStudies } from "@/lib/api/hook
 import type { StudyResponse } from "@/lib/api/types";
 
 /** A list, and only a list. Every act on a study — pinning, composing, opening, evaluating,
- *  publishing — lives on that study's own page, in the order a round goes. */
+ *  signing off — lives on that study's own page, in the order a round goes. */
 export default function StudiesPage() {
   const { data: studies, isLoading, error } = useStudies();
   const [creating, setCreating] = useState(false);
@@ -36,10 +36,10 @@ export default function StudiesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Evaluation studies</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            One round with a purpose: it pins a published instrument, composes a
-            brief-paired dataset, opens (which freezes the dataset), is evaluated, and
-            publishes an immutable report. Everything you do to a study happens on its own
-            page — this is the list.
+            One named round: it pins a published instrument, composes a brief-paired
+            dataset, opens (which fixes the dataset), is evaluated, and is signed off into
+            an immutable report. Everything you do to a study happens on its own page —
+            this is the list.
           </p>
         </div>
         <Button className="shrink-0" onClick={() => setCreating(true)}>
@@ -54,7 +54,7 @@ export default function StudiesPage() {
       ) : !studies || studies.length === 0 ? (
         <EmptyState
           title="No studies yet"
-          hint="Create one above, or use app.cli declare-study --purpose <text>."
+          hint="Create one above, or use app.cli declare-study --name <text>."
         />
       ) : (
         <Card>
@@ -100,7 +100,7 @@ function StudyRow({ study }: { study: StudyResponse }) {
     <TableRow>
       <TableCell className="font-medium">
         <Link href={`/admin/studies/${study.study_id}`} className="hover:underline">
-          {study.purpose}
+          {study.name}
         </Link>
       </TableCell>
       <TableCell>
@@ -128,14 +128,14 @@ function StudyRow({ study }: { study: StudyResponse }) {
 function NewStudyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const declare = useDeclareStudy();
-  const [purpose, setPurpose] = useState("");
+  const [name, setName] = useState("");
 
   function create() {
     declare.mutate(
-      { purpose: purpose.trim() },
+      { name: name.trim() },
       {
         onSuccess: (study) => {
-          setPurpose("");
+          setName("");
           onClose();
           toast.success("Study created.", {
             description: "Next: pin an instrument and compose the dataset.",
@@ -155,17 +155,17 @@ function NewStudyDialog({ open, onClose }: { open: boolean; onClose: () => void 
       open={open}
       onClose={onClose}
       title="New study"
-      description="A study is one round with a purpose. Name it here — pinning the instrument and composing the dataset happen on its own page, in order."
+      description="A study is one round. Name it here — pinning the instrument and composing the dataset happen on its own page, in order."
     >
-      <Label htmlFor="study-purpose">Purpose</Label>
+      <Label htmlFor="study-name">Name</Label>
       <Input
-        id="study-purpose"
+        id="study-name"
         autoFocus
         className="mt-2"
-        value={purpose}
-        onChange={(e) => setPurpose(e.target.value)}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && purpose.trim() && !declare.isPending) create();
+          if (e.key === "Enter" && name.trim() && !declare.isPending) create();
         }}
         placeholder="e.g. First LearnpackV1 QA round"
       />
@@ -176,7 +176,7 @@ function NewStudyDialog({ open, onClose }: { open: boolean; onClose: () => void 
         <Button variant="outline" onClick={onClose} disabled={declare.isPending}>
           Cancel
         </Button>
-        <Button onClick={create} disabled={declare.isPending || !purpose.trim()}>
+        <Button onClick={create} disabled={declare.isPending || !name.trim()}>
           {declare.isPending ? <Spinner /> : null} Create study
         </Button>
       </div>

@@ -9,7 +9,7 @@ import type { ReportBody } from "@/lib/api/types";
 
 /** Every caveat kind, behind one line.
  *
- *  Publishing with caveats is legitimate and visible; publishing silently is impossible
+ *  Signing off with caveats is legitimate and visible; doing it silently is impossible
  *  (12-define invariant 4) — so none of them may be dropped. But a column of always-open
  *  rows mostly reading "none" is how a reader learns to skip the section that exists to stop
  *  them skipping it. One line says how many fired; opening it shows every kind, fired or

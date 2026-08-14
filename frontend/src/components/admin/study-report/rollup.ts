@@ -140,13 +140,13 @@ export interface CaveatRow {
 
 /** The caveat kinds as rows, each one saying whether it fired.
  *
- * Publishing with caveats is legitimate and visible; publishing silently is impossible
+ * Signing off with caveats is legitimate and visible; doing it silently is impossible
  * (12-define invariant 4). So none of them may be dropped — but a screenful of "none" at
  * the top of a report is how a reader learns to skip the section that exists to stop them
  * skipping it. They collapse behind one line instead.
  *
  * Kinds added after a report was frozen are absent from it, not empty, and each such row
- * reads its field defensively: a report published at an older schema version is the record
+ * reads its field defensively: a report frozen at an older schema version is the record
  * it is, and rendering it must not depend on fields nobody could have written.
  */
 export function caveatRows(body: ReportBody): CaveatRow[] {

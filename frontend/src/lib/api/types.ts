@@ -323,11 +323,13 @@ export interface ProgressReport {
 
 // --- Evaluation studies (13-code §3.6/§6) ----------------------------------
 
-export type StudyStatus = "declared" | "prepared" | "open" | "published";
+export type StudyStatus = "declared" | "prepared" | "open" | "signed_off";
 
 export interface StudyResponse {
   study_id: Uuid;
-  purpose: string;
+  name: string;
+  /** Optional and never defaulted from the name: an absent description is absent. */
+  description: string | null;
   status: StudyStatus;
   instrument_version_id: string | null;
   /** The judge whose verdicts are this study's result (ADR-0042). Pinned once, before
@@ -339,7 +341,7 @@ export interface StudyResponse {
   content_ids: Uuid[];
   created_at: string | null;
   opened_at: string | null;
-  published_at: string | null;
+  signed_off_at: string | null;
 }
 
 /** The three states a claim can be in, named once. The report's per-content claims, the
@@ -413,7 +415,7 @@ export interface StudyReportCaveats {
   briefCompleteness: { briefId: string; promptRecorded: boolean; origin: string | null }[];
   contentsWithoutJudgment: string[];
   taskVariablePatterns: { status: string; reason: string };
-  /** Absent on reports published before ADR-0037 — those are frozen; render as empty. */
+  /** Absent on reports frozen before ADR-0037 — those are frozen; render as empty. */
   executionErrors?: { perContent: { contentId: string; count: number }[]; note: string };
   /** Absent on reports frozen at schemaVersion 1 (before ADR-0042), for the same reason. */
   mixedAssessors?: { assessors: AssessorRef[]; note: string };
@@ -422,10 +424,11 @@ export interface StudyReportCaveats {
 export interface StudyReport {
   schemaVersion: number;
   studyId: string;
-  purpose: string;
+  name: string;
+  description: string | null;
   instrumentVersionId: string;
-  publishedAt: string;
-  publishedBy: string | null;
+  signedOffAt: string;
+  signedOffBy: string | null;
   dataset: { size: number; briefIds: string[]; contentIds: string[] };
   judgmentIdsUsed: Record<string, string>;
   /** The distinct authors of the judgments this document reflects. Absent at schemaVersion 1. */
@@ -438,7 +441,7 @@ export interface StudyReport {
 export interface StudyReportResponse {
   study_id: Uuid;
   report: StudyReport;
-  published_at: string;
+  signed_off_at: string;
 }
 
 /** A gap a composed-on-read document names instead of refusing to answer: the study is not
@@ -452,11 +455,12 @@ export interface FrozenRecord {
   note: string;
 }
 
-/** What publishing WOULD write, composed on read. The same document as `StudyReport` minus
- *  `publishedAt` — removed rather than nulled, because a null renders as the epoch — plus
- *  what it says about itself. With no instrument pinned, `contents` and `generatorLevel`
- *  come back empty and `gaps` says why. */
-export interface StudyReportPreview extends Omit<StudyReport, "publishedAt" | "instrumentVersionId"> {
+/** What signing off WOULD write, composed on read. The same document as `StudyReport`
+ *  minus `signedOffAt` — removed rather than nulled, because a null renders as the epoch —
+ *  plus what it says about itself. With no instrument pinned, `contents` and
+ *  `generatorLevel` come back empty and `gaps` says why. */
+export interface StudyReportPreview
+  extends Omit<StudyReport, "signedOffAt" | "instrumentVersionId"> {
   instrumentVersionId: string | null;
   documentKind: "preview";
   composedAt: string;
@@ -467,10 +471,10 @@ export interface StudyReportPreview extends Omit<StudyReport, "publishedAt" | "i
 /** The body every layer of the report renders: exactly what the two payloads have in common.
  *
  *  Both are assignable to it — `StudyReport` structurally, the preview by construction — so
- *  neither needs an adapter. And `publishedAt` is not merely absent here, it is UNREADABLE,
- *  which turns the unguarded `new Date(report.publishedAt)` this rewrite replaces into a
- *  compile error rather than a screen that says "Published" about a study nobody published. */
-export type ReportBody = Omit<StudyReport, "publishedAt" | "instrumentVersionId"> & {
+ *  neither needs an adapter. And `signedOffAt` is not merely absent here, it is UNREADABLE,
+ *  which turns the unguarded `new Date(report.signedOffAt)` this rewrite replaces into a
+ *  compile error rather than a screen that says "Signed off" about a study nobody signed. */
+export type ReportBody = Omit<StudyReport, "signedOffAt" | "instrumentVersionId"> & {
   instrumentVersionId: string | null;
 };
 
@@ -479,7 +483,7 @@ export type ReportBody = Omit<StudyReport, "publishedAt" | "instrumentVersionId"
  *  `recomposed` is a preview of a study that already HAS a frozen record: the same content,
  *  a different claim about itself, and the band must not say the same thing about both. */
 export type DocumentSource =
-  | { kind: "frozen"; publishedAt: string; publishedBy: string | null }
+  | { kind: "frozen"; signedOffAt: string; signedOffBy: string | null }
   | { kind: "preview"; composedAt: string; gaps: StudyGap[] }
   | { kind: "recomposed"; composedAt: string; gaps: StudyGap[]; note: string };
 
@@ -537,10 +541,10 @@ export interface CriterionOutcomes {
   instrumentVersionId: string | null;
   computedAt: string;
   signal: "evidence";
-  /** Which judgment each course is read through. A published study answers through the ones
-   *  its frozen report recorded, so re-evaluating afterwards cannot make the evidence
+  /** Which judgment each course is read through. A signed-off study answers through the
+   *  ones its frozen report recorded, so re-evaluating afterwards cannot make the evidence
    *  disagree with the document it explains. */
-  judgmentBasis: { basis: "current" | "publishedReport"; note: string };
+  judgmentBasis: { basis: "current" | "signedOffReport"; note: string };
   /** And whose those judgments are: a cell's quote is what SOME judge read, and more than
    *  one entry means two cells of one criterion are not the same measurement. */
   assessorsUsed: AssessorRef[];
@@ -735,7 +739,8 @@ export interface StudyFitness {
 // --- Requests --------------------------------------------------------------
 
 export interface DeclareStudyRequest {
-  purpose: string;
+  name: string;
+  description?: string | null;
 }
 
 export interface PinStudyAssessorRequest {

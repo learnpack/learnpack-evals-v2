@@ -11,13 +11,13 @@ export function DocumentBand({ source }: { source: DocumentSource }) {
   if (source.kind === "frozen") {
     return (
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm">
-        <Badge variant="success">published</Badge>
+        <Badge variant="success">signed off</Badge>
         <span>
-          Signed off {new Date(source.publishedAt).toLocaleString()}
-          {source.publishedBy ? " · " : ""}
+          Signed off {new Date(source.signedOffAt).toLocaleString()}
+          {source.signedOffBy ? " · " : ""}
         </span>
-        {source.publishedBy ? (
-          <span className="font-mono text-xs text-muted-foreground">{source.publishedBy}</span>
+        {source.signedOffBy ? (
+          <span className="font-mono text-xs text-muted-foreground">{source.signedOffBy}</span>
         ) : null}
         <span className="text-muted-foreground">
           — immutable, and composed from exactly the judgments it records.
@@ -34,8 +34,8 @@ export function DocumentBand({ source }: { source: DocumentSource }) {
         <span className="text-muted-foreground">
           Composed {new Date(source.composedAt).toLocaleString()} from today&apos;s judgments.{" "}
           {recomposed
-            ? "This study is already published: the report of record is the frozen one, and this recomposition may differ from it."
-            : "Nothing is written until you publish, and publishing freezes exactly this."}
+            ? "This study is already signed off: the report of record is the frozen one, and this recomposition may differ from it."
+            : "Nothing is written until you sign off, and signing off freezes exactly this."}
         </span>
       </div>
       <Gaps gaps={source.gaps} />
