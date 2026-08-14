@@ -79,7 +79,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
   // the count that will run, which is only true if this filter matches that one: a listed
   // scope drops the unknown-generator courses too, as `= ANY` does (ADR-0044 §6).
   const coursesByBrief = useMemo(() => {
-    const grouped = new Map<Uuid, { format: string }[]>();
+    const grouped = new Map<Uuid, Course[]>();
     for (const content of contents.data ?? []) {
       if (content.brief_id === null) continue;
       if (Array.isArray(scope)) {
@@ -88,7 +88,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
       }
       grouped.set(content.brief_id, [
         ...(grouped.get(content.brief_id) ?? []),
-        { format: content.package_format },
+        { format: content.package_format, versionId: content.generator_version_id },
       ]);
     }
     return grouped;
@@ -97,6 +97,11 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
   const selectedCourses = briefIds.flatMap((id) => coursesByBrief.get(id) ?? []);
   const formats = [...new Set(selectedCourses.map((c) => c.format))].sort();
   const matchings = useMatchings(instrumentId || null, formats);
+
+  /** The versions this round will actually measure, in the order they are named. A listed
+   *  scope says so itself; `"all"` is only knowable from what the briefs brought, and a
+   *  version present in the registry but absent from the dataset is not one of them. */
+  const arms = armsOf(scope, selectedCourses, generatorVersions.data ?? []);
 
   // An empty list is a radio ticked and nothing chosen yet — not a declaration, and the API
   // refuses it. It reads as "still missing" rather than as a request that will fail.
@@ -252,6 +257,14 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
             value={scope}
             onChange={setScope}
           />
+          {scope === "all" && arms.length > 1 ? (
+            <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
+              These briefs brought courses from {arms.length} versions (
+              {arms.map((arm) => arm.label).join(", ")}), and the round&apos;s own header will
+              read them as one population. Legitimate, and said here rather than discovered in
+              the report — naming the versions instead separates them.
+            </p>
+          ) : null}
         </Field>
 
         <Field
@@ -273,6 +286,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
                     key={brief.brief_id}
                     text={brief.brief}
                     courses={courses}
+                    arms={arms}
                     checked={briefIds.includes(brief.brief_id)}
                     unreadableIn={(format) => unreadableCount(matchings.byFormat.get(format))}
                     onToggle={() => toggleBrief(brief.brief_id)}
@@ -280,6 +294,19 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
                 );
               })
             )}
+            <UnpairedCommissions
+              briefs={(briefs.data ?? [])
+                .filter((brief) => briefIds.includes(brief.brief_id))
+                .map((brief) => ({
+                  text: brief.brief,
+                  courses: coursesByBrief.get(brief.brief_id) ?? [],
+                }))}
+              arms={arms}
+            />
+            <ArmCoverage
+              arms={arms}
+              unreadableIn={(format) => unreadableCount(matchings.byFormat.get(format))}
+            />
             <PartialCoverage
               formats={formats}
               courses={selectedCourses}
@@ -291,7 +318,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <p className="max-w-lg text-xs text-muted-foreground">
             {complete
-              ? `${selectedCourses.length} course${selectedCourses.length === 1 ? "" : "s"} · judged by ${chosenAssessor?.display_name ?? assessorId} · against ${instrumentId}`
+              ? `${selectedCourses.length} course${selectedCourses.length === 1 ? "" : "s"} · ${scopeSummary(arms)} · judged by ${chosenAssessor?.display_name ?? assessorId} · against ${instrumentId}`
               : `Still missing ${missing(name, instrumentId, assessorId, scopeDeclared, selectedCourses.length).join(", ")}.`}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -324,6 +351,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
         instrumentId={instrumentId}
         assessor={chosenAssessor}
         courses={selectedCourses.length}
+        arms={arms}
         pending={busy}
         onConfirm={saveAndEvaluate}
       />
@@ -513,15 +541,21 @@ function ScopeField({
   );
 }
 
+/** One commission, and what it brought per version once more than one is being measured.
+ *  A version with no course from this brief is shown as a zero rather than left out: an
+ *  unpaired commission is a fact about the comparison, and this is the last moment anyone
+ *  can act on it (the shape ADR-0039 already settled for the report). */
 function BriefRow({
   text,
   courses,
+  arms,
   checked,
   unreadableIn,
   onToggle,
 }: {
   text: string;
-  courses: { format: string }[];
+  courses: Course[];
+  arms: Arm[];
   checked: boolean;
   unreadableIn: (format: string) => number | null;
   onToggle: () => void;
@@ -529,6 +563,7 @@ function BriefRow({
   const byFormat = new Map<string, number>();
   for (const course of courses) byFormat.set(course.format, (byFormat.get(course.format) ?? 0) + 1);
   const empty = courses.length === 0;
+  const comparing = arms.length > 1;
 
   return (
     <label
@@ -556,8 +591,89 @@ function BriefRow({
                 .map(([format, count]) => `${count} × ${format}`)
                 .join(" · ")}`}
         </span>
+        {comparing && !empty ? (
+          <span className="mt-1 flex flex-wrap gap-1">
+            {arms.map((arm) => {
+              const count = countFor(courses, arm.id);
+              return (
+                <Badge key={arm.key} variant={count === 0 ? "warning" : "secondary"}>
+                  {arm.label}: {count}
+                </Badge>
+              );
+            })}
+          </span>
+        ) : null}
       </span>
     </label>
+  );
+}
+
+/** The warning that keeps an A/B from being unpaired without anyone noticing. Comparing
+ *  versions is only meaningful over the same commissions — the GLOSSARY requires
+ *  `CompareStudies` to pair sets by briefs — so a commission that answered one version and
+ *  not another leaves the two columns measuring different work. */
+function UnpairedCommissions({
+  briefs,
+  arms,
+}: {
+  briefs: { text: string; courses: Course[] }[];
+  arms: Arm[];
+}) {
+  if (arms.length < 2) return null;
+  const unpaired = briefs.filter(
+    (brief) =>
+      brief.courses.length > 0 && arms.some((arm) => countFor(brief.courses, arm.id) === 0),
+  );
+  if (unpaired.length === 0) return null;
+
+  return (
+    <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
+      {unpaired.length} of these commissions produced courses for some versions and none for
+      others, so those versions are not answering the same work. Comparing them is still
+      legitimate — it is a comparison over fewer paired commissions, and the round will not
+      say which ones. Registering the missing courses first is what makes the two columns
+      subtractable.
+    </p>
+  );
+}
+
+/** ADR-0023 §7 applied where it can still be acted on: two versions whose courses leave a
+ *  different number of criteria unassessed are measured over different denominators, so the
+ *  difference between their values is not interpretable. It informs and never blocks, which
+ *  is why a cross-format A/B is permitted at all (ADR-0044 §7). */
+function ArmCoverage({
+  arms,
+  unreadableIn,
+}: {
+  arms: Arm[];
+  unreadableIn: (format: string) => number | null;
+}) {
+  if (arms.length < 2) return null;
+
+  const described = arms
+    .filter((arm) => arm.formats.length > 0)
+    .map((arm) => ({
+      label: arm.label,
+      // One entry per format the arm's courses are in — `null` while the matching loads,
+      // so "we do not know yet" never renders as "none".
+      unreadable: [...new Set(arm.formats.map((format) => unreadableIn(format)))],
+    }));
+  if (described.some((arm) => arm.unreadable.includes(null))) return null;
+
+  const signature = (arm: (typeof described)[number]) =>
+    [...arm.unreadable].sort((a, b) => Number(a) - Number(b)).join(",");
+  if (new Set(described.map(signature)).size < 2) return null;
+
+  return (
+    <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
+      These versions are not measured over the same criteria:{" "}
+      {described
+        .map((arm) => `${arm.label} leaves ${arm.unreadable.join("/")} unassessed per course`)
+        .join(", ")}
+      . Each value is still correct on its own, but the difference between them is not — they
+      have different denominators. Kept, not refused: a generator that changed its output
+      format is exactly the change worth measuring.
+    </p>
   );
 }
 
@@ -602,6 +718,7 @@ function ConfirmRound({
   instrumentId,
   assessor,
   courses,
+  arms,
   pending,
   onConfirm,
 }: {
@@ -611,6 +728,7 @@ function ConfirmRound({
   instrumentId: string;
   assessor: AssessorPackageResponse | undefined;
   courses: number;
+  arms: Arm[];
   pending: boolean;
   onConfirm: () => void;
 }) {
@@ -627,8 +745,9 @@ function ConfirmRound({
           <span className="font-medium">These three stop being editable</span>
           <span className="mt-1 block text-xs text-muted-foreground">
             <code>{instrumentId}</code> · {assessor?.display_name ?? "the chosen judge"} · these{" "}
-            {courses} course{courses === 1 ? "" : "s"}. Changing any of them afterwards means a
-            new study.
+            {courses} course{courses === 1 ? "" : "s"} · {scopeSummary(arms)}
+            {arms.length > 1 ? ` (${arms.map((a) => `${a.label}: ${a.courses}`).join(", ")})` : ""}.
+            Changing any of them afterwards means a new study.
           </span>
         </li>
         <li className="rounded border p-2">
@@ -657,6 +776,55 @@ function ConfirmRound({
 }
 
 // -------------------------------------------------------------------------------- pure
+
+/** One registered course, as the form needs it: what it is written in, and what made it. */
+type Course = { format: string; versionId: Uuid | null };
+
+/** One generator version the round measures, with what the selected briefs brought for it.
+ *  `id: null` is the unknown-generator group, which only `"all"` can reach. */
+type Arm = { key: string; id: Uuid | null; label: string; courses: number; formats: string[] };
+
+function countFor(courses: Course[], versionId: Uuid | null) {
+  return courses.filter((course) => course.versionId === versionId).length;
+}
+
+/** What the round measures, as columns. A listed scope names its own; `"all"` can only be
+ *  read off the dataset, because a version registered but absent from these briefs is not
+ *  something this round measures — and saying otherwise would invent an empty column. */
+function armsOf(
+  scope: GeneratorScope | null,
+  courses: Course[],
+  versions: GeneratorVersionResponse[],
+): Arm[] {
+  const label = (id: Uuid | null) => {
+    if (id === null) return "unknown generator";
+    const version = versions.find((v) => v.generator_version_id === id);
+    return version ? `${version.name} ${version.version}` : id.slice(0, 8);
+  };
+  const ids: (Uuid | null)[] = Array.isArray(scope)
+    ? scope
+    : scope === "all"
+      ? [...new Set(courses.map((course) => course.versionId))]
+      : [];
+
+  return ids.map((id) => {
+    const mine = courses.filter((course) => course.versionId === id);
+    return {
+      key: id ?? "unknown",
+      id,
+      label: label(id),
+      courses: mine.length,
+      formats: [...new Set(mine.map((course) => course.format))].sort(),
+    };
+  });
+}
+
+/** How the round reads in one clause, so the summary and the confirmation agree. */
+function scopeSummary(arms: Arm[]) {
+  if (arms.length === 0) return "no courses to measure";
+  if (arms.length === 1) return `measuring ${arms[0].label}`;
+  return `comparing ${arms.length} generator versions`;
+}
 
 function ratifiedFor(
   packages: AssessorPackageResponse[],
