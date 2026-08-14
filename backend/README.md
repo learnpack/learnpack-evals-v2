@@ -17,6 +17,19 @@ uv run uvicorn app.main:app --reload
 
 `GET /health` verifies that the API boots and the DB responds.
 
+**The schema is checked at both doors.** The API and the CLI compare the database's revision
+against this checkout's head before doing anything. On a dev box (`AUTH_MODE=local`) a
+mismatch **refuses to start** and names the fix; anywhere else it logs a warning and carries
+on, because a deploy may start a process while the migration step is still running. A
+database it cannot reach says nothing — that is a different failure, with its own reporting.
+
+The reason it exists: a batch once died mid-course on a missing column because the
+development database was one migration behind. The test database never is (the suite
+migrates it at session start), so a green suite says nothing about the store you run
+against — and the cost of finding out late is a half-spent evaluation. If it refuses:
+`uv run alembic upgrade head`. If it says the database is at a revision this checkout does
+not know, the stale thing is the code: pull.
+
 ## Local mode: no Clerk and no Neon (ADR-0008)
 
 `AUTH_MODE` decides where a request's identity comes from:
