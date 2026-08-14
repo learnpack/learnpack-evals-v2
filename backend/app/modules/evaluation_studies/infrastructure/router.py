@@ -6,7 +6,7 @@ URL with the instrument) while the code stays here, in the operational consumer.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -28,6 +28,7 @@ from app.modules.evaluation_studies.application.draft import (
     InstrumentRequiredFirst,
     NullNotAllowed,
     UnknownBrief,
+    UnknownGenerator,
     UnknownInstrument,
     UpdateStudyDraft,
     UpdateStudyDraftCommand,
@@ -43,6 +44,7 @@ from app.modules.evaluation_studies.domain.model import (
     AssessorNotChosen,
     DatasetEmpty,
     DatasetLocked,
+    GeneratorScopeNotDeclared,
     InstrumentNotChosen,
     InvalidStudy,
     StudyAlreadyOpen,
@@ -68,9 +70,15 @@ instruments_router = APIRouter(prefix="/admin/instruments", tags=["evaluation-st
 
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
-# The three parts of a selection, so both endpoints hand the use case exactly the keys the
-# caller sent and nothing else.
-_SELECTION_KEYS = frozenset({"instrument_version_id", "assessor_id", "brief_ids"})
+# The parts of a selection, so both endpoints hand the use case exactly the keys the caller
+# sent and nothing else.
+_SELECTION_KEYS = frozenset(
+    {"instrument_version_id", "assessor_id", "brief_ids", "generator_scope"}
+)
+
+#: What a round measures, on the wire: the string `"all"` or the versions it names. One key
+#: with two forms rather than a flag beside a list, so the two cannot disagree (ADR-0044 §1).
+GeneratorScopeField = Literal["all"] | list[UUID]
 
 
 class DeclareStudyRequest(BaseModel):
@@ -85,6 +93,7 @@ class DeclareStudyRequest(BaseModel):
     instrument_version_id: str | None = None
     assessor_id: UUID | None = None
     brief_ids: list[UUID] | None = None
+    generator_scope: GeneratorScopeField | None = None
 
 
 class UpdateStudyDraftRequest(BaseModel):
@@ -101,6 +110,7 @@ class UpdateStudyDraftRequest(BaseModel):
     instrument_version_id: str | None = None
     assessor_id: UUID | None = None
     brief_ids: list[UUID] | None = None
+    generator_scope: GeneratorScopeField | None = None
 
 
 class StudyResponse(BaseModel):
@@ -113,6 +123,9 @@ class StudyResponse(BaseModel):
     # holds a list of packages keyed by it. Null on studies declared before ADR-0042.
     assessor_id: UUID | None
     brief_ids: list[UUID]
+    # `null` while a draft has not declared what it measures (ADR-0044 §2) — which is the one
+    # state `open` refuses, and the console reads it to know the form is incomplete.
+    generator_scope: GeneratorScopeField | None
     content_ids: list[UUID]
     created_at: str | None
     opened_at: str | None
@@ -128,6 +141,11 @@ class StudyResponse(BaseModel):
             instrument_version_id=dto.instrument_version_id,
             assessor_id=dto.assessor_id,
             brief_ids=list(dto.brief_ids),
+            generator_scope=(
+                list(dto.generator_scope)
+                if isinstance(dto.generator_scope, tuple)
+                else dto.generator_scope
+            ),
             content_ids=list(dto.content_ids),
             created_at=dto.created_at.isoformat() if dto.created_at else None,
             opened_at=dto.opened_at.isoformat() if dto.opened_at else None,
@@ -159,6 +177,7 @@ _UNPROCESSABLE = (
     InstrumentRequiredFirst,
     AssessorHasNotRatified,
     UnknownBrief,
+    UnknownGenerator,
 )
 
 
@@ -250,7 +269,12 @@ def open_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (StudyAlreadyOpen, StudyAlreadySignedOff) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (InstrumentNotChosen, AssessorNotChosen, DatasetEmpty) as exc:
+    except (
+        InstrumentNotChosen,
+        AssessorNotChosen,
+        GeneratorScopeNotDeclared,
+        DatasetEmpty,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc

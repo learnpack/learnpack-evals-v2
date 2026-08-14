@@ -21,6 +21,9 @@ is readable before it is signed, and the evidence behind every criterion lives o
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
+**ADR-0044 (a study's recipe declares which generators it measures) is decided and its
+backend + minimal console are in — see below.**
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
@@ -37,6 +40,34 @@ that serves `/admin/studies/new` and a draft's own page alike, filters judges by
 ratification, marks courses whose format the instrument can only read in part instead of
 hiding them, and whose primary action — *Save & evaluate* — saves, opens and starts the
 batch in three requests, so a failure in the middle leaves a valid draft.
+
+**And the recipe now names generator versions (ADR-0044), which closes a defect that was
+producing mixed results in silence.** A study's recipe was briefs alone and the
+materialization was literal — every content registered from those briefs, whatever made it
+— so a round meaning to measure one generator version measured every version that had
+answered the same commission, which is the ordinary case and not an edge one: a brief is
+handed to a new version precisely when somebody wants to know whether the new version is
+better. Now the recipe has a second axis, `generator_scope`, in **one field with two forms**
+— `"all"`, or a non-empty list of versions — so "every version" is something a person says
+rather than what the absence of a filter means. It is **required**: `open()` refuses a study
+that never declared it, beside the instrument and the judge, and `prepared` waits for it.
+How many versions it names is what makes the round a measurement (one) or a comparison
+(several) — which is why **`purpose` still is not built**: a second field would be a label
+that can disagree with its own dataset, the defect ADR-0043 §8 removed from this screen.
+The comparison is read where optimization is read (the fitness projection's per-version
+grain, ADR-0023), so nothing was added to the frozen document and `SCHEMA_VERSION` did not
+move. Migration `0021` adds the column **nullable with no default** — null is a draft that
+has not declared, and a surviving default would let an insert that forgets the field mean
+"all" silently — and backfills every existing study to `"all"`, which states what those rows
+already did rather than guessing what they meant. **The CLI contract broke on purpose:**
+`declare-study` and `update-study` take `--all-generator-versions` or repeated
+`--generator-version-id`, and a study that never passes one cannot open — the GA scripts
+have to name a scope. The console asks for it as a required field between the judge and the
+courses, and narrows the course counts to the versions ticked so the number on screen is the
+number that will run. What the form does **not** do yet: the per-brief × version breakdown
+that makes an unpaired commission visible, and the per-version coverage warning that says
+when two versions' numbers are not comparable (ADR-0023 §7 — the cross-format A/B is
+permitted and warned, never refused).
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.

@@ -37,7 +37,7 @@ erDiagram
 | evaluation | `evaluations`, `criterion_scores`, `criterion_outcomes`, `computed_metrics`, `quality_judgments`, `judgment_claims`, `findings`, `assessor_ratifications` |
 | orchestration | `campaigns`, `campaign_contents`, `assignments`, `content_evaluation_completions` |
 | golden_dataset | `golden_references` |
-| evaluation_studies | `studies`, `study_recipe`, `study_dataset`, `study_reports` |
+| evaluation_studies | `studies`, `study_recipe`, `study_recipe_generators`, `study_dataset`, `study_reports` |
 | platform | `events` |
 
 Reporting owns no tables: it aggregates through query ports (ADR-0006).
@@ -437,6 +437,7 @@ status ≠ `cancelled`). Campaigns do not own evaluations; the assignment is the
 ```mermaid
 erDiagram
     studies ||--o{ study_recipe : "briefs"
+    studies ||--o{ study_recipe_generators : "scope"
     studies ||--o{ study_dataset : "materialized"
     studies ||--o| study_reports : "signed off"
 
@@ -447,6 +448,7 @@ erDiagram
         text status "declared | prepared | open | signed_off"
         text instrument_version_id "null until pin"
         uuid assessor_id FK "null until pin; null forever on studies older than it"
+        text generator_scope "all | listed; null only on a draft that has not declared"
         timestamptz created_at
         timestamptz opened_at
         timestamptz signed_off_at
@@ -456,6 +458,11 @@ erDiagram
     study_recipe {
         uuid study_id PK_FK
         uuid brief_id PK
+    }
+
+    study_recipe_generators {
+        uuid study_id PK_FK
+        uuid generator_version_id PK "rows only when scope is 'listed'"
     }
 
     study_dataset {

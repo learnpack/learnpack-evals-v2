@@ -56,7 +56,7 @@ from app.modules.evaluation_studies.application.sign_off_study import (
     SignOffStudy,
     SignOffStudyCommand,
 )
-from app.modules.evaluation_studies.domain.model import StudyAlreadySignedOff
+from app.modules.evaluation_studies.domain.model import ALL_GENERATORS, StudyAlreadySignedOff
 from app.modules.evaluation_studies.infrastructure.gateways import (
     DesignGateway,
     EvaluationGateway,
@@ -191,7 +191,14 @@ def _studies_wiring(session):
     return uow, SqlAlchemyStudyRepository(session)
 
 
-def _declare(session, name: str, version_id: str, assessor_id: UUID, brief_ids: list):
+def _declare(
+    session,
+    name: str,
+    version_id: str,
+    assessor_id: UUID,
+    brief_ids: list,
+    generator_scope=ALL_GENERATORS,
+):
     """One declaration with the whole selection — what a console form sends (ADR-0043 §1).
 
     The checks that used to belong to three commands run here, in this order and for this
@@ -212,6 +219,7 @@ def _declare(session, name: str, version_id: str, assessor_id: UUID, brief_ids: 
                 instrument_version_id=version_id,
                 assessor_id=assessor_id,
                 brief_ids=brief_ids,
+                generator_scope=generator_scope,
             ),
         )
     )

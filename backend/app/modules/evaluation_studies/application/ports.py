@@ -39,7 +39,12 @@ class StudyReportRepositoryPort(Protocol):
 
 
 class RegistryGatewayPort(Protocol):
-    def get_contents_by_briefs(self, brief_ids: list[UUID]) -> list[ContentInfo]: ...
+    def get_contents_by_briefs(
+        self, brief_ids: list[UUID], generator_version_ids: list[UUID] | None = None
+    ) -> list[ContentInfo]:
+        """The recipe's two axes (ADR-0044). `None` means every version, which is what the
+        briefs alone selected before the scope existed."""
+        ...
 
     def get_contents_by_ids(self, content_ids: list[UUID]) -> list[ContentInfo]: ...
 

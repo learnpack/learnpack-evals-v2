@@ -11,9 +11,11 @@ from uuid import uuid4
 import pytest
 
 from app.modules.evaluation_studies.domain.model import (
+    ALL_GENERATORS,
     AssessorNotChosen,
     DatasetEmpty,
     DatasetLocked,
+    GeneratorScopeNotDeclared,
     InstrumentNotChosen,
     InvalidStudy,
     Study,
@@ -34,7 +36,7 @@ def composed_study() -> Study:
     s = study()
     s.select_instrument("learnpack-course-qa-v1")
     s.select_assessor(uuid4())
-    s.compose_dataset((uuid4(),), (uuid4(), uuid4()))
+    s.compose_dataset((uuid4(),), ALL_GENERATORS, (uuid4(), uuid4()))
     return s
 
 
@@ -113,13 +115,13 @@ def test_prepared_derives_from_choosing_then_composing():
     s.select_instrument("v1")
     s.select_assessor(uuid4())
     assert s.status == "declared"
-    s.compose_dataset((), (uuid4(),))
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
     assert s.status == "prepared"
 
 
 def test_prepared_derives_from_composing_then_choosing():
     s = study()
-    s.compose_dataset((uuid4(),), (uuid4(),))
+    s.compose_dataset((uuid4(),), ALL_GENERATORS, (uuid4(),))
     assert s.status == "declared"
     s.select_instrument("v1")
     s.select_assessor(uuid4())
@@ -130,7 +132,7 @@ def test_prepared_waits_for_BOTH_choices():
     """`prepared` means everything opening needs is here, so one choice is not enough — and
     a study that read `prepared` and then refused to open would be lying about itself."""
     s = study()
-    s.compose_dataset((), (uuid4(),))
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
     s.select_instrument("v1")
     assert s.status == "declared"
 
@@ -141,7 +143,7 @@ def test_prepared_waits_for_BOTH_choices():
 def test_the_recipe_evolves_freely_before_open():
     s = composed_study()
     replacement = (uuid4(),)
-    s.compose_dataset((), replacement)
+    s.compose_dataset((), ALL_GENERATORS, replacement)
     assert s.content_ids == replacement
     assert s.brief_ids == ()
 
@@ -152,12 +154,12 @@ def test_the_recipe_evolves_freely_before_open():
 def test_open_fixes_the_dataset():
     s = open_study()
     with pytest.raises(DatasetLocked):
-        s.compose_dataset((), (uuid4(),))
+        s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
 
 
 def test_open_requires_an_instrument():
     s = study()
-    s.compose_dataset((), (uuid4(),))
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
     with pytest.raises(InstrumentNotChosen):
         s.open(NOW)
 
@@ -167,15 +169,77 @@ def test_open_requires_a_judge_too():
     ADR-0043 §1). Without this, a round could be evaluated by whoever ran the batch."""
     s = study()
     s.select_instrument("v1")
-    s.compose_dataset((), (uuid4(),))
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
     with pytest.raises(AssessorNotChosen):
         s.open(NOW)
+
+
+def test_open_requires_the_generator_scope_to_have_been_declared():
+    """The fourth thing opening fixes (ADR-0044 §2). Without it a round that means to
+    measure one version measures every version that answered the same commission, and
+    nothing in the document it produces can say which happened."""
+    s = study()
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
+    s.brief_ids = (uuid4(),)
+    s.content_ids = (uuid4(),)
+    assert s.generator_scope is None
+    with pytest.raises(GeneratorScopeNotDeclared):
+        s.open(NOW)
+
+
+def test_declaring_every_version_is_a_declaration_like_any_other():
+    """`ALL_GENERATORS` is a value, not the absence of one: the whole point is that "all of
+    them" and "nobody decided" cannot look alike."""
+    s = study()
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
+    assert s.status == "prepared"
+    s.open(NOW)
+    assert s.status == "open"
+
+
+def test_a_draft_replaces_its_scope_freely_and_open_fixes_it():
+    s = study()
+    first, second = uuid4(), uuid4()
+    s.compose_dataset((), (first,), (uuid4(),))
+    assert s.generator_scope == (first,)
+    s.compose_dataset((), (first, second), (uuid4(),))
+    assert s.generator_scope == (first, second)
+
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
+    s.open(NOW)
+    with pytest.raises(DatasetLocked):
+        s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
+
+
+def test_a_listed_scope_cannot_be_empty():
+    """The one value that could be read as either form. Refused where the rule lives, so no
+    adapter has to hold a second copy of it."""
+    s = study()
+    with pytest.raises(InvalidStudy):
+        s.compose_dataset((), (), (uuid4(),))
+
+
+def test_prepared_waits_for_the_scope_too():
+    s = study()
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
+    s.content_ids = (uuid4(),)
+    s._maybe_prepare()
+    assert s.status == "declared"
+
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
+    assert s.status == "prepared"
 
 
 def test_open_requires_a_dataset():
     s = study()
     s.select_instrument("v1")
     s.select_assessor(uuid4())
+    s.compose_dataset((), ALL_GENERATORS, ())
     with pytest.raises(DatasetEmpty):
         s.open(NOW)
 
@@ -220,7 +284,7 @@ def test_a_signed_off_study_is_immutable():
     with pytest.raises(StudyAlreadySignedOff):
         s.open(NOW)
     with pytest.raises(StudyAlreadySignedOff):
-        s.compose_dataset((), (uuid4(),))
+        s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
     with pytest.raises(StudyAlreadySignedOff):
         s.select_instrument("another")
 
@@ -309,7 +373,7 @@ def signed_off_study(content_ids, brief_ids=()):
     s = study()
     s.select_instrument("qa-v1")
     s.select_assessor(HYBRID_10.assessor_id)
-    s.compose_dataset(tuple(brief_ids), tuple(content_ids))
+    s.compose_dataset(tuple(brief_ids), ALL_GENERATORS, tuple(content_ids))
     s.open(NOW)
     s.sign_off(uuid4(), NOW)
     return s
@@ -770,7 +834,7 @@ def test_a_chosen_version_that_cannot_be_read_is_its_own_gap():
     a fault — the version it names is gone."""
     s = study()
     s.select_instrument("qa-v1")
-    s.compose_dataset((), (uuid4(),))
+    s.compose_dataset((), ALL_GENERATORS, (uuid4(),))
     preview = compose_preview(
         study=s,
         contents=[],
@@ -892,7 +956,12 @@ def test_readiness_names_the_study_gaps():
     result = compute_readiness(s, None, {}, [], [])
 
     gaps = {g["gap"] for g in result["studyGaps"]}
-    assert gaps == {"instrument_not_chosen", "assessor_not_chosen", "dataset_not_composed"}
+    assert gaps == {
+        "instrument_not_chosen",
+        "assessor_not_chosen",
+        "generator_scope_not_declared",
+        "dataset_not_composed",
+    }
     assert result["informative"] is True
 
 

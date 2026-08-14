@@ -76,15 +76,18 @@ def get_available_contents(
     package_format: str | None = None,
     brief_ids: list[UUID] | None = None,
     generator_known: bool = False,
+    generator_version_ids: list[UUID] | None = None,
 ) -> list[ContentSnapshot]:
     """What is registered, filtered for dataset composition (13-code §3.6):
-    by commission (`brief_ids`), by format, or excluding unknown-generator contents."""
+    by commission (`brief_ids`), by format, by the versions a study's scope names
+    (`generator_version_ids`, ADR-0044), or excluding unknown-generator contents."""
     return [
         _to_snapshot(content)
         for content in contents.list_filtered(
             package_format=package_format,
             brief_ids=brief_ids,
             generator_known=generator_known,
+            generator_version_ids=generator_version_ids,
         )
     ]
 

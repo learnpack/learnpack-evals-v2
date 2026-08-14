@@ -220,6 +220,7 @@ class SqlAlchemyContentRepository:
         package_format: str | None = None,
         brief_ids: list[UUID] | None = None,
         generator_known: bool = False,
+        generator_version_ids: list[UUID] | None = None,
     ) -> list[EducationalContent]:
         """One SELECT with optional filters — what dataset composition selects from."""
         clauses: list[str] = []
@@ -232,6 +233,12 @@ class SqlAlchemyContentRepository:
             params["brief_ids"] = brief_ids
         if generator_known:
             clauses.append("generator_version_id IS NOT NULL")
+        if generator_version_ids is not None:
+            # A study's scope, when it names versions (ADR-0044). `= ANY` over a non-null
+            # column drops the unknown-generator contents on its own, which is the clause's
+            # consequence and not a second rule.
+            clauses.append("generator_version_id = ANY(:gvids)")
+            params["gvids"] = generator_version_ids
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = (
             self._session.execute(

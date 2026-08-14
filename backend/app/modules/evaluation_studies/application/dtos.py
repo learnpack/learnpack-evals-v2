@@ -8,7 +8,7 @@ each public into these.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 
@@ -23,6 +23,9 @@ class StudyDTO:
     # Identity's to say, and a consumer that needs the label resolves it there.
     assessor_id: UUID | None
     brief_ids: tuple[UUID, ...]
+    # The recipe's second axis (ADR-0044), carried in the shape a reader consumes: the
+    # string `"all"`, the versions it names, or `None` on a draft that has not declared.
+    generator_scope: Literal["all"] | tuple[UUID, ...] | None
     content_ids: tuple[UUID, ...]
     created_at: datetime | None
     opened_at: datetime | None

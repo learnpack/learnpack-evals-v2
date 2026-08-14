@@ -171,11 +171,18 @@ from app.modules.evaluation_studies.application.draft import (
     DeclareStudyCommand,
     InstrumentNotPublished,
     InstrumentRequiredFirst,
+    SelectedScope,
     StudySelection,
     UnknownBrief,
     UnknownInstrument,
     UpdateStudyDraft,
     UpdateStudyDraftCommand,
+)
+from app.modules.evaluation_studies.application.draft import (
+    # Aliased because two modules name the same concept in their own language, and the CLI
+    # is the one adapter that speaks both: the registry raises `UnknownGenerator` when a
+    # LINEAGE is missing, this one when a study's SCOPE names a version that does not exist.
+    UnknownGenerator as ScopeNamesUnknownGenerator,
 )
 from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.gathering import gather_report_inputs
@@ -186,9 +193,11 @@ from app.modules.evaluation_studies.application.sign_off_study import (
     SignOffStudyCommand,
 )
 from app.modules.evaluation_studies.domain.model import (
+    ALL_GENERATORS,
     AssessorNotChosen,
     DatasetEmpty,
     DatasetLocked,
+    GeneratorScopeNotDeclared,
     InstrumentNotChosen,
     InvalidStudy,
     Study,
@@ -1710,6 +1719,8 @@ _STUDY_ERRORS = (
     InstrumentRequiredFirst,
     UnknownInstrument,
     UnknownBrief,
+    ScopeNamesUnknownGenerator,
+    GeneratorScopeNotDeclared,
     DatasetLocked,
     DatasetEmpty,
     StudyAlreadyOpen,
@@ -1749,8 +1760,34 @@ def _selected_assessor(assessor_arg: str | None) -> object:
     return row.id
 
 
+class _ContradictoryScope(Exception):
+    """Both forms of the scope at once — which one the caller meant is not ours to guess."""
+
+
+def _scope(generator_version_ids: list[UUID] | None, all_generators: bool) -> SelectedScope:
+    """The two flags, collapsed into the one value the domain holds (ADR-0044 §1).
+
+    Passing neither leaves the scope alone, which is what every other flag of this command
+    does — the demand for a declaration belongs to `open-study`, so a draft can still be
+    built up one call at a time."""
+    if all_generators and generator_version_ids:
+        raise _ContradictoryScope(
+            "--all-generator-versions and --generator-version-id say different things; "
+            "pass one of them"
+        )
+    if all_generators:
+        return ALL_GENERATORS
+    if generator_version_ids:
+        return tuple(generator_version_ids)
+    return UNCHANGED
+
+
 def _selection(
-    instrument_version_id: str | None, assessor_arg: str | None, brief_ids: list[UUID] | None
+    instrument_version_id: str | None,
+    assessor_arg: str | None,
+    brief_ids: list[UUID] | None,
+    generator_version_ids: list[UUID] | None = None,
+    all_generators: bool = False,
 ) -> StudySelection:
     return StudySelection(
         instrument_version_id=(
@@ -1758,7 +1795,16 @@ def _selection(
         ),
         assessor_id=_selected_assessor(assessor_arg),  # type: ignore[arg-type]
         brief_ids=brief_ids if brief_ids is not None else UNCHANGED,
+        generator_scope=_scope(generator_version_ids, all_generators),
     )
+
+
+def _scope_label(study: Study) -> str:
+    if study.generator_scope is None:
+        return "no generator scope"
+    if isinstance(study.generator_scope, tuple):
+        return f"{len(study.generator_scope)} versions"
+    return "all versions"
 
 
 def _describe(study: Study) -> str:
@@ -1766,7 +1812,8 @@ def _describe(study: Study) -> str:
         f"study {study.id} ({study.status}): "
         f"{study.instrument_version_id or 'no instrument'} - "
         f"{study.assessor_id or 'no judge'} - "
-        f"{len(study.brief_ids)} briefs -> {len(study.content_ids)} contents"
+        f"{len(study.brief_ids)} briefs x {_scope_label(study)} "
+        f"-> {len(study.content_ids)} contents"
     )
 
 
@@ -1776,15 +1823,23 @@ def run_declare_study(
     instrument_version_id: str | None = None,
     assessor_arg: str | None = None,
     brief_ids: list[UUID] | None = None,
+    generator_version_ids: list[UUID] | None = None,
+    all_generators: bool = False,
 ) -> int:
     """Declare a study, with as much of its selection as you already know.
 
     All of it is optional and all of it stays changeable until `open-study` pins it, so
     creating a complete study in one call and correcting it later run the same checks.
+
+    The generator scope is the one part `open-study` will not do without (ADR-0044 §2):
+    either `--all-generator-versions` or one `--generator-version-id` per version the round
+    measures.
     """
     try:
-        selection = _selection(instrument_version_id, assessor_arg, brief_ids)
-    except _AssessorNotRegistered as exc:
+        selection = _selection(
+            instrument_version_id, assessor_arg, brief_ids, generator_version_ids, all_generators
+        )
+    except (_AssessorNotRegistered, _ContradictoryScope) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     with SessionLocal() as session:
@@ -1810,6 +1865,8 @@ def run_update_study(
     instrument_version_id: str | None,
     assessor_arg: str | None,
     brief_ids: list[UUID] | None,
+    generator_version_ids: list[UUID] | None = None,
+    all_generators: bool = False,
 ) -> int:
     """Change a draft: the norm, the judge, the recipe, or any combination of them.
 
@@ -1819,8 +1876,10 @@ def run_update_study(
     version that judge never ratified requires.
     """
     try:
-        selection = _selection(instrument_version_id, assessor_arg, brief_ids)
-    except _AssessorNotRegistered as exc:
+        selection = _selection(
+            instrument_version_id, assessor_arg, brief_ids, generator_version_ids, all_generators
+        )
+    except (_AssessorNotRegistered, _ContradictoryScope) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     with SessionLocal() as session:
@@ -2726,10 +2785,26 @@ def main(argv: list[str] | None = None) -> int:
     declare_study_parser.add_argument(
         "--brief-id", action="append", dest="brief_ids", default=None, help="repeatable"
     )
+    declare_study_parser.add_argument(
+        "--generator-version-id",
+        action="append",
+        dest="generator_version_ids",
+        default=None,
+        help="repeatable; which generator versions this round measures. One is a "
+        "measurement of that version, several are a comparison between them",
+    )
+    declare_study_parser.add_argument(
+        "--all-generator-versions",
+        action="store_true",
+        dest="all_generators",
+        help="measure every version the briefs bring — said, not left unsaid. Required "
+        "before open-study if no --generator-version-id is given",
+    )
 
     update_study_parser = subparsers.add_parser(
         "update-study",
-        help="change a draft study: its instrument, its judge, its briefs (any combination)",
+        help="change a draft study: its instrument, its judge, its briefs, "
+        "the generator versions it measures (any combination)",
     )
     update_study_parser.add_argument("--study-id", required=True)
     update_study_parser.add_argument(
@@ -2746,6 +2821,19 @@ def main(argv: list[str] | None = None) -> int:
         dest="brief_ids",
         default=None,
         help="repeatable; replaces the whole recipe",
+    )
+    update_study_parser.add_argument(
+        "--generator-version-id",
+        action="append",
+        dest="generator_version_ids",
+        default=None,
+        help="repeatable; replaces the whole scope",
+    )
+    update_study_parser.add_argument(
+        "--all-generator-versions",
+        action="store_true",
+        dest="all_generators",
+        help="replace the scope with every version the briefs bring",
     )
 
     open_study_parser = subparsers.add_parser(
@@ -2911,6 +2999,12 @@ def main(argv: list[str] | None = None) -> int:
             args.instrument_version_id,
             args.assessor,
             [UUID(b) for b in args.brief_ids] if args.brief_ids is not None else None,
+            (
+                [UUID(g) for g in args.generator_version_ids]
+                if args.generator_version_ids is not None
+                else None
+            ),
+            args.all_generators,
         )
     elif args.command == "update-study":
         return run_update_study(
@@ -2918,6 +3012,12 @@ def main(argv: list[str] | None = None) -> int:
             args.instrument_version_id,
             args.assessor,
             [UUID(b) for b in args.brief_ids] if args.brief_ids is not None else None,
+            (
+                [UUID(g) for g in args.generator_version_ids]
+                if args.generator_version_ids is not None
+                else None
+            ),
+            args.all_generators,
         )
     elif args.command == "open-study":
         return run_open_study(UUID(args.study_id))

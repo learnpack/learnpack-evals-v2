@@ -31,6 +31,11 @@ def _to_dto(study: Study) -> StudyDTO:
         instrument_version_id=study.instrument_version_id,
         assessor_id=study.assessor_id,
         brief_ids=study.brief_ids,
+        generator_scope=(
+            study.generator_scope
+            if study.generator_scope is None or isinstance(study.generator_scope, tuple)
+            else "all"
+        ),
         content_ids=study.content_ids,
         created_at=study.created_at,
         opened_at=study.opened_at,
@@ -127,6 +132,13 @@ def compute_readiness(
         # this norm, this one says nobody has been chosen (ADR-0042 §8). A study that
         # predates the pin carries it for good, and it is why its reads are unfiltered.
         study_gaps.append({"gap": "assessor_not_chosen"})
+    if study.generator_scope is None:
+        # Nobody has said which generator versions the round measures (ADR-0044 §2), which
+        # is what `open` will refuse — said here while it can still be acted on. It is
+        # deliberately NOT one of the gaps the report, the fitness and the matrix carry:
+        # those name what makes a READ empty, and an undeclared scope composes a perfectly
+        # good document. It only stops the study opening.
+        study_gaps.append({"gap": "generator_scope_not_declared"})
     if not study.content_ids:
         study_gaps.append({"gap": "dataset_not_composed"})
     if study.instrument_version_id is not None and not ratifications:

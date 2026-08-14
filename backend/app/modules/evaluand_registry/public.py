@@ -99,12 +99,14 @@ class EvaluandRegistryQueries:
         package_format: str | None = None,
         brief_ids: list[UUID] | None = None,
         generator_known: bool = False,
+        generator_version_ids: list[UUID] | None = None,
     ) -> list[ContentSnapshot]:
         return _queries.get_available_contents(
             self._contents,
             package_format=package_format,
             brief_ids=brief_ids,
             generator_known=generator_known,
+            generator_version_ids=generator_version_ids,
         )
 
     def get_brief(self, brief_id: UUID) -> BriefDTO | None:

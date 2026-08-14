@@ -751,8 +751,11 @@ away.
 ### Step 7 — Verify end to end
 
 `register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
-instrument is a draft → `declare-study` (name it, and choose its instrument, judge and
-briefs then or later with `update-study`) → `open-study` (**this is what pins the triple**)
+instrument is a draft → `declare-study` (name it, and choose its instrument, judge, briefs
+and **generator scope** then or later with `update-study` — the scope is
+`--all-generator-versions` or one `--generator-version-id` per version the round measures,
+and `open-study` refuses a study that never said which, ADR-0044) → `open-study` (**this is
+what pins the triple**)
 → `evaluate-study` (the whole dataset in one run) → `show-preview` (what signing off would
 write, readable before the irreversible act) → `sign-off-study` →
 `show-report` / `show-fitness`.
@@ -946,7 +949,10 @@ the **only** way to exercise an instrument whose lineage has no assessor yet: th
 not compare lineages, so any registered package's executors can be pointed at any version.
 Then the study path:
 `declare-study [| update-study] | open-study` →
-`evaluate-study` → `show-preview` → `sign-off-study` → `show-report`.
+`evaluate-study` → `show-preview` → `sign-off-study` → `show-report`. The study needs a
+**generator scope** before it can open (`--all-generator-versions`, or
+`--generator-version-id` once per version it measures — several of them is an A/B between
+them, ADR-0044).
 
 ### What you never touch
 
