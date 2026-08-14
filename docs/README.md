@@ -60,7 +60,8 @@ are declared roots · `0036` ratification is offered at both gates · `0037` exe
 an outcome (`execution_error`, the failure budget, the three-way retry) · `0038` the upstreams
 that may serve a model are assessor identity · `0039` the brief groups the fitness projection;
 it is not a grain of it · `0040` a batch is a run · `0041` the frozen report is the record, not
-the reading surface.
+the reading surface · `0042` a judgment names its author, and a study's result is a triple ·
+`0043` choosing is not pinning, and publishing is signing off.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
