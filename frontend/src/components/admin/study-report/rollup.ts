@@ -1,3 +1,4 @@
+import { assessorLabel } from "@/components/admin/assessor-label";
 import type {
   CriterionOutcomeCell,
   CriterionOutcomes,
@@ -137,17 +138,22 @@ export interface CaveatRow {
   raised: boolean;
 }
 
-/** The eight caveat kinds as rows, each one saying whether it fired.
+/** The caveat kinds as rows, each one saying whether it fired.
  *
  * Publishing with caveats is legitimate and visible; publishing silently is impossible
- * (12-define invariant 4). So none of them may be dropped — but eight lines of "none" at
+ * (12-define invariant 4). So none of them may be dropped — but a screenful of "none" at
  * the top of a report is how a reader learns to skip the section that exists to stop them
  * skipping it. They collapse behind one line instead.
+ *
+ * Kinds added after a report was frozen are absent from it, not empty, and each such row
+ * reads its field defensively: a report published at an older schema version is the record
+ * it is, and rendering it must not depend on fields nobody could have written.
  */
 export function caveatRows(body: ReportBody): CaveatRow[] {
   const c = body.caveats;
   const executionErrors = c.executionErrors?.perContent ?? [];
   const errored = executionErrors.reduce((sum, entry) => sum + entry.count, 0);
+  const mixed = c.mixedAssessors?.assessors ?? [];
 
   return [
     {
@@ -199,6 +205,14 @@ export function caveatRows(body: ReportBody): CaveatRow[] {
         ? `${c.briefCompleteness.length} commission(s) with no prompt recorded`
         : "every brief records its prompt",
       raised: c.briefCompleteness.length > 0,
+    },
+    {
+      key: "mixedAssessors",
+      label: "More than one judge",
+      detail: mixed.length
+        ? `${mixed.map(assessorLabel).join(" · ")} — every distribution below pools courses judged by different artifacts`
+        : "one assessor produced every judgment",
+      raised: mixed.length > 0,
     },
     {
       key: "unresolvedDisagreements",

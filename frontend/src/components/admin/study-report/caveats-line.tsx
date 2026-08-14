@@ -10,10 +10,13 @@ import type { ReportBody } from "@/lib/api/types";
 /** Every caveat kind, behind one line.
  *
  *  Publishing with caveats is legitimate and visible; publishing silently is impossible
- *  (12-define invariant 4) — so none of the eight may be dropped. But eight always-open rows
- *  mostly reading "none" is how a reader learns to skip the section that exists to stop them
- *  skipping it. One line says how many fired; opening it shows all eight, fired or not,
- *  because "we checked and there was none" is information too. */
+ *  (12-define invariant 4) — so none of them may be dropped. But a column of always-open
+ *  rows mostly reading "none" is how a reader learns to skip the section that exists to stop
+ *  them skipping it. One line says how many fired; opening it shows every kind, fired or
+ *  not, because "we checked and there was none" is information too.
+ *
+ *  The summary counts `rows`, never a number written into the sentence: the kinds have grown
+ *  twice now, and a hardcoded "eight" is a claim that goes quietly false. */
 export function CaveatsLine({ body }: { body: ReportBody }) {
   const [open, setOpen] = useState(false);
   const rows = caveatRows(body);
@@ -42,7 +45,7 @@ export function CaveatsLine({ body }: { body: ReportBody }) {
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {raised.length > 0
             ? raised.map((row) => row.label.toLowerCase()).join(" · ")
-            : "all eight kinds checked"}
+            : `all ${rows.length} kinds checked`}
         </span>
       </button>
       {open ? (

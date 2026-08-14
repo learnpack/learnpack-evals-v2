@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { assessorLabel } from "@/components/admin/assessor-label";
 import { StudyStatusBadge } from "@/components/admin/study-status";
 import { StudyReportSection } from "@/components/admin/study-report/report-section";
 import { ApiError } from "@/lib/api/client";
@@ -46,6 +47,7 @@ import {
   useStudyReadiness,
 } from "@/lib/api/hooks";
 import type {
+  AssessorProgress,
   BatchCourseStatus,
   BatchRun,
   BatchRunStatus,
@@ -498,6 +500,7 @@ function EvaluationCard({
             judged={judged}
             courses={courses}
             instrument={evaluations.instrument_version_id}
+            byAssessor={evaluations.evaluated_by_assessor}
             canPublish={study.status === "open"}
           />
         ) : null}
@@ -511,6 +514,7 @@ function EvaluationCard({
               courses={courses}
               remaining={remaining}
               phase={phase}
+              byAssessor={evaluations?.evaluated_by_assessor ?? []}
               disabled={running}
               onStarted={setWatching}
             />
@@ -553,12 +557,14 @@ function ProgressLine({
   judged,
   courses,
   instrument,
+  byAssessor,
   canPublish,
 }: {
   phase: EvaluationPhase;
   judged: number;
   courses: number;
   instrument: string | null;
+  byAssessor: AssessorProgress[];
   canPublish: boolean;
 }) {
   const under = instrument ? (
@@ -589,14 +595,19 @@ function ProgressLine({
         </p>
       )}
 
-      {/* The count is taken per instrument version and the skip is taken per assessor, so
-          the two can disagree. Saying so costs a sentence; a number nobody can trust costs
-          more. */}
-      {judged > 0 ? (
+      {/* The count above is every course judged by anyone; the run skips only what the
+          assessor you pick judged itself. That gap used to be confessed in a sentence
+          nobody could act on — now the split is shown, so the reader can see whether the
+          two numbers differ and by how much. */}
+      {byAssessor.length > 0 ? (
         <p className="text-xs text-muted-foreground">
-          Counted by instrument version, not by assessor: a course judged by any ratified
-          assessor counts here, while a run skips only what the assessor you pick judged
-          itself. Where they differ, the run evaluates more than this number suggests.
+          By assessor:{" "}
+          {byAssessor
+            .map((entry) => `${assessorLabel(entry)} ${entry.evaluated} of ${courses}`)
+            .join(" · ")}
+          {byAssessor.length > 1
+            ? " — this study has been judged by more than one assessor, and a report published now would say so"
+            : ""}
         </p>
       ) : null}
     </>
@@ -709,6 +720,7 @@ function StartEvaluation({
   courses,
   remaining,
   phase,
+  byAssessor,
   disabled,
   onStarted,
 }: {
@@ -716,6 +728,7 @@ function StartEvaluation({
   courses: number;
   remaining: number;
   phase: EvaluationPhase;
+  byAssessor: AssessorProgress[];
   disabled: boolean;
   onStarted: (runId: Uuid) => void;
 }) {
@@ -732,6 +745,14 @@ function StartEvaluation({
     ),
   );
   const chosen = eligible.find((pkg) => `${pkg.name}:${pkg.version}` === selected);
+  // The exact number, because here — and only here — the assessor is known. The run skips
+  // what THIS assessor already judged, so its own count is the one that predicts the work;
+  // the card's total counts every judge and would promise a batch that never happens.
+  const judgedByChosen = chosen
+    ? (byAssessor.find((e) => e.name === chosen.name && e.version === chosen.version)
+        ?.evaluated ?? 0)
+    : null;
+  const toEvaluate = judgedByChosen === null ? remaining : Math.max(courses - judgedByChosen, 0);
 
   return (
     <>
@@ -809,13 +830,16 @@ function StartEvaluation({
                 </span>
               </span>
             </label>
-            {/* "Up to", because the count this is derived from is taken per instrument
-                version while the skip is taken per assessor. */}
+            {/* An exact count now: the skip is per assessor and so is this number. Before
+                the split existed it could only promise "up to", which is the wording a
+                reader learns to distrust. */}
             <p className="text-xs text-muted-foreground">
               {reEvaluate
                 ? `All ${courses} course${courses === 1 ? "" : "s"} will be evaluated again`
-                : `Up to ${remaining} of ${courses} course${courses === 1 ? "" : "s"} will be evaluated — the rest are already judged and get skipped`}
-              {chosen?.uses_llm && (reEvaluate || remaining > 0)
+                : chosen
+                  ? `${toEvaluate} of ${courses} course${courses === 1 ? "" : "s"} will be evaluated — the other ${courses - toEvaluate} already carry a judgment from ${chosen.display_name} and get skipped`
+                  : "Pick an assessor to see how many courses this would evaluate"}
+              {chosen?.uses_llm && (reEvaluate || toEvaluate > 0)
                 ? " · each spends real LLM calls, so this costs money and minutes"
                 : ""}
             </p>
@@ -1130,10 +1154,19 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
               <FitnessLevelTable level={fitness.study as FitnessLevel} />
             </div>
 
+            {/* Who produced these numbers, not how many were allowed to: a count of
+                ratifications says nothing about the values on screen, and two judges here
+                means every figure above pools two populations (ADR-0023 §7). */}
             <p className="text-xs text-muted-foreground">
-              {fitness.assessorCoverage.ratifiedAssessors?.length ?? 0} ratified assessor(s)
-              · {fitness.assessorCoverage.notAssessed ?? 0} criteria left unassessed
-              · {fitness.assessorCoverage.executionErrors ?? 0} execution error(s)
+              judged by{" "}
+              {fitness.assessorCoverage.assessorsUsed?.length
+                ? fitness.assessorCoverage.assessorsUsed.map(assessorLabel).join(", ")
+                : "nobody yet"}
+              {(fitness.assessorCoverage.assessorsUsed?.length ?? 0) > 1
+                ? " — these values pool more than one judge and are not comparable with a single-judge round"
+                : ""}
+              · {fitness.assessorCoverage.notAssessed ?? 0} criteria left unassessed ·{" "}
+              {fitness.assessorCoverage.executionErrors ?? 0} execution error(s)
             </p>
           </>
         )}
