@@ -28,9 +28,13 @@ Three things bound the cost, and each answers a different way of losing money:
   resumed by running it again.
 - **What is going to fail for everyone fails once.** A configuration failure and a coverage
   bug are the same for every course, so the first one ends the batch; a run of transport
-  failures means the endpoint is gone, so three in a row end it too. Everything else is one
-  course's problem and the batch keeps going (ADR-0037 decides what happens *inside* an
-  evaluation; this decides what happens between them).
+  failures means the endpoint is gone, so three in a row end it too; and a failure nobody
+  named — a database missing a column, say — ends it as well, because an unrecognised cause
+  is the one you cannot assume is this course's alone. Everything else is one course's
+  problem and the batch keeps going (ADR-0037 decides what happens *inside* an evaluation;
+  this decides what happens between them). However a batch ends, the course that ended it is
+  named in the summary: `failed` and `cancelled` are different endings and a reader must be
+  able to tell "I stopped it" from "it stopped itself".
 
 Cancelling means **stop starting**: courses that finished stay finished, the ones in flight
 stop at their next call, and nothing needs undoing — an evaluation that does not reach its
@@ -78,7 +82,7 @@ from app.platform.uow import UnitOfWork
 
 logger = logging.getLogger(__name__)
 
-RunStatus = Literal["running", "done", "cancelled", "refused"]
+RunStatus = Literal["running", "done", "cancelled", "failed", "refused"]
 CourseStatus = Literal["evaluated", "skipped", "failed", "cancelled"]
 
 # Consecutive courses that may die of transport before the batch concludes the endpoint is
@@ -192,6 +196,7 @@ class BatchRun:
         self._steps: list[RunStep] = []
         self._durations: list[int] = []
         self._transport_streak = 0
+        self._failure: str | None = None
         self._started = time.monotonic()
         self._ended: float | None = None
         self._lock = threading.Lock()
@@ -251,14 +256,29 @@ class BatchRun:
             return False
 
     def cancel(self) -> None:
+        """Someone asked it to stop. The only ending a person causes."""
+        self.token.cancel()
+
+    def fail(self, cause: str) -> None:
+        """A failure ended it — the run stops starting, and says a failure is why.
+
+        Distinct from `cancel` on purpose: both stop the same way, and a reader needs to
+        tell "I stopped it" from "it stopped itself", because only one of the two is a
+        reason to go looking for a cause.
+        """
+        with self._lock:
+            if self._failure is None:
+                self._failure = cause
         self.token.cancel()
 
     def finish(self, error: str | None = None) -> None:
         with self._lock:
             self._ended = time.monotonic()
             self.finished_at = datetime.now(UTC)
-            self.error = error
-            if self.token.is_cancelled:
+            self.error = self._failure or error
+            if self._failure is not None:
+                self.status = "failed"
+            elif self.token.is_cancelled:
                 self.status = "cancelled"
             elif error is not None:
                 self.status = "refused"
@@ -509,20 +529,31 @@ def _evaluate_one(run: BatchRun, course: ContentInfo) -> None:
         # Checked before the batch started, so reaching here means the wiring changed under
         # it — true for every remaining course, and not worth proving nineteen more times.
         run.record_course(_failed(course, str(exc), started, calls))
-        run.cancel()
+        run.fail(f"{course.external_id}: {exc}")
         return
     except AssessorExecutionError as exc:
         # Past the evaluation's own failure budget (ADR-0037 §3): nothing persisted for this
         # course. Whether the batch continues depends on whether the cause is this course's.
         run.record_course(_failed(course, f"{exc} [{exc.kind}]", started, calls))
         if run.note_failure_kind(exc.kind):
-            run.cancel()
+            run.fail(f"{course.external_id}: {exc} [{exc.kind}]")
         return
     except InvalidAutomatedEvaluation as exc:
         # A registration bug: this assessor's coverage does not match this instrument, which
         # is true for every course in the dataset. Never softened, never repeated.
         run.record_course(_failed(course, str(exc), started, calls))
-        run.cancel()
+        run.fail(f"{course.external_id}: {exc}")
+        return
+    except Exception as exc:  # noqa: BLE001 — a worker thread has nowhere to raise
+        # Not a failure this loop knows how to place. It ends the batch, because a cause
+        # nobody named is the one you cannot assume belongs to this course — a database
+        # missing a column is every course's — and it says WHICH course met it, which an
+        # exception escaping to the runner would not.
+        logger.exception(
+            "course %s failed unexpectedly in batch %s", course.external_id, run.run_id
+        )
+        run.record_course(_failed(course, f"{type(exc).__name__}: {exc}", started, calls))
+        run.fail(f"{course.external_id}: {type(exc).__name__}: {exc}")
         return
 
     run.record_course(

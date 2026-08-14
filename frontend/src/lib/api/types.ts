@@ -473,7 +473,9 @@ export interface FitnessLevel {
 // Started and not awaited: `POST` hands back a run id and the run is read while it
 // advances, because an evaluation of twenty courses takes minutes.
 
-export type BatchRunStatus = "running" | "done" | "cancelled" | "refused";
+/** `cancelled` is a person stopping it; `failed` is the run stopping itself over a cause
+ *  that would repeat for every course; `refused` is the runner itself breaking. */
+export type BatchRunStatus = "running" | "done" | "cancelled" | "failed" | "refused";
 export type BatchCourseStatus = "evaluated" | "skipped" | "failed" | "cancelled";
 
 export interface BatchCourse {

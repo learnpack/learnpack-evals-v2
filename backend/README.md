@@ -374,9 +374,12 @@ to know how a generation went. The statuses mean:
 **It refuses before it spends.** A study that is not open, no instrument pinned, an empty
 dataset, an assessor that is unregistered or has not ratified the pinned version: each would
 fail identically for every course, so the command ends with the cause named and nothing paid
-for. The same reasoning applies while it runs — a configuration failure or a coverage bug
-ends the batch on the first course, and three consecutive transport deaths end it too (any
-course that completes clears that streak).
+for. The same reasoning applies while it runs — a configuration failure, a coverage bug or
+any failure this loop cannot place (a database one migration behind, say) ends the batch on
+the first course, and three consecutive transport deaths end it too (any course that
+completes clears that streak). A run that ends this way reports `failed` and names the course
+that met it; `cancelled` is reserved for a human stopping it, because only one of the two is
+a reason to go looking for a cause.
 
 **Re-running resumes it.** What this assessor already evaluated is skipped, so a batch
 interrupted at course twelve of twenty is continued by running the same command again.

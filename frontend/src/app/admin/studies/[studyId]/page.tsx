@@ -202,7 +202,17 @@ function RunProgress({ run }: { run: BatchRun }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <Badge variant={run.status === "running" ? "default" : "secondary"}>{run.status}</Badge>
+        <Badge
+          variant={
+            run.status === "running"
+              ? "default"
+              : run.status === "done"
+                ? "secondary"
+                : "outline"
+          }
+        >
+          {run.status}
+        </Badge>
         <span className="tabular-nums">
           {run.done} of {run.total} courses · {run.evaluated} evaluated
           {run.failed > 0 ? ` · ${run.failed} failed` : ""}

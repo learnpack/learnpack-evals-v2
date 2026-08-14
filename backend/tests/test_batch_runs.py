@@ -160,6 +160,7 @@ def test_a_configuration_failure_ends_the_batch_on_the_first_course(monkeypatch)
 
     assert asked == ["a"]
     assert statuses(run) == {"a": "failed", "b": "cancelled", "c": "cancelled"}
+    assert run.view().status == "failed"  # it stopped itself; nobody asked
 
 
 def test_a_coverage_bug_ends_the_batch_too(monkeypatch):
@@ -183,6 +184,7 @@ def test_three_transport_failures_in_a_row_end_the_batch(monkeypatch):
 
     assert asked == ["a", "b", "c"]  # the fourth is never attempted
     assert statuses(run)["d"] == "cancelled"
+    assert run.view().status == "failed"
 
 
 def test_a_recovered_endpoint_resets_the_streak(monkeypatch):
@@ -241,18 +243,42 @@ def test_progress_and_the_estimate_come_from_what_this_run_measured(monkeypatch)
     assert [step.label for step in view.steps] == ["c0", "c1", "c2", "c3"]
 
 
-def test_a_run_that_dies_unexpectedly_ends_refused_rather_than_hanging(monkeypatch):
+def test_an_unrecognised_failure_names_its_course_and_ends_the_batch(monkeypatch):
+    """The shape a schema drift takes: every course would die of it identically, and the
+    operator needs to know WHICH one met it — an exception escaping to the runner would end
+    the run with a traceback and no row saying where."""
+
     def explode(run, content):
-        raise RuntimeError("something nobody predicted")
+        raise RuntimeError("column does not exist")
 
     monkeypatch.setattr(module, "_run_use_case", explode)
-    run = a_run([course("a")])
+    run = a_run([course("a"), course("b")])
 
     execute(run)
 
     view = run.view()
-    assert view.status == "refused"
-    assert view.error is not None and "something nobody predicted" in view.error
+    assert view.status == "failed"  # not `cancelled`: nobody asked for this
+    assert view.error is not None and "a: RuntimeError: column does not exist" in view.error
+    assert statuses(run) == {"a": "failed", "b": "cancelled"}
+    assert "column does not exist" in next(o.cause for o in view.outcomes if o.external_id == "a")
+
+
+def test_stopping_by_failure_and_stopping_by_hand_are_different_endings(monkeypatch):
+    """Both stop the same way. Only one is a reason to go looking for a cause, so the run
+    says which happened rather than leaving a reader to infer it from the rows."""
+    monkeypatch.setattr(module, "_run_use_case", lambda run, content: uuid4())
+
+    by_hand = a_run([course("a")])
+    by_hand.cancel()
+    execute(by_hand)
+    assert by_hand.view().status == "cancelled"
+    assert by_hand.view().error is None
+
+    by_failure = a_run([course("b")])
+    by_failure.fail("b: something broke")
+    execute(by_failure)
+    assert by_failure.view().status == "failed"
+    assert by_failure.view().error == "b: something broke"
 
 
 # ------------------------------------------------------------------ the registry
