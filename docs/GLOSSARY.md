@@ -170,7 +170,10 @@
 - **EvaluationStudy** — the **commission**: an evaluation round, carrying a `name` and an
   optional `description`. Its *purpose* (initial / regression / comparison) is a typology the
   model names and does not yet build — the word is reserved for it, never for the title
-  (ADR-0043 §7). Lifecycle: `Declared` (named, pins pending) →
+  (ADR-0043 §7) — and it is not built because the recipe's **`GeneratorScope`** already says
+  it: a scope naming one version is a measurement of that version, one naming several is a
+  comparison, so the arity IS the typology (ADR-0044 §9).
+  Lifecycle: `Declared` (named, pins pending) →
   `Prepared` (instrument **and assessor**, each **pinned** once, immutable; set composed) →
   `Open` (set fixed) →
   `SignedOff` (human act; immutable report, never re-issued, always with coverage and
@@ -184,11 +187,19 @@
   **Industry mapping:** see §"Equivalences with the evals industry".
 - **EvaluationDataset** *(formerly `EvaluationSet` — final rename for alignment with the
   universal term)* — a VO of the study (not an aggregate): the **recipe** (briefIds — the
-  reusable key of the paired design) + the **materialized dataset** (contentIds, fixed at
+  reusable key of the paired design — × the `GeneratorScope`) + the **materialized dataset**
+  (contentIds, fixed at
   opening), with stratified composition according to which claims need which variety (content
   module, ADR-0013). Its items are contents, with no *expected output* (that is supplied by the
   human reference, ADR-0015). Distinct from the `GoldenDataset` (which is made of *human
   results*).
+- **GeneratorScope** — the recipe's second axis: which generator versions the round measures,
+  either **every one the briefs bring** or **exactly these** (a non-empty list). **Declared,
+  never defaulted** (ADR-0044 §1, ADR-0024's rule at the other end of the same axis): without
+  it a round that means to measure one version silently measures every version that answered
+  the same commission. It is the fourth thing opening fixes, and the dataset is always
+  `briefs × scope` — contents are never picked one by one, because pairing by brief is what
+  makes comparing versions an experiment rather than two samples.
 
 ## Source axis — how the judgment is produced (the "how")
 

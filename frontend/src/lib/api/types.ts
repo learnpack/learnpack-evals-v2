@@ -338,6 +338,9 @@ export interface StudyResponse {
    *  from the assessor-package list, which is keyed by it. */
   assessor_id: Uuid | null;
   brief_ids: Uuid[];
+  /** Which generator versions the round measures (ADR-0044): `"all"`, or exactly these.
+   *  `null` while a draft has not declared it — which is what `open` refuses. */
+  generator_scope: GeneratorScope | null;
   content_ids: Uuid[];
   created_at: string | null;
   opened_at: string | null;
@@ -759,6 +762,10 @@ export interface StudyFitness {
 
 // --- Requests --------------------------------------------------------------
 
+/** The recipe's second axis, in the one shape that cannot contradict itself (ADR-0044 §1):
+ *  every version the briefs bring, said out loud, or exactly the ones named. */
+export type GeneratorScope = "all" | Uuid[];
+
 /** A study can be created empty or complete: none of the selection is binding until the
  *  study opens, which is what pins it (ADR-0043 §1). */
 export interface DeclareStudyRequest {
@@ -767,6 +774,7 @@ export interface DeclareStudyRequest {
   instrument_version_id?: string | null;
   assessor_id?: Uuid | null;
   brief_ids?: Uuid[];
+  generator_scope?: GeneratorScope;
 }
 
 /** A partial update of a draft, where absent and null mean different things: omitting a key
@@ -778,6 +786,7 @@ export interface UpdateStudyDraftRequest {
   instrument_version_id?: string;
   assessor_id?: Uuid | null;
   brief_ids?: Uuid[];
+  generator_scope?: GeneratorScope;
 }
 
 /** Registration by mechanical discovery (ADR-0027): identity, artifacts and content hash

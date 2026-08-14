@@ -12,7 +12,13 @@ The checks did not change with the ceremony:
   to edit (ADR-0012's lifecycle);
 * the judge must have **ratified** the chosen version (ADR-0019), because one that has not
   could persist no judgment for this study;
-* every brief must be registered, and the dataset it materializes is what `open` fixes.
+* every brief must be registered, and every generator version the scope names must exist;
+  the dataset the two of them materialize between them is what `open` fixes.
+
+The recipe's two axes move together (ADR-0044): the dataset is re-materialized whenever
+EITHER the briefs or the scope changes, using the study's current value for the one the
+caller did not mention. Filtering only on the axis that arrived would leave the dataset
+describing a population its contents no longer belong to.
 
 `UNCHANGED` is the sentinel that distinguishes "the caller said nothing about this" from
 "the caller cleared it" — `None` means clear, which is what re-pointing a draft at a norm
@@ -35,7 +41,12 @@ from app.modules.evaluation_studies.application.ports import (
     StudyRepositoryPort,
 )
 from app.modules.evaluation_studies.domain import events
-from app.modules.evaluation_studies.domain.model import Study, StudyNotFound
+from app.modules.evaluation_studies.domain.model import (
+    ALL_GENERATORS,
+    GeneratorScope,
+    Study,
+    StudyNotFound,
+)
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 from app.shared.domain.ids import new_id
 
@@ -50,6 +61,10 @@ class InstrumentNotPublished(Exception):
 
 class UnknownBrief(Exception):
     """A brief in the recipe is not registered."""
+
+
+class UnknownGenerator(Exception):
+    """The scope names a generator version that does not exist (ADR-0044 §1)."""
 
 
 class InstrumentRequiredFirst(Exception):
@@ -73,6 +88,9 @@ class _Unchanged:
 
 UNCHANGED: Final = _Unchanged()
 
+#: A scope as a caller may express it: one of its two forms, or nothing said about it.
+SelectedScope = GeneratorScope | _Unchanged
+
 
 @dataclass(frozen=True)
 class StudySelection:
@@ -81,6 +99,9 @@ class StudySelection:
     instrument_version_id: str | _Unchanged = UNCHANGED
     assessor_id: UUID | None | _Unchanged = UNCHANGED
     brief_ids: list[UUID] | _Unchanged = UNCHANGED
+    # In the DOMAIN's vocabulary already (`ALL_GENERATORS` or a tuple of ids): the wire
+    # forms are each adapter's business, and `selection_from` is where HTTP's are translated.
+    generator_scope: SelectedScope = UNCHANGED
 
 
 @dataclass(frozen=True)
@@ -132,8 +153,20 @@ class _Selecting:
             # and the console never sends this because it clears the judge itself.
             self._check_ratified(study, study.assessor_id)
 
+        # The recipe's two axes, applied together: a change to either re-selects the whole
+        # dataset, and the axis the caller left out keeps the value the study already has.
+        brief_ids: list[UUID] = list(study.brief_ids)
+        scope: GeneratorScope | None = study.generator_scope
+        moved = False
         if not isinstance(selection.brief_ids, _Unchanged):
-            study.compose_dataset(*self._materialize(selection.brief_ids))
+            brief_ids = selection.brief_ids
+            moved = True
+        if not isinstance(selection.generator_scope, _Unchanged):
+            scope = selection.generator_scope
+            self._check_generators(scope)
+            moved = True
+        if moved:
+            study.compose_dataset(tuple(brief_ids), scope, self._materialize(brief_ids, scope))
 
     def _check_instrument(self, instrument_version_id: str) -> None:
         instrument = self._design.get_instrument(instrument_version_id)
@@ -159,14 +192,31 @@ class _Selecting:
                 "no judgment for this study"
             )
 
-    def _materialize(self, brief_ids: list[UUID]) -> tuple[tuple[UUID, ...], tuple[UUID, ...]]:
-        """The recipe (briefIds) selects contents through the registry; what comes back is
-        the dataset, replaceable until `open` fixes it."""
+    def _check_generators(self, scope: GeneratorScope | None) -> None:
+        """Every version a listed scope names has to exist. `ALL_GENERATORS` names none, and
+        an undeclared scope names none either — the demand for one is `open`'s (ADR-0044 §2),
+        not this method's."""
+        if not isinstance(scope, tuple):
+            return
+        for generator_version_id in scope:
+            if self._registry.get_generator(generator_version_id) is None:
+                raise UnknownGenerator(f"generator version {generator_version_id} does not exist")
+
+    def _materialize(self, brief_ids: list[UUID], scope: GeneratorScope | None) -> tuple[UUID, ...]:
+        """The recipe (briefIds × scope) selects contents through the registry; what comes
+        back is the dataset, replaceable until `open` fixes it.
+
+        A listed scope narrows to those versions — and so, as a consequence rather than a
+        rule of its own, drops contents whose generator is `unknown` (ADR-0044 §6). Every
+        other case selects by brief alone, which is what a study composed before this
+        decision did."""
         for brief_id in brief_ids:
             if self._registry.get_brief(brief_id) is None:
                 raise UnknownBrief(f"brief {brief_id} is not registered")
-        contents = self._registry.get_contents_by_briefs(brief_ids)
-        return tuple(brief_ids), tuple(c.content_id for c in contents)
+        contents = self._registry.get_contents_by_briefs(
+            brief_ids, list(scope) if isinstance(scope, tuple) else None
+        )
+        return tuple(c.content_id for c in contents)
 
 
 class DeclareStudy:
@@ -256,8 +306,24 @@ def selection_from(payload: dict[str, Any]) -> StudySelection:
         )
     if payload.get("brief_ids", UNCHANGED) is None:
         raise NullNotAllowed("brief_ids cannot be null: an empty dataset is []")
+    if payload.get("generator_scope", UNCHANGED) is None:
+        raise NullNotAllowed(
+            "generator_scope cannot be cleared: say 'all' or name the versions the round measures"
+        )
     return StudySelection(
         instrument_version_id=payload.get("instrument_version_id", UNCHANGED),
         assessor_id=payload.get("assessor_id", UNCHANGED),
         brief_ids=payload.get("brief_ids", UNCHANGED),
+        generator_scope=_scope_from(payload.get("generator_scope", UNCHANGED)),
     )
+
+
+def _scope_from(sent: Any) -> SelectedScope:
+    """The wire's two forms, translated to the domain's one value: the string `"all"` is
+    `ALL_GENERATORS` and a list is a tuple of ids. An empty list is left alone here and
+    refused by the aggregate, where the rule lives (`compose_dataset`)."""
+    if isinstance(sent, _Unchanged):
+        return sent
+    if sent == "all":
+        return ALL_GENERATORS
+    return tuple(sent)

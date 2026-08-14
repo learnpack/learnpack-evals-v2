@@ -58,6 +58,7 @@ def open_study(admin, cleanup, unique, patched_package):
             "instrument_version_id": version_id,
             "assessor_id": assessor_id,
             "brief_ids": [brief_id],
+            "generator_scope": "all",
         },
     )
     assert chosen.status_code == 200, chosen.text

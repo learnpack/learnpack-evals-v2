@@ -60,8 +60,12 @@ class RegistryGateway:
             generator_version_id=snapshot.generator_version_id,
         )
 
-    def get_contents_by_briefs(self, brief_ids: list[UUID]) -> list[ContentInfo]:
-        snapshots = self._queries.get_available_contents(brief_ids=brief_ids)
+    def get_contents_by_briefs(
+        self, brief_ids: list[UUID], generator_version_ids: list[UUID] | None = None
+    ) -> list[ContentInfo]:
+        snapshots = self._queries.get_available_contents(
+            brief_ids=brief_ids, generator_version_ids=generator_version_ids
+        )
         return [self._to_info(s) for s in snapshots]
 
     def get_contents_by_ids(self, content_ids: list[UUID]) -> list[ContentInfo]:

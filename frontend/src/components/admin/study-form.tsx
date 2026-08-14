@@ -19,13 +19,20 @@ import {
   useBriefs,
   useContents,
   useDeclareStudy,
+  useGeneratorVersions,
   useInstruments,
   useMatchings,
   useOpenStudy,
   useStartRound,
   useUpdateStudyDraft,
 } from "@/lib/api/hooks";
-import type { AssessorPackageResponse, StudyResponse, Uuid } from "@/lib/api/types";
+import type {
+  AssessorPackageResponse,
+  GeneratorScope,
+  GeneratorVersionResponse,
+  StudyResponse,
+  Uuid,
+} from "@/lib/api/types";
 
 /** One form builds a study, in two states: without an id and with one.
  *
@@ -46,6 +53,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
   const packages = useAssessorPackages();
   const briefs = useBriefs();
   const contents = useContents();
+  const generatorVersions = useGeneratorVersions();
 
   const declare = useDeclareStudy();
   const update = useUpdateStudyDraft();
@@ -57,31 +65,45 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
   const [instrumentId, setInstrumentId] = useState(study?.instrument_version_id ?? "");
   const [assessorId, setAssessorId] = useState<string>(study?.assessor_id ?? "");
   const [briefIds, setBriefIds] = useState<Uuid[]>(study?.brief_ids ?? []);
+  // `null` is "nobody has said yet", which is exactly what the study carries and what
+  // opening refuses (ADR-0044 §2). It is never collapsed into "all" on anyone's behalf.
+  const [scope, setScope] = useState<GeneratorScope | null>(study?.generator_scope ?? null);
   const [confirming, setConfirming] = useState(false);
 
   const published = (instruments.data ?? []).filter((i) => i.status === "published");
   const eligible = ratifiedFor(packages.data ?? [], instrumentId);
   const chosenAssessor = (packages.data ?? []).find((pkg) => pkg.assessor_id === assessorId);
 
-  // Courses per brief, from what is registered. The recipe selects briefs; the dataset the
-  // backend materializes is exactly this, so the count on screen is the count that will run.
+  // Courses per brief, from what is registered — narrowed by the scope, because the recipe
+  // has two axes and the backend materializes their intersection. The count on screen is
+  // the count that will run, which is only true if this filter matches that one: a listed
+  // scope drops the unknown-generator courses too, as `= ANY` does (ADR-0044 §6).
   const coursesByBrief = useMemo(() => {
     const grouped = new Map<Uuid, { format: string }[]>();
     for (const content of contents.data ?? []) {
       if (content.brief_id === null) continue;
+      if (Array.isArray(scope)) {
+        if (content.generator_version_id === null) continue;
+        if (!scope.includes(content.generator_version_id)) continue;
+      }
       grouped.set(content.brief_id, [
         ...(grouped.get(content.brief_id) ?? []),
         { format: content.package_format },
       ]);
     }
     return grouped;
-  }, [contents.data]);
+  }, [contents.data, scope]);
 
   const selectedCourses = briefIds.flatMap((id) => coursesByBrief.get(id) ?? []);
   const formats = [...new Set(selectedCourses.map((c) => c.format))].sort();
   const matchings = useMatchings(instrumentId || null, formats);
 
-  const complete = Boolean(name.trim() && instrumentId && assessorId && selectedCourses.length);
+  // An empty list is a radio ticked and nothing chosen yet — not a declaration, and the API
+  // refuses it. It reads as "still missing" rather than as a request that will fail.
+  const scopeDeclared = scope === "all" || (Array.isArray(scope) && scope.length > 0);
+  const complete = Boolean(
+    name.trim() && instrumentId && assessorId && scopeDeclared && selectedCourses.length,
+  );
   const busy =
     declare.isPending || update.isPending || openStudy.isPending || startRound.isPending;
 
@@ -108,6 +130,9 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
       instrument_version_id: instrumentId || undefined,
       assessor_id: (assessorId || null) as Uuid | null,
       brief_ids: briefIds,
+      // Omitted while undeclared: absent leaves it alone, and `null` would be refused —
+      // there is no way to say "un-declare", by design.
+      generator_scope: scopeDeclared ? (scope as GeneratorScope) : undefined,
     };
     try {
       if (study) {
@@ -218,9 +243,21 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
         </Field>
 
         <Field
+          id="study-scope"
+          label="Generator versions"
+          hint="What this round measures. One version is a measurement of that version; several are a comparison between them."
+        >
+          <ScopeField
+            versions={generatorVersions.data ?? []}
+            value={scope}
+            onChange={setScope}
+          />
+        </Field>
+
+        <Field
           id="study-courses"
           label="Courses"
-          hint="Picked by brief — each brief brings the courses registered from it."
+          hint="Picked by brief — each brief brings the courses registered from it, narrowed to the versions above."
         >
           <div className="space-y-2">
             {(briefs.data ?? []).length === 0 ? (
@@ -255,7 +292,7 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
           <p className="max-w-lg text-xs text-muted-foreground">
             {complete
               ? `${selectedCourses.length} course${selectedCourses.length === 1 ? "" : "s"} · judged by ${chosenAssessor?.display_name ?? assessorId} · against ${instrumentId}`
-              : `Still missing ${missing(name, instrumentId, assessorId, selectedCourses.length).join(", ")}.`}
+              : `Still missing ${missing(name, instrumentId, assessorId, scopeDeclared, selectedCourses.length).join(", ")}.`}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" onClick={() => router.push("/admin/studies")} disabled={busy}>
@@ -382,6 +419,96 @@ function JudgeField({
           </span>
         </label>
       ))}
+    </div>
+  );
+}
+
+/** The recipe's second axis, asked as what it is: a declaration with two forms and no third
+ *  (ADR-0044 §1). There is deliberately no pre-selected option — "every version" is a thing
+ *  somebody says, and a default would say it for them, which is the whole defect. */
+function ScopeField({
+  versions,
+  value,
+  onChange,
+}: {
+  versions: GeneratorVersionResponse[];
+  value: GeneratorScope | null;
+  onChange: (next: GeneratorScope) => void;
+}) {
+  const listed = Array.isArray(value) ? value : [];
+
+  function toggle(id: Uuid) {
+    const next = listed.includes(id) ? listed.filter((v) => v !== id) : [...listed, id];
+    // An empty list selects nothing and the API refuses it — so emptying the last checkbox
+    // returns the field to undeclared rather than sending a scope that cannot be honoured.
+    onChange(next.length ? next : []);
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm hover:bg-muted/50">
+        <input
+          type="radio"
+          name="study-scope"
+          className="mt-1"
+          checked={value === "all"}
+          onChange={() => onChange("all")}
+        />
+        <span>
+          Every version
+          <span className="block text-xs text-muted-foreground">
+            All the courses these briefs brought, whichever version made them. If that is more
+            than one, the round pools them and its report reads as a single population.
+          </span>
+        </span>
+      </label>
+
+      <label className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm hover:bg-muted/50">
+        <input
+          type="radio"
+          name="study-scope"
+          className="mt-1"
+          checked={Array.isArray(value)}
+          onChange={() => onChange([])}
+        />
+        <span>
+          These versions
+          <span className="block text-xs text-muted-foreground">
+            Courses from the versions you tick, and no others.
+          </span>
+        </span>
+      </label>
+
+      {Array.isArray(value) ? (
+        versions.length === 0 ? (
+          <p className="rounded border bg-muted/40 p-2 text-xs text-muted-foreground">
+            No generator versions registered yet — they live in /admin/generators.
+          </p>
+        ) : (
+          <div className="ml-6 space-y-1">
+            {versions.map((version) => (
+              <label
+                key={version.generator_version_id}
+                className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm hover:bg-muted/50"
+              >
+                <input
+                  type="checkbox"
+                  checked={listed.includes(version.generator_version_id)}
+                  onChange={() => toggle(version.generator_version_id)}
+                />
+                <span>
+                  {version.name} {version.version}
+                </span>
+              </label>
+            ))}
+            {listed.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Tick at least one — an empty list would select nothing.
+              </p>
+            ) : null}
+          </div>
+        )
+      ) : null}
     </div>
   );
 }
@@ -552,11 +679,18 @@ function unreadableCount(matching: { criteria: { missingData: string[] }[] } | u
   return matching.criteria.filter((criterion) => criterion.missingData.length > 0).length;
 }
 
-function missing(name: string, instrumentId: string, assessorId: string, courses: number) {
+function missing(
+  name: string,
+  instrumentId: string,
+  assessorId: string,
+  scopeDeclared: boolean,
+  courses: number,
+) {
   const gaps: string[] = [];
   if (!name.trim()) gaps.push("a name");
   if (!instrumentId) gaps.push("an instrument");
   if (!assessorId) gaps.push("a judge");
+  if (!scopeDeclared) gaps.push("which generator versions it measures");
   if (courses === 0) gaps.push("at least one course");
   return gaps;
 }

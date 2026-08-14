@@ -126,4 +126,5 @@ class ContentRepositoryPort(Protocol):
         package_format: str | None = None,
         brief_ids: list[UUID] | None = None,
         generator_known: bool = False,
+        generator_version_ids: list[UUID] | None = None,
     ) -> list[EducationalContent]: ...

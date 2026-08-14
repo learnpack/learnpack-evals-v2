@@ -39,6 +39,13 @@ def study_opened(study: Study) -> DomainEvent:
             "instrumentVersionId": study.instrument_version_id,
             "assessorId": str(study.assessor_id),
             "briefIds": [str(b) for b in study.brief_ids],
+            # What the round measures, in the two forms the recipe has (ADR-0044): the
+            # string `"all"`, or the versions it names.
+            "generatorScope": (
+                [str(g) for g in study.generator_scope]
+                if isinstance(study.generator_scope, tuple)
+                else "all"
+            ),
             "contentIds": [str(c) for c in study.content_ids],
         },
     )

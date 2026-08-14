@@ -53,14 +53,16 @@ def register_brief(admin_client, cleanup, text="Create a course about tests.") -
     return brief_id
 
 
-def register_content(admin_client, cleanup, unique, suffix, brief_id=None) -> str:
+def register_content(
+    admin_client, cleanup, unique, suffix, brief_id=None, generator_version_id=None
+) -> str:
     response = admin_client.post(
         "/admin/contents",
         json={
             "package_format": "LearnpackV1",
             "external_id": f"study-api-{suffix}-{unique}",
             "consumable_url": f"{SYLLABUS_URL}/{suffix}-{unique}/",
-            "generator_version_id": None,
+            "generator_version_id": generator_version_id,
             "brief_id": brief_id,
         },
     )
@@ -68,6 +70,22 @@ def register_content(admin_client, cleanup, unique, suffix, brief_id=None) -> st
     content_id = response.json()["content_id"]
     cleanup["contents"].append(content_id)
     return content_id
+
+
+def register_generator_version(admin_client, cleanup, name, version) -> str:
+    """A lineage and one of its versions (ADR-0031) — what a study's scope names."""
+    lineage = admin_client.post("/admin/generators", json={"name": name})
+    assert lineage.status_code == 201, lineage.text
+    generator_id = lineage.json()["generator_id"]
+    cleanup["generator_lineages"].append(generator_id)
+
+    created = admin_client.post(
+        f"/admin/generators/{generator_id}/versions", json={"version": version}
+    )
+    assert created.status_code == 201, created.text
+    generator_version_id = created.json()["generator_version_id"]
+    cleanup["generators"].append(generator_version_id)
+    return generator_version_id
 
 
 def ratified_assessor(cleanup, unique, instrument_id, ratified_by) -> str:
@@ -112,6 +130,8 @@ def composed_study(admin_client, cleanup, unique):
             "instrument_version_id": instrument_id,
             "assessor_id": assessor_id,
             "brief_ids": [brief_id],
+            # Said, not left unsaid (ADR-0044 §1) — and `open` refuses a study that has not.
+            "generator_scope": "all",
         },
     )
     assert response.status_code == 200, response.text
@@ -355,7 +375,12 @@ def test_readiness_informs_and_never_blocks(admin_client, cleanup, unique):
     fresh = admin_client.get(f"/admin/studies/{study_id}/readiness").json()
     assert fresh["informative"] is True
     gaps = {g["gap"] for g in fresh["studyGaps"]}
-    assert gaps == {"instrument_not_chosen", "assessor_not_chosen", "dataset_not_composed"}
+    assert gaps == {
+        "instrument_not_chosen",
+        "assessor_not_chosen",
+        "generator_scope_not_declared",
+        "dataset_not_composed",
+    }
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
     admin_client.patch(f"/admin/studies/{study_id}", json={"instrument_version_id": instrument_id})
@@ -518,6 +543,129 @@ def test_matching_reports_the_unmet_demand_per_format(admin_client, cleanup, uni
 
     missing = admin_client.get("/admin/instruments/ghost-v1/matching?package_format=LearnpackV1")
     assert missing.status_code == 404
+
+
+# ============================================================ the scope (ADR-0044)
+
+
+def test_a_listed_scope_selects_only_that_versions_courses(admin_client, cleanup, unique):
+    """The defect ADR-0044 closes, at the only place it can be observed: one brief, two
+    versions, and a round that means to measure one of them.
+
+    Before the scope existed the dataset came back with both courses and nothing in the
+    study said so — a mixed population that reads as one.
+    """
+    study_id = declare(admin_client, cleanup)
+    brief_id = register_brief(admin_client, cleanup)
+    old = register_generator_version(admin_client, cleanup, f"gen-old-{unique}", "2.0.0")
+    new = register_generator_version(admin_client, cleanup, f"gen-new-{unique}", "2.1.0")
+    from_old = register_content(admin_client, cleanup, unique, "old", brief_id, old)
+    from_new = register_content(admin_client, cleanup, unique, "new", brief_id, new)
+
+    measured = admin_client.patch(
+        f"/admin/studies/{study_id}",
+        json={"brief_ids": [brief_id], "generator_scope": [new]},
+    )
+    assert measured.status_code == 200, measured.text
+    assert measured.json()["content_ids"] == [from_new]
+    assert measured.json()["generator_scope"] == [new]
+
+    compared = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"generator_scope": [old, new]}
+    )
+    assert compared.status_code == 200, compared.text
+    assert sorted(compared.json()["content_ids"]) == sorted([from_old, from_new])
+
+    every = admin_client.patch(f"/admin/studies/{study_id}", json={"generator_scope": "all"})
+    assert every.status_code == 200, every.text
+    assert every.json()["generator_scope"] == "all"
+    assert sorted(every.json()["content_ids"]) == sorted([from_old, from_new])
+
+
+def test_changing_only_the_scope_re_materializes_the_dataset(admin_client, cleanup, unique):
+    """The recipe has two axes and they move together. Filtering only on the axis that
+    arrived would leave a dataset describing a population its contents no longer belong to —
+    and the caller would never see it, because the briefs did not change."""
+    study_id = declare(admin_client, cleanup)
+    brief_id = register_brief(admin_client, cleanup)
+    version = register_generator_version(admin_client, cleanup, f"gen-solo-{unique}", "3.0.0")
+    attributed = register_content(admin_client, cleanup, unique, "known", brief_id, version)
+    register_content(admin_client, cleanup, unique, "unknown", brief_id)
+
+    admin_client.patch(
+        f"/admin/studies/{study_id}", json={"brief_ids": [brief_id], "generator_scope": "all"}
+    )
+    assert len(admin_client.get(f"/admin/studies/{study_id}").json()["content_ids"]) == 2
+
+    # Only the scope moves. Naming versions drops the unknown-generator course as a
+    # consequence of the clause, not as a second rule (ADR-0044 §6).
+    narrowed = admin_client.patch(f"/admin/studies/{study_id}", json={"generator_scope": [version]})
+    assert narrowed.status_code == 200, narrowed.text
+    assert narrowed.json()["content_ids"] == [attributed]
+
+
+def test_the_scope_is_declared_and_open_refuses_a_study_that_did_not(admin_client, cleanup, unique):
+    """A draft may be incomplete; a study may not. The demand lands at `open`, which is
+    where every other part of the triple is demanded too."""
+    instrument_id = published_instrument(admin_client, cleanup, unique)
+    study_id = declare(admin_client, cleanup)
+    brief_id = register_brief(admin_client, cleanup)
+    register_content(admin_client, cleanup, unique, "a", brief_id)
+    assessor_id = ratified_assessor(
+        cleanup, unique, instrument_id, admin_client.get("/me").json()["assessor_id"]
+    )
+    admin_client.patch(
+        f"/admin/studies/{study_id}",
+        json={
+            "instrument_version_id": instrument_id,
+            "assessor_id": assessor_id,
+            "brief_ids": [brief_id],
+        },
+    )
+
+    body = admin_client.get(f"/admin/studies/{study_id}").json()
+    assert body["generator_scope"] is None
+    # Not `prepared`: a study that read ready and then refused to open would lie about itself.
+    assert body["status"] == "declared"
+    gaps = admin_client.get(f"/admin/studies/{study_id}/readiness").json()["studyGaps"]
+    assert {"gap": "generator_scope_not_declared"} in gaps
+
+    refused = admin_client.post(f"/admin/studies/{study_id}/open")
+    assert refused.status_code == 422
+    assert "generator versions it measures" in refused.json()["detail"]
+
+    admin_client.patch(f"/admin/studies/{study_id}", json={"generator_scope": "all"})
+    assert admin_client.get(f"/admin/studies/{study_id}").json()["status"] == "prepared"
+    assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 200
+
+
+def test_the_two_unsayable_scopes_are_refused(admin_client, cleanup, unique):
+    """`[]` selects nothing and `null` un-declares — and both are one keystroke away from
+    "all", which is why neither is interpreted."""
+    study_id = declare(admin_client, cleanup)
+
+    empty = admin_client.patch(f"/admin/studies/{study_id}", json={"generator_scope": []})
+    assert empty.status_code == 422
+    assert "cannot be empty" in empty.json()["detail"]
+
+    cleared = admin_client.patch(f"/admin/studies/{study_id}", json={"generator_scope": None})
+    assert cleared.status_code == 422
+    assert "cannot be cleared" in cleared.json()["detail"]
+
+    ghost = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"generator_scope": [str(uuid4())]}
+    )
+    assert ghost.status_code == 422
+    assert "does not exist" in ghost.json()["detail"]
+
+
+def test_an_open_study_cannot_be_re_scoped(admin_client, cleanup, unique):
+    """Opening fixes what the round measures, along with the rest of the recipe."""
+    study_id, _, _ = composed_study(admin_client, cleanup, unique)
+    assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 200
+
+    refused = admin_client.patch(f"/admin/studies/{study_id}", json={"generator_scope": "all"})
+    assert refused.status_code == 409
 
 
 def test_studies_require_the_admin_role(as_user, cleanup, unique):
