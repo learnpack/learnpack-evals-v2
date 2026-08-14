@@ -165,6 +165,24 @@ the one genuinely confusing outcome available, and the cheapest to prevent. Runs
 memory, last ten, and the registry never forgets one that is still working. **No ADR:**
 ADR-0040 decided all of it and named this surface in its `[future]`.
 
+**A stale schema now refuses at the door, and the incident that asked for it.** The first real
+batch died mid-course on `UndefinedColumn: execution_cause`: the development database was at
+revision 0017 while the code expected 0018 (ADR-0037's migration). The suite could not have
+caught it — `conftest` migrates the test database at session start, so green tests say nothing
+about the store anyone actually runs against. `app/platform/schema_version.py` now compares
+`alembic_version` against the checkout's head at **both doors** (`main.py` and the CLI's
+`main()`): under `AUTH_MODE=local` a mismatch **refuses to start**, which is ADR-0008's own
+idiom for a dev box; anywhere else it warns, because a deploy may start a process while the
+migration step is still running, and refusing there would break the thing the check exists to
+protect. A database it cannot reach says nothing — that is a different failure with its own
+reporting, and answering "your schema is stale" to a connection refused would be a lie where
+someone is looking for the truth. Three states, three remedies: never migrated · behind
+(`alembic upgrade head`) · **ahead of this checkout**, where migrating would not help and the
+stale thing is the code. One pre-existing defect fell out of writing its tests: alembic's
+`fileConfig` runs with `disable_existing_loggers` on by default, so migrating in-process was
+switching OFF every application logger created before it — the whole suite's warnings, unheard
+since block 1. `alembic/env.py` now passes `False`.
+
 **After block 7 — generator attribution (ADR-0024):** registering a content now **demands a
 declaration** — a generator version or an explicit `unknown` — at every entry point (form,
 API, canonical bulk import, `register-package`), so the accidental null that

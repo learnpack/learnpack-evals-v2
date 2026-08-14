@@ -43,6 +43,7 @@ from app.modules.orchestration.infrastructure.router import (
     evaluator_router as orchestration_evaluator_router,
 )
 from app.modules.reporting.infrastructure.router import router as reporting_router
+from app.platform import schema_version
 from app.platform.auth_local import DEV_USER_HEADER
 from app.platform.batch_router import router as batch_router
 from app.platform.db import get_session
@@ -60,6 +61,12 @@ if settings.is_local_auth:
     # ASCII only: a Windows console (cp1252) raises UnicodeEncodeError on anything else,
     # which would turn a warning into a boot failure.
     print(f"WARNING: AUTH_MODE=local - no authentication, identity comes from {DEV_USER_HEADER}")
+
+# Before anything can be served against it: a schema behind the code fails on the first
+# statement that needs the missing column, which is halfway through whatever was running.
+# On a dev box that refuses to boot; anywhere else it warns, because a deploy may start
+# while the migration step is still going.
+schema_version.verify(refuse=settings.is_local_auth)
 
 app = FastAPI(
     title="LearnPack Evals API",
