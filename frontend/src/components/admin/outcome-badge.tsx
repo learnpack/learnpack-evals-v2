@@ -31,6 +31,16 @@ export function OutcomeBadge({ outcome }: { outcome: CriterionOutcomeState }) {
   return <Badge variant={OUTCOME_VARIANT[outcome]}>{OUTCOME_LABEL[outcome]}</Badge>;
 }
 
+/** Read order for the state spelling, so a partition always reads the same way. */
+export const OUTCOME_ORDER: readonly CriterionOutcomeState[] = [
+  "pass",
+  "fail",
+  "no_evidence",
+  "not_applicable",
+  "not_assessed",
+  "execution_error",
+];
+
 /** The same six states in their camelCase tally spelling, which is how the distributions
  *  count them. Two spellings of one vocabulary is not ideal, but they name two different
  *  things — a state and a count of it — and a third spelling would not help. */

@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { ClaimStatusBadge } from "@/components/admin/claim-status";
+import { OUTCOME_ORDER, OutcomeBadge } from "@/components/admin/outcome-badge";
 import {
   Table,
   TableBody,
@@ -44,30 +46,6 @@ import type {
   Uuid,
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-
-const OUTCOME_VARIANT: Record<string, BadgeProps["variant"]> = {
-  pass: "success",
-  fail: "destructive",
-  no_evidence: "warning",
-  not_applicable: "outline",
-  not_assessed: "secondary",
-  // A malfunction of the run, never a verdict — kept visually apart from fail (ADR-0037).
-  execution_error: "malfunction",
-};
-const OUTCOME_ORDER = [
-  "pass",
-  "fail",
-  "no_evidence",
-  "not_applicable",
-  "not_assessed",
-  "execution_error",
-];
-
-const CLAIM_VARIANT: Record<string, BadgeProps["variant"]> = {
-  supported: "success",
-  refuted: "destructive",
-  insufficient: "warning",
-};
 
 export default function CalibrationPage() {
   const contents = useContents();
@@ -621,9 +599,9 @@ function PreviewResults({
 
       <div className="flex flex-wrap gap-2">
         {OUTCOME_ORDER.filter((state) => partition.has(state)).map((state) => (
-          <Badge key={state} variant={OUTCOME_VARIANT[state]}>
-            {state} · {partition.get(state)}
-          </Badge>
+          <span key={state} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <OutcomeBadge outcome={state} /> {partition.get(state)}
+          </span>
         ))}
       </div>
 
@@ -642,7 +620,7 @@ function PreviewResults({
               <TableRow key={outcome.criterion_id}>
                 <TableCell className="font-mono text-xs">{outcome.criterion_id}</TableCell>
                 <TableCell>
-                  <Badge variant={OUTCOME_VARIANT[outcome.outcome]}>{outcome.outcome}</Badge>
+                  <OutcomeBadge outcome={outcome.outcome} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {outcome.derived ? "derived" : "executed"}
@@ -662,7 +640,7 @@ function PreviewResults({
           <ul className="space-y-1.5">
             {result.claims.map((claim) => (
               <li key={claim.claim_id} className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant={CLAIM_VARIANT[claim.status]}>{claim.status}</Badge>
+                <ClaimStatusBadge status={claim.status} />
                 <span className="font-mono">{claim.claim_id}</span>
                 <span className="text-muted-foreground">
                   (
