@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Check,
   FileCheck,
-  Info,
   ListChecks,
   Play,
   Square,
@@ -77,28 +76,36 @@ export default function StudyDetailPage({
   if (error) return <ErrorState message={(error as Error).message} />;
   if (!study) return <EmptyState title="Study not found" />;
 
-  // A study before its opening has one job and after it another; they never both apply.
+  // A study before its opening has one job, an open one another, and a published one none
+  // at all — every card below appears only while it has something a reader can act on.
   const inSetup = study.status === "declared" || study.status === "prepared";
+  const published = study.status === "published";
 
   return (
     <div className="max-w-5xl space-y-6">
       <StudyHeader study={study} />
 
-      {inSetup ? (
-        <SetupCard study={study} />
-      ) : (
-        <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
-      )}
+      {inSetup ? <SetupCard study={study} /> : null}
 
+      {/* Evaluating and publishing are what an OPEN study is for. Once it is published a
+          batch is refused and the report already states how many judgments it used, so the
+          card would be a count you have and a paragraph about an act you cannot perform. */}
       {study.status === "open" ? (
-        <PublishCard study={study} evaluations={evaluations.data ?? null} />
+        <>
+          <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
+          <PublishCard study={study} evaluations={evaluations.data ?? null} />
+        </>
       ) : null}
 
-      {readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
+      {/* Readable before the irreversible act: publishing freezes a report, it does not
+          reveal one. Not while still being set up, though — there is nothing to report yet
+          and the setup card is the whole job. */}
+      {inSetup ? null : <StudyReportSection study={study} />}
 
-      {/* Readable at every status, not only after the irreversible act: publishing freezes
-          a report, it does not reveal one. */}
-      {study.status === "declared" ? null : <StudyReportSection study={study} />}
+      {/* Below the phase it informs, never above it, and never on a published study: it is
+          computed from TODAY's ratifications and adapters, so on a frozen report it can
+          contradict the document it sits next to. */}
+      {!published && readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
       {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
           conflation is not — the report publishes no aggregate score, and this denominator
@@ -1233,21 +1240,39 @@ function ByBrief({ fitness }: { fitness: StudyFitness }) {
 
 // ------------------------------------------------------------------- readiness
 
+/** What this round will not be able to answer — a question worth asking only while the
+ *  answers do not exist yet.
+ *
+ *  Closed when it has nothing to report, because a whole panel saying "no gaps" is a panel
+ *  that teaches the reader to skip it. Open when there are gaps, which is when it is the
+ *  most useful thing on the page. */
 function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
   const claimGaps = readiness.claims.filter((c) => c.gaps.length > 0);
+  const gaps = readiness.studyGaps.length + claimGaps.length;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Info className="h-4 w-4 text-muted-foreground" /> Readiness
-          <span className="text-xs font-normal text-muted-foreground">
-            informs, never blocks
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
+    <CollapsibleSection
+      title="Can this round answer what it asks?"
+      badge="informs, never blocks"
+      defaultOpen={gaps > 0}
+      contentClassName="space-y-3 text-sm"
+      meta={
+        gaps > 0 ? (
+          <Badge variant="warning">
+            {gaps} gap{gaps === 1 ? "" : "s"}
+          </Badge>
+        ) : (
+          <Badge variant="success">no gaps</Badge>
+        )
+      }
+    >
+      <div className="space-y-3 text-sm">
         {readiness.studyGaps.length === 0 && claimGaps.length === 0 ? (
-          <p className="text-muted-foreground">No gaps: the study can run end to end.</p>
+          <p className="text-muted-foreground">
+            Every claim has criteria, every criterion has a datum in this dataset&apos;s
+            formats, and an assessor has ratified the pinned version — the study can run end
+            to end.
+          </p>
         ) : null}
         {readiness.studyGaps.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -1288,7 +1313,7 @@ function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
             </ul>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
