@@ -830,9 +830,12 @@ function StartEvaluation({
   // The run skips what THIS assessor already judged, so its own count is the one that
   // predicts the work; the card's total counts every judge and would promise a batch that
   // never happens.
+  // Absent means this assessor has judged NOTHING, so the whole dataset is ahead of it —
+  // falling back to `remaining` would subtract courses judged by somebody else and promise
+  // a smaller batch than the one about to run.
   const judgedByPinned =
-    byAssessor.find((entry) => entry.assessor_id === study.assessor_id)?.evaluated ?? null;
-  const toEvaluate = judgedByPinned === null ? remaining : Math.max(courses - judgedByPinned, 0);
+    byAssessor.find((entry) => entry.assessor_id === study.assessor_id)?.evaluated ?? 0;
+  const toEvaluate = Math.max(courses - judgedByPinned, 0);
 
   return (
     <>

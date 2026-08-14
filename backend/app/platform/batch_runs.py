@@ -382,14 +382,18 @@ def prepare(
                 kind="assessor_not_pinned",
             )
         assessor = SqlAlchemyAssessorRepository(session).get_by_id(study.assessor_id)
-        config = assessor.source_config if assessor is not None else None
-        if assessor is None or not config:
+        config = assessor.source_config if assessor is not None else {}
+        pinned_name, pinned_version = (config or {}).get("name"), (config or {}).get("version")
+        # The identity, not just the row: an automated assessor IS `(name, version)` inside
+        # `source_config` (ADR-0016), and a row missing either is one nothing can resolve to
+        # a package. Refused with the rest, because a run that dies of a KeyError here says
+        # nothing about which act would fix it.
+        if assessor is None or pinned_name is None or pinned_version is None:
             raise BatchRefused(
                 f"study {study_id} pins assessor {study.assessor_id}, which is not a "
                 "registered automated assessor",
                 kind="assessor_not_registered",
             )
-        pinned_name, pinned_version = config["name"], config["version"]
         if package is not None and (package.name, package.version) != (
             pinned_name,
             pinned_version,

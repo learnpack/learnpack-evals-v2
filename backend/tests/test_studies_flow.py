@@ -78,6 +78,7 @@ from app.modules.evaluation_studies.infrastructure.repository import (
     SqlAlchemyStudyReportRepository,
     SqlAlchemyStudyRepository,
 )
+from app.platform.batch_router import read_study_evaluations
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.infrastructure.fetchers import FilesystemFetcher
@@ -138,6 +139,62 @@ def _register_course(cleanup, unique, suffix, generator_version_id=None):
     with SessionLocal() as session:
         profile_content_use_case(session)(ProfileContentCommand(content_id=content.id))
     return content
+
+
+def _stray_judgment(session, cleanup, unique, content_id, version_id):
+    """A judgment on one of the study's courses, by an assessor the study did not pin.
+
+    Written as rows rather than through `evaluate`: producing one that way needs a second
+    package ratified against this throwaway lineage, which is a lot of scaffolding for a
+    fact the readers only have to *ignore*. Returns the intruder's id.
+    """
+    assessor_id, evaluation_id = uuid4(), uuid4()
+    name = f"intruder-{unique}"
+    session.execute(
+        text(
+            """
+            INSERT INTO assessors (id, role, kind, display_name, source_config)
+            VALUES (:id, 'evaluator', 'automated', :name, cast(:config as jsonb))
+            """
+        ),
+        {
+            "id": assessor_id,
+            "name": name,
+            "config": json.dumps({"name": name, "version": "1", "instrumentId": "qa"}),
+        },
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO evaluations (id, assessor_id, content_id, instrument_version_id, attempt)
+            VALUES (:id, :assessor_id, :content_id, :version_id, 9)
+            """
+        ),
+        {
+            "id": evaluation_id,
+            "assessor_id": assessor_id,
+            "content_id": content_id,
+            "version_id": version_id,
+        },
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO quality_judgments
+                (id, evaluation_id, content_id, instrument_version_id, coverage)
+            VALUES (:id, :evaluation_id, :content_id, :version_id, '{}'::jsonb)
+            """
+        ),
+        {
+            "id": uuid4(),
+            "evaluation_id": evaluation_id,
+            "content_id": content_id,
+            "version_id": version_id,
+        },
+    )
+    session.commit()
+    cleanup["assessors"].append(str(assessor_id))
+    return assessor_id
 
 
 def _studies_wiring(session):
@@ -609,3 +666,19 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
     assert run_evaluate_study(study.id, f"{patched_package.name}:1", 2, False) == 0
     resumed = json.loads(capsys.readouterr().out)
     assert resumed["totals"]["skipped"] == 2 and resumed["totals"]["evaluated"] == 0
+
+    # --- the count on the page means what the report means
+    # A judgment by somebody who is not this study's judge — reachable through the
+    # per-content `evaluate`, which is study-agnostic by design (ADR-0042 §10). It must not
+    # raise the headline count, or the card would read "3 of 2 judged" beside a report
+    # composed from two. The breakdown still shows it, because that is the reading that
+    # makes a stray judgment visible at all.
+    stray = _stray_judgment(session, cleanup, unique, first.id, version_id)
+    with SessionLocal() as s:
+        # `admin` is FastAPI's auth gate and is not read by the body; the study is.
+        progress = read_study_evaluations(study.id, admin=None, uow=UnitOfWork(s))
+    assert (progress.courses, progress.evaluated) == (2, 2)
+    split = {str(e.assessor_id): e.evaluated for e in progress.evaluated_by_assessor}
+    # The intruder's judgment is the most recent one on that course. Counted per author,
+    # so it neither hides the study's own judgment of it nor inflates the headline.
+    assert split == {assessor_row_id: 2, str(stray): 1}
