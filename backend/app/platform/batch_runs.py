@@ -360,25 +360,27 @@ def prepare(
         if study.status != "open":
             raise BatchRefused(
                 f"study {study_id} is {study.status}: a batch evaluates an OPEN study, whose "
-                "dataset is fixed (open-study first, or publish-study if it is finished)",
+                "dataset is fixed (open-study first, or sign-off-study if it is finished)",
                 kind="study_not_open",
             )
         instrument_version_id = study.instrument_version_id
         if instrument_version_id is None:
             raise BatchRefused(
-                f"study {study_id} has no instrument pinned — pin-study first",
+                f"study {study_id} has no instrument — choose one with update-study, "
+                "then open-study",
                 kind="instrument_not_chosen",
             )
         if not study.content_ids:
             raise BatchRefused(
-                f"study {study_id} has an empty dataset — compose-dataset first",
+                f"study {study_id} has an empty dataset — compose it with update-study --brief-id",
                 kind="dataset_empty",
             )
 
         if study.assessor_id is None:
             raise BatchRefused(
-                f"study {study_id} has no assessor pinned — pin-assessor first; a study's "
-                "result is its dataset, its instrument version AND its judge (ADR-0042)",
+                f"study {study_id} has no judge — choose one with update-study --assessor; "
+                "a study's result is its dataset, its instrument version AND its judge "
+                "(ADR-0042)",
                 kind="assessor_not_chosen",
             )
         assessor = SqlAlchemyAssessorRepository(session).get_by_id(study.assessor_id)
@@ -417,7 +419,7 @@ def prepare(
         if not SqlAlchemyRatificationRepository(session).is_ratified(
             assessor.id, instrument_version_id
         ):
-            # Unreachable through `pin-assessor`, which demands it. Kept because the run is
+            # Unreachable through `update-study`, which demands it. Kept because the run is
             # what spends money, and this is the one guarantee it must not inherit on trust.
             raise BatchRefused(
                 f"{package.display_name} has not ratified {instrument_version_id} (ADR-0019) — "
