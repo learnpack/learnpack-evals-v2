@@ -1,15 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -18,17 +13,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StudyStatusBadge } from "@/components/admin/study-status";
-import { ApiError } from "@/lib/api/client";
-import { useAssessorPackages, useDeclareStudy, useStudies } from "@/lib/api/hooks";
+import { useAssessorPackages, useStudies } from "@/lib/api/hooks";
 import type { StudyResponse } from "@/lib/api/types";
 
-/** A list, and only a list. Every act on a study — pinning, composing, opening, evaluating,
- *  signing off — lives on that study's own page, in the order a round goes. */
+/** A list, and only a list. Everything done to a study — building it, evaluating it,
+ *  signing it off — lives on a page of its own, and creating one is the same form a draft
+ *  is edited in, so this page no longer carries a dialog of its own. */
 export default function StudiesPage() {
+  const router = useRouter();
   const { data: studies, isLoading, error } = useStudies();
-  const [creating, setCreating] = useState(false);
 
   return (
     <div className="max-w-5xl">
@@ -36,13 +31,12 @@ export default function StudiesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Evaluation studies</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            One named round: it pins a published instrument, composes a brief-paired
-            dataset, opens (which fixes the dataset), is evaluated, and is signed off into
-            an immutable report. Everything you do to a study happens on its own page —
-            this is the list.
+            One named round: an instrument, a judge and a set of courses. It stays a draft
+            until you start it — that is what fixes the three — and it ends when somebody
+            signs its report off.
           </p>
         </div>
-        <Button className="shrink-0" onClick={() => setCreating(true)}>
+        <Button className="shrink-0" onClick={() => router.push("/admin/studies/new")}>
           <Plus className="h-4 w-4" /> New study
         </Button>
       </div>
@@ -65,7 +59,7 @@ export default function StudiesPage() {
                   <TableHead>Study</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Instrument</TableHead>
-                  <TableHead>Assessor</TableHead>
+                  <TableHead>Judge</TableHead>
                   <TableHead className="text-right">Briefs → courses</TableHead>
                   <TableHead className="text-right">Created</TableHead>
                 </TableRow>
@@ -82,17 +76,14 @@ export default function StudiesPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* Outside the list: a dialog that unmounts with what rendered it would take an
-          in-flight act with it. */}
-      <NewStudyDialog open={creating} onClose={() => setCreating(false)} />
     </div>
   );
 }
 
 function StudyRow({ study }: { study: StudyResponse }) {
-  // The two pins side by side, because together they are what makes two rounds comparable:
-  // same norm and same judge, or the numbers are not measuring the same thing (ADR-0042).
+  // The instrument and the judge side by side, because together they are what makes two
+  // rounds comparable: same norm and same judge, or the numbers are not measuring the same
+  // thing (ADR-0042).
   const { data: packages } = useAssessorPackages();
   const assessor = (packages ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
 
@@ -119,67 +110,5 @@ function StudyRow({ study }: { study: StudyResponse }) {
         {study.created_at ? new Date(study.created_at).toLocaleDateString() : "—"}
       </TableCell>
     </TableRow>
-  );
-}
-
-/** Asks for the name and nothing else, then goes where the work is. Declaring, pinning and
- *  composing are three acts and the domain lets them happen in any order, but a person
- *  doing them wants one place and a stated order — which is the study's own page. */
-function NewStudyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter();
-  const declare = useDeclareStudy();
-  const [name, setName] = useState("");
-
-  function create() {
-    declare.mutate(
-      { name: name.trim() },
-      {
-        onSuccess: (study) => {
-          setName("");
-          onClose();
-          toast.success("Study created.", {
-            description: "Next: pin an instrument and compose the dataset.",
-          });
-          router.push(`/admin/studies/${study.study_id}`);
-        },
-        onError: (err) =>
-          toast.error("Could not create the study.", {
-            description: (err as ApiError).message,
-          }),
-      },
-    );
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title="New study"
-      description="A study is one round. Name it here — pinning the instrument and composing the dataset happen on its own page, in order."
-    >
-      <Label htmlFor="study-name">Name</Label>
-      <Input
-        id="study-name"
-        autoFocus
-        className="mt-2"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && name.trim() && !declare.isPending) create();
-        }}
-        placeholder="e.g. First LearnpackV1 QA round"
-      />
-      <p className="mt-2 text-xs text-muted-foreground">
-        This names the round for everyone who later reads its report, so say what it is for.
-      </p>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onClose} disabled={declare.isPending}>
-          Cancel
-        </Button>
-        <Button onClick={create} disabled={declare.isPending || !name.trim()}>
-          {declare.isPending ? <Spinner /> : null} Create study
-        </Button>
-      </div>
-    </Dialog>
   );
 }

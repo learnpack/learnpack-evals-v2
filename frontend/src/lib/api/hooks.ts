@@ -2,6 +2,7 @@
 
 import {
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -57,6 +58,7 @@ import type {
   ScoresReport,
   SourceRootResponse,
   StartBatchRequest,
+  MatchingResponse,
   StudyEvaluations,
   StudyFitness,
   StudyReadiness,
@@ -113,6 +115,8 @@ export const queryKeys = {
     ["admin", "studies", id, "criterion-outcomes"] as const,
   studyReadiness: (id: Uuid) => ["admin", "studies", id, "readiness"] as const,
   studyFitness: (id: Uuid) => ["admin", "studies", id, "fitness"] as const,
+  matching: (versionId: string, packageFormat: string) =>
+    ["admin", "instruments", versionId, "matching", packageFormat] as const,
   studyEvaluations: (id: Uuid) => ["admin", "studies", id, "evaluations"] as const,
   studyEvaluationRun: (id: Uuid, runId: Uuid | string) =>
     ["admin", "studies", id, "evaluations", runId] as const,
@@ -467,6 +471,48 @@ export function useStartPreviewRun() {
     retry: false,
     mutationFn: (body: PreviewEvaluationRequest) =>
       api<PreviewRunStarted>("/admin/evaluations/preview", { method: "POST", body }),
+  });
+}
+
+/** What each package format in a dataset can answer of the chosen instrument.
+ *
+ *  One query per format, because the endpoint answers per format and a dataset rarely has
+ *  more than two. It runs before a study exists, which is the whole point: the form has to
+ *  be able to say what a course in `LearnpackV1` will leave unassessed while the reader can
+ *  still change their mind about including it.
+ */
+export function useMatchings(instrumentVersionId: string | null, formats: string[]) {
+  const api = useApi();
+  return useQueries({
+    queries: formats.map((packageFormat) => ({
+      queryKey: queryKeys.matching(instrumentVersionId ?? "", packageFormat),
+      queryFn: () =>
+        api<MatchingResponse>(
+          `/admin/instruments/${instrumentVersionId}/matching?package_format=${encodeURIComponent(packageFormat)}`,
+        ),
+      enabled: Boolean(instrumentVersionId),
+    })),
+    combine: (results) => {
+      const byFormat = new Map<string, MatchingResponse>();
+      for (const result of results) {
+        if (result.data) byFormat.set(result.data.packageFormat, result.data);
+      }
+      return { byFormat, isLoading: results.some((r) => r.isLoading) };
+    },
+  });
+}
+
+/** Starts the batch for a study named at call time rather than at render time — which is
+ *  what "Save & evaluate" on a study that did not exist a second ago needs. Never retried,
+ *  for `useStartStudyEvaluation`'s reason: a second start is a second bill. */
+export function useStartRound() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: ({ studyId, body }: { studyId: Uuid; body: StartBatchRequest }) =>
+      api<BatchRunStarted>(`/admin/studies/${studyId}/evaluations`, { method: "POST", body }),
+    onSuccess: (_data, { studyId }) => invalidateStudy(qc, studyId),
   });
 }
 

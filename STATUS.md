@@ -31,8 +31,12 @@ cost, and the clause says so. Step 2 is in too: a draft's instrument, judge and 
 **replace freely** until `open`, which is now what pins them — `POST /admin/studies` takes
 the whole selection and `PATCH /admin/studies/{id}` corrects it, where three pin/compose
 endpoints used to be; `InstrumentPinned` and `AssessorPinned` are retired because
-`StudyOpened` already carries the triple. Still to come: the console's four setup steps
-become one form whose primary action is *Save & evaluate* (step 3).
+`StudyOpened` already carries the triple. Step 3 closes it: the four setup steps and the
+"new study" dialog are gone, replaced by **one form** (`components/admin/study-form.tsx`)
+that serves `/admin/studies/new` and a draft's own page alike, filters judges by
+ratification, marks courses whose format the instrument can only read in part instead of
+hiding them, and whose primary action — *Save & evaluate* — saves, opens and starts the
+batch in three requests, so a failure in the middle leaves a valid draft.
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.

@@ -1,22 +1,14 @@
 "use client";
 
-import { use, useEffect, useState, type ReactNode } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Check,
-  FileCheck,
-  ListChecks,
-  Play,
-  Square,
-} from "lucide-react";
+import { ArrowLeft, FileCheck, Play, Square } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Dialog } from "@/components/ui/dialog";
-import { Select } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -28,15 +20,12 @@ import {
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { assessorLabel } from "@/components/admin/assessor-label";
 import { StudyStatusBadge } from "@/components/admin/study-status";
+import { StudyForm } from "@/components/admin/study-form";
 import { StudyReportSection } from "@/components/admin/study-report/report-section";
 import { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
-  useBriefs,
   useCancelStudyEvaluation,
-  useInstruments,
-  useOpenStudy,
-  useUpdateStudyDraft,
   useSignOffStudy,
   useStartStudyEvaluation,
   useStudy,
@@ -60,7 +49,10 @@ import type {
 import { cn } from "@/lib/utils";
 
 /** Everything one study needs doing happens here, in the order a round actually goes:
- *  set it up, evaluate it, sign the report off. The list is a list. */
+ *  build it, evaluate it, sign the report off. The list is a list.
+ *
+ *  While it is a draft this page renders the same form `/admin/studies/new` does — with an
+ *  id, and nothing else different. They were two screens for one job (ADR-0043 §1). */
 export default function StudyDetailPage({
   params,
 }: {
@@ -86,7 +78,7 @@ export default function StudyDetailPage({
     <div className="max-w-5xl space-y-6">
       <StudyHeader study={study} />
 
-      {inSetup ? <SetupCard study={study} /> : null}
+      {inSetup ? <StudyForm study={study} /> : null}
 
       {/* Evaluating and signing off are what an OPEN study is for. Once it is signed off a
           batch is refused and the report already states how many judgments it used, so the
@@ -153,332 +145,6 @@ function actError(err: unknown) {
   } else {
     toast.error("The act failed.", { description: e.message });
   }
-}
-
-// ------------------------------------------------------------------------------ setup
-
-/** The choices that make a study runnable. Their order is the one dependency between
- *  them — the judge list is filtered by ratification against the chosen instrument — and
- *  none of them is binding: opening is what pins the triple (ADR-0043 §1). */
-function SetupCard({ study }: { study: StudyResponse }) {
-  const chosen = study.instrument_version_id !== null;
-  const judged = study.assessor_id !== null;
-  const composed = study.content_ids.length > 0;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <ListChecks className="h-4 w-4 text-muted-foreground" /> Setup
-          <span className="text-xs font-normal text-muted-foreground">
-            everything here can change until you open the study
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6 text-sm">
-        <SetupStep
-          n={1}
-          done={chosen}
-          title="Choose the instrument"
-          hint="Which published instrument version this study judges against. Changeable while the study is a draft; opening is what makes it permanent, because from then on what the study measured has to stay knowable."
-        >
-          <ChooseInstrumentStep study={study} />
-        </SetupStep>
-
-        {/* Second, not last: it can only offer assessors that ratified the chosen version,
-            so there is nothing to choose from until step 1 is done. */}
-        <SetupStep
-          n={2}
-          done={judged}
-          title="Choose the judge"
-          hint="Whose verdicts are this study's result. Fixed at opening, like the instrument — a round judged half by one assessor and half by another is not one result. Only assessors that have ratified the chosen version can be picked."
-        >
-          <ChooseAssessorStep study={study} />
-        </SetupStep>
-
-        <SetupStep
-          n={3}
-          done={composed}
-          title="Compose the dataset"
-          hint="Briefs select the courses registered from them. Replaceable until the study opens, and fixed forever after."
-        >
-          <ComposeStep study={study} />
-        </SetupStep>
-
-        <SetupStep
-          n={4}
-          done={false}
-          title="Open the study"
-          hint="Opening fixes the instrument, the judge and the dataset, and lets the batch run. There is no un-opening."
-        >
-          <OpenStep study={study} chosen={chosen} judged={judged} composed={composed} />
-        </SetupStep>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SetupStep({
-  n,
-  title,
-  hint,
-  done,
-  children,
-}: {
-  n: number;
-  title: string;
-  hint: string;
-  done: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex gap-3">
-      <span
-        className={cn(
-          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
-          done ? "border-emerald-600 bg-emerald-600 text-white" : "text-muted-foreground",
-        )}
-      >
-        {done ? <Check className="h-3.5 w-3.5" /> : n}
-      </span>
-      <div className="min-w-0 flex-1 space-y-2">
-        <p className="font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{hint}</p>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ChooseInstrumentStep({ study }: { study: StudyResponse }) {
-  const { data: instruments } = useInstruments();
-  const update = useUpdateStudyDraft();
-  const [selected, setSelected] = useState(study.instrument_version_id ?? "");
-  const published = (instruments ?? []).filter((i) => i.status === "published");
-  const changing = Boolean(study.instrument_version_id);
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-72">
-        <option value="">Choose a published instrument…</option>
-        {published.map((i) => (
-          <option key={i.instrument_version_id} value={i.instrument_version_id}>
-            {i.instrument_version_id}
-          </option>
-        ))}
-      </Select>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!selected || selected === study.instrument_version_id || update.isPending}
-        onClick={() =>
-          update.mutate(
-            {
-              studyId: study.study_id,
-              // The judge goes with it when it did not ratify the new version: the endpoint
-              // refuses the pair rather than guessing, so the console says which it meant.
-              body: {
-                instrument_version_id: selected,
-                ...(changing ? { assessor_id: null } : {}),
-              },
-            },
-            {
-              onSuccess: () =>
-                toast.success(
-                  changing
-                    ? "Instrument changed — choose the judge again."
-                    : "Instrument chosen.",
-                ),
-              onError: actError,
-            },
-          )
-        }
-      >
-        {update.isPending ? <Spinner /> : null} {changing ? "Change" : "Choose"}
-      </Button>
-    </div>
-  );
-}
-
-/** Step 2, built like step 1 with one difference that matters: the list is filtered by
- *  RATIFICATION against the chosen version, not by existence. An assessor that has not
- *  ratified would be refused by the endpoint, and an option that cannot work is worse than
- *  no option (the ADR-0036 stance, which the evaluate dialog already took). */
-function ChooseAssessorStep({ study }: { study: StudyResponse }) {
-  const { data: packages } = useAssessorPackages();
-  const update = useUpdateStudyDraft();
-  const [selected, setSelected] = useState(study.assessor_id ?? "");
-
-  const eligible = (packages ?? []).filter(
-    (pkg) =>
-      pkg.assessor_id !== null &&
-      pkg.lineage_versions.some(
-        (version) =>
-          version.instrument_version_id === study.instrument_version_id && version.ratified,
-      ),
-  );
-  const current = (packages ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
-
-  if (!study.instrument_version_id) {
-    return <p className="text-muted-foreground">Choose the instrument first.</p>;
-  }
-  if (eligible.length === 0) {
-    return (
-      <p className="text-muted-foreground">
-        No assessor has ratified <code>{study.instrument_version_id}</code>. Ratifying is a
-        human act and lives in /admin/assessors — without it no judgment may persist.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-72">
-        <option value="">Choose a ratified assessor…</option>
-        {eligible.map((pkg) => (
-          <option key={pkg.assessor_id ?? pkg.name} value={pkg.assessor_id ?? ""}>
-            {pkg.display_name}
-          </option>
-        ))}
-      </Select>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!selected || selected === study.assessor_id || update.isPending}
-        onClick={() =>
-          update.mutate(
-            { studyId: study.study_id, body: { assessor_id: selected as Uuid } },
-            {
-              onSuccess: () => toast.success("Judge chosen."),
-              onError: actError,
-            },
-          )
-        }
-      >
-        {update.isPending ? <Spinner /> : null} {current ? "Change" : "Choose"}
-      </Button>
-    </div>
-  );
-}
-
-function ComposeStep({ study }: { study: StudyResponse }) {
-  const [open, setOpen] = useState(false);
-  const { data: briefs } = useBriefs();
-  const compose = useUpdateStudyDraft();
-  const [selected, setSelected] = useState<Uuid[]>(study.brief_ids);
-  const composed = study.content_ids.length > 0;
-
-  function toggle(id: Uuid) {
-    setSelected((prev) => (prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]));
-  }
-
-  return (
-    <>
-      <p className="text-muted-foreground">
-        {composed
-          ? `${study.brief_ids.length} brief${study.brief_ids.length === 1 ? "" : "s"} → ${study.content_ids.length} course${study.content_ids.length === 1 ? "" : "s"}.`
-          : "No briefs picked yet."}
-      </p>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-        {composed ? "Change the dataset" : "Compose the dataset"}
-      </Button>
-      <Dialog
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Compose the dataset"
-        description="Briefs select the registered contents generated from them. The dataset stays replaceable until the study opens."
-      >
-        {!briefs || briefs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No briefs registered yet. Briefs arrive mechanically when contents with a
-            syllabus are registered (ADR-0022), or manually in /admin/briefs.
-          </p>
-        ) : (
-          <ul className="max-h-72 space-y-2 overflow-y-auto">
-            {briefs.map((brief) => (
-              <li key={brief.brief_id}>
-                <label className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(brief.brief_id)}
-                    onChange={() => toggle(brief.brief_id)}
-                    className="mt-1"
-                  />
-                  <span className="line-clamp-2">{brief.brief}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={compose.isPending}
-            onClick={() =>
-              compose.mutate(
-                { studyId: study.study_id, body: { brief_ids: selected } },
-                {
-                  onSuccess: (updated: StudyResponse) => {
-                    setOpen(false);
-                    toast.success(
-                      `Dataset composed: ${updated.content_ids.length} courses from ${updated.brief_ids.length} briefs.`,
-                    );
-                  },
-                  onError: actError,
-                },
-              )
-            }
-          >
-            {compose.isPending ? <Spinner /> : null} Compose
-          </Button>
-        </div>
-      </Dialog>
-    </>
-  );
-}
-
-function OpenStep({
-  study,
-  chosen,
-  judged,
-  composed,
-}: {
-  study: StudyResponse;
-  chosen: boolean;
-  judged: boolean;
-  composed: boolean;
-}) {
-  const openStudy = useOpenStudy();
-  return (
-    <>
-      <Button
-        size="sm"
-        disabled={!chosen || !judged || !composed || openStudy.isPending}
-        onClick={() =>
-          openStudy.mutate(
-            { studyId: study.study_id },
-            {
-              onSuccess: () =>
-                toast.success("Study open.", {
-                  description: "The dataset is frozen. Next: evaluate it.",
-                }),
-              onError: actError,
-            },
-          )
-        }
-      >
-        {openStudy.isPending ? <Spinner /> : null} Open the study
-      </Button>
-      {!chosen || !judged || !composed ? (
-        <p className="text-xs text-muted-foreground">
-          Do steps 1 to 3 first: opening is what fixes the whole triple a result is defined
-          by — the instrument, the judge and a non-empty dataset.
-        </p>
-      ) : null}
-    </>
-  );
 }
 
 // ------------------------------------------------------------------ evaluation (ADR-0040)
