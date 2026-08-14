@@ -40,7 +40,14 @@ export function EvidenceQuote({
   return (
     <div className="space-y-1">
       {where ? (
-        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{where}</p>
+        // Truncated: one locator shape carries the artifact's whole URL, which is worth
+        // having and not worth three lines above a quote.
+        <p
+          className="truncate text-[11px] uppercase tracking-wide text-muted-foreground"
+          title={where}
+        >
+          {where}
+        </p>
       ) : null}
       <button
         type="button"

@@ -77,18 +77,26 @@ src/
                                    # viewer), assessors (with Ratify), calibration,
                                    # studies, campaigns, reports
   components/
-    ui/                            # UI kit (button, card, table, dialog, select…)
+    ui/                            # UI kit (button, card, table, dialog, select,
+                                   # collapsible-section…)
     evaluator/                     # consume-content (iframe+fallback), score-form
-    admin/                         # content-form, campaign-form, assign-form
+    admin/                         # forms (content, campaign, assign), the shared badges
+                                   # and palettes (study-status, outcome-badge,
+                                   # claim-status), the quote/copy/distribution
+                                   # primitives, and study-report/ — the report renderer
   lib/
     auth/                          # identity seam: mode.ts + clerk.tsx / local.tsx
     api/                           # client.ts (fetch+headers), types.ts, hooks.ts (TanStack)
+    locator.ts                     # decodes an adapter's locator shape into a sentence
     constants.ts                   # rubric id, package format
   middleware.ts                    # protects everything but /sign-in (Clerk or local cookie)
 ```
 
-`src/lib/api/types.ts` is the TypeScript mirror of the FastAPI contract (snake_case, 1:1
-with the routers' `response_model`s).
+`src/lib/api/types.ts` mirrors the FastAPI contract. Most of it is snake_case, 1:1 with the
+routers' `response_model`s. The **composed-on-read projections are the exception** and are
+camelCase: readiness, fitness, the criterion record and the report document are
+`dict[str, Any]` on the backend with no `response_model` to mirror, so those types are the
+frontend's own statement of what it expects — nothing checks them but the reader.
 
 ## Content iframe
 
