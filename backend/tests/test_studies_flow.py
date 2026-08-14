@@ -203,7 +203,7 @@ def test_the_first_increment_closes_the_loop(
     # --- the norm: a published copy of the real instrument, ratified for the assessor
     version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
     assert run_ratify_assessor(patched_package.name, "1", version_id, email, []) == 0
-    track_automated(cleanup, patched_package.name)
+    assessor_id = track_automated(cleanup, patched_package.name)
 
     # --- the judgments
     assessor_arg = f"{patched_package.name}:1"
@@ -265,7 +265,19 @@ def test_the_first_increment_closes_the_loop(
     }
     assert report["judgmentIdsUsed"] == judgment_rows  # exactly the persisted judgments
 
+    # And whose they are. The id is recovered through the evaluation that produced each
+    # judgment; the label comes from Identity — so this is the whole chain, from the row
+    # the CLI wrote to the frozen document, not a DTO a test built by hand.
+    author = {
+        "assessorId": assessor_id,
+        "name": patched_package.name,
+        "version": "1",
+    }
+    assert report["assessorsUsed"] == [author]
+    assert report["caveats"]["mixedAssessors"]["assessors"] == []  # one judge, no caveat
+
     sections = {c["contentId"]: c for c in report["contents"]}
+    assert all(section["assessor"] == author for section in sections.values())
     assert set(sections) == {str(linked.id), str(orphan.id)}
     for section in sections.values():
         assert section["briefId"] == str(brief_id)
@@ -495,7 +507,7 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
 
     version_id = publish_instrument(cleanup, copy_spec(unique), admin_id)
     assert run_ratify_assessor(patched_package.name, "1", version_id, email, []) == 0
-    track_automated(cleanup, patched_package.name)
+    assessor_row_id = track_automated(cleanup, patched_package.name)
 
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
@@ -545,6 +557,14 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
         [first.id, second.id], version_id
     )
     assert {j.content_id for j in judgments} == {first.id, second.id}
+    # Each one knows who made it, read back off the rows the batch actually wrote.
+    assert {str(j.assessor_id) for j in judgments} == {assessor_row_id}
+
+    # And the two-module lookup behind the label: Evaluation answers WHICH assessor from a
+    # column of its own, Identity answers what that id is CALLED. Neither module knows the
+    # other's vocabulary, so this join only exists once it is exercised for real.
+    named = EvaluationGateway(session).get_judgments([first.id, second.id], version_id)
+    assert {j.assessor.display_name for j in named} == {f"{patched_package.name}:1"}
 
     # Running it again does the expensive half zero times: what this assessor already
     # evaluated is skipped, which is what makes an interrupted batch resumable.

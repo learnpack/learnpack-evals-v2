@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { assessorLabel } from "@/components/admin/assessor-label";
 import { ClaimStatusBadge } from "@/components/admin/claim-status";
 import { CopyButton } from "@/components/admin/copy-button";
 import { EvidenceQuote } from "@/components/admin/evidence-quote";
@@ -228,6 +229,10 @@ function Identifiers({ content }: { content: StudyReportContent }) {
       {content.derivedAt ? (
         <span className="text-xs text-muted-foreground">
           judged {new Date(content.derivedAt).toLocaleString()}
+          {/* Per course and not only in the header, because that is the grain the mixture
+              happens at: a report with two judges has some courses from each, and which
+              ones is the difference between reading it and guessing at it. */}
+          {content.assessor ? <> by {assessorLabel(content.assessor)}</> : null}
         </span>
       ) : null}
     </div>

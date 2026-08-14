@@ -168,10 +168,15 @@
   binding is redone per type — reusing an instrument on a new type = **a new version that adds
   the binding**.
 - **EvaluationStudy** — the **commission**: an evaluation round with a purpose (initial /
-  regression / comparison). Lifecycle: `Declared` (purpose, instrument pending) →
-  `Prepared` (instrument **pinned** once, immutable; set composed) → `Open` (set fixed) →
+  regression / comparison). Lifecycle: `Declared` (purpose, pins pending) →
+  `Prepared` (instrument **and assessor**, each **pinned** once, immutable; set composed) →
+  `Open` (set fixed) →
   `Published` (human act; immutable report, never re-issued, always with coverage and
-  caveats). Comparing rounds (`CompareStudies`) requires the same `instrumentVersion` +
+  caveats). **Its result is a triple** — dataset × `instrumentVersion` × `Assessor`
+  (ADR-0042): the assessor is pinned before opening the way the norm is, only that
+  assessor's judgments count, and a study that predates the pin reads by recency with its
+  mixture declared in the report. Comparing rounds (`CompareStudies`) requires the same
+  `instrumentVersion` **and the same assessor** +
   sets paired by briefs; the "line" is a derived grouping, not an entity.
   **Industry mapping:** see §"Equivalences with the evals industry".
 - **EvaluationDataset** *(formerly `EvaluationSet` — final rename for alignment with the
@@ -257,7 +262,10 @@
 - **QualityJudgment** — the published quality judgment on a content: a **per-criterion
   profile** (never a single aggregated score, ADR-0011) + **coverage** (assessed / not
   applicable / no evidence / no capable assessor / execution failed — ADR-0018, ADR-0037) +
-  **provenance** (`assessor` + `assessorCalibrationStatus`). With ECD-lite
+  **provenance** (`assessor` + `assessorCalibrationStatus`). The `assessor` half is read
+  through the `Evaluation` that produced the judgment and never stored twice, and it travels
+  in both forms — the id and `name:version` — because only the second means anything in
+  another store (ADR-0042). With ECD-lite
   (ADR-0013) it is communicated as **claims with evidential status** and findings under each
   claim. Event: `QualityJudgmentPublished`.
 - **Finding** — a finding derived from an unmet criterion: what failed, the **quote** (absent
@@ -276,8 +284,10 @@
   the individual stays the **version** — it is what can be *run* — and its `Generator` is what
   groups individuals across generations, ADR-0031),
   it carries its **formula version** and its **coverage** — including which assessors were
-  ratified, since values from different coverages are not comparable — and it **never enters a
-  `StudyReport`** (ADR-0011 is untouched: claims and findings remain the product).
+  ratified **and which actually judged** (ADR-0042: ratification is instrument-scoped and
+  permissive, participation is study-scoped and is what makes the comparability rule
+  checkable), since values from different coverages are not comparable — and it **never
+  enters a `StudyReport`** (ADR-0011 is untouched: claims and findings remain the product).
 
 ## Orchestration & calibration (supporting)
 

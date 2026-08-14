@@ -199,6 +199,7 @@ def test_progress_is_read_from_what_was_persisted_not_from_the_run(
 
     before = admin.get(f"/admin/studies/{study_id}/evaluations").json()
     assert (before["courses"], before["evaluated"]) == (2, 0)
+    assert before["evaluated_by_assessor"] == []
     assert before["runs"] == []
     assert before["default_concurrency"] >= 1
 
@@ -212,6 +213,7 @@ def test_progress_is_read_from_what_was_persisted_not_from_the_run(
     # Still 0: the fake use case persisted no evaluation, so no judgment was derived. The
     # count follows the database, not the run's own opinion of how it went.
     assert after["evaluated"] == 0
+    assert after["evaluated_by_assessor"] == []
     assert [r["run_id"] for r in after["runs"]] == [run_id]
 
 

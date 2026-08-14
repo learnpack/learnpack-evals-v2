@@ -14,6 +14,7 @@ from app.modules.evaluation_studies.application.criterion_outcomes import (
     compute_criterion_outcomes,
 )
 from app.modules.evaluation_studies.application.dtos import (
+    AssessorInfo,
     ContentInfo,
     CriterionOutcomeInfo,
     InstrumentClaim,
@@ -49,9 +50,18 @@ def content(content_id: UUID) -> ContentInfo:
     )
 
 
-def judgment(content_id: UUID, derived_at: datetime = NOW) -> JudgmentInfo:
+HYBRID_10 = AssessorInfo(assessor_id=uuid4(), name="drafts-hybrid", version="10")
+
+
+def judgment(
+    content_id: UUID, derived_at: datetime = NOW, assessor: AssessorInfo = HYBRID_10
+) -> JudgmentInfo:
     return JudgmentInfo(
-        judgment_id=uuid4(), content_id=content_id, derived_at=derived_at, coverage={}
+        judgment_id=uuid4(),
+        content_id=content_id,
+        derived_at=derived_at,
+        coverage={},
+        assessor=assessor,
     )
 
 
@@ -212,6 +222,7 @@ def test_nothing_is_ever_summed_across_criteria():
         "computedAt",
         "signal",
         "judgmentBasis",
+        "assessorsUsed",
         "gaps",
         "contents",
         "criteria",
@@ -220,6 +231,21 @@ def test_nothing_is_ever_summed_across_criteria():
     assert result["signal"] == "evidence"
     for criterion in result["criteria"]:
         assert set(criterion["coverage"]) == {"observed", "of"}
+
+
+def test_the_matrix_names_whose_evidence_it_is_showing():
+    """A cell's quote is what SOME judge read, and which judge decides whether two cells of
+    one criterion are even the same measurement — so the header names them beside
+    `judgmentBasis`, which answers the neighbouring half of the same question."""
+    a, b = uuid4(), uuid4()
+    other = AssessorInfo(assessor_id=uuid4(), name="drafts-hybrid", version="11")
+    ja, jb = judgment(a), judgment(b, assessor=other)
+    result = matrix(
+        [a, b],
+        [ja, jb],
+        [outcome(ja, "cr-modules", "pass", quote="ok"), outcome(jb, "cr-modules", "fail", "no")],
+    )
+    assert [entry["version"] for entry in result["assessorsUsed"]] == ["10", "11"]
 
 
 def test_a_study_with_nothing_pinned_answers_with_its_gaps():

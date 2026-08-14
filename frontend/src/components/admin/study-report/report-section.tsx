@@ -2,6 +2,7 @@
 
 import { FileText } from "lucide-react";
 import { LoadingState } from "@/components/ui/states";
+import { assessorLabel } from "@/components/admin/assessor-label";
 import { CaveatsLine } from "@/components/admin/study-report/caveats-line";
 import { CourseList } from "@/components/admin/study-report/course-list";
 import { CriteriaRollup } from "@/components/admin/study-report/criteria-rollup";
@@ -55,6 +56,12 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
         <span className="text-xs text-muted-foreground">
           {body.instrumentVersionId ?? "no instrument pinned"} · dataset of{" "}
           {body.dataset.size} · {Object.keys(body.judgmentIdsUsed).length} judgments
+          {/* Who judged, beside what they judged against. Absent on reports frozen before
+              ADR-0042, which are read as the records they are rather than annotated with a
+              guess. */}
+          {body.assessorsUsed?.length
+            ? ` · judged by ${body.assessorsUsed.map(assessorLabel).join(", ")}`
+            : ""}
         </span>
       </div>
 

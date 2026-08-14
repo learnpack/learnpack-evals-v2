@@ -325,19 +325,34 @@ class SqlAlchemyJudgmentRepository:
     def list_for_contents(
         self, content_ids: list[UUID], instrument_version_id: str
     ) -> list[QualityJudgmentDTO]:
-        """Two queries regardless of how many contents (ADR-0006)."""
+        """Two queries regardless of how many contents (ADR-0006).
+
+        The join carries the judgment's author, and it stops at `evaluations` on purpose.
+        The id is this module's to know — `evaluations.assessor_id` is one of its own
+        columns — while what that id is CALLED belongs to Identity, which owns `assessors`
+        and the `source_config` rule that makes `name:version` an identity (ADR-0016).
+        Reaching one table further would re-encode that rule here, where nothing would keep
+        the two copies in step; the label is resolved by whoever needs to show one, through
+        Identity's own batched lookup.
+
+        The join cannot drop or duplicate a row: `evaluation_id` is NOT NULL with a unique
+        FK and `evaluations.assessor_id` is NOT NULL with an FK of its own. It is INNER
+        deliberately — a LEFT JOIN would quietly absorb a judgment orphaned by some future
+        cascade instead of failing where it could be seen.
+        """
         if not content_ids:
             return []
         rows = (
             self._session.execute(
                 text(
                     """
-                    SELECT id, evaluation_id, content_id, instrument_version_id,
-                           derived_at, coverage
-                      FROM quality_judgments
-                     WHERE content_id = ANY(:content_ids)
-                       AND instrument_version_id = :instrument_version_id
-                     ORDER BY derived_at, id
+                    SELECT j.id, j.evaluation_id, j.content_id, j.instrument_version_id,
+                           j.derived_at, j.coverage, e.assessor_id
+                      FROM quality_judgments j
+                      JOIN evaluations e ON e.id = j.evaluation_id
+                     WHERE j.content_id = ANY(:content_ids)
+                       AND j.instrument_version_id = :instrument_version_id
+                     ORDER BY j.derived_at, j.id
                     """
                 ),
                 {"content_ids": content_ids, "instrument_version_id": instrument_version_id},
@@ -375,6 +390,7 @@ class SqlAlchemyJudgmentRepository:
             QualityJudgmentDTO(
                 judgment_id=row["id"],
                 evaluation_id=row["evaluation_id"],
+                assessor_id=row["assessor_id"],
                 content_id=row["content_id"],
                 instrument_version_id=row["instrument_version_id"],
                 derived_at=row["derived_at"],

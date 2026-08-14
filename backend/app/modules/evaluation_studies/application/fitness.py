@@ -27,7 +27,7 @@ from app.modules.evaluation_studies.application.dtos import (
     JudgmentInfo,
     RatificationInfo,
 )
-from app.modules.evaluation_studies.application.report import latest_judgments
+from app.modules.evaluation_studies.application.report import assessors_used, latest_judgments
 from app.modules.evaluation_studies.domain.model import Study
 
 # Bump when the arithmetic changes: values carrying different versions are not comparable,
@@ -342,14 +342,24 @@ def compute_fitness(
     )
     return header | {
         "assessorCoverage": {
+            # Two lists that answer two different questions, and the difference is the
+            # point (ADR-0042). `ratifiedAssessors` is scoped to the INSTRUMENT VERSION —
+            # who was permitted to judge with it, anywhere. `assessorsUsed` is scoped to
+            # THIS study — who actually produced the judgments these values are computed
+            # from. More than one entry there means the numbers pool populations judged by
+            # different artifacts, which is exactly the comparison the note forbids.
             "ratifiedAssessors": sorted(str(r.assessor_id) for r in ratifications),
+            "assessorsUsed": assessors_used(current),
             "notAssessed": not_assessed,
             "executionErrors": execution_errors,
             "note": (
                 "Values computed under different assessor coverage are not comparable: "
                 "not_assessed is outside the denominator, so the population differs. "
                 "executionErrors differ between runs of the SAME content under the SAME "
-                "assessor — compare only where these counts permit (ADR-0037 §6)."
+                "assessor — compare only where these counts permit (ADR-0037 §6). "
+                "ratifiedAssessors names who MAY judge with this instrument version; "
+                "assessorsUsed names who DID judge this study, and more than one there "
+                "means these values pool more than one judge."
             ),
         },
         "contents": content_sections,

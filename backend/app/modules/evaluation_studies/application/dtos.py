@@ -73,12 +73,36 @@ class ClaimJudgment:
 
 
 @dataclass(frozen=True)
+class AssessorInfo:
+    """Who produced a judgment — the key of provenance (GLOSSARY, `Assessor`).
+
+    Both forms travel: the id names the row, `name:version` is the identity that survives
+    the store being rebuilt elsewhere (the argument ADR-0039 §4 made for a brief's hash).
+    A human assessor has no `name`/`version` — it is identified by a credential — so both
+    are optional and the id is what is always there.
+    """
+
+    assessor_id: UUID
+    name: str | None = None
+    version: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        if self.name is None or self.version is None:
+            return str(self.assessor_id)
+        return f"{self.name}:{self.version}"
+
+
+@dataclass(frozen=True)
 class JudgmentInfo:
     judgment_id: UUID
     content_id: UUID
     derived_at: datetime
     coverage: dict[str, Any]  # {"criteria": {...}, "excludedClaims": [...]}
     claims: tuple[ClaimJudgment, ...] = ()
+    # Optional in the type, never absent in practice: every judgment has an author. It is
+    # optional so the pure report tests that predate provenance keep building one in a line.
+    assessor: AssessorInfo | None = None
 
 
 @dataclass(frozen=True)

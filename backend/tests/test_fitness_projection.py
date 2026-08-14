@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.modules.evaluation_studies.application.dtos import (
+    AssessorInfo,
     BriefInfo,
     ContentInfo,
     CriterionOutcomeInfo,
@@ -30,6 +31,8 @@ from app.modules.evaluation_studies.application.fitness import (
 from app.modules.evaluation_studies.domain.model import Study
 
 NOW = datetime(2026, 8, 7, tzinfo=UTC)
+
+HYBRID_10 = AssessorInfo(assessor_id=uuid4(), name="drafts-hybrid", version="10")
 
 
 def instrument(claims, criteria, quality_dimensions=None) -> InstrumentInfo:
@@ -64,8 +67,10 @@ def project(
     briefs_of: dict[UUID, UUID | None] | None = None,
     briefs: dict[UUID, BriefInfo] | None = None,
     recipe: list[UUID] | None = None,
+    assessor_of: dict[UUID, AssessorInfo] | None = None,
 ) -> dict:
     """Run the projection over hand-written outcomes, one judgment per content."""
+    assessor_of = assessor_of or {}
     generators_of = generators_of or {}
     briefs_of = briefs_of or {}
     contents, judgments, outcomes = [], [], []
@@ -82,7 +87,11 @@ def project(
         )
         judgments.append(
             JudgmentInfo(
-                judgment_id=judgment_id, content_id=content_id, derived_at=NOW, coverage={}
+                judgment_id=judgment_id,
+                content_id=content_id,
+                derived_at=NOW,
+                coverage={},
+                assessor=assessor_of.get(content_id, HYBRID_10),
             )
         )
         outcomes.extend(
@@ -500,6 +509,32 @@ def test_every_value_travels_with_its_formula_version_and_assessor_coverage():
     assert result["assessorCoverage"]["ratifiedAssessors"] == [str(assessor)]
     assert result["assessorCoverage"]["notAssessed"] == 1
     assert result["assessorCoverage"]["executionErrors"] == 1
+    # Who MAY judge and who DID are different questions, and the ratified one answers
+    # neither on its own: this assessor ratified the version and judged nothing.
+    assert result["assessorCoverage"]["assessorsUsed"] == [
+        {"assessorId": str(HYBRID_10.assessor_id), "name": "drafts-hybrid", "version": "10"}
+    ]
+
+
+def test_a_value_pooling_two_judges_says_so_where_the_ga_reads_it():
+    """`not_assessed` is outside the denominator, so two assessors compute over different
+    populations — the reason the coverage block exists at all (ADR-0023 §7). Until now it
+    could name who was permitted, never who actually produced these numbers, so a mixed
+    study looked exactly like a clean one."""
+    inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
+    a, b = uuid4(), uuid4()
+    other = AssessorInfo(assessor_id=uuid4(), name="drafts-hybrid", version="11")
+
+    result = project(
+        inst,
+        {a: {"cr": "pass"}, b: {"cr": "fail"}},
+        assessor_of={b: other},
+    )
+
+    assert [e["version"] for e in result["assessorCoverage"]["assessorsUsed"]] == ["10", "11"]
+    # And the number itself is unmoved: naming the judges is labelling, not arithmetic.
+    assert result["study"]["qualities"]["q"]["fitness"] == 0.5
+    assert result["formulaVersion"] == "1"
     assert result["denominatorRule"]["excluded"] == [
         "not_applicable",
         "not_assessed",

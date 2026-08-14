@@ -359,6 +359,15 @@ export interface StudyReportFinding {
   locator: unknown;
 }
 
+/** Who produced a judgment (ADR-0042). `name`/`version` identify an automated artifact and
+ *  are null for a human assessor, whose identity is a credential — so `assessorId` is the
+ *  one field that is always there, and `assessorLabel` is what renders either. */
+export interface AssessorRef {
+  assessorId: string;
+  name: string | null;
+  version: string | null;
+}
+
 export interface StudyReportContent {
   contentId: string;
   externalId: string;
@@ -366,6 +375,8 @@ export interface StudyReportContent {
   briefId: string | null;
   generatorVersionId: string | null;
   judgmentId: string | null;
+  /** Null when the course carries no judgment; absent on reports frozen at schemaVersion 1. */
+  assessor?: AssessorRef | null;
   derivedAt?: string;
   coverage?: unknown;
   claims?: StudyReportClaim[];
@@ -399,6 +410,8 @@ export interface StudyReportCaveats {
   taskVariablePatterns: { status: string; reason: string };
   /** Absent on reports published before ADR-0037 — those are frozen; render as empty. */
   executionErrors?: { perContent: { contentId: string; count: number }[]; note: string };
+  /** Absent on reports frozen at schemaVersion 1 (before ADR-0042), for the same reason. */
+  mixedAssessors?: { assessors: AssessorRef[]; note: string };
 }
 
 export interface StudyReport {
@@ -410,6 +423,8 @@ export interface StudyReport {
   publishedBy: string | null;
   dataset: { size: number; briefIds: string[]; contentIds: string[] };
   judgmentIdsUsed: Record<string, string>;
+  /** The distinct authors of the judgments this document reflects. Absent at schemaVersion 1. */
+  assessorsUsed?: AssessorRef[];
   contents: StudyReportContent[];
   generatorLevel: StudyReportGenerator[];
   caveats: StudyReportCaveats;
@@ -521,6 +536,9 @@ export interface CriterionOutcomes {
    *  its frozen report recorded, so re-evaluating afterwards cannot make the evidence
    *  disagree with the document it explains. */
   judgmentBasis: { basis: "current" | "publishedReport"; note: string };
+  /** And whose those judgments are: a cell's quote is what SOME judge read, and more than
+   *  one entry means two cells of one criterion are not the same measurement. */
+  assessorsUsed: AssessorRef[];
   gaps: StudyGap[];
   contents: CriterionOutcomeContent[];
   criteria: CriterionOutcomeSection[];
@@ -631,8 +649,19 @@ export interface StudyEvaluations {
   /** Read from the database, not from a run: it survives a restart and counts a batch
    *  someone ran from the CLI. */
   evaluated: number;
+  /** The same count split by who produced it. `evaluated` answers how much of the study has
+   *  been judged at all; this answers how much a given assessor would skip — the question
+   *  the start dialog is actually asking, and the one an instrument-wide number cannot. */
+  evaluated_by_assessor: AssessorProgress[];
   default_concurrency: number;
   runs: BatchRun[];
+}
+
+export interface AssessorProgress {
+  assessor_id: Uuid;
+  name: string | null;
+  version: string | null;
+  evaluated: number;
 }
 
 export interface StartBatchRequest {
@@ -671,7 +700,10 @@ export interface StudyFitness {
   gaps: { gap: string }[];
   briefs: FitnessBrief[];
   assessorCoverage: {
+    /** Who MAY judge with this instrument version — ratification, not participation. */
     ratifiedAssessors?: string[];
+    /** Who DID judge this study. More than one and these values pool more than one judge. */
+    assessorsUsed?: AssessorRef[];
     notAssessed?: number;
     executionErrors?: number;
     note?: string;

@@ -18,7 +18,9 @@ mechanical discovery), ADR-0034 (LLM-carrying assessors, realized by
 ADR-0037 (execution failure is an outcome — realized end to end, see below) and
 ADR-0041 (the frozen report is the record, not the reading surface — a study's result
 is readable before it is signed, and the evidence behind every criterion lives outside
-the frozen row) on top of it.**
+the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
+triple — the provenance half is realized, the study's assessor pin is decided and not
+built, see Open) on top of it.**
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -218,6 +220,30 @@ on a published study: readiness is computed from today's ratifications and adapt
 frozen report it can contradict the document beside it. Human text (statements, pass conditions,
 failure modes) is joined from the immutable instrument version rather than denormalized into the
 frozen row.
+
+**A judgment now names its author (ADR-0042, first of two PRs).** The report froze *which*
+judgments it reflected and never *whose*: `latest_judgments` keyed on the content alone, so
+half a study judged by `drafts-hybrid:10` and three courses repaired with `:11` published as
+one document that could not say so — and the fitness value the GA reads averaged across both
+while publishing `ratifiedAssessors`, who was *permitted* to judge. The fix needed **no
+migration**: `quality_judgments.evaluation_id` is a unique FK and `evaluations.assessor_id` is
+NOT NULL, so the author is a total function of what is already persisted. Evaluation joins
+only `evaluations` — its own table — and the **label** comes from Identity's batched
+`list_assessors`, because `source_config->>'name'` is ADR-0016's identity rule and re-encoding
+it in a second module is how two copies drift; the gateway crosses to both, which is what a
+gateway is for. Reading `assessors` from Evaluation's SQL would have been the repo's first
+cross-module table read and would have passed the architecture test, which checks imports and
+not SQL. The report now carries the assessor per course and an `assessorsUsed` header, plus a
+ninth caveat (`mixedAssessors`) that fires above one author; the fitness publishes
+`assessorsUsed` beside `ratifiedAssessors` with a note saying which is which; the criterion
+matrix names them beside `judgmentBasis`; and the durable count is split per assessor, so the
+console's *"Up to N"* — an honest patch for a number that could not be computed — becomes an
+exact one in the dialog, where the assessor is known. **`SCHEMA_VERSION` moves to 2**, which is
+ADR-0041 §8's own test applied in the other direction (there the output was byte-identical;
+here it changed) — and since nothing branches on it, the real protection is that every new
+frontend field is optional and read defensively: a report frozen at version 1 is the record it
+is. The caveats line stopped spelling its own count in prose, which had been wrong once
+already.
 
 **A stale schema now refuses at the door, and the incident that asked for it.** The first real
 batch died mid-course on `UndefinedColumn: execution_cause`: the development database was at
@@ -1242,19 +1268,15 @@ the data in the package).
 
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
-- **A judgment does not say who made it, and the report does not record it.** The sharpest
-  defect left in the studies area, and it is invisible until there are two assessors — which a
-  version bump already makes, since each `drafts-hybrid` version is its own identity.
-  `QualityJudgmentDTO` carries no `assessor_id`, `latest_judgments` takes the most recent
-  judgment per content *whoever produced it*, and `compose_report` emits the assessor nowhere:
-  `judgmentIdsUsed` pins **which** judgments, never **whose**. So evaluating half a study with
-  `:10`, bumping to `:11` to repair three courses and publishing yields an immutable report
-  that silently mixes two assessors. The same blindness makes `read_study_evaluations`'s count
-  disagree with the batch's skip set (one is per instrument version, the other per assessor) —
-  the console states that limit in words rather than pretending otherwise. The assessor is one
-  join away (`quality_judgments.evaluation_id` → `evaluations.assessor_id`, unique FK) and
-  Identity already publishes `list_assessors` batched, for exactly this. **Decided to be its
-  own PR; not started.**
+- **The study does not pin its assessor yet** — the second half of ADR-0042, decided and not
+  built. The judgment now names its author everywhere (see above), so a mixture is visible;
+  what is still legal is producing one. Clauses 8–11: the study pins one assessor before
+  opening, `open()` refuses without it, every read filters by it, the batch takes it from the
+  study, and studies that predate the pin are backfilled where the answer is unambiguous and
+  left unpinned where it is not. It needs migration 0019 (`studies.assessor_id`), a
+  `pin-assessor` act at all three doors, an `assessor_not_pinned` readiness gap, and the
+  console's setup gaining a step. **Until it lands, the console's per-assessor split is what
+  keeps a mixture from being invisible, not what prevents one.**
 - **Studies cannot be deleted or renamed.** No `DELETE` and no `PATCH` anywhere in the app, and
   `purpose` is write-once at declare. A study created and abandoned stays in the list forever.
   It blocks nothing — the console's guided setup was chosen partly so a half-made study is
