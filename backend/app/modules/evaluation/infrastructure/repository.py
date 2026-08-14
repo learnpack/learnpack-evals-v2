@@ -399,7 +399,8 @@ class SqlAlchemyJudgmentRepository:
                 text(
                     """
                     SELECT j.id AS judgment_id, j.content_id, o.criterion_id, o.outcome,
-                           o.derived
+                           o.derived, o.quote, o.locator, o.failure_mode, o.comment,
+                           o.execution_cause
                       FROM criterion_outcomes o
                       JOIN quality_judgments j ON j.evaluation_id = o.evaluation_id
                      WHERE j.content_id = ANY(:content_ids)
@@ -419,6 +420,11 @@ class SqlAlchemyJudgmentRepository:
                 criterion_id=row["criterion_id"],
                 outcome=row["outcome"],
                 derived=row["derived"],
+                quote=row["quote"],
+                locator=row["locator"],
+                failure_mode=row["failure_mode"],
+                comment=row["comment"],
+                execution_cause=row["execution_cause"],
             )
             for row in rows
         ]

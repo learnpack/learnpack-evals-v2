@@ -7,6 +7,7 @@ Domain invariants are specified in test_studies_domain.py; here the HTTP mapping
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 from test_instrument_authoring_api import import_spec, spec
 
 SYLLABUS_URL = "https://packages.learn-pack.com"
@@ -242,6 +243,96 @@ def test_fitness_is_its_own_resource_and_informs_before_there_is_anything_to_mea
     assert admin_client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 404
 
 
+def test_the_preview_answers_before_publishing_and_never_says_it_was_published(
+    admin_client, cleanup, unique
+):
+    """The whole reason this resource exists: a report that appears only after an
+    irreversible act is a report nobody can read before committing to it.
+
+    Pinned here: it answers while the study is still being set up and once it is composed;
+    the frozen `/report` keeps its 404 beside it; and `publishedAt` is absent, because a
+    preview carrying the composition's clock renders as "Published now".
+    """
+    bare_id = declare(admin_client, cleanup)
+
+    fresh = admin_client.get(f"/admin/studies/{bare_id}/report/preview")
+    assert fresh.status_code == 200, fresh.text
+    body = fresh.json()
+    assert body["documentKind"] == "preview", fresh.text
+    assert "publishedAt" not in body, fresh.text
+    assert body["composedAt"], fresh.text
+    assert body["frozenRecord"]["exists"] is False, fresh.text
+    assert {g["gap"] for g in body["gaps"]} == {"instrument_not_pinned", "dataset_not_composed"}
+    # Never a partial document: the empty sections are there, and every caveat kind.
+    assert body["contents"] == [] and body["generatorLevel"] == []
+    assert "insufficientEvidence" in body["caveats"], fresh.text
+
+    study_id, instrument_id, _ = composed_study(admin_client, cleanup, unique)
+    prepared = admin_client.get(f"/admin/studies/{study_id}/report/preview")
+    assert prepared.status_code == 200, prepared.text
+    composed = prepared.json()
+    assert composed["gaps"] == [], prepared.text
+    assert composed["instrumentVersionId"] == instrument_id
+    assert "publishedAt" not in composed, prepared.text
+    assert len(composed["contents"]) == 1, prepared.text
+    # Previewing is not publishing: the frozen row still does not exist.
+    assert admin_client.get(f"/admin/studies/{study_id}/report").status_code == 404
+
+
+def test_previewing_publishes_no_event_and_persists_nothing(admin_client, cleanup, unique, session):
+    """A preview is a read. If it ever became a write, this is where it shows: the study
+    would leave `prepared`, `study_reports` would gain a row, and the outbox would gain a
+    `StudyPublished` nobody performed."""
+    study_id, _, _ = composed_study(admin_client, cleanup, unique)
+
+    before = session.execute(
+        text("SELECT count(*) FROM events WHERE aggregate_id = :id"), {"id": study_id}
+    ).scalar_one()
+
+    assert admin_client.get(f"/admin/studies/{study_id}/report/preview").status_code == 200
+    assert admin_client.get(f"/admin/studies/{study_id}/report/preview").status_code == 200
+
+    after = session.execute(
+        text("SELECT count(*) FROM events WHERE aggregate_id = :id"), {"id": study_id}
+    ).scalar_one()
+    assert after == before
+    assert admin_client.get(f"/admin/studies/{study_id}").json()["status"] == "prepared"
+    assert admin_client.get(f"/admin/studies/{study_id}/report").status_code == 404
+
+
+def test_the_criterion_matrix_is_its_own_resource_and_has_a_denominator_from_the_pin(
+    admin_client, cleanup, unique
+):
+    """ADR-0011: a count of failures with no denominator is not an answer. The criteria come
+    from the instrument, so each has a denominator the moment a version is pinned — before
+    a single course has been judged."""
+    study_id = declare(admin_client, cleanup)
+
+    fresh = admin_client.get(f"/admin/studies/{study_id}/criterion-outcomes")
+    assert fresh.status_code == 200, fresh.text
+    body = fresh.json()
+    assert body["signal"] == "evidence", fresh.text
+    assert {g["gap"] for g in body["gaps"]} == {"instrument_not_pinned", "dataset_not_composed"}
+    assert body["criteria"] == [] and body["contents"] == []
+
+    instrument_id = published_instrument(admin_client, cleanup, unique)
+    admin_client.post(
+        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
+    )
+    pinned = admin_client.get(f"/admin/studies/{study_id}/criterion-outcomes").json()
+    assert [c["criterionId"] for c in pinned["criteria"]] == ["cr-min-objectives"]
+    # A criterion nothing produced an outcome for is 0 of 0, never a missing row.
+    assert pinned["criteria"][0]["coverage"] == {"observed": 0, "of": 0}
+    assert pinned["judgmentBasis"]["basis"] == "current"
+
+
+def test_an_unknown_study_has_neither_a_preview_nor_a_matrix(admin_client):
+    """Composed on read is not invented on read: there is no study to compose from."""
+    ghost = uuid4()
+    assert admin_client.get(f"/admin/studies/{ghost}/report/preview").status_code == 404
+    assert admin_client.get(f"/admin/studies/{ghost}/criterion-outcomes").status_code == 404
+
+
 def test_matching_reports_the_unmet_demand_per_format(admin_client, cleanup, unique):
     instrument_id = published_instrument(admin_client, cleanup, unique)
 
@@ -269,3 +360,5 @@ def test_studies_require_the_admin_role(as_user, cleanup, unique):
     assert client.get("/admin/studies").status_code == 403
     assert client.post("/admin/studies", json={"purpose": "nope"}).status_code == 403
     assert client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 403
+    assert client.get(f"/admin/studies/{uuid4()}/report/preview").status_code == 403
+    assert client.get(f"/admin/studies/{uuid4()}/criterion-outcomes").status_code == 403

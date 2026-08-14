@@ -83,13 +83,22 @@ class JudgmentInfo:
 
 @dataclass(frozen=True)
 class CriterionOutcomeInfo:
-    """One criterion's state under a judgment — the un-aggregated form (ADR-0023 §1)."""
+    """One criterion's state under a judgment — the un-aggregated form (ADR-0023 §1).
+
+    It carries its own evidence because nothing else does: `FindingInfo` exists one per
+    FAILING criterion, so the quote grounding a pass has no other way across.
+    """
 
     judgment_id: UUID
     content_id: UUID
     criterion_id: str
     outcome: str  # pass | fail | not_applicable | no_evidence | not_assessed | execution_error
     derived: bool  # the absence-derived fail (ADR-0021); counted as a fail all the same
+    quote: str | None = None
+    locator: dict[str, Any] | None = None
+    failure_mode: str | None = None
+    comment: str | None = None
+    execution_cause: dict[str, Any] | None = None  # {task, kind, message}, ADR-0037
 
 
 @dataclass(frozen=True)

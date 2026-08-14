@@ -29,6 +29,11 @@ SCHEMA_VERSION = 1
 # so it is not read as an incomplete finding.
 QUOTE_ABSENT_CAUSE = "required data absent"
 
+PREVIEW_NOTE = (
+    "a preview is recomposed from today's data; once the study is published the record is "
+    "the frozen report, and only that report is the study's result"
+)
+
 
 def latest_judgments(judgments: list[JudgmentInfo]) -> dict[UUID, JudgmentInfo]:
     """Judgments are append-only; the most recent per content is the current one."""
@@ -293,3 +298,91 @@ def compose_report(
         "generatorLevel": _generator_level(instrument, contents, generators, current),
         "caveats": _caveats(contents, briefs, capabilities, current),
     }
+
+
+def compose_preview(
+    study: Study,
+    contents: list[ContentInfo],
+    briefs: dict[UUID, BriefInfo],
+    generators: dict[UUID, GeneratorInfo],
+    judgments: list[JudgmentInfo],
+    findings: list[FindingInfo],
+    capabilities: dict[str, CapabilityInfo | None],
+    instrument: InstrumentInfo | None,
+    composed_at: datetime,
+) -> dict[str, Any]:
+    """What publishing WOULD write, composed on read — so nobody publishes blind.
+
+    It sits beside `compose_report` and calls it, because the guarantee worth having is
+    that the two say the same thing: a preview that composed differently would not be a
+    preview of anything. Three things distinguish it, and all three are said IN THE
+    PAYLOAD rather than only here:
+
+    * `documentKind` — the reader is told what they are holding.
+    * `composedAt` instead of `publishedAt`. `compose_report` emits `publishedAt`
+      unconditionally and the console renders it unguarded, so a preview filling it with
+      the composition's clock would read "Published <now>" about a study nobody published,
+      which is the exact misreading this resource exists to prevent. The key is REMOVED,
+      not nulled: a null renders as the epoch, an absence renders as nothing.
+    * `frozenRecord` — whether the immutable report already exists, because after
+      publishing a recomposition may legitimately differ from it (the report reads the
+      registry live, so a generator attributed later shows up here and never there).
+
+    `instrument` is optional here where `compose_report` demands one: a study at
+    `declared` or `prepared` gets the whole document with empty sections and its gaps
+    named, never a partial one and never a refusal — readiness informs, it does not block.
+    """
+    gaps: list[dict[str, Any]] = []
+    if study.instrument_version_id is None:
+        gaps.append({"gap": "instrument_not_pinned"})
+    if not study.content_ids:
+        gaps.append({"gap": "dataset_not_composed"})
+    if study.instrument_version_id is not None and instrument is None:
+        # Distinct from "not pinned": a pinned version that cannot be read is a real fault.
+        gaps.append({"gap": "instrument_not_found"})
+
+    header: dict[str, Any] = {
+        "documentKind": "preview",
+        # Named for the act that produced it — a read, not the human act of publishing.
+        "composedAt": composed_at.isoformat(),
+        "frozenRecord": {"exists": study.published_at is not None, "note": PREVIEW_NOTE},
+        "gaps": gaps,
+    }
+
+    if instrument is None:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "studyId": str(study.id),
+            "purpose": study.purpose,
+            "instrumentVersionId": study.instrument_version_id,
+            "publishedBy": None,  # naturally absent: publishing is what sets it
+            "dataset": {
+                "size": len(contents),
+                "briefIds": [str(b) for b in study.brief_ids],
+                "contentIds": [str(c) for c in study.content_ids],
+            },
+            "judgmentIdsUsed": {},
+            "contents": [],
+            "generatorLevel": [],
+            # Every caveat kind, even here (12-define invariant 4): a consumer that walks
+            # the kinds must read one shape at every status, or it learns to guess.
+            "caveats": _caveats([], {}, {}, {}),
+        } | header
+
+    report = compose_report(
+        study=study,
+        contents=contents,
+        briefs=briefs,
+        generators=generators,
+        judgments=judgments,
+        findings=findings,
+        capabilities=capabilities,
+        instrument=instrument,
+        # Passed only to be removed below. `compose_report`'s signature and output stay
+        # untouched: what it writes is frozen jsonb, and being wrong inwards is unfixable.
+        published_at=composed_at,
+    )
+    # `del` rather than `pop`: should `compose_report` ever stop emitting it, this must
+    # fail loudly instead of quietly ceasing to protect.
+    del report["publishedAt"]
+    return report | header

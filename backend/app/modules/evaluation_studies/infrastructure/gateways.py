@@ -131,6 +131,11 @@ class EvaluationGateway:
                 criterion_id=dto.criterion_id,
                 outcome=dto.outcome,
                 derived=dto.derived,
+                quote=dto.quote,
+                locator=dto.locator,
+                failure_mode=dto.failure_mode,
+                comment=dto.comment,
+                execution_cause=dto.execution_cause,
             )
             for dto in self._queries.get_criterion_outcomes(content_ids, instrument_version_id)
         ]

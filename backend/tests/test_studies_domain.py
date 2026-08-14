@@ -191,6 +191,7 @@ from app.modules.evaluation_studies.application.queries import (  # noqa: E402
     compute_readiness,
 )
 from app.modules.evaluation_studies.application.report import (  # noqa: E402
+    compose_preview,
     compose_report,
     latest_judgments,
 )
@@ -444,6 +445,118 @@ def test_generator_level_distributes_per_claim_with_coverage():
     # Never a cross-claim aggregate: nothing sums across claims.
     assert "score" not in report["generatorLevel"][0]
     assert "score" not in structure
+
+
+def test_a_preview_is_the_report_it_would_write_minus_the_act_that_did_not_happen():
+    """The guarantee that makes a preview worth reading: the same composition, so what the
+    console shows is what publishing writes.
+
+    Structural on purpose. The day somebody adds a key to `compose_report`, this fails
+    unless the preview learned it too — which is the only way a preview stays a preview
+    rather than drifting into a second, similar-looking document.
+    """
+    cid = uuid4()
+    inputs = {
+        "study": published_study([cid]),
+        "contents": [content(cid, generator_version_id=uuid4())],
+        "briefs": {},
+        "generators": {},
+        "judgments": [judgment(cid, ClaimJudgment("cl-structure", "supported", BASIS_OK))],
+        "findings": [],
+        "capabilities": {"LearnpackV1": CAPABILITY},
+        "instrument": INSTRUMENT,
+    }
+    published = compose_report(**inputs, published_at=NOW)
+    preview = compose_preview(**inputs, composed_at=NOW)
+
+    markers = {"documentKind", "composedAt", "frozenRecord", "gaps"}
+    assert set(preview) - markers == set(published) - {"publishedAt"}
+    for key in set(published) - {"publishedAt"}:
+        assert preview[key] == published[key], key
+    assert preview["documentKind"] == "preview"
+    assert preview["gaps"] == []
+
+
+def test_a_preview_never_says_it_was_published_even_when_the_study_was():
+    """`compose_report` emits `publishedAt` unconditionally and the console renders it
+    unguarded, so a preview carrying the composition's clock would read "Published <now>"
+    about a study nobody published — and a preview of an ALREADY published study would
+    claim the recomposition's clock as the act's.
+
+    The key is absent rather than null: a null renders as the epoch.
+    """
+    cid = uuid4()
+    preview = compose_preview(
+        study=published_study([cid]),
+        contents=[content(cid)],
+        briefs={},
+        generators={},
+        judgments=[judgment(cid, ClaimJudgment("cl-structure", "supported", BASIS_OK))],
+        findings=[],
+        capabilities={"LearnpackV1": CAPABILITY},
+        instrument=INSTRUMENT,
+        composed_at=NOW,
+    )
+    assert "publishedAt" not in preview
+    assert preview["composedAt"] == NOW.isoformat()
+    # The frozen record exists — and the preview says so instead of impersonating it.
+    assert preview["frozenRecord"]["exists"] is True
+    assert preview["frozenRecord"]["note"]
+
+
+def test_a_study_with_nothing_pinned_previews_with_its_gaps_and_every_caveat_kind():
+    """It informs rather than refusing, the way readiness does. And the caveat kinds are
+    all present at every status: a consumer that walks them must not have to work out
+    which of two shapes it is holding."""
+    preview = compose_preview(
+        study=study(),
+        contents=[],
+        briefs={},
+        generators={},
+        judgments=[],
+        findings=[],
+        capabilities={},
+        instrument=None,
+        composed_at=NOW,
+    )
+    assert [g["gap"] for g in preview["gaps"]] == [
+        "instrument_not_pinned",
+        "dataset_not_composed",
+    ]
+    assert preview["contents"] == [] and preview["generatorLevel"] == []
+    assert preview["judgmentIdsUsed"] == {}
+    assert "publishedAt" not in preview
+    assert preview["frozenRecord"]["exists"] is False
+    assert set(preview["caveats"]) == {
+        "insufficientEvidence",
+        "unresolvedDisagreements",
+        "unknownExclusions",
+        "unacceptedAdapters",
+        "briefCompleteness",
+        "contentsWithoutJudgment",
+        "taskVariablePatterns",
+        "executionErrors",
+    }
+
+
+def test_a_pinned_version_that_cannot_be_read_is_its_own_gap():
+    """Distinct from "not pinned": one is a study nobody finished setting up, the other is
+    a fault — the version it names is gone."""
+    s = study()
+    s.pin_instrument("qa-v1")
+    s.compose_dataset((), (uuid4(),))
+    preview = compose_preview(
+        study=s,
+        contents=[],
+        briefs={},
+        generators={},
+        judgments=[],
+        findings=[],
+        capabilities={},
+        instrument=None,
+        composed_at=NOW,
+    )
+    assert [g["gap"] for g in preview["gaps"]] == ["instrument_not_found"]
 
 
 def test_every_caveat_kind_is_always_present():

@@ -45,6 +45,9 @@ from app.modules.evaluation_studies.application.compose_dataset import (
     ComposeDataset,
     ComposeDatasetCommand,
 )
+from app.modules.evaluation_studies.application.criterion_outcomes import (
+    compute_criterion_outcomes,
+)
 from app.modules.evaluation_studies.application.declare_study import (
     DeclareStudy,
     DeclareStudyCommand,
@@ -162,6 +165,25 @@ def _project_fitness(session, study_id):
         judgments=evaluation.get_judgments(content_ids, version_id),
         outcomes=evaluation.get_criterion_outcomes(content_ids, version_id),
         ratifications=evaluation.list_ratifications(version_id),
+        computed_at=datetime.now(UTC),
+    )
+
+
+def _project_criterion_outcomes(session, study_id):
+    """The matrix read, composed from the same gateways the endpoint uses."""
+    study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
+    registry, evaluation = RegistryGateway(session), EvaluationGateway(session)
+    contents = registry.get_contents_by_ids(list(study.content_ids))
+    content_ids = [c.content_id for c in contents]
+    version_id = study.instrument_version_id
+    frozen = SqlAlchemyStudyReportRepository(session).get(study_id)
+    return compute_criterion_outcomes(
+        study=study,
+        instrument=DesignGateway(session).get_instrument(version_id),
+        contents=contents,
+        judgments=evaluation.get_judgments(content_ids, version_id),
+        outcomes=evaluation.get_criterion_outcomes(content_ids, version_id),
+        frozen_report=frozen.report if frozen is not None else None,
         computed_at=datetime.now(UTC),
     )
 
@@ -362,6 +384,33 @@ def test_the_first_increment_closes_the_loop(
     # A table, deliberately not a fourth grain: no score is pooled per brief, because
     # pooling would erase the very dispersion repeats of one commission exist to measure.
     assert "qualities" not in entry and "dimensions" not in entry
+
+    # --- the criterion matrix over the SAME study, and the evidence the report cannot carry
+    matrix = _project_criterion_outcomes(session, study.id)
+    assert matrix["judgmentBasis"]["basis"] == "publishedReport"
+
+    # A pass is quoted — the database has a CHECK constraint saying so — and a finding
+    # exists only for a FAIL, so this is the only place that passage is readable.
+    passes = [
+        cell
+        for criterion in matrix["criteria"]
+        for cell in criterion["outcomes"]
+        if cell["outcome"] == "pass"
+    ]
+    assert passes and all(cell["quote"] for cell in passes)
+
+    # Every criterion the instrument declares has a row and a denominator, including the
+    # ones structural:1 abstains from: `0 of 2` is a reading, a missing row is not.
+    declared = {c.criterion_id for c in DesignGateway(session).get_instrument(version_id).criteria}
+    assert {c["criterionId"] for c in matrix["criteria"]} == declared
+    assert all(c["coverage"]["of"] == 2 for c in matrix["criteria"])
+
+    # Re-evaluating after publishing must not rewrite what the frozen report reflects.
+    assert run_evaluate(str(linked.id), version_id, assessor_arg, False) == 0
+    after = _project_criterion_outcomes(session, study.id)
+    assert after["judgmentBasis"]["basis"] == "publishedReport"
+    judged = {c["contentId"]: c["judgmentId"] for c in after["contents"]}
+    assert judged[str(linked.id)] == report["judgmentIdsUsed"][str(linked.id)]
 
 
 def test_an_attributed_content_enters_generator_level_accumulation(
