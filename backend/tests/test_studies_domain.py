@@ -1,4 +1,5 @@
-"""Study invariants (13-code §10): pin once · dataset fixed at open · signed off immutable.
+"""Study invariants (13-code §10): the draft chooses and opening pins · the dataset is fixed
+at the same moment · signed off is immutable.
 
 Pure domain — no DB, no fixtures. The report/matching/readiness composition is specified
 here too once it lands (also pure, over local DTOs).
@@ -10,12 +11,10 @@ from uuid import uuid4
 import pytest
 
 from app.modules.evaluation_studies.domain.model import (
-    AssessorAlreadyPinned,
-    AssessorNotPinned,
+    AssessorNotChosen,
     DatasetEmpty,
     DatasetLocked,
-    InstrumentAlreadyPinned,
-    InstrumentNotPinned,
+    InstrumentNotChosen,
     InvalidStudy,
     Study,
     StudyAlreadyOpen,
@@ -33,8 +32,8 @@ def study(**overrides) -> Study:
 
 def composed_study() -> Study:
     s = study()
-    s.pin_instrument("learnpack-course-qa-v1")
-    s.pin_assessor(uuid4())
+    s.select_instrument("learnpack-course-qa-v1")
+    s.select_assessor(uuid4())
     s.compose_dataset((uuid4(),), (uuid4(), uuid4()))
     return s
 
@@ -66,54 +65,76 @@ def test_a_description_is_optional_and_never_defaulted_from_the_name():
     assert study(description="Does 2.0.0 hold the bar?").description == "Does 2.0.0 hold the bar?"
 
 
-# ----------------------------------------------------------------------- pin once
+# ------------------------------------------------- the draft chooses; opening pins
 
 
-def test_the_pin_happens_once():
+def test_a_draft_can_be_pointed_at_another_instrument():
+    """The trap ADR-0043 §1 removes: a study whose instrument was chosen by mistake used to
+    be unusable forever, and nothing had read the value yet."""
     s = study()
-    s.pin_instrument("learnpack-course-qa-v1")
-
-    with pytest.raises(InstrumentAlreadyPinned):
-        s.pin_instrument("learnpack-course-qa-v2")
-    assert s.instrument_version_id == "learnpack-course-qa-v1"
+    s.select_instrument("learnpack-course-qa-v1")
+    s.select_instrument("learnpack-course-qa-v2")
+    assert s.instrument_version_id == "learnpack-course-qa-v2"
 
 
-def test_the_pin_is_immutable_after_open():
+def test_a_draft_can_change_its_judge_and_drop_it():
+    s = study()
+    first, second = uuid4(), uuid4()
+    s.select_assessor(first)
+    s.select_assessor(second)
+    assert s.assessor_id == second
+    # Clearing is what re-pointing at a norm this judge never ratified leaves behind.
+    s.select_assessor(None)
+    assert s.assessor_id is None
+
+
+def test_opening_is_what_makes_the_choices_immutable():
+    """The property ADR-0042 bought, in the only form that ever did any work: when the
+    first judgment can exist, the triple is already fixed and cannot move."""
     s = open_study()
-    with pytest.raises(InstrumentAlreadyPinned):
-        s.pin_instrument("another-version")
+    with pytest.raises(DatasetLocked):
+        s.select_instrument("another-version")
+    with pytest.raises(DatasetLocked):
+        s.select_assessor(uuid4())
+
+
+def test_a_signed_off_study_refuses_every_change():
+    s = open_study()
+    s.sign_off(uuid4(), NOW)
+    with pytest.raises(StudyAlreadySignedOff):
+        s.select_instrument("another-version")
 
 
 # ----------------------------------------------------------------------- prepared is derived
 
 
-def test_prepared_derives_from_pin_then_compose():
+def test_prepared_derives_from_choosing_then_composing():
     s = study()
-    s.pin_instrument("v1")
-    s.pin_assessor(uuid4())
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
     assert s.status == "declared"
     s.compose_dataset((), (uuid4(),))
     assert s.status == "prepared"
 
 
-def test_prepared_derives_from_compose_then_pin():
+def test_prepared_derives_from_composing_then_choosing():
     s = study()
     s.compose_dataset((uuid4(),), (uuid4(),))
     assert s.status == "declared"
-    s.pin_instrument("v1")
-    s.pin_assessor(uuid4())
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
     assert s.status == "prepared"
 
 
-def test_prepared_waits_for_BOTH_pins():
-    """`prepared` means everything opening needs is here, so one pin is not enough — and a
-    study that read `prepared` and then refused to open would be lying about itself."""
+def test_prepared_waits_for_BOTH_choices():
+    """`prepared` means everything opening needs is here, so one choice is not enough — and
+    a study that read `prepared` and then refused to open would be lying about itself."""
     s = study()
     s.compose_dataset((), (uuid4(),))
-    s.pin_instrument("v1")
+    s.select_instrument("v1")
     assert s.status == "declared"
 
-    s.pin_assessor(uuid4())
+    s.select_assessor(uuid4())
     assert s.status == "prepared"
 
 
@@ -134,45 +155,27 @@ def test_open_fixes_the_dataset():
         s.compose_dataset((), (uuid4(),))
 
 
-def test_open_requires_the_pin():
+def test_open_requires_an_instrument():
     s = study()
     s.compose_dataset((), (uuid4(),))
-    with pytest.raises(InstrumentNotPinned):
+    with pytest.raises(InstrumentNotChosen):
         s.open(NOW)
 
 
-def test_open_requires_the_assessor_too():
-    """A study's result is a triple, and opening is where the triple is fixed (ADR-0042 §8).
-    Without this, a round could be evaluated by whoever happened to run the batch."""
+def test_open_requires_a_judge_too():
+    """A study's result is a triple, and opening is where the triple is fixed (ADR-0042 §8,
+    ADR-0043 §1). Without this, a round could be evaluated by whoever ran the batch."""
     s = study()
-    s.pin_instrument("v1")
+    s.select_instrument("v1")
     s.compose_dataset((), (uuid4(),))
-    with pytest.raises(AssessorNotPinned):
+    with pytest.raises(AssessorNotChosen):
         s.open(NOW)
-
-
-def test_the_assessor_pin_happens_once_and_is_immutable_after_open():
-    """Re-pinning would silently change which judgments the study's own reads count —
-    every number it has already shown would refer to a different population."""
-    s = study()
-    s.pin_instrument("v1")
-    first = uuid4()
-    s.pin_assessor(first)
-
-    with pytest.raises(AssessorAlreadyPinned):
-        s.pin_assessor(uuid4())
-    assert s.assessor_id == first
-
-    s.compose_dataset((), (uuid4(),))
-    s.open(NOW)
-    with pytest.raises(AssessorAlreadyPinned):
-        s.pin_assessor(uuid4())
 
 
 def test_open_requires_a_dataset():
     s = study()
-    s.pin_instrument("v1")
-    s.pin_assessor(uuid4())
+    s.select_instrument("v1")
+    s.select_assessor(uuid4())
     with pytest.raises(DatasetEmpty):
         s.open(NOW)
 
@@ -218,8 +221,8 @@ def test_a_signed_off_study_is_immutable():
         s.open(NOW)
     with pytest.raises(StudyAlreadySignedOff):
         s.compose_dataset((), (uuid4(),))
-    with pytest.raises(InstrumentAlreadyPinned):
-        s.pin_instrument("another")
+    with pytest.raises(StudyAlreadySignedOff):
+        s.select_instrument("another")
 
 
 # ======================================================================= report composition
@@ -304,8 +307,8 @@ def judgment(content_id, *claims, derived_at=NOW, excluded=(), assessor=HYBRID_1
 
 def signed_off_study(content_ids, brief_ids=()):
     s = study()
-    s.pin_instrument("qa-v1")
-    s.pin_assessor(HYBRID_10.assessor_id)
+    s.select_instrument("qa-v1")
+    s.select_assessor(HYBRID_10.assessor_id)
     s.compose_dataset(tuple(brief_ids), tuple(content_ids))
     s.open(NOW)
     s.sign_off(uuid4(), NOW)
@@ -702,7 +705,7 @@ def test_a_preview_never_says_it_was_signed_off_even_when_the_study_was():
     assert preview["frozenRecord"]["note"]
 
 
-def test_a_study_with_nothing_pinned_previews_with_its_gaps_and_every_caveat_kind():
+def test_a_study_with_nothing_chosen_previews_with_its_gaps_and_every_caveat_kind():
     """It informs rather than refusing, the way readiness does. And the caveat kinds are
     all present at every status: a consumer that walks them must not have to work out
     which of two shapes it is holding."""
@@ -718,8 +721,8 @@ def test_a_study_with_nothing_pinned_previews_with_its_gaps_and_every_caveat_kin
         composed_at=NOW,
     )
     assert [g["gap"] for g in preview["gaps"]] == [
-        "instrument_not_pinned",
-        "assessor_not_pinned",
+        "instrument_not_chosen",
+        "assessor_not_chosen",
         "dataset_not_composed",
     ]
     assert preview["contents"] == [] and preview["generatorLevel"] == []
@@ -762,11 +765,11 @@ def test_the_unpinned_preview_has_the_same_keys_as_the_pinned_one():
     assert set(unpinned["caveats"]) == set(pinned["caveats"])
 
 
-def test_a_pinned_version_that_cannot_be_read_is_its_own_gap():
+def test_a_chosen_version_that_cannot_be_read_is_its_own_gap():
     """Distinct from "not pinned": one is a study nobody finished setting up, the other is
     a fault — the version it names is gone."""
     s = study()
-    s.pin_instrument("qa-v1")
+    s.select_instrument("qa-v1")
     s.compose_dataset((), (uuid4(),))
     preview = compose_preview(
         study=s,
@@ -779,7 +782,7 @@ def test_a_pinned_version_that_cannot_be_read_is_its_own_gap():
         instrument=None,
         composed_at=NOW,
     )
-    assert [g["gap"] for g in preview["gaps"]] == ["assessor_not_pinned", "instrument_not_found"]
+    assert [g["gap"] for g in preview["gaps"]] == ["assessor_not_chosen", "instrument_not_found"]
 
 
 def test_every_caveat_kind_is_always_present():
@@ -889,7 +892,7 @@ def test_readiness_names_the_study_gaps():
     result = compute_readiness(s, None, {}, [], [])
 
     gaps = {g["gap"] for g in result["studyGaps"]}
-    assert gaps == {"instrument_not_pinned", "assessor_not_pinned", "dataset_not_composed"}
+    assert gaps == {"instrument_not_chosen", "assessor_not_chosen", "dataset_not_composed"}
     assert result["informative"] is True
 
 

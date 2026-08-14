@@ -19,40 +19,30 @@ from app.modules.evaluation_studies.application import (
     queries,
     report,
 )
-from app.modules.evaluation_studies.application.compose_dataset import (
-    ComposeDataset,
-    ComposeDatasetCommand,
-    UnknownBrief,
-)
-from app.modules.evaluation_studies.application.declare_study import (
+from app.modules.evaluation_studies.application.draft import (
+    UNCHANGED,
+    AssessorHasNotRatified,
     DeclareStudy,
     DeclareStudyCommand,
+    InstrumentNotPublished,
+    InstrumentRequiredFirst,
+    UnknownBrief,
+    UnknownInstrument,
+    UpdateStudyDraft,
+    UpdateStudyDraftCommand,
+    selection_from,
 )
 from app.modules.evaluation_studies.application.dtos import StudyDTO
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
-from app.modules.evaluation_studies.application.pin_assessor import (
-    AssessorHasNotRatified,
-    InstrumentPinnedFirst,
-    PinAssessor,
-    PinAssessorCommand,
-)
-from app.modules.evaluation_studies.application.pin_instrument import (
-    InstrumentNotPublished,
-    PinInstrument,
-    PinInstrumentCommand,
-    UnknownInstrument,
-)
 from app.modules.evaluation_studies.application.sign_off_study import (
     SignOffStudy,
     SignOffStudyCommand,
 )
 from app.modules.evaluation_studies.domain.model import (
-    AssessorAlreadyPinned,
-    AssessorNotPinned,
+    AssessorNotChosen,
     DatasetEmpty,
     DatasetLocked,
-    InstrumentAlreadyPinned,
-    InstrumentNotPinned,
+    InstrumentNotChosen,
     InvalidStudy,
     StudyAlreadyOpen,
     StudyAlreadySignedOff,
@@ -77,22 +67,39 @@ instruments_router = APIRouter(prefix="/admin/instruments", tags=["evaluation-st
 
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
+# The three parts of a selection, so both endpoints hand the use case exactly the keys the
+# caller sent and nothing else.
+_SELECTION_KEYS = frozenset({"instrument_version_id", "assessor_id", "brief_ids"})
+
 
 class DeclareStudyRequest(BaseModel):
+    """A study can be created empty or complete — the console does the latter, in one form.
+
+    Every part of the selection is optional here and replaceable afterwards: none of it is
+    binding until the study opens (ADR-0043 §1).
+    """
+
     name: str
     description: str | None = None
+    instrument_version_id: str | None = None
+    assessor_id: UUID | None = None
+    brief_ids: list[UUID] | None = None
 
 
-class PinInstrumentRequest(BaseModel):
-    instrument_version_id: str
+class UpdateStudyDraftRequest(BaseModel):
+    """A partial update, where absent and null mean different things.
 
+    Sending `assessor_id: null` CLEARS the judge; omitting the key leaves it alone. The
+    difference is read from `model_fields_set`, which is the only place pydantic keeps it,
+    and it matters because re-pointing a draft at another norm is exactly the moment a
+    judge has to be dropped.
+    """
 
-class PinAssessorRequest(BaseModel):
-    assessor_id: UUID
-
-
-class ComposeDatasetRequest(BaseModel):
-    brief_ids: list[UUID]
+    name: str | None = None
+    description: str | None = None
+    instrument_version_id: str | None = None
+    assessor_id: UUID | None = None
+    brief_ids: list[UUID] | None = None
 
 
 class StudyResponse(BaseModel):
@@ -140,18 +147,81 @@ def _study_response(uow: UnitOfWork, study_id: UUID) -> StudyResponse:
     return StudyResponse.from_dto(dto)
 
 
+# What a bad selection maps to, in one place: both endpoints refuse the same things for the
+# same reasons, and a reader comparing them should not have to diff two except blocks.
+_CONFLICT = (DatasetLocked, StudyAlreadySignedOff)
+_UNPROCESSABLE = (
+    InvalidStudy,
+    UnknownInstrument,
+    InstrumentNotPublished,
+    InstrumentRequiredFirst,
+    AssessorHasNotRatified,
+    UnknownBrief,
+)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=StudyResponse)
 def declare_study(request: DeclareStudyRequest, admin: AdminAssessor, uow: Uow) -> StudyResponse:
     use_case = DeclareStudy(
-        studies=SqlAlchemyStudyRepository(uow.session), publisher=uow.events, uow=uow
+        studies=SqlAlchemyStudyRepository(uow.session),
+        registry=RegistryGateway(uow.session),
+        design=DesignGateway(uow.session),
+        evaluation=EvaluationGateway(uow.session),
+        publisher=uow.events,
+        uow=uow,
     )
     try:
-        study = use_case(DeclareStudyCommand(name=request.name, description=request.description))
-    except InvalidStudy as exc:
+        study = use_case(
+            DeclareStudyCommand(
+                name=request.name,
+                description=request.description,
+                selection=selection_from(
+                    request.model_dump(include=set(_SELECTION_KEYS & request.model_fields_set))
+                ),
+            )
+        )
+    except _UNPROCESSABLE as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     return _study_response(uow, study.id)
+
+
+@router.patch("/{study_id}", response_model=StudyResponse)
+def update_study_draft(
+    study_id: UUID, request: UpdateStudyDraftRequest, admin: AdminAssessor, uow: Uow
+) -> StudyResponse:
+    """Change any part of a draft. 409 once the study is open — that is where the pin is.
+
+    Only the keys actually sent are applied, so a form that edits one field does not have
+    to echo the rest back and cannot clear something by omission.
+    """
+    use_case = UpdateStudyDraft(
+        studies=SqlAlchemyStudyRepository(uow.session),
+        registry=RegistryGateway(uow.session),
+        design=DesignGateway(uow.session),
+        evaluation=EvaluationGateway(uow.session),
+        uow=uow,
+    )
+    sent = request.model_fields_set
+    try:
+        use_case(
+            UpdateStudyDraftCommand(
+                study_id=study_id,
+                name=request.name if "name" in sent and request.name is not None else UNCHANGED,
+                description=request.description if "description" in sent else UNCHANGED,
+                selection=selection_from(request.model_dump(include=set(_SELECTION_KEYS & sent))),
+            )
+        )
+    except StudyNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except _CONFLICT as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except _UNPROCESSABLE as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return _study_response(uow, study_id)
 
 
 @router.get("", response_model=list[StudyResponse])
@@ -162,84 +232,6 @@ def list_studies(admin: AdminAssessor, uow: Uow) -> list[StudyResponse]:
 
 @router.get("/{study_id}", response_model=StudyResponse)
 def get_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
-    return _study_response(uow, study_id)
-
-
-@router.post("/{study_id}/pin", response_model=StudyResponse)
-def pin_instrument(
-    study_id: UUID, request: PinInstrumentRequest, admin: AdminAssessor, uow: Uow
-) -> StudyResponse:
-    use_case = PinInstrument(
-        studies=SqlAlchemyStudyRepository(uow.session),
-        instruments=DesignGateway(uow.session),
-        publisher=uow.events,
-        uow=uow,
-    )
-    try:
-        use_case(
-            PinInstrumentCommand(
-                study_id=study_id, instrument_version_id=request.instrument_version_id
-            )
-        )
-    except StudyNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (InstrumentAlreadyPinned, DatasetLocked, StudyAlreadySignedOff) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (UnknownInstrument, InstrumentNotPublished) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
-    return _study_response(uow, study_id)
-
-
-@router.post("/{study_id}/assessor", response_model=StudyResponse)
-def pin_assessor(
-    study_id: UUID, request: PinAssessorRequest, admin: AdminAssessor, uow: Uow
-) -> StudyResponse:
-    """Name the judge whose verdicts are this study's result (ADR-0042 §8).
-
-    It takes an id and not `name:version` because the console picks from a list that
-    already carries ids, and resolving an artifact's name is Identity's job, not this
-    endpoint's. The CLI, being a composition root, does that resolution itself.
-    """
-    use_case = PinAssessor(
-        studies=SqlAlchemyStudyRepository(uow.session),
-        evaluation=EvaluationGateway(uow.session),
-        publisher=uow.events,
-        uow=uow,
-    )
-    try:
-        use_case(PinAssessorCommand(study_id=study_id, assessor_id=request.assessor_id))
-    except StudyNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (AssessorAlreadyPinned, DatasetLocked, StudyAlreadySignedOff) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (InstrumentPinnedFirst, AssessorHasNotRatified) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
-    return _study_response(uow, study_id)
-
-
-@router.post("/{study_id}/dataset", response_model=StudyResponse)
-def compose_dataset(
-    study_id: UUID, request: ComposeDatasetRequest, admin: AdminAssessor, uow: Uow
-) -> StudyResponse:
-    use_case = ComposeDataset(
-        studies=SqlAlchemyStudyRepository(uow.session),
-        registry=RegistryGateway(uow.session),
-        uow=uow,
-    )
-    try:
-        use_case(ComposeDatasetCommand(study_id=study_id, brief_ids=request.brief_ids))
-    except StudyNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except (DatasetLocked, StudyAlreadySignedOff) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except UnknownBrief as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
     return _study_response(uow, study_id)
 
 
@@ -254,7 +246,7 @@ def open_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (StudyAlreadyOpen, StudyAlreadySignedOff) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (InstrumentNotPinned, AssessorNotPinned, DatasetEmpty) as exc:
+    except (InstrumentNotChosen, AssessorNotChosen, DatasetEmpty) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc

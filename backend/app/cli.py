@@ -1,7 +1,7 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
-pin-study | pin-assessor | compose-dataset | open-study | sign-off-study | show-preview |
+update-study | open-study | sign-off-study | show-preview |
 show-report | attribute-generator | register-generator | register-generator-version`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
@@ -164,43 +164,34 @@ from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyInstrumentRepository,
     SqlAlchemyReferenceDataRepository,
 )
-from app.modules.evaluation_studies.application.compose_dataset import (
-    ComposeDataset,
-    ComposeDatasetCommand,
-    UnknownBrief,
-)
-from app.modules.evaluation_studies.application.declare_study import (
+from app.modules.evaluation_studies.application.draft import (
+    UNCHANGED,
+    AssessorHasNotRatified,
     DeclareStudy,
     DeclareStudyCommand,
+    InstrumentNotPublished,
+    InstrumentRequiredFirst,
+    StudySelection,
+    UnknownBrief,
+    UnknownInstrument,
+    UpdateStudyDraft,
+    UpdateStudyDraftCommand,
 )
 from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.gathering import gather_report_inputs
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
-from app.modules.evaluation_studies.application.pin_assessor import (
-    AssessorHasNotRatified,
-    InstrumentPinnedFirst,
-    PinAssessor,
-    PinAssessorCommand,
-)
-from app.modules.evaluation_studies.application.pin_instrument import (
-    InstrumentNotPublished,
-    PinInstrument,
-    PinInstrumentCommand,
-    UnknownInstrument,
-)
 from app.modules.evaluation_studies.application.report import compose_preview
 from app.modules.evaluation_studies.application.sign_off_study import (
     SignOffStudy,
     SignOffStudyCommand,
 )
 from app.modules.evaluation_studies.domain.model import (
-    AssessorAlreadyPinned,
-    AssessorNotPinned,
+    AssessorNotChosen,
     DatasetEmpty,
     DatasetLocked,
-    InstrumentAlreadyPinned,
-    InstrumentNotPinned,
+    InstrumentNotChosen,
     InvalidStudy,
+    Study,
     StudyAlreadyOpen,
     StudyAlreadySignedOff,
     StudyNotFound,
@@ -1712,13 +1703,11 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
 _STUDY_ERRORS = (
     StudyNotFound,
     InvalidStudy,
-    InstrumentAlreadyPinned,
-    InstrumentNotPinned,
+    InstrumentNotChosen,
     InstrumentNotPublished,
-    AssessorAlreadyPinned,
-    AssessorNotPinned,
+    AssessorNotChosen,
     AssessorHasNotRatified,
-    InstrumentPinnedFirst,
+    InstrumentRequiredFirst,
     UnknownInstrument,
     UnknownBrief,
     DatasetLocked,
@@ -1729,92 +1718,126 @@ _STUDY_ERRORS = (
 )
 
 
-def run_declare_study(name: str, description: str | None) -> int:
-    with SessionLocal() as session:
-        uow = UnitOfWork(session)
-        try:
-            study = DeclareStudy(SqlAlchemyStudyRepository(session), uow.events, uow)(
-                DeclareStudyCommand(name=name, description=description)
-            )
-        except _STUDY_ERRORS as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-    print(f"declared study {study.id}")
-    return 0
+CLEAR_ASSESSOR = "none"
 
 
-def run_pin_study(study_id: UUID, instrument_version_id: str) -> int:
-    with SessionLocal() as session:
-        uow = UnitOfWork(session)
-        use_case = PinInstrument(
-            studies=SqlAlchemyStudyRepository(session),
-            instruments=StudiesDesignGateway(session),
-            publisher=uow.events,
-            uow=uow,
-        )
-        try:
-            study = use_case(
-                PinInstrumentCommand(study_id=study_id, instrument_version_id=instrument_version_id)
-            )
-        except _STUDY_ERRORS as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-    print(f"pinned {instrument_version_id} to study {study.id} ({study.status})")
-    return 0
+class _AssessorNotRegistered(Exception):
+    """`--assessor` named something no `ratify-assessor` has ever created."""
 
 
-def run_pin_assessor(study_id: UUID, assessor_arg: str) -> int:
-    """Name the judge whose verdicts are this study's result (ADR-0042 §8).
+def _selected_assessor(assessor_arg: str | None) -> object:
+    """`--assessor` as the selection understands it: absent, cleared, or an id.
 
     `name:version` here and an id over HTTP, and the difference is deliberate: the console
     picks from a list that already carries ids, while a person at a terminal knows the
     artifact by the name every other command takes. Resolving one into the other is a
     composition root's job, which is what this file is.
     """
+    if assessor_arg is None:
+        return UNCHANGED
+    if assessor_arg == CLEAR_ASSESSOR:
+        return None
     package = _assessor_from_spec(assessor_arg)
     if package is None:
-        return 1
+        raise _AssessorNotRegistered(f"{assessor_arg} is not a name:version spec")
     with SessionLocal() as session:
         row = SqlAlchemyAssessorRepository(session).get_automated(package.name, package.version)
-        if row is None:
-            print(
-                f"{package.display_name} is not registered — run ratify-assessor first",
-                file=sys.stderr,
-            )
-            return 1
-        uow = UnitOfWork(session)
-        use_case = PinAssessor(
-            studies=SqlAlchemyStudyRepository(session),
-            evaluation=StudiesEvaluationGateway(session),
-            publisher=uow.events,
-            uow=uow,
+    if row is None:
+        raise _AssessorNotRegistered(
+            f"{package.display_name} is not registered — run ratify-assessor first"
         )
+    return row.id
+
+
+def _selection(
+    instrument_version_id: str | None, assessor_arg: str | None, brief_ids: list[UUID] | None
+) -> StudySelection:
+    return StudySelection(
+        instrument_version_id=(
+            instrument_version_id if instrument_version_id is not None else UNCHANGED
+        ),
+        assessor_id=_selected_assessor(assessor_arg),  # type: ignore[arg-type]
+        brief_ids=brief_ids if brief_ids is not None else UNCHANGED,
+    )
+
+
+def _describe(study: Study) -> str:
+    return (
+        f"study {study.id} ({study.status}): "
+        f"{study.instrument_version_id or 'no instrument'} - "
+        f"{study.assessor_id or 'no judge'} - "
+        f"{len(study.brief_ids)} briefs -> {len(study.content_ids)} contents"
+    )
+
+
+def run_declare_study(
+    name: str,
+    description: str | None,
+    instrument_version_id: str | None = None,
+    assessor_arg: str | None = None,
+    brief_ids: list[UUID] | None = None,
+) -> int:
+    """Declare a study, with as much of its selection as you already know.
+
+    All of it is optional and all of it stays changeable until `open-study` pins it, so
+    creating a complete study in one call and correcting it later run the same checks.
+    """
+    try:
+        selection = _selection(instrument_version_id, assessor_arg, brief_ids)
+    except _AssessorNotRegistered as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
         try:
-            study = use_case(PinAssessorCommand(study_id=study_id, assessor_id=row.id))
+            study = DeclareStudy(
+                studies=SqlAlchemyStudyRepository(session),
+                registry=StudiesRegistryGateway(session),
+                design=StudiesDesignGateway(session),
+                evaluation=StudiesEvaluationGateway(session),
+                publisher=uow.events,
+                uow=uow,
+            )(DeclareStudyCommand(name=name, description=description, selection=selection))
         except _STUDY_ERRORS as exc:
             print(str(exc), file=sys.stderr)
             return 1
-    print(f"pinned {package.display_name} to study {study.id} ({study.status})")
+    print(f"declared {_describe(study)}")
     return 0
 
 
-def run_compose_dataset(study_id: UUID, brief_ids: list[UUID]) -> int:
+def run_update_study(
+    study_id: UUID,
+    instrument_version_id: str | None,
+    assessor_arg: str | None,
+    brief_ids: list[UUID] | None,
+) -> int:
+    """Change a draft: the norm, the judge, the recipe, or any combination of them.
+
+    One command where three pins used to be, because a draft is one thing being set up and
+    none of it is binding until `open-study` (ADR-0043 §1). A flag that is not passed is
+    left alone; `--assessor none` is how you drop a judge, which re-pointing a study at a
+    version that judge never ratified requires.
+    """
+    try:
+        selection = _selection(instrument_version_id, assessor_arg, brief_ids)
+    except _AssessorNotRegistered as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     with SessionLocal() as session:
         uow = UnitOfWork(session)
-        use_case = ComposeDataset(
+        use_case = UpdateStudyDraft(
             studies=SqlAlchemyStudyRepository(session),
             registry=StudiesRegistryGateway(session),
+            design=StudiesDesignGateway(session),
+            evaluation=StudiesEvaluationGateway(session),
             uow=uow,
         )
         try:
-            study = use_case(ComposeDatasetCommand(study_id=study_id, brief_ids=brief_ids))
+            study = use_case(UpdateStudyDraftCommand(study_id=study_id, selection=selection))
         except _STUDY_ERRORS as exc:
             print(str(exc), file=sys.stderr)
             return 1
-    print(
-        f"composed study {study.id}: {len(study.brief_ids)} briefs -> "
-        f"{len(study.content_ids)} contents ({study.status})"
-    )
+    print(_describe(study))
     return 0
 
 
@@ -2696,32 +2719,38 @@ def main(argv: list[str] | None = None) -> int:
     declare_study_parser.add_argument(
         "--description", default=None, help="optional: what this round is for"
     )
-
-    pin_study_parser = subparsers.add_parser(
-        "pin-study", help="pin a published instrument version to a study (once, before open)"
+    declare_study_parser.add_argument(
+        "--instrument-version-id", default=None, help="optional: choose it now or later"
     )
-    pin_study_parser.add_argument("--study-id", required=True)
-    pin_study_parser.add_argument("--instrument-version-id", required=True)
-
-    pin_assessor_parser = subparsers.add_parser(
-        "pin-assessor",
-        help="pin the assessor whose judgments are this study's result (once, before open)",
-    )
-    pin_assessor_parser.add_argument("--study-id", required=True)
-    pin_assessor_parser.add_argument(
-        "--assessor", required=True, help="name:version — must have ratified the pinned version"
+    declare_study_parser.add_argument("--assessor", default=None, help="optional: name:version")
+    declare_study_parser.add_argument(
+        "--brief-id", action="append", dest="brief_ids", default=None, help="repeatable"
     )
 
-    compose_dataset_parser = subparsers.add_parser(
-        "compose-dataset", help="compose the study dataset: briefs -> registered contents"
+    update_study_parser = subparsers.add_parser(
+        "update-study",
+        help="change a draft study: its instrument, its judge, its briefs (any combination)",
     )
-    compose_dataset_parser.add_argument("--study-id", required=True)
-    compose_dataset_parser.add_argument(
-        "--brief-id", action="append", dest="brief_ids", default=[], help="repeatable"
+    update_study_parser.add_argument("--study-id", required=True)
+    update_study_parser.add_argument(
+        "--instrument-version-id", default=None, help="a PUBLISHED version"
+    )
+    update_study_parser.add_argument(
+        "--assessor",
+        default=None,
+        help=f"name:version — must have ratified the chosen version; {CLEAR_ASSESSOR!r} drops it",
+    )
+    update_study_parser.add_argument(
+        "--brief-id",
+        action="append",
+        dest="brief_ids",
+        default=None,
+        help="repeatable; replaces the whole recipe",
     )
 
     open_study_parser = subparsers.add_parser(
-        "open-study", help="open the study — the dataset is fixed from here on"
+        "open-study",
+        help="open the study — this is what pins the instrument, the judge and the dataset",
     )
     open_study_parser.add_argument("--study-id", required=True)
 
@@ -2876,13 +2905,20 @@ def main(argv: list[str] | None = None) -> int:
             UUID(args.study_id), args.assessor, args.concurrency, args.re_evaluate
         )
     elif args.command == "declare-study":
-        return run_declare_study(args.name, args.description)
-    elif args.command == "pin-study":
-        return run_pin_study(UUID(args.study_id), args.instrument_version_id)
-    elif args.command == "pin-assessor":
-        return run_pin_assessor(UUID(args.study_id), args.assessor)
-    elif args.command == "compose-dataset":
-        return run_compose_dataset(UUID(args.study_id), [UUID(b) for b in args.brief_ids])
+        return run_declare_study(
+            args.name,
+            args.description,
+            args.instrument_version_id,
+            args.assessor,
+            [UUID(b) for b in args.brief_ids] if args.brief_ids is not None else None,
+        )
+    elif args.command == "update-study":
+        return run_update_study(
+            UUID(args.study_id),
+            args.instrument_version_id,
+            args.assessor,
+            [UUID(b) for b in args.brief_ids] if args.brief_ids is not None else None,
+        )
     elif args.command == "open-study":
         return run_open_study(UUID(args.study_id))
     elif args.command == "sign-off-study":

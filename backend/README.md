@@ -751,9 +751,10 @@ away.
 ### Step 7 — Verify end to end
 
 `register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
-instrument is a draft → `declare-study | pin-study | pin-assessor | compose-dataset |
-open-study` → `evaluate-study` (the whole dataset in one run) → `show-preview` (what signing
-off would write, readable before the irreversible act) → `sign-off-study` →
+instrument is a draft → `declare-study` (name it, and choose its instrument, judge and
+briefs then or later with `update-study`) → `open-study` (**this is what pins the triple**)
+→ `evaluate-study` (the whole dataset in one run) → `show-preview` (what signing off would
+write, readable before the irreversible act) → `sign-off-study` →
 `show-report` / `show-fitness`.
 
 ### What you never touch
@@ -944,7 +945,7 @@ can read what your criteria actually do against real content before freezing the
 the **only** way to exercise an instrument whose lineage has no assessor yet: the dry run does
 not compare lineages, so any registered package's executors can be pointed at any version.
 Then the study path:
-`declare-study | pin-study | pin-assessor | compose-dataset | open-study` →
+`declare-study [| update-study] | open-study` →
 `evaluate-study` → `show-preview` → `sign-off-study` → `show-report`.
 
 ### What you never touch

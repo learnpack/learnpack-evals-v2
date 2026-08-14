@@ -52,10 +52,15 @@ def open_study(admin, cleanup, unique, patched_package):
     brief_id = register_brief(admin, cleanup)
     register_content(admin, cleanup, unique, "one", brief_id)
     register_content(admin, cleanup, unique, "two", brief_id)
-    admin.post(f"/admin/studies/{study_id}/pin", json={"instrument_version_id": version_id})
-    pinned = admin.post(f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id})
-    assert pinned.status_code == 200, pinned.text
-    admin.post(f"/admin/studies/{study_id}/dataset", json={"brief_ids": [brief_id]})
+    chosen = admin.patch(
+        f"/admin/studies/{study_id}",
+        json={
+            "instrument_version_id": version_id,
+            "assessor_id": assessor_id,
+            "brief_ids": [brief_id],
+        },
+    )
+    assert chosen.status_code == 200, chosen.text
     admin.post(f"/admin/studies/{study_id}/open")
     return study_id, version_id
 

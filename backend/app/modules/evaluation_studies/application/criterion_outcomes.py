@@ -115,16 +115,16 @@ def compute_criterion_outcomes(
     """
     gaps: list[dict[str, Any]] = []
     if study.instrument_version_id is None:
-        gaps.append({"gap": "instrument_not_pinned"})
+        gaps.append({"gap": "instrument_not_chosen"})
     if study.assessor_id is None:
-        # ADR-0042 §9: with no pin, this document is composed from every judgment on the
+        # ADR-0042 §9: with no judge, this document is composed from every judgment on the
         # dataset whoever produced it. Saying so is the difference between a reader who
         # knows what they are holding and one who assumes.
-        gaps.append({"gap": "assessor_not_pinned"})
+        gaps.append({"gap": "assessor_not_chosen"})
     if not study.content_ids:
         gaps.append({"gap": "dataset_not_composed"})
     if study.instrument_version_id is not None and instrument is None:
-        # Distinct from "not pinned": a pinned version that cannot be read is a real fault.
+        # Distinct from "not chosen": a chosen version that cannot be read is a real fault.
         gaps.append({"gap": "instrument_not_found"})
 
     basis, current = _judgments_in_view(judgments, frozen_report)

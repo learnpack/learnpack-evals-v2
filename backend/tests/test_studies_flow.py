@@ -42,27 +42,16 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyJudgmentRepository
-from app.modules.evaluation_studies.application.compose_dataset import (
-    ComposeDataset,
-    ComposeDatasetCommand,
-)
 from app.modules.evaluation_studies.application.criterion_outcomes import (
     compute_criterion_outcomes,
 )
-from app.modules.evaluation_studies.application.declare_study import (
+from app.modules.evaluation_studies.application.draft import (
     DeclareStudy,
     DeclareStudyCommand,
+    StudySelection,
 )
 from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
-from app.modules.evaluation_studies.application.pin_assessor import (
-    PinAssessor,
-    PinAssessorCommand,
-)
-from app.modules.evaluation_studies.application.pin_instrument import (
-    PinInstrument,
-    PinInstrumentCommand,
-)
 from app.modules.evaluation_studies.application.sign_off_study import (
     SignOffStudy,
     SignOffStudyCommand,
@@ -202,6 +191,32 @@ def _studies_wiring(session):
     return uow, SqlAlchemyStudyRepository(session)
 
 
+def _declare(session, name: str, version_id: str, assessor_id: UUID, brief_ids: list):
+    """One declaration with the whole selection — what a console form sends (ADR-0043 §1).
+
+    The checks that used to belong to three commands run here, in this order and for this
+    reason: the instrument must be published, and the judge is validated against it.
+    """
+    uow, studies = _studies_wiring(session)
+    return DeclareStudy(
+        studies=studies,
+        registry=RegistryGateway(session),
+        design=DesignGateway(session),
+        evaluation=EvaluationGateway(session),
+        publisher=uow.events,
+        uow=uow,
+    )(
+        DeclareStudyCommand(
+            name=name,
+            selection=StudySelection(
+                instrument_version_id=version_id,
+                assessor_id=assessor_id,
+                brief_ids=brief_ids,
+            ),
+        )
+    )
+
+
 def _project_fitness(session, study_id):
     """The fitness read, composed from the same gateways the endpoint and the CLI use."""
     study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
@@ -274,28 +289,15 @@ def test_the_first_increment_closes_the_loop(
 
     # --- the study lifecycle
     with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        study = DeclareStudy(studies, uow.events, uow)(
-            DeclareStudyCommand(name=f"First paired round ({unique})")
+        study = _declare(
+            s,
+            f"First paired round ({unique})",
+            version_id,
+            UUID(assessor_row_id),
+            [brief_id],
         )
     cleanup["studies"].append(study.id)
-
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        PinInstrument(studies, DesignGateway(s), uow.events, uow)(
-            PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
-        )
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        PinAssessor(studies, EvaluationGateway(s), uow.events, uow)(
-            PinAssessorCommand(study_id=study.id, assessor_id=UUID(assessor_row_id))
-        )
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        composed = ComposeDataset(studies, RegistryGateway(s), uow)(
-            ComposeDatasetCommand(study_id=study.id, brief_ids=[brief_id])
-        )
-    assert set(composed.content_ids) == {linked.id, orphan.id}  # the recipe resolved both
+    assert set(study.content_ids) == {linked.id, orphan.id}  # the recipe resolved both
 
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
@@ -388,13 +390,9 @@ def test_the_first_increment_closes_the_loop(
             {"id": str(study.id)},
         )
     }
-    assert event_types == {
-        "StudyDeclared",
-        "InstrumentPinned",
-        "AssessorPinned",
-        "StudyOpened",
-        "StudySignedOff",
-    }
+    # Choosing publishes nothing (ADR-0043 §2): `StudyOpened` carries the whole triple,
+    # and it is the act that makes it binding.
+    assert event_types == {"StudyDeclared", "StudyOpened", "StudySignedOff"}
 
     # --- signed off means immutable, in the domain and in the row
     with pytest.raises(StudyAlreadySignedOff):
@@ -513,26 +511,14 @@ def test_an_attributed_content_enters_generator_level_accumulation(
     assert run_evaluate(str(orphan.id), version_id, f"{patched_package.name}:1", False) == 0
 
     with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        study = DeclareStudy(studies, uow.events, uow)(
-            DeclareStudyCommand(name=f"Attribution round ({unique})")
+        study = _declare(
+            s,
+            f"Attribution round ({unique})",
+            version_id,
+            UUID(assessor_row_id),
+            [orphan.brief_id],
         )
     cleanup["studies"].append(study.id)
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        PinInstrument(studies, DesignGateway(s), uow.events, uow)(
-            PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
-        )
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        PinAssessor(studies, EvaluationGateway(s), uow.events, uow)(
-            PinAssessorCommand(study_id=study.id, assessor_id=UUID(assessor_row_id))
-        )
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        ComposeDataset(studies, RegistryGateway(s), uow)(
-            ComposeDatasetCommand(study_id=study.id, brief_ids=[orphan.brief_id])
-        )
     with SessionLocal() as s:
         uow, studies = _studies_wiring(s)
         OpenStudy(studies, uow.events, uow)(OpenStudyCommand(study_id=study.id))
@@ -588,26 +574,14 @@ def test_a_batch_evaluates_the_whole_study_and_reports_it(
     assessor_row_id = track_automated(cleanup, patched_package.name)
 
     with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        study = DeclareStudy(studies, uow.events, uow)(
-            DeclareStudyCommand(name=f"Batch round ({unique})")
+        study = _declare(
+            s,
+            f"Batch round ({unique})",
+            version_id,
+            UUID(assessor_row_id),
+            [first.brief_id],
         )
     cleanup["studies"].append(study.id)
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        PinInstrument(studies, DesignGateway(s), uow.events, uow)(
-            PinInstrumentCommand(study_id=study.id, instrument_version_id=version_id)
-        )
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        PinAssessor(studies, EvaluationGateway(s), uow.events, uow)(
-            PinAssessorCommand(study_id=study.id, assessor_id=UUID(assessor_row_id))
-        )
-    with SessionLocal() as s:
-        uow, studies = _studies_wiring(s)
-        ComposeDataset(studies, RegistryGateway(s), uow)(
-            ComposeDatasetCommand(study_id=study.id, brief_ids=[first.brief_id])
-        )
 
     # A study that is not open is refused before anything is paid for: the dataset it would
     # evaluate can still change.
