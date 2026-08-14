@@ -1,9 +1,9 @@
 """The per-criterion record across a study's dataset — pure, over local DTOs.
 
 Read-only and composed on read, like the fitness projection and for its reason (ADR-0023):
-it must not travel inside `study_reports.report`, whose jsonb is frozen at publish and
-corrected never. Two things the report structurally cannot say, and this exists to say
-them:
+it must not travel inside `study_reports.report`, whose jsonb is frozen when the study is
+signed off and corrected never. Two things the report structurally cannot say, and this
+exists to say them:
 
 * **The evidence of a pass.** Findings are minted one per FAILING criterion, so the quote
   that grounds a pass — persisted for every pass, guaranteed by a CHECK constraint — is
@@ -44,9 +44,9 @@ STATE_KEYS = {
 }
 
 JUDGMENT_BASIS_NOTE = {
-    "publishedReport": (
+    "signedOffReport": (
         "the judgments this study's frozen report recorded — re-evaluating a course after "
-        "publishing does not rewrite what that report reflects"
+        "signing off does not rewrite what that report reflects"
     ),
     "current": (
         "the most recent judgment per course: this study has frozen no report yet, so there "
@@ -62,7 +62,7 @@ def _judgments_in_view(
 
     The most recent one is right only while nothing has been frozen. Once a report exists
     it decides: it named its judgments and it is immutable, so reading "the latest" against
-    a published study would show evidence for a document that never saw it. An EMPTY set of
+    a signed-off study would show evidence for a document that never saw it. An EMPTY set of
     recorded judgments means exactly what it says — that report reflects none — and is
     honoured rather than fallen back from.
     """
@@ -75,7 +75,7 @@ def _judgments_in_view(
         judgment = by_id.get(UUID(judgment_id))
         if judgment is not None:
             view[UUID(content_id)] = judgment
-    return "publishedReport", view
+    return "signedOffReport", view
 
 
 def _cell(outcome: CriterionOutcomeInfo) -> dict[str, Any]:

@@ -4,7 +4,7 @@ The schema half runs once per session through `conftest`; what nothing else cove
 *which* studies get a pin and *which author* they get. It is a one-shot statement over data
 that already exists, so being wrong is not something a later run corrects: too eager pins a
 mixed study to one of its two judges and silently discards the other half of its evidence,
-and picking from the wrong population pins a published study to whoever re-evaluated a
+and picking from the wrong population pins a signed-off study to whoever re-evaluated a
 course after it was signed — which would then filter that study's own frozen judgments out
 of every read of it.
 
@@ -122,21 +122,22 @@ def world(session, unique):
         )
         return judgment_id
 
-    def study(label: str, content_ids, *, published_judgments=None):
+    def study(label: str, content_ids, *, signed_off_judgments=None):
         study_id = uuid4()
         session.execute(
             text(
                 """
-                INSERT INTO studies (id, purpose, status, instrument_version_id, published_at)
-                VALUES (:id, :purpose, :status, :version_id, :published_at)
+                INSERT INTO studies
+                    (id, name, status, instrument_version_id, signed_off_at)
+                VALUES (:id, :name, :status, :version_id, :signed_off_at)
                 """
             ),
             {
                 "id": study_id,
-                "purpose": f"backfill {label} {unique}",
-                "status": "published" if published_judgments else "open",
+                "name": f"backfill {label} {unique}",
+                "status": "signed_off" if signed_off_judgments else "open",
                 "version_id": version_id,
-                "published_at": "2026-08-01T00:00:00+00:00" if published_judgments else None,
+                "signed_off_at": "2026-08-01T00:00:00+00:00" if signed_off_judgments else None,
             },
         )
         for content_id in content_ids:
@@ -144,11 +145,11 @@ def world(session, unique):
                 text("INSERT INTO study_dataset (study_id, content_id) VALUES (:s, :c)"),
                 {"s": study_id, "c": content_id},
             )
-        if published_judgments:
+        if signed_off_judgments:
             session.execute(
                 text(
                     """
-                    INSERT INTO study_reports (study_id, report, published_at)
+                    INSERT INTO study_reports (study_id, report, signed_off_at)
                     VALUES (:id, cast(:report as jsonb), now())
                     """
                 ),
@@ -157,7 +158,7 @@ def world(session, unique):
                     "report": json.dumps(
                         {
                             "judgmentIdsUsed": {
-                                str(c): str(j) for c, j in published_judgments.items()
+                                str(c): str(j) for c, j in signed_off_judgments.items()
                             }
                         }
                     ),
@@ -179,12 +180,12 @@ def world(session, unique):
     ids["sole"] = study("sole", [one])
     ids["mixed"] = study("mixed", [one, two])
     ids["unjudged"] = study("unjudged", [three])
-    ids["published"] = study("published", [four], published_judgments={four: signed})
+    ids["signed_off"] = study("signed off", [four], signed_off_judgments={four: signed})
     session.commit()
 
     yield ids
 
-    study_ids = [ids[k] for k in ("sole", "mixed", "unjudged", "published")]
+    study_ids = [ids[k] for k in ("sole", "mixed", "unjudged", "signed_off")]
     session.execute(
         text("DELETE FROM study_reports WHERE study_id = ANY(:ids)"), {"ids": study_ids}
     )
@@ -213,10 +214,10 @@ def world(session, unique):
 def _pins(session, world):
     rows = session.execute(
         text("SELECT id, assessor_id FROM studies WHERE id = ANY(:ids)"),
-        {"ids": [world[k] for k in ("sole", "mixed", "unjudged", "published")]},
+        {"ids": [world[k] for k in ("sole", "mixed", "unjudged", "signed_off")]},
     ).all()
     by_id = {row.id: row.assessor_id for row in rows}
-    return {key: by_id[world[key]] for key in ("sole", "mixed", "unjudged", "published")}
+    return {key: by_id[world[key]] for key in ("sole", "mixed", "unjudged", "signed_off")}
 
 
 def test_the_backfill_pins_only_where_the_author_is_unambiguous(session, world):
@@ -230,14 +231,14 @@ def test_the_backfill_pins_only_where_the_author_is_unambiguous(session, world):
     assert pins["unjudged"] is None
 
 
-def test_a_published_study_is_pinned_to_the_author_its_report_recorded(session, world):
-    """Not to whoever judged that course most recently. A published study is read through
+def test_a_signed_off_study_is_pinned_to_the_author_its_report_recorded(session, world):
+    """Not to whoever judged that course most recently. A signed-off study is read through
     the judgments its frozen report named (ADR-0041 §6), so pinning the later author would
     make every read of it filter out the very judgments the document is composed from."""
     session.execute(text(_backfill_sql()))
     session.commit()
 
-    assert _pins(session, world)["published"] == world["alice"]
+    assert _pins(session, world)["signed_off"] == world["alice"]
 
 
 def test_the_backfill_is_idempotent(session, world):

@@ -1,10 +1,10 @@
 """The I/O of the report path, in one place — read through this module's own ports.
 
 `compose_report` is pure and `queries.py` is pure by contract; something has to do the
-reading, and it has to be callable from BOTH `PublishStudy` (which materializes the frozen
+reading, and it has to be callable from BOTH `SignOffStudy` (which materializes the frozen
 document) and the preview (which shows what that document would say). That rules out the
 router: an application layer may not import infrastructure, so a gathering that lives there
-is a gathering `PublishStudy` cannot use — which is how the same six statements came to be
+is a gathering `SignOffStudy` cannot use — which is how the same six statements came to be
 written three times over (the router's fitness endpoint, the CLI's, and the test suite's).
 
 Nothing foreign is imported here: the ports are this module's own Protocols, and the
@@ -56,14 +56,14 @@ def gather_report_inputs(
 
     `instrument` comes back as `None` rather than raising, and the judgment and finding
     reads are skipped when nothing is pinned: at `declared` or `prepared` there may be no
-    pin at all, and whether that absence is a fault is the CALLER's question — publishing
+    pin at all, and whether that absence is a fault is the CALLER's question — signing off
     refuses over it, a preview reports it as a gap and answers anyway. None-ness is a
     return type here, not an exception, the same way the fitness projection takes one.
 
     The briefs are the ones the CONTENTS reference, deliberately NOT the recipe union the
     fitness projection uses (ADR-0039 §3): `caveats.briefCompleteness` is computed from
-    this dict and is frozen into published reports, so widening it here would silently
-    change what publishing writes.
+    this dict and is frozen into signed-off reports, so widening it here would silently
+    change what signing off writes.
 
     The judgment and finding reads are narrowed to the study's pinned assessor (ADR-0042
     §9), in SQL rather than after the fact — a judgment by anyone else is not this study's

@@ -17,8 +17,8 @@ from app.modules.evaluation_studies.application.dtos import StudyReportDTO
 from app.modules.evaluation_studies.domain.model import Study
 
 _COLUMNS = (
-    "id, purpose, status, instrument_version_id, assessor_id, "
-    "created_at, opened_at, published_at, published_by"
+    "id, name, description, status, instrument_version_id, assessor_id, "
+    "created_at, opened_at, signed_off_at, signed_off_by"
 )
 
 
@@ -32,7 +32,8 @@ class SqlAlchemyStudyRepository:
     ) -> Study:
         return Study(
             id=row["id"],
-            purpose=row["purpose"],
+            name=row["name"],
+            description=row["description"],
             status=row["status"],
             instrument_version_id=row["instrument_version_id"],
             assessor_id=row["assessor_id"],
@@ -40,8 +41,8 @@ class SqlAlchemyStudyRepository:
             content_ids=content_ids,
             created_at=row["created_at"],
             opened_at=row["opened_at"],
-            published_at=row["published_at"],
-            published_by=row["published_by"],
+            signed_off_at=row["signed_off_at"],
+            signed_off_by=row["signed_off_by"],
         )
 
     def _children_for(
@@ -99,13 +100,15 @@ class SqlAlchemyStudyRepository:
         self._session.execute(
             text(
                 """
-                INSERT INTO studies (id, purpose, status, instrument_version_id, assessor_id)
-                VALUES (:id, :purpose, :status, :instrument_version_id, :assessor_id)
+                INSERT INTO studies
+                    (id, name, description, status, instrument_version_id, assessor_id)
+                VALUES (:id, :name, :description, :status, :instrument_version_id, :assessor_id)
                 """
             ),
             {
                 "id": study.id,
-                "purpose": study.purpose,
+                "name": study.name,
+                "description": study.description,
                 "status": study.status,
                 "instrument_version_id": study.instrument_version_id,
                 "assessor_id": study.assessor_id,
@@ -118,25 +121,27 @@ class SqlAlchemyStudyRepository:
             text(
                 """
                 UPDATE studies
-                   SET purpose = :purpose,
+                   SET name = :name,
+                       description = :description,
                        status = :status,
                        instrument_version_id = :instrument_version_id,
                        assessor_id = :assessor_id,
                        opened_at = :opened_at,
-                       published_at = :published_at,
-                       published_by = :published_by
+                       signed_off_at = :signed_off_at,
+                       signed_off_by = :signed_off_by
                  WHERE id = :id
                 """
             ),
             {
                 "id": study.id,
-                "purpose": study.purpose,
+                "name": study.name,
+                "description": study.description,
                 "status": study.status,
                 "instrument_version_id": study.instrument_version_id,
                 "assessor_id": study.assessor_id,
                 "opened_at": study.opened_at,
-                "published_at": study.published_at,
-                "published_by": study.published_by,
+                "signed_off_at": study.signed_off_at,
+                "signed_off_by": study.signed_off_by,
             },
         )
         self._session.execute(
@@ -189,7 +194,7 @@ class SqlAlchemyStudyReportRepository:
         row = (
             self._session.execute(
                 text(
-                    "SELECT study_id, report, published_at FROM study_reports WHERE study_id = :id"
+                    "SELECT study_id, report, signed_off_at FROM study_reports WHERE study_id = :id"
                 ),
                 {"id": study_id},
             )
@@ -199,20 +204,20 @@ class SqlAlchemyStudyReportRepository:
         if row is None:
             return None
         return StudyReportDTO(
-            study_id=row["study_id"], report=row["report"], published_at=row["published_at"]
+            study_id=row["study_id"], report=row["report"], signed_off_at=row["signed_off_at"]
         )
 
-    def insert_once(self, study_id: UUID, report: dict[str, Any], published_at: datetime) -> bool:
+    def insert_once(self, study_id: UUID, report: dict[str, Any], signed_off_at: datetime) -> bool:
         """Conditional insert (ADR-0003 pattern): the report is written once, ever."""
         newly = self._session.execute(
             text(
                 """
-                INSERT INTO study_reports (study_id, report, published_at)
-                VALUES (:id, cast(:report as jsonb), :published_at)
+                INSERT INTO study_reports (study_id, report, signed_off_at)
+                VALUES (:id, cast(:report as jsonb), :signed_off_at)
                 ON CONFLICT (study_id) DO NOTHING
                 RETURNING 1
                 """
             ),
-            {"id": study_id, "report": json.dumps(report), "published_at": published_at},
+            {"id": study_id, "report": json.dumps(report), "signed_off_at": signed_off_at},
         ).scalar()
         return newly is not None

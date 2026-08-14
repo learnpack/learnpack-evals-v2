@@ -37,8 +37,8 @@ def published_instrument(admin_client, cleanup, unique) -> str:
     return instrument_id
 
 
-def declare(admin_client, cleanup, purpose="A test round") -> str:
-    response = admin_client.post("/admin/studies", json={"purpose": purpose})
+def declare(admin_client, cleanup, name="A test round") -> str:
+    response = admin_client.post("/admin/studies", json={"name": name})
     assert response.status_code == 201, response.text
     study_id = response.json()["study_id"]
     cleanup["studies"].append(study_id)
@@ -126,26 +126,26 @@ def test_the_full_lifecycle_over_the_api(admin_client, cleanup, unique):
     assert body["brief_ids"] == [brief_id]
     assert len(body["content_ids"]) == 1
 
-    # No report before publishing.
+    # No report before it is signed off.
     assert admin_client.get(f"/admin/studies/{study_id}/report").status_code == 404
 
     assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 200
     assert admin_client.get(f"/admin/studies/{study_id}").json()["status"] == "open"
 
-    response = admin_client.post(f"/admin/studies/{study_id}/publish")
+    response = admin_client.post(f"/admin/studies/{study_id}/sign-off")
     assert response.status_code == 200, response.text
-    assert response.json()["status"] == "published"
+    assert response.json()["status"] == "signed_off"
 
     report = admin_client.get(f"/admin/studies/{study_id}/report").json()["report"]
     assert report["studyId"] == study_id
     assert report["instrumentVersionId"] == instrument_id
-    # Nothing evaluated yet: the report says so instead of publishing silently.
+    # Nothing evaluated yet: the report says so instead of signing off silently.
     assert report["judgmentIdsUsed"] == {}
     assert body["content_ids"] == report["caveats"]["contentsWithoutJudgment"]
     assert report["caveats"]["unknownExclusions"]["contentIds"] == body["content_ids"]
 
     # Published is immutable — every later act conflicts.
-    assert admin_client.post(f"/admin/studies/{study_id}/publish").status_code == 409
+    assert admin_client.post(f"/admin/studies/{study_id}/sign-off").status_code == 409
     assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 409
     assert (
         admin_client.post(f"/admin/studies/{study_id}/dataset", json={"brief_ids": []})
@@ -164,8 +164,8 @@ def test_the_list_answers_newest_first_and_carries_the_date_it_sorts_on(
     the suite declared. And the date it sorts on travels with every row, so a reader can
     check the order instead of trusting it.
     """
-    older = declare(admin_client, cleanup, purpose=f"older round {unique}")
-    newer = declare(admin_client, cleanup, purpose=f"newer round {unique}")
+    older = declare(admin_client, cleanup, name=f"older round {unique}")
+    newer = declare(admin_client, cleanup, name=f"newer round {unique}")
 
     response = admin_client.get("/admin/studies")
     assert response.status_code == 200, response.text
@@ -262,7 +262,7 @@ def test_open_preconditions_map_to_422(admin_client, cleanup, unique):
     empty = admin_client.post(f"/admin/studies/{study_id}/open")
     assert empty.status_code == 422  # empty dataset
 
-    assert admin_client.post(f"/admin/studies/{study_id}/publish").status_code == 409  # not open
+    assert admin_client.post(f"/admin/studies/{study_id}/sign-off").status_code == 409  # not open
 
 
 def test_unknown_briefs_and_studies_are_named(admin_client, cleanup, unique):
@@ -336,14 +336,14 @@ def test_fitness_is_its_own_resource_and_informs_before_there_is_anything_to_mea
     assert admin_client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 404
 
 
-def test_the_preview_answers_before_publishing_and_never_says_it_was_published(
+def test_the_preview_answers_before_signing_off_and_never_says_it_was_signed(
     admin_client, cleanup, unique
 ):
     """The whole reason this resource exists: a report that appears only after an
     irreversible act is a report nobody can read before committing to it.
 
     Pinned here: it answers while the study is still being set up and once it is composed;
-    the frozen `/report` keeps its 404 beside it; and `publishedAt` is absent, because a
+    the frozen `/report` keeps its 404 beside it; and `signedOffAt` is absent, because a
     preview carrying the composition's clock renders as "Published now".
     """
     bare_id = declare(admin_client, cleanup)
@@ -352,7 +352,7 @@ def test_the_preview_answers_before_publishing_and_never_says_it_was_published(
     assert fresh.status_code == 200, fresh.text
     body = fresh.json()
     assert body["documentKind"] == "preview", fresh.text
-    assert "publishedAt" not in body, fresh.text
+    assert "signedOffAt" not in body, fresh.text
     assert body["composedAt"], fresh.text
     assert body["frozenRecord"]["exists"] is False, fresh.text
     assert {g["gap"] for g in body["gaps"]} == {
@@ -370,16 +370,16 @@ def test_the_preview_answers_before_publishing_and_never_says_it_was_published(
     composed = prepared.json()
     assert composed["gaps"] == [], prepared.text
     assert composed["instrumentVersionId"] == instrument_id
-    assert "publishedAt" not in composed, prepared.text
+    assert "signedOffAt" not in composed, prepared.text
     assert len(composed["contents"]) == 1, prepared.text
-    # Previewing is not publishing: the frozen row still does not exist.
+    # Previewing is not signing off: the frozen row still does not exist.
     assert admin_client.get(f"/admin/studies/{study_id}/report").status_code == 404
 
 
-def test_previewing_publishes_no_event_and_persists_nothing(admin_client, cleanup, unique, session):
+def test_previewing_emits_no_event_and_persists_nothing(admin_client, cleanup, unique, session):
     """A preview is a read. If it ever became a write, this is where it shows: the study
     would leave `prepared`, `study_reports` would gain a row, and the outbox would gain a
-    `StudyPublished` nobody performed."""
+    `StudySignedOff` nobody performed."""
     study_id, _, _ = composed_study(admin_client, cleanup, unique)
 
     before = session.execute(
@@ -459,7 +459,7 @@ def test_studies_require_the_admin_role(as_user, cleanup, unique):
     cleanup["assessors"].append(client.get("/me").json()["assessor_id"])
 
     assert client.get("/admin/studies").status_code == 403
-    assert client.post("/admin/studies", json={"purpose": "nope"}).status_code == 403
+    assert client.post("/admin/studies", json={"name": "nope"}).status_code == 403
     assert client.get(f"/admin/studies/{uuid4()}/fitness").status_code == 403
     assert client.get(f"/admin/studies/{uuid4()}/report/preview").status_code == 403
     assert client.get(f"/admin/studies/{uuid4()}/criterion-outcomes").status_code == 403

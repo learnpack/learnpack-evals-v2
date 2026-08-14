@@ -1,8 +1,9 @@
-"""Use case: publish the study — the human act that materializes the immutable report.
+"""Use case: sign off the study — the human act that materializes the immutable report.
 
-Composed on-read via the gateway ports (ADR-0006 style: batch queries, aggregation in
-Python, no projection tables) and written once — `insert_once` makes re-publication
-impossible at the row level too.
+The report was readable before this (ADR-0041): what signing off adds is the signature and
+the closure, not the visibility (ADR-0043 §8). Composed on-read via the gateway ports
+(ADR-0006 style: batch queries, aggregation in Python, no projection tables) and written
+once — `insert_once` makes a second signature impossible at the row level too.
 """
 
 from dataclasses import dataclass
@@ -24,19 +25,19 @@ from app.modules.evaluation_studies.application.report import compose_report
 from app.modules.evaluation_studies.domain import events
 from app.modules.evaluation_studies.domain.model import (
     Study,
-    StudyAlreadyPublished,
+    StudyAlreadySignedOff,
     StudyNotFound,
 )
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 
 
 @dataclass(frozen=True)
-class PublishStudyCommand:
+class SignOffStudyCommand:
     study_id: UUID
-    published_by: UUID
+    signed_off_by: UUID
 
 
-class PublishStudy:
+class SignOffStudy:
     def __init__(
         self,
         studies: StudyRepositoryPort,
@@ -57,21 +58,21 @@ class PublishStudy:
         self._publisher = publisher
         self._uow = uow
 
-    def __call__(self, command: PublishStudyCommand) -> Study:
+    def __call__(self, command: SignOffStudyCommand) -> Study:
         study = self._studies.get_by_id(command.study_id)
         if study is None:
             raise StudyNotFound(f"study {command.study_id} is not declared")
 
         now = datetime.now(UTC)
-        study.publish(command.published_by, now)
+        study.sign_off(command.signed_off_by, now)
 
         report = self._compose(study, now)
         if not self._reports.insert_once(study.id, report, now):
-            raise StudyAlreadyPublished(f"study {study.id} already has a report")
+            raise StudyAlreadySignedOff(f"study {study.id} already has a report")
 
         self._studies.update(study)
         judgment_ids = [UUID(j) for j in report["judgmentIdsUsed"].values()]
-        self._publisher.publish(events.study_published(study, judgment_ids))
+        self._publisher.publish(events.study_signed_off(study, judgment_ids))
         self._uow.commit()
         return study
 
@@ -81,8 +82,8 @@ class PublishStudy:
             study, self._registry, self._evaluation, self._design, self._profiling
         )
         if inputs.instrument is None:
-            # The gathering reports the absence; refusing to publish over it is THIS
-            # caller's rule — a preview reports the same absence as a gap and answers.
+            # The gathering reports the absence; refusing to sign over it is THIS caller's
+            # rule — a preview reports the same absence as a gap and answers.
             raise UnknownInstrument(
                 f"instrument version {study.instrument_version_id} does not exist"
             )
@@ -96,5 +97,5 @@ class PublishStudy:
             findings=inputs.findings,
             capabilities=inputs.capabilities,
             instrument=inputs.instrument,
-            published_at=now,
+            signed_off_at=now,
         )

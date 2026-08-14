@@ -272,6 +272,6 @@ def test_reading_the_runs_of_another_study_never_leaks_this_ones(
     ).json()["run_id"]
     finished(admin, study_id, run_id)
 
-    other = declare(admin, cleanup, purpose="Another round")
+    other = declare(admin, cleanup, name="Another round")
     assert admin.get(f"/admin/studies/{other}/evaluations").json()["runs"] == []
     assert admin.get(f"/admin/studies/{other}/evaluations/{run_id}").status_code == 404

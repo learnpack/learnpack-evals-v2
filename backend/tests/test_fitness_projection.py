@@ -106,8 +106,8 @@ def project(
         )
     study = Study(
         id=uuid4(),
-        purpose="fitness",
-        status="published",
+        name="fitness",
+        status="signed_off",
         instrument_version_id=inst.instrument_version_id,
         brief_ids=tuple(dict.fromkeys(recipe or [b for b in briefs_of.values() if b is not None])),
         content_ids=tuple(outcomes_per_content),
@@ -429,8 +429,8 @@ def test_only_the_current_judgment_of_a_content_counts():
     stale, current = uuid4(), uuid4()
     study = Study(
         id=uuid4(),
-        purpose="fitness",
-        status="published",
+        name="fitness",
+        status="signed_off",
         instrument_version_id="qa-v1",
         content_ids=(content,),
     )
@@ -544,7 +544,7 @@ def test_a_value_pooling_two_judges_says_so_where_the_ga_reads_it():
 
 def test_a_study_with_nothing_pinned_answers_with_its_gaps():
     """It informs rather than refusing, the way readiness does."""
-    study = Study(id=uuid4(), purpose="empty", status="declared")
+    study = Study(id=uuid4(), name="empty", status="declared")
 
     result = compute_fitness(
         study=study,

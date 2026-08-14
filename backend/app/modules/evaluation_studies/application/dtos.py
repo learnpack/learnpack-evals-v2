@@ -15,7 +15,8 @@ from uuid import UUID
 @dataclass(frozen=True)
 class StudyDTO:
     study_id: UUID
-    purpose: str
+    name: str
+    description: str | None
     status: str
     instrument_version_id: str | None
     # The third leg of the triple (ADR-0042). The id only: what an assessor is CALLED is
@@ -25,15 +26,15 @@ class StudyDTO:
     content_ids: tuple[UUID, ...]
     created_at: datetime | None
     opened_at: datetime | None
-    published_at: datetime | None
-    published_by: UUID | None
+    signed_off_at: datetime | None
+    signed_off_by: UUID | None
 
 
 @dataclass(frozen=True)
 class StudyReportDTO:
     study_id: UUID
     report: dict[str, Any]
-    published_at: datetime
+    signed_off_at: datetime
 
 
 # ------------------------------------------------- registry (evaluand side), translated

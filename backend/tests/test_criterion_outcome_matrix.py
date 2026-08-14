@@ -4,7 +4,7 @@ The rules under test are the ones that make it readable rather than merely avail
 a criterion has a denominator whether or not anything produced an outcome for it, that the
 evidence of a pass travels (nothing else carries it), that a superseded judgment never
 sits beside the current one, and that a frozen report — not recency — decides what a
-published study is read through.
+signed-off study is read through.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -87,7 +87,7 @@ def matrix(
 ) -> dict:
     study = Study(
         id=uuid4(),
-        purpose="a round",
+        name="a round",
         status="open",
         instrument_version_id="qa-v1",
         content_ids=tuple(content_ids),
@@ -166,7 +166,7 @@ def test_a_superseded_judgment_never_sits_beside_the_current_one():
 
 
 def test_a_frozen_report_decides_which_judgment_the_matrix_reads():
-    """A published report named its judgments and cannot change. Re-evaluate the course
+    """A signed-off report named its judgments and cannot change. Re-evaluate the course
     afterwards and a newer judgment exists that the report never saw — reading "the latest"
     would show evidence for a document that does not reflect it."""
     cid = uuid4()
@@ -178,7 +178,7 @@ def test_a_frozen_report_decides_which_judgment_the_matrix_reads():
         [outcome(published, "cr-modules", "fail"), outcome(later, "cr-modules", "pass")],
         frozen_report={"judgmentIdsUsed": {str(cid): str(published.judgment_id)}},
     )
-    assert result["judgmentBasis"]["basis"] == "publishedReport"
+    assert result["judgmentBasis"]["basis"] == "signedOffReport"
     assert [row["outcome"] for row in section(result, "cr-modules")["outcomes"]] == ["fail"]
     assert result["contents"][0]["judgmentId"] == str(published.judgment_id)
 
@@ -195,7 +195,7 @@ def test_a_report_that_froze_no_judgment_is_honoured_rather_than_fallen_back_fro
         [outcome(later, "cr-modules", "pass")],
         frozen_report={"judgmentIdsUsed": {}},
     )
-    assert result["judgmentBasis"]["basis"] == "publishedReport"
+    assert result["judgmentBasis"]["basis"] == "signedOffReport"
     assert section(result, "cr-modules")["coverage"] == {"observed": 0, "of": 1}
     assert result["contentsWithoutJudgment"] == [str(cid)]
 
@@ -250,7 +250,7 @@ def test_the_matrix_names_whose_evidence_it_is_showing():
 
 def test_a_study_with_nothing_pinned_answers_with_its_gaps():
     """It informs rather than refusing, the way readiness does."""
-    study = Study(id=uuid4(), purpose="a round")
+    study = Study(id=uuid4(), name="a round")
     result = compute_criterion_outcomes(
         study=study,
         instrument=None,
