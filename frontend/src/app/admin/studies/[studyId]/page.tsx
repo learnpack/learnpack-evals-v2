@@ -7,11 +7,9 @@ import {
   ArrowLeft,
   Check,
   FileCheck,
-  Info,
   ListChecks,
   Play,
   Square,
-  TrendingUp,
 } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { StudyStatusBadge } from "@/components/admin/study-status";
+import { StudyReportSection } from "@/components/admin/study-report/report-section";
 import { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
@@ -45,7 +44,6 @@ import {
   useStudyEvaluations,
   useStudyFitness,
   useStudyReadiness,
-  useStudyReport,
 } from "@/lib/api/hooks";
 import type {
   BatchCourseStatus,
@@ -55,9 +53,6 @@ import type {
   StudyEvaluations,
   StudyFitness,
   StudyReadiness,
-  StudyReport,
-  StudyReportContent,
-  StudyReportGenerator,
   StudyResponse,
   Uuid,
 } from "@/lib/api/types";
@@ -75,37 +70,42 @@ export default function StudyDetailPage({
   // Hoisted: the evaluation card and the publish card must quote the same two numbers.
   const evaluations = useStudyEvaluations(studyId);
   const readiness = useStudyReadiness(studyId);
-  const report = useStudyReport(studyId, study?.status === "published");
   const fitness = useStudyFitness(studyId);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={(error as Error).message} />;
   if (!study) return <EmptyState title="Study not found" />;
 
-  // A study before its opening has one job and after it another; they never both apply.
+  // A study before its opening has one job, an open one another, and a published one none
+  // at all — every card below appears only while it has something a reader can act on.
   const inSetup = study.status === "declared" || study.status === "prepared";
+  const published = study.status === "published";
 
   return (
     <div className="max-w-5xl space-y-6">
       <StudyHeader study={study} />
 
-      {inSetup ? (
-        <SetupCard study={study} />
-      ) : (
-        <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
-      )}
+      {inSetup ? <SetupCard study={study} /> : null}
 
+      {/* Evaluating and publishing are what an OPEN study is for. Once it is published a
+          batch is refused and the report already states how many judgments it used, so the
+          card would be a count you have and a paragraph about an act you cannot perform. */}
       {study.status === "open" ? (
-        <PublishCard study={study} evaluations={evaluations.data ?? null} />
+        <>
+          <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
+          <PublishCard study={study} evaluations={evaluations.data ?? null} />
+        </>
       ) : null}
 
-      {readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
+      {/* Readable before the irreversible act: publishing freezes a report, it does not
+          reveal one. Not while still being set up, though — there is nothing to report yet
+          and the setup card is the whole job. */}
+      {inSetup ? null : <StudyReportSection study={study} />}
 
-      {study.status === "published" && report.isLoading ? (
-        <LoadingState label="Loading the report…" />
-      ) : study.status === "published" && report.data ? (
-        <ReportView report={report.data.report} />
-      ) : null}
+      {/* Below the phase it informs, never above it, and never on a published study: it is
+          computed from TODAY's ratifications and adapters, so on a frozen report it can
+          contradict the document it sits next to. */}
+      {!published && readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
       {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
           conflation is not — the report publishes no aggregate score, and this denominator
@@ -1048,21 +1048,26 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
   const judged = fitness.contents.filter((content) => content.judged).length;
 
   return (
-    <Card className="border-dashed">
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <TrendingUp className="h-4 w-4 text-muted-foreground" /> Fitness
-          <span className="text-xs font-normal text-muted-foreground">
-            optimization signal — not a judgment, and not part of the report
-          </span>
-          {hasStudyLevel && judged > 0 && judged < fitness.contents.length ? (
-            <Badge variant="warning">
-              {judged} of {fitness.contents.length} courses judged
-            </Badge>
-          ) : null}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 text-sm">
+    // Closed, and headed by the question it answers rather than by its own name. It sits
+    // apart from the report on purpose (ADR-0023 §11) — the juxtaposition is useful, the
+    // conflation is not, and the two use different denominators. A closed section is the
+    // cheapest way to say "read the report first": one asks what is wrong with these
+    // courses, the other asks whether the generator is improving between rounds.
+    <CollapsibleSection
+      title="Is the generator getting better?"
+      badge="optimization signal — not a judgment, and not part of the report"
+      defaultOpen={false}
+      className="border-dashed bg-muted/10"
+      contentClassName="space-y-4 text-sm"
+      meta={
+        hasStudyLevel && judged > 0 && judged < fitness.contents.length ? (
+          <Badge variant="warning">
+            {judged} of {fitness.contents.length} courses judged
+          </Badge>
+        ) : null
+      }
+    >
+      <div className="space-y-4 text-sm">
         {fitness.gaps.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {fitness.gaps.map((gap) => (
@@ -1132,8 +1137,8 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
             </p>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleSection>
   );
 }
 
@@ -1235,21 +1240,39 @@ function ByBrief({ fitness }: { fitness: StudyFitness }) {
 
 // ------------------------------------------------------------------- readiness
 
+/** What this round will not be able to answer — a question worth asking only while the
+ *  answers do not exist yet.
+ *
+ *  Closed when it has nothing to report, because a whole panel saying "no gaps" is a panel
+ *  that teaches the reader to skip it. Open when there are gaps, which is when it is the
+ *  most useful thing on the page. */
 function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
   const claimGaps = readiness.claims.filter((c) => c.gaps.length > 0);
+  const gaps = readiness.studyGaps.length + claimGaps.length;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Info className="h-4 w-4 text-muted-foreground" /> Readiness
-          <span className="text-xs font-normal text-muted-foreground">
-            informs, never blocks
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
+    <CollapsibleSection
+      title="Can this round answer what it asks?"
+      badge="informs, never blocks"
+      defaultOpen={gaps > 0}
+      contentClassName="space-y-3 text-sm"
+      meta={
+        gaps > 0 ? (
+          <Badge variant="warning">
+            {gaps} gap{gaps === 1 ? "" : "s"}
+          </Badge>
+        ) : (
+          <Badge variant="success">no gaps</Badge>
+        )
+      }
+    >
+      <div className="space-y-3 text-sm">
         {readiness.studyGaps.length === 0 && claimGaps.length === 0 ? (
-          <p className="text-muted-foreground">No gaps: the study can run end to end.</p>
+          <p className="text-muted-foreground">
+            Every claim has criteria, every criterion has a datum in this dataset&apos;s
+            formats, and an assessor has ratified the pinned version — the study can run end
+            to end.
+          </p>
         ) : null}
         {readiness.studyGaps.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -1290,214 +1313,7 @@ function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
             </ul>
           </div>
         ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------- report
-
-const STATUS_COLOR: Record<string, "default" | "destructive" | "secondary"> = {
-  supported: "default",
-  refuted: "destructive",
-  insufficient: "secondary",
-};
-
-function ReportView({ report }: { report: StudyReport }) {
-  return (
-    <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Published {new Date(report.publishedAt).toLocaleString()} · instrument{" "}
-        {report.instrumentVersionId} · dataset of {report.dataset.size} ·{" "}
-        {Object.keys(report.judgmentIdsUsed).length} judgments recorded
-      </p>
-
-      {report.generatorLevel.length > 0 ? (
-        report.generatorLevel.map((generator) => (
-          <GeneratorSection key={generator.generatorVersionId} generator={generator} />
-        ))
-      ) : (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            No generator-level accumulation: no content in the dataset carries a known
-            generator version (see the caveats below).
-          </CardContent>
-        </Card>
-      )}
-
-      {report.contents.map((content) => (
-        <ContentSection key={content.contentId} content={content} />
-      ))}
-
-      <CaveatsSection report={report} />
-    </div>
-  );
-}
-
-function GeneratorSection({ generator }: { generator: StudyReportGenerator }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Generator level — {generator.name ?? generator.generatorVersionId}{" "}
-          {generator.version ?? ""}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {generator.contentsCounted} contents counted
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Claim</TableHead>
-              <TableHead>Supported</TableHead>
-              <TableHead>Refuted</TableHead>
-              <TableHead>Insufficient</TableHead>
-              <TableHead>Coverage</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {generator.perClaim.map((claim) => (
-              <TableRow key={claim.claimId}>
-                <TableCell title={claim.claimId}>{claim.statement}</TableCell>
-                <TableCell>{claim.distribution.supported ?? 0}</TableCell>
-                <TableCell>{claim.distribution.refuted ?? 0}</TableCell>
-                <TableCell>{claim.distribution.insufficient ?? 0}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {claim.coverage.evaluated}/{claim.coverage.of}
-                  {claim.excludedNotApplicable
-                    ? ` · ${claim.excludedNotApplicable} n/a`
-                    : ""}
-                  {claim.notEvaluated ? ` · ${claim.notEvaluated} not evaluated` : ""}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ContentSection({ content }: { content: StudyReportContent }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {content.externalId}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {content.packageFormat} ·{" "}
-            {content.generatorVersionId ? "generator known" : "generator unknown"}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {!content.judgmentId ? (
-          <p className="text-sm text-muted-foreground">Not judged when published.</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2">
-              {(content.claims ?? []).map((claim) => (
-                <Badge key={claim.claimId} variant={STATUS_COLOR[claim.status] ?? "secondary"}>
-                  {claim.claimId}: {claim.status}
-                  {claim.insufficiencyCause ? ` (${claim.insufficiencyCause})` : ""}
-                </Badge>
-              ))}
-            </div>
-            {(content.findings ?? []).length > 0 ? (
-              <ul className="space-y-2 text-sm">
-                {(content.findings ?? []).map((finding) => (
-                  <li key={finding.findingId} className="rounded bg-muted/40 p-2">
-                    <span className="font-medium">{finding.criterionId}</span> —{" "}
-                    {finding.failureMode}
-                    {finding.quote ? (
-                      <blockquote className="mt-1 border-l-2 pl-2 text-xs text-muted-foreground">
-                        “{finding.quote}”
-                      </blockquote>
-                    ) : (
-                      <span className="mt-1 block text-xs italic text-muted-foreground">
-                        no quote — {finding.quoteAbsentCause}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function CaveatsSection({ report }: { report: StudyReport }) {
-  const caveats = report.caveats;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Caveats</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          Always published with the report — publishing silently is impossible.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        <CaveatRow label="Insufficient evidence">
-          {caveats.insufficientEvidence.length === 0
-            ? "none"
-            : caveats.insufficientEvidence
-                .map((c) => `${c.claimId} (${c.cause})`)
-                .join(" · ")}
-        </CaveatRow>
-        <CaveatRow label="Unresolved disagreements">
-          {caveats.unresolvedDisagreements.length === 0
-            ? "none (single automated assessor)"
-            : `${caveats.unresolvedDisagreements.length}`}
-        </CaveatRow>
-        <CaveatRow label="Unknown-generator exclusions">
-          {caveats.unknownExclusions.contentIds.length === 0
-            ? "none"
-            : `${caveats.unknownExclusions.contentIds.length} contents — ${caveats.unknownExclusions.note}`}
-        </CaveatRow>
-        <CaveatRow label="Unaccepted adapters">
-          {caveats.unacceptedAdapters.length === 0
-            ? "none"
-            : caveats.unacceptedAdapters
-                .map((a) => `${a.packageFormat} (${a.adapterVersion ?? "no adapter"})`)
-                .join(" · ")}
-        </CaveatRow>
-        <CaveatRow label="Brief completeness">
-          {caveats.briefCompleteness.length === 0
-            ? "all briefs complete"
-            : caveats.briefCompleteness
-                .map((b) => `${b.origin ?? "manual"}: prompt not recorded`)
-                .join(" · ")}
-        </CaveatRow>
-        <CaveatRow label="Contents without judgment">
-          {caveats.contentsWithoutJudgment.length === 0
-            ? "none"
-            : `${caveats.contentsWithoutJudgment.length}`}
-        </CaveatRow>
-        <CaveatRow label="Execution errors">
-          {(caveats.executionErrors?.perContent ?? []).length === 0
-            ? "none"
-            : `${caveats.executionErrors!.perContent.length} content(s), ` +
-              `${caveats.executionErrors!.perContent.reduce((sum, c) => sum + c.count, 0)} ` +
-              `criteria — ${caveats.executionErrors!.note}`}
-        </CaveatRow>
-        <CaveatRow label="Task-variable patterns">
-          {caveats.taskVariablePatterns.status}: {caveats.taskVariablePatterns.reason}
-        </CaveatRow>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CaveatRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <p>
-      <span className="font-medium">{label}:</span>{" "}
-      <span className="text-muted-foreground">{children}</span>
-    </p>
+      </div>
+    </CollapsibleSection>
   );
 }

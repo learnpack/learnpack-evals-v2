@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { ClaimStatusBadge } from "@/components/admin/claim-status";
+import { OUTCOME_ORDER, OutcomeBadge } from "@/components/admin/outcome-badge";
 import {
   Table,
   TableBody,
@@ -31,6 +34,7 @@ import {
 } from "@/lib/api/hooks";
 import type {
   AssessorPackageResponse,
+  InstrumentCriterion,
   InstrumentResponse,
   LlmCallRecord,
   PreviewEvaluationResponse,
@@ -45,41 +49,40 @@ import type {
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-const OUTCOME_VARIANT: Record<string, BadgeProps["variant"]> = {
-  pass: "success",
-  fail: "destructive",
-  no_evidence: "warning",
-  not_applicable: "outline",
-  not_assessed: "secondary",
-  // A malfunction of the run, never a verdict — kept visually apart from fail (ADR-0037).
-  execution_error: "malfunction",
-};
-const OUTCOME_ORDER = [
-  "pass",
-  "fail",
-  "no_evidence",
-  "not_applicable",
-  "not_assessed",
-  "execution_error",
-];
-
-const CLAIM_VARIANT: Record<string, BadgeProps["variant"]> = {
-  supported: "success",
-  refuted: "destructive",
-  insufficient: "warning",
-};
-
+/** `useSearchParams` needs a Suspense boundary or `next build` refuses to prerender the
+ *  page — and CI runs only `tsc`, so this is the one thing here that no check would catch
+ *  before a deploy did. */
 export default function CalibrationPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <CalibrationConsole />
+    </Suspense>
+  );
+}
+
+function CalibrationConsole() {
   const contents = useContents();
   const profiles = useProfiles();
   const instruments = useInstruments();
   const packages = useAssessorPackages();
   const qualityReference = useQualityReference();
   const start = useStartPreviewRun();
+  const params = useSearchParams();
 
-  const [contentId, setContentId] = useState<Uuid | "">("");
-  const [instrumentVersionId, setInstrumentVersionId] = useState("");
+  // Read at mount and never again. A study report links here to preselect a course and an
+  // instrument; after that the selects belong to the person clicking them, and a param
+  // that kept winning would fight every click.
+  const [contentId, setContentId] = useState<Uuid | "">(
+    () => (params.get("content") as Uuid | null) ?? "",
+  );
+  const [instrumentVersionId, setInstrumentVersionId] = useState(
+    () => params.get("instrument") ?? "",
+  );
+  // The assessor is deliberately NOT preselected: the report cannot know which package
+  // should run, and pre-filling a choice nobody made is how a dry run gets attributed to
+  // the wrong one.
   const [assessorKey, setAssessorKey] = useState(""); // "name:version"
+  const cameAbout = params.get("criterion");
   // The instrument travels with the run: the fitness projection must read the version
   // that actually ran, not whatever the select points at afterwards.
   const [started, setStarted] = useState<{
@@ -92,7 +95,7 @@ export default function CalibrationPage() {
     run.data ? run.data.status !== "running" : false,
   );
 
-  /** Whether a content has an `ok` profile — the dry-run's one hard prerequisite. */
+    /** Whether a content has an `ok` profile — the dry-run's one hard prerequisite. */
   const profileStatus = useMemo(() => {
     const status = new Map<Uuid, "ok" | "failed">();
     for (const profile of profiles.data ?? []) {
@@ -183,6 +186,13 @@ export default function CalibrationPage() {
           it, run again — this page is the loop.
         </p>
       </div>
+
+      <ArrivedFromReport
+        preselected={Boolean(params.get("content") ?? params.get("instrument"))}
+        criterion={selectedInstrument?.criteria.find((c) => c.criterion_id === cameAbout)}
+        criterionId={cameAbout}
+        unprofiled={Boolean(contentId) && profileStatus.get(contentId as Uuid) !== "ok"}
+      />
 
       {/* 1 ------------------------------------------------------------------ content */}
       <Card>
@@ -363,12 +373,61 @@ export default function CalibrationPage() {
                   result={run.data.result}
                   instrument={started.instrument}
                   qualityReference={qualityReference.data ?? []}
+                  focusCriterionId={cameAbout}
                 />
               ) : null}
             </>
           ) : null}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Why the reader is here, when a study report sent them.
+ *
+ *  Arriving with the course and the instrument already chosen is most of the value; naming
+ *  what the criterion demands is the rest. The question they came with is whether the check
+ *  is wrong, and reading its pass condition often answers it before anything is run. */
+function ArrivedFromReport({
+  preselected,
+  criterion,
+  criterionId,
+  unprofiled,
+}: {
+  preselected: boolean;
+  criterion: InstrumentCriterion | undefined;
+  criterionId: string | null;
+  unprofiled: boolean;
+}) {
+  if (!preselected) return null;
+
+  return (
+    <div className="space-y-1 rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm">
+      <p>
+        <strong>Preselected from a study report.</strong> That course failed{" "}
+        {criterion ? (
+          <em>{criterion.statement ?? criterion.criterion_id}</em>
+        ) : criterionId ? (
+          <code>{criterionId}</code>
+        ) : (
+          "a criterion"
+        )}{" "}
+        under this instrument version. Pick an assessor and run it: a dry run persists
+        nothing, so this is the safe place to find out whether the criterion is wrong or the
+        course is.
+      </p>
+      {criterion ? (
+        <p className="text-xs text-muted-foreground">
+          It passes when: {criterion.pass_condition}
+        </p>
+      ) : null}
+      {unprofiled ? (
+        <p className="text-xs text-muted-foreground">
+          This course has no <code>ok</code> profile yet, so it cannot be dry-run until it is
+          profiled — its row below carries the command.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -597,10 +656,14 @@ function PreviewResults({
   result,
   instrument,
   qualityReference,
+  focusCriterionId,
 }: {
   result: PreviewEvaluationResponse;
   instrument: InstrumentResponse;
   qualityReference: QualityReferenceResponse[];
+  /** The criterion a study report sent the reader here about: its row is marked, so they
+   *  land on the answer instead of scanning thirty of them. */
+  focusCriterionId?: string | null;
 }) {
   const partition = new Map<string, number>();
   for (const outcome of result.outcomes) {
@@ -621,9 +684,9 @@ function PreviewResults({
 
       <div className="flex flex-wrap gap-2">
         {OUTCOME_ORDER.filter((state) => partition.has(state)).map((state) => (
-          <Badge key={state} variant={OUTCOME_VARIANT[state]}>
-            {state} · {partition.get(state)}
-          </Badge>
+          <span key={state} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <OutcomeBadge outcome={state} /> {partition.get(state)}
+          </span>
         ))}
       </div>
 
@@ -639,10 +702,15 @@ function PreviewResults({
           </TableHeader>
           <TableBody>
             {result.outcomes.map((outcome) => (
-              <TableRow key={outcome.criterion_id}>
+              <TableRow
+                key={outcome.criterion_id}
+                className={cn(
+                  outcome.criterion_id === focusCriterionId && "bg-amber-500/10",
+                )}
+              >
                 <TableCell className="font-mono text-xs">{outcome.criterion_id}</TableCell>
                 <TableCell>
-                  <Badge variant={OUTCOME_VARIANT[outcome.outcome]}>{outcome.outcome}</Badge>
+                  <OutcomeBadge outcome={outcome.outcome} />
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {outcome.derived ? "derived" : "executed"}
@@ -662,7 +730,7 @@ function PreviewResults({
           <ul className="space-y-1.5">
             {result.claims.map((claim) => (
               <li key={claim.claim_id} className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant={CLAIM_VARIANT[claim.status]}>{claim.status}</Badge>
+                <ClaimStatusBadge status={claim.status} />
                 <span className="font-mono">{claim.claim_id}</span>
                 <span className="text-muted-foreground">
                   (

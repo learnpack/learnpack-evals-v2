@@ -25,6 +25,7 @@ import type {
   CampaignResponse,
   ComposeStudyDatasetRequest,
   ContentResponse,
+  CriterionOutcomes,
   DeclareStudyRequest,
   EvaluationResponse,
   GeneratorResponse,
@@ -59,6 +60,7 @@ import type {
   StudyEvaluations,
   StudyFitness,
   StudyReadiness,
+  StudyReportPreview,
   StudyReportResponse,
   StudyResponse,
   SubmitEvaluationRequest,
@@ -103,6 +105,12 @@ export const queryKeys = {
   studies: ["admin", "studies"] as const,
   study: (id: Uuid) => ["admin", "studies", id] as const,
   studyReport: (id: Uuid) => ["admin", "studies", id, "report"] as const,
+  // A SIBLING of `studyReport`, not a child: nested under it, the preview would be
+  // invalidated by the non-exact `studyReport` line in `invalidateStudy` without ever being
+  // named there — and a key nobody names is a key nobody maintains.
+  studyReportPreview: (id: Uuid) => ["admin", "studies", id, "report-preview"] as const,
+  studyCriterionOutcomes: (id: Uuid) =>
+    ["admin", "studies", id, "criterion-outcomes"] as const,
   studyReadiness: (id: Uuid) => ["admin", "studies", id, "readiness"] as const,
   studyFitness: (id: Uuid) => ["admin", "studies", id, "fitness"] as const,
   studyEvaluations: (id: Uuid) => ["admin", "studies", id, "evaluations"] as const,
@@ -513,6 +521,10 @@ function invalidateStudy(qc: QueryClient, studyId: Uuid): void {
   qc.invalidateQueries({ queryKey: queryKeys.studyReadiness(studyId) });
   qc.invalidateQueries({ queryKey: queryKeys.studyFitness(studyId) });
   qc.invalidateQueries({ queryKey: queryKeys.studyReport(studyId) });
+  // Both are composed on read over live judgments, so a batch or an act moves them exactly
+  // when it moves everything else here.
+  qc.invalidateQueries({ queryKey: queryKeys.studyReportPreview(studyId) });
+  qc.invalidateQueries({ queryKey: queryKeys.studyCriterionOutcomes(studyId) });
 }
 
 /** How far the study has been evaluated, plus the runs this backend remembers.
@@ -720,6 +732,29 @@ export function useStudyReport(id: Uuid, enabled: boolean) {
     queryKey: queryKeys.studyReport(id),
     queryFn: () => api<StudyReportResponse>(`/admin/studies/${id}/report`),
     enabled,
+  });
+}
+
+/** What publishing would write, composed on read.
+ *
+ *  No `enabled` gate, deliberately unlike `useStudyReport` above: this one answers at every
+ *  status with its gaps named, and gating it is what made the report invisible until an
+ *  irreversible act had already happened. */
+export function useStudyReportPreview(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyReportPreview(id),
+    queryFn: () => api<StudyReportPreview>(`/admin/studies/${id}/report/preview`),
+  });
+}
+
+/** The per-criterion record across the dataset — the only place the quote behind a pass is
+ *  readable, and the only one with a denominator per criterion. */
+export function useStudyCriterionOutcomes(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.studyCriterionOutcomes(id),
+    queryFn: () => api<CriterionOutcomes>(`/admin/studies/${id}/criterion-outcomes`),
   });
 }
 
