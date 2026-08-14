@@ -1,13 +1,24 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Info, Play, Square, TrendingUp } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import {
+  ArrowLeft,
+  Check,
+  FileCheck,
+  Info,
+  ListChecks,
+  Play,
+  Square,
+  TrendingUp,
+} from "lucide-react";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Dialog } from "@/components/ui/dialog";
+import { Select } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -17,10 +28,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { StudyStatusBadge } from "@/components/admin/study-status";
 import { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
+  useBriefs,
   useCancelStudyEvaluation,
+  useComposeStudyDataset,
+  useInstruments,
+  useOpenStudy,
+  usePinStudyInstrument,
+  usePublishStudy,
   useStartStudyEvaluation,
   useStudy,
   useStudyEvaluationRun,
@@ -32,7 +50,9 @@ import {
 import type {
   BatchCourseStatus,
   BatchRun,
+  BatchRunStatus,
   FitnessLevel,
+  StudyEvaluations,
   StudyFitness,
   StudyReadiness,
   StudyReport,
@@ -41,7 +61,10 @@ import type {
   StudyResponse,
   Uuid,
 } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
 
+/** Everything one study needs doing happens here, in the order a round actually goes:
+ *  set it up, evaluate it, sign the report off. The list is a list. */
 export default function StudyDetailPage({
   params,
 }: {
@@ -49,6 +72,8 @@ export default function StudyDetailPage({
 }) {
   const { studyId } = use(params);
   const { data: study, isLoading, error } = useStudy(studyId);
+  // Hoisted: the evaluation card and the publish card must quote the same two numbers.
+  const evaluations = useStudyEvaluations(studyId);
   const readiness = useStudyReadiness(studyId);
   const report = useStudyReport(studyId, study?.status === "published");
   const fitness = useStudyFitness(studyId);
@@ -57,41 +82,30 @@ export default function StudyDetailPage({
   if (error) return <ErrorState message={(error as Error).message} />;
   if (!study) return <EmptyState title="Study not found" />;
 
+  // A study before its opening has one job and after it another; they never both apply.
+  const inSetup = study.status === "declared" || study.status === "prepared";
+
   return (
     <div className="max-w-5xl space-y-6">
-      <div>
-        <Link
-          href="/admin/studies"
-          className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> Studies
-        </Link>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">{study.purpose}</h1>
-          <Badge>{study.status}</Badge>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {study.instrument_version_id ?? "no instrument pinned"} · {study.brief_ids.length}{" "}
-          briefs → {study.content_ids.length} contents
-        </p>
-      </div>
+      <StudyHeader study={study} />
+
+      {inSetup ? (
+        <SetupCard study={study} />
+      ) : (
+        <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
+      )}
+
+      {study.status === "open" ? (
+        <PublishCard study={study} evaluations={evaluations.data ?? null} />
+      ) : null}
 
       {readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
-      <EvaluationPanel study={study} />
-
-      {study.status === "published" ? (
-        report.isLoading ? (
-          <LoadingState label="Loading the report…" />
-        ) : report.data ? (
-          <ReportView report={report.data.report} />
-        ) : null
-      ) : (
-        <EmptyState
-          title="No report yet"
-          hint="The report is composed at publish and immutable afterwards."
-        />
-      )}
+      {study.status === "published" && report.isLoading ? (
+        <LoadingState label="Loading the report…" />
+      ) : study.status === "published" && report.data ? (
+        <ReportView report={report.data.report} />
+      ) : null}
 
       {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
           conflation is not — the report publishes no aggregate score, and this denominator
@@ -101,14 +115,327 @@ export default function StudyDetailPage({
   );
 }
 
+function StudyHeader({ study }: { study: StudyResponse }) {
+  return (
+    <div>
+      <Link
+        href="/admin/studies"
+        className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" /> Studies
+      </Link>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{study.purpose}</h1>
+        <StudyStatusBadge status={study.status} />
+      </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {study.instrument_version_id ?? "no instrument pinned"} · {study.brief_ids.length} briefs
+        → {study.content_ids.length} courses
+      </p>
+    </div>
+  );
+}
+
+function actError(err: unknown) {
+  const e = err as ApiError;
+  if (e.status === 409) {
+    toast.error("The study's state refuses this act.", { description: e.message });
+  } else if (e.status === 422) {
+    toast.error("The act is not possible yet.", { description: e.message });
+  } else {
+    toast.error("The act failed.", { description: e.message });
+  }
+}
+
+// ------------------------------------------------------------------------------ setup
+
+/** The three acts that make a study runnable, as three steps instead of three buttons
+ *  scattered across a list. Their order is the domain's: the instrument is pinned before
+ *  opening and never after, and opening fixes the dataset. */
+function SetupCard({ study }: { study: StudyResponse }) {
+  const pinned = study.instrument_version_id !== null;
+  const composed = study.content_ids.length > 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+          <ListChecks className="h-4 w-4 text-muted-foreground" /> Setup
+          <span className="text-xs font-normal text-muted-foreground">
+            three steps, in order — the last one freezes the dataset
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6 text-sm">
+        <SetupStep
+          n={1}
+          done={pinned}
+          title="Pin the instrument"
+          hint="Which published instrument version this study judges against. Pinned once and never changed: what a study measured has to stay knowable."
+        >
+          {pinned ? (
+            <p className="text-muted-foreground">
+              Pinned: <code>{study.instrument_version_id}</code>
+            </p>
+          ) : (
+            <PinStep study={study} />
+          )}
+        </SetupStep>
+
+        <SetupStep
+          n={2}
+          done={composed}
+          title="Compose the dataset"
+          hint="Briefs select the courses registered from them. Replaceable until the study opens, and fixed forever after."
+        >
+          <ComposeStep study={study} />
+        </SetupStep>
+
+        <SetupStep
+          n={3}
+          done={false}
+          title="Open the study"
+          hint="Opening freezes the dataset and lets the batch run. There is no un-opening."
+        >
+          <OpenStep study={study} pinned={pinned} composed={composed} />
+        </SetupStep>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SetupStep({
+  n,
+  title,
+  hint,
+  done,
+  children,
+}: {
+  n: number;
+  title: string;
+  hint: string;
+  done: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <span
+        className={cn(
+          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+          done ? "border-emerald-600 bg-emerald-600 text-white" : "text-muted-foreground",
+        )}
+      >
+        {done ? <Check className="h-3.5 w-3.5" /> : n}
+      </span>
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{hint}</p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PinStep({ study }: { study: StudyResponse }) {
+  const { data: instruments } = useInstruments();
+  const pin = usePinStudyInstrument();
+  const [selected, setSelected] = useState("");
+  const published = (instruments ?? []).filter((i) => i.status === "published");
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-72">
+        <option value="">Pin a published instrument…</option>
+        {published.map((i) => (
+          <option key={i.instrument_version_id} value={i.instrument_version_id}>
+            {i.instrument_version_id}
+          </option>
+        ))}
+      </Select>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!selected || pin.isPending}
+        onClick={() =>
+          pin.mutate(
+            { studyId: study.study_id, body: { instrument_version_id: selected } },
+            {
+              onSuccess: () => toast.success("Instrument pinned — once and forever."),
+              onError: actError,
+            },
+          )
+        }
+      >
+        {pin.isPending ? <Spinner /> : null} Pin
+      </Button>
+    </div>
+  );
+}
+
+function ComposeStep({ study }: { study: StudyResponse }) {
+  const [open, setOpen] = useState(false);
+  const { data: briefs } = useBriefs();
+  const compose = useComposeStudyDataset();
+  const [selected, setSelected] = useState<Uuid[]>(study.brief_ids);
+  const composed = study.content_ids.length > 0;
+
+  function toggle(id: Uuid) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]));
+  }
+
+  return (
+    <>
+      <p className="text-muted-foreground">
+        {composed
+          ? `${study.brief_ids.length} brief${study.brief_ids.length === 1 ? "" : "s"} → ${study.content_ids.length} course${study.content_ids.length === 1 ? "" : "s"}.`
+          : "No briefs picked yet."}
+      </p>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        {composed ? "Change the dataset" : "Compose the dataset"}
+      </Button>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Compose the dataset"
+        description="Briefs select the registered contents generated from them. The dataset stays replaceable until the study opens."
+      >
+        {!briefs || briefs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No briefs registered yet. Briefs arrive mechanically when contents with a
+            syllabus are registered (ADR-0022), or manually in /admin/briefs.
+          </p>
+        ) : (
+          <ul className="max-h-72 space-y-2 overflow-y-auto">
+            {briefs.map((brief) => (
+              <li key={brief.brief_id}>
+                <label className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(brief.brief_id)}
+                    onChange={() => toggle(brief.brief_id)}
+                    className="mt-1"
+                  />
+                  <span className="line-clamp-2">{brief.brief}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={compose.isPending}
+            onClick={() =>
+              compose.mutate(
+                { studyId: study.study_id, body: { brief_ids: selected } },
+                {
+                  onSuccess: (updated) => {
+                    setOpen(false);
+                    toast.success(
+                      `Dataset composed: ${updated.content_ids.length} courses from ${updated.brief_ids.length} briefs.`,
+                    );
+                  },
+                  onError: actError,
+                },
+              )
+            }
+          >
+            {compose.isPending ? <Spinner /> : null} Compose
+          </Button>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+function OpenStep({
+  study,
+  pinned,
+  composed,
+}: {
+  study: StudyResponse;
+  pinned: boolean;
+  composed: boolean;
+}) {
+  const openStudy = useOpenStudy();
+  return (
+    <>
+      <Button
+        size="sm"
+        disabled={!pinned || !composed || openStudy.isPending}
+        onClick={() =>
+          openStudy.mutate(
+            { studyId: study.study_id },
+            {
+              onSuccess: () =>
+                toast.success("Study open.", {
+                  description: "The dataset is frozen. Next: evaluate it.",
+                }),
+              onError: actError,
+            },
+          )
+        }
+      >
+        {openStudy.isPending ? <Spinner /> : null} Open the study
+      </Button>
+      {!pinned || !composed ? (
+        <p className="text-xs text-muted-foreground">
+          Do steps 1 and 2 first: a study opens onto a pinned instrument and a non-empty
+          dataset.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ evaluation (ADR-0040)
 
-const COURSE_BADGE: Record<BatchCourseStatus, "default" | "secondary" | "outline"> = {
-  evaluated: "default",
+const RUN_BADGE: Record<BatchRunStatus, BadgeProps["variant"]> = {
+  running: "default",
+  done: "success",
+  cancelled: "outline",
+  failed: "destructive",
+  // The runner itself broke — a malfunction, never a verdict (the calibration palette).
+  refused: "malfunction",
+};
+
+const COURSE_BADGE: Record<BatchCourseStatus, BadgeProps["variant"]> = {
+  evaluated: "success",
   skipped: "secondary",
-  failed: "outline",
+  failed: "destructive",
   cancelled: "outline",
 };
+
+/** `skipped` is a backend word for a good outcome: this assessor had already judged the
+ *  course, so the run did not pay for it again. Shown as a bare status it reads as a
+ *  failure, and it was the one line that made resuming a batch look like a bug. */
+const COURSE_LABEL: Record<BatchCourseStatus, string> = {
+  evaluated: "evaluated",
+  skipped: "already judged",
+  failed: "failed",
+  cancelled: "not reached",
+};
+
+/** How much of the dataset carries a judgment — which decides what running the batch even
+ *  means: a first pass, resuming an interrupted one, or replacing what is there. */
+type EvaluationPhase = "none" | "partial" | "all";
+
+const PHASE_BADGE: Record<EvaluationPhase, BadgeProps["variant"]> = {
+  none: "outline",
+  partial: "warning",
+  all: "success",
+};
+
+function evaluateLabel(phase: EvaluationPhase, remaining: number): string {
+  const labels: Record<EvaluationPhase, string> = {
+    none: "Evaluate the dataset",
+    partial: `Evaluate the remaining ${remaining}`,
+    all: "Re-evaluate…",
+  };
+  return labels[phase];
+}
 
 function seconds(ms: number): string {
   return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
@@ -119,21 +446,30 @@ function seconds(ms: number): string {
  * The durable count comes from the database, so it is still right after a restart and
  * counts a batch someone ran from the CLI. The live half exists only while this backend is
  * running one. */
-function EvaluationPanel({ study }: { study: StudyResponse }) {
-  const evaluations = useStudyEvaluations(study.study_id);
+function EvaluationCard({
+  study,
+  evaluations,
+}: {
+  study: StudyResponse;
+  evaluations: StudyEvaluations | null;
+}) {
   const [watching, setWatching] = useState<Uuid | null>(null);
   const run = useStudyEvaluationRun(study.study_id, watching);
   const cancel = useCancelStudyEvaluation(study.study_id);
 
   // The newest run this backend remembers is what to show when the page is opened again
   // while one is going — a reload must not lose sight of a batch that is still spending.
-  const latest = evaluations.data?.runs[0] ?? null;
+  const latest = evaluations?.runs[0] ?? null;
   const shown = run.data ?? latest;
   useEffect(() => {
     if (watching === null && latest?.status === "running") setWatching(latest.run_id);
   }, [latest, watching]);
 
   const running = shown?.status === "running";
+  const courses = evaluations?.courses ?? study.content_ids.length;
+  const judged = evaluations?.evaluated ?? 0;
+  const remaining = Math.max(courses - judged, 0);
+  const phase: EvaluationPhase = judged === 0 ? "none" : judged < courses ? "partial" : "all";
   const blocked =
     !study.instrument_version_id
       ? "no instrument pinned"
@@ -148,24 +484,33 @@ function EvaluationPanel({ study }: { study: StudyResponse }) {
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Play className="h-4 w-4 text-muted-foreground" /> Evaluation
-          {evaluations.data ? (
-            <span className="text-xs font-normal text-muted-foreground">
-              {evaluations.data.evaluated} of {evaluations.data.courses} courses judged
-              {evaluations.data.instrument_version_id
-                ? ` under ${evaluations.data.instrument_version_id}`
-                : ""}
-            </span>
+          {evaluations ? (
+            <Badge variant={PHASE_BADGE[phase]}>
+              {judged} of {courses} judged
+            </Badge>
           ) : null}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
+        {evaluations ? (
+          <ProgressLine
+            phase={phase}
+            judged={judged}
+            courses={courses}
+            instrument={evaluations.instrument_version_id}
+            canPublish={study.status === "open"}
+          />
+        ) : null}
+
         {blocked ? (
           <p className="text-muted-foreground">Nothing to evaluate yet: {blocked}.</p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <StartEvaluation
               study={study}
-              courses={evaluations.data?.courses ?? study.content_ids.length}
+              courses={courses}
+              remaining={remaining}
+              phase={phase}
               disabled={running}
               onStarted={setWatching}
             />
@@ -192,9 +537,69 @@ function EvaluationPanel({ study }: { study: StudyResponse }) {
           </div>
         )}
 
-        {shown ? <RunProgress run={shown} /> : null}
+        {/* Keyed by run: `CollapsibleSection` reads `defaultOpen` once, at mount. A new run
+            remounts this and re-reads it, while within one run the reader's own choice
+            survives the status changing under them. */}
+        {shown ? <RunProgress key={shown.run_id} run={shown} /> : null}
       </CardContent>
     </Card>
+  );
+}
+
+/** What running the batch would do next, said before it is run rather than discovered
+ *  afterwards from a table full of `skipped`. */
+function ProgressLine({
+  phase,
+  judged,
+  courses,
+  instrument,
+  canPublish,
+}: {
+  phase: EvaluationPhase;
+  judged: number;
+  courses: number;
+  instrument: string | null;
+  canPublish: boolean;
+}) {
+  const under = instrument ? (
+    <>
+      {" "}
+      under <code>{instrument}</code>
+    </>
+  ) : null;
+
+  return (
+    <>
+      {phase === "none" ? (
+        <p className="text-muted-foreground">
+          No course carries a judgment{under} yet. Running the batch evaluates all {courses}.
+        </p>
+      ) : phase === "partial" ? (
+        <p className="text-muted-foreground">
+          {judged} of {courses} courses already carry a judgment{under}. Running the batch
+          again evaluates only the {courses - judged} that do not: it resumes an interrupted
+          round rather than repeating it, and pays for no LLM call twice.
+        </p>
+      ) : (
+        <p className="text-muted-foreground">
+          All {courses} courses carry a judgment{under}. Running the batch again would skip
+          every one of them and cost nothing — to <em>replace</em> those judgments instead,
+          tick “Re-evaluate” in the dialog, which spends the calls again.
+          {canPublish ? " Publishing is what turns these judgments into a report." : ""}
+        </p>
+      )}
+
+      {/* The count is taken per instrument version and the skip is taken per assessor, so
+          the two can disagree. Saying so costs a sentence; a number nobody can trust costs
+          more. */}
+      {judged > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Counted by instrument version, not by assessor: a course judged by any ratified
+          assessor counts here, while a run skips only what the assessor you pick judged
+          itself. Where they differ, the run evaluates more than this number suggests.
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -202,21 +607,11 @@ function RunProgress({ run }: { run: BatchRun }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <Badge
-          variant={
-            run.status === "running"
-              ? "default"
-              : run.status === "done"
-                ? "secondary"
-                : "outline"
-          }
-        >
-          {run.status}
-        </Badge>
+        <Badge variant={RUN_BADGE[run.status]}>{run.status}</Badge>
         <span className="tabular-nums">
           {run.done} of {run.total} courses · {run.evaluated} evaluated
           {run.failed > 0 ? ` · ${run.failed} failed` : ""}
-          {run.skipped > 0 ? ` · ${run.skipped} skipped` : ""}
+          {run.skipped > 0 ? ` · ${run.skipped} already judged` : ""}
         </span>
         <span>{run.assessor}</span>
         <span className="tabular-nums">{seconds(run.elapsed_ms)} elapsed</span>
@@ -234,8 +629,31 @@ function RunProgress({ run }: { run: BatchRun }) {
       ) : null}
       {run.error ? <p className="text-xs text-destructive">{run.error}</p> : null}
 
+      {run.skipped > 0 ? (
+        <p className="rounded bg-muted/40 p-2 text-xs text-muted-foreground">
+          {run.skipped} of {run.total} course{run.skipped === 1 ? " was" : "s were"} skipped:
+          this assessor had already judged {run.skipped === 1 ? "it" : "them"} under{" "}
+          <code>{run.instrument_version_id}</code>, so the run did not pay for{" "}
+          {run.skipped === 1 ? "it" : "them"} a second time. That is what makes running the
+          batch again the way to resume an interrupted round.
+        </p>
+      ) : null}
+
       {run.courses.length > 0 ? (
-        <div className="overflow-x-auto">
+        <CollapsibleSection
+          title="Course by course"
+          badge={`${run.courses.length} of ${run.total}`}
+          defaultOpen={run.status === "running"}
+          meta={
+            <span className="flex flex-wrap items-center gap-2">
+              <Badge variant="success">{run.evaluated} evaluated</Badge>
+              {run.skipped > 0 ? (
+                <Badge variant="secondary">{run.skipped} already judged</Badge>
+              ) : null}
+              {run.failed > 0 ? <Badge variant="destructive">{run.failed} failed</Badge> : null}
+            </span>
+          }
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -262,7 +680,9 @@ function RunProgress({ run }: { run: BatchRun }) {
                     ) : null}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={COURSE_BADGE[course.status]}>{course.status}</Badge>
+                    <Badge variant={COURSE_BADGE[course.status]}>
+                      {COURSE_LABEL[course.status]}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     {course.duration_ms ? seconds(course.duration_ms) : "—"}
@@ -274,7 +694,7 @@ function RunProgress({ run }: { run: BatchRun }) {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </CollapsibleSection>
       ) : null}
     </div>
   );
@@ -287,11 +707,15 @@ function RunProgress({ run }: { run: BatchRun }) {
 function StartEvaluation({
   study,
   courses,
+  remaining,
+  phase,
   disabled,
   onStarted,
 }: {
   study: StudyResponse;
   courses: number;
+  remaining: number;
+  phase: EvaluationPhase;
   disabled: boolean;
   onStarted: (runId: Uuid) => void;
 }) {
@@ -311,8 +735,15 @@ function StartEvaluation({
 
   return (
     <>
-      <Button size="sm" disabled={disabled} onClick={() => setOpen(true)}>
-        <Play className="h-3.5 w-3.5" /> Evaluate the dataset
+      {/* Secondary once there is nothing left to judge: re-running is a repair, not the
+          thing to do next. */}
+      <Button
+        size="sm"
+        variant={phase === "all" ? "outline" : "default"}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      >
+        <Play className="h-3.5 w-3.5" /> {evaluateLabel(phase, remaining)}
       </Button>
       <Dialog
         open={open}
@@ -327,6 +758,14 @@ function StartEvaluation({
           </p>
         ) : (
           <div className="space-y-3">
+            {phase === "all" && !reEvaluate ? (
+              <p className="rounded bg-muted/40 p-2 text-sm text-muted-foreground">
+                Every course in this dataset already carries a judgment. As it stands this
+                run skips all {courses} of them and spends nothing. Tick “Re-evaluate” below
+                to judge them again — that replaces the judgments and spends the calls
+                again.
+              </p>
+            ) : null}
             <ul className="space-y-2">
               {eligible.map((pkg) => {
                 const key = `${pkg.name}:${pkg.version}`;
@@ -370,9 +809,13 @@ function StartEvaluation({
                 </span>
               </span>
             </label>
+            {/* "Up to", because the count this is derived from is taken per instrument
+                version while the skip is taken per assessor. */}
             <p className="text-xs text-muted-foreground">
-              {courses} course{courses === 1 ? "" : "s"} in the dataset
-              {chosen?.uses_llm
+              {reEvaluate
+                ? `All ${courses} course${courses === 1 ? "" : "s"} will be evaluated again`
+                : `Up to ${remaining} of ${courses} course${courses === 1 ? "" : "s"} will be evaluated — the rest are already judged and get skipped`}
+              {chosen?.uses_llm && (reEvaluate || remaining > 0)
                 ? " · each spends real LLM calls, so this costs money and minutes"
                 : ""}
             </p>
@@ -409,6 +852,123 @@ function StartEvaluation({
         </div>
       </Dialog>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------- publish
+
+/** Signing off, next to the judgments being signed off — and saying how many courses carry
+ *  none, because that is the caveat about to be frozen into the report. */
+function PublishCard({
+  study,
+  evaluations,
+}: {
+  study: StudyResponse;
+  evaluations: StudyEvaluations | null;
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const courses = evaluations?.courses ?? study.content_ids.length;
+  const unjudged = Math.max(courses - (evaluations?.evaluated ?? 0), 0);
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+            <FileCheck className="h-4 w-4 text-muted-foreground" /> Publish the report
+            {unjudged > 0 ? (
+              <Badge variant="warning">
+                {unjudged} course{unjudged === 1 ? "" : "s"} unjudged
+              </Badge>
+            ) : (
+              <Badge variant="success">every course judged</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            {unjudged === 0
+              ? "Every course carries a judgment. Publishing composes the report from them, records exactly which ones it used, and never changes again."
+              : `Publishing composes the report from the judgments that exist at that moment. ${unjudged} of ${courses} course${unjudged === 1 ? " carries" : "s carry"} none yet, and would be published as a caveat — visibly. Publishing with caveats is legitimate; publishing silently is impossible.`}
+          </p>
+          <Button
+            variant={unjudged > 0 ? "outline" : "default"}
+            onClick={() => setConfirmOpen(true)}
+          >
+            Publish…
+          </Button>
+        </CardContent>
+      </Card>
+      {/* Outside the Card, for the reason the assessors page states: nothing that could
+          unmount may take an in-flight act with it. */}
+      <PublishDialog
+        study={study}
+        courses={courses}
+        unjudged={unjudged}
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+      />
+    </>
+  );
+}
+
+function PublishDialog({
+  study,
+  courses,
+  unjudged,
+  open,
+  onClose,
+}: {
+  study: StudyResponse;
+  courses: number;
+  unjudged: number;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const publish = usePublishStudy();
+
+  return (
+    <Dialog open={open} onClose={onClose} title={`Publish "${study.purpose}"?`}>
+      <p className="text-sm text-muted-foreground">
+        Publishing is a human act and it is irreversible: the report is composed from the
+        current judgments, records exactly which ones it used, and never changes again.
+        Caveats — insufficient evidence, unknown generators, unaccepted adapters — are
+        published with it, visibly: publishing with caveats is legitimate; publishing
+        silently is impossible.
+      </p>
+      {unjudged > 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          It will record {unjudged} of {courses} courses as carrying no judgment. That caveat
+          is part of the report and cannot be removed afterwards — evaluating them first is
+          still possible; publishing is not undoable.
+        </p>
+      ) : null}
+      <div className="mt-4 flex justify-end gap-2 pt-2">
+        <Button variant="outline" onClick={onClose} disabled={publish.isPending}>
+          Cancel
+        </Button>
+        <Button
+          disabled={publish.isPending}
+          onClick={() =>
+            publish.mutate(
+              { studyId: study.study_id },
+              {
+                onSuccess: () => {
+                  onClose();
+                  toast.success("Study published — the report is immutable.");
+                },
+                onError: (err) => {
+                  onClose();
+                  actError(err);
+                },
+              },
+            )
+          }
+        >
+          {publish.isPending ? <Spinner /> : null} Publish permanently
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -483,6 +1043,10 @@ function FitnessLevelTable({ level }: { level: FitnessLevel }) {
 
 function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
   const hasStudyLevel = Boolean(fitness.study.qualities);
+  // The qualities exist the moment an instrument is pinned, each of them `null` — so
+  // `hasStudyLevel` was never the question a reader is asking. This is.
+  const judged = fitness.contents.filter((content) => content.judged).length;
+
   return (
     <Card className="border-dashed">
       <CardHeader>
@@ -491,16 +1055,14 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
           <span className="text-xs font-normal text-muted-foreground">
             optimization signal — not a judgment, and not part of the report
           </span>
+          {hasStudyLevel && judged > 0 && judged < fitness.contents.length ? (
+            <Badge variant="warning">
+              {judged} of {fitness.contents.length} courses judged
+            </Badge>
+          ) : null}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
-        <p className="text-xs text-muted-foreground">
-          Formula v{fitness.formulaVersion} · passed over (passed + failed + no evidence).
-          Not assessed, not applicable and execution errors stay out of the denominator, so
-          values computed under different assessor coverage — or runs with different
-          execution-error counts — are not comparable.
-        </p>
-
         {fitness.gaps.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {fitness.gaps.map((gap) => (
@@ -511,8 +1073,29 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
           </div>
         ) : null}
 
-        {hasStudyLevel ? (
+        {!hasStudyLevel ? (
+          <p className="text-muted-foreground">
+            Nothing to measure yet: the study needs a pinned instrument and a dataset.
+          </p>
+        ) : judged === 0 ? (
+          // One honest line instead of a grid of `undefined`. The rule that forbids a zero
+          // here forbids printing a table of nothing and calling it a reading.
+          <p className="text-muted-foreground">
+            Undefined — none of the {fitness.contents.length} course
+            {fitness.contents.length === 1 ? "" : "s"} carries a judgment yet, so every
+            quality has an empty denominator. Undefined is not zero: a zero would say
+            everything measurable failed, when nothing was measurable. Evaluate the dataset
+            and this fills in.
+          </p>
+        ) : (
           <>
+            <p className="text-xs text-muted-foreground">
+              Formula v{fitness.formulaVersion} · passed over (passed + failed + no
+              evidence). Not assessed, not applicable and execution errors stay out of the
+              denominator, so values computed under different assessor coverage — or runs
+              with different execution-error counts — are not comparable.
+            </p>
+
             {fitness.generators.map((generator) => (
               <div key={generator.generatorVersionId} className="space-y-2">
                 <p className="font-medium">
@@ -548,10 +1131,6 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
               · {fitness.assessorCoverage.executionErrors ?? 0} execution error(s)
             </p>
           </>
-        ) : (
-          <p className="text-muted-foreground">
-            Nothing to measure yet: the study needs a pinned instrument and a dataset.
-          </p>
         )}
       </CardContent>
     </Card>

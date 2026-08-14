@@ -112,6 +112,27 @@ def test_the_full_lifecycle_over_the_api(admin_client, cleanup, unique):
     assert study_id in {s["study_id"] for s in listed}
 
 
+def test_the_list_answers_newest_first_and_carries_the_date_it_sorts_on(
+    admin_client, cleanup, unique
+):
+    """The console reads this list from the top, so the study just declared has to be there.
+
+    Relative positions rather than absolute ones: the database is shared with whatever else
+    the suite declared. And the date it sorts on travels with every row, so a reader can
+    check the order instead of trusting it.
+    """
+    older = declare(admin_client, cleanup, purpose=f"older round {unique}")
+    newer = declare(admin_client, cleanup, purpose=f"newer round {unique}")
+
+    response = admin_client.get("/admin/studies")
+    assert response.status_code == 200, response.text
+    listed = response.json()
+
+    ids = [study["study_id"] for study in listed]
+    assert ids.index(newer) < ids.index(older), ids
+    assert all(study["created_at"] for study in listed), response.text
+
+
 def test_pin_is_once_and_only_published_versions(admin_client, cleanup, unique):
     study_id = declare(admin_client, cleanup)
 

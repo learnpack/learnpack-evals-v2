@@ -143,8 +143,13 @@ class SqlAlchemyStudyRepository:
         self._insert_children(study)
 
     def list_all(self) -> list[Study]:
+        # Newest first: the console reads this list from the top, and the study someone is
+        # working on is the one just declared. `id` only breaks a tie between two rows that
+        # share a `now()` — it orders nothing on its own.
         rows = (
-            self._session.execute(text(f"SELECT {_COLUMNS} FROM studies ORDER BY created_at, id"))
+            self._session.execute(
+                text(f"SELECT {_COLUMNS} FROM studies ORDER BY created_at DESC, id DESC")
+            )
             .mappings()
             .all()
         )
