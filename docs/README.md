@@ -53,7 +53,14 @@ fitness projection · `0024` explicit generator attribution · `0025` pedagogica
 not built) · `0026` a claim asserts about exactly one quality · `0027` package intake by
 mechanical discovery · `0028` a consumable URL declares a deployment · `0029` automatic profiling
 assumes http(s) transport · `0030` the generator declares reference data, not artifacts · `0031` a
-generator is an entity; its versions belong to it.
+generator is an entity; its versions belong to it · `0032` an instrument forks when its claims
+change, not the package format · `0033` registered content is never retired · `0034`
+LLM-carrying assessors: semantics are identity, transport is environment · `0035` local sources
+are declared roots · `0036` ratification is offered at both gates · `0037` execution failure is
+an outcome (`execution_error`, the failure budget, the three-way retry) · `0038` the upstreams
+that may serve a model are assessor identity · `0039` the brief groups the fitness projection;
+it is not a grain of it · `0040` a batch is a run · `0041` the frozen report is the record, not
+the reading surface.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
