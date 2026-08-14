@@ -106,9 +106,12 @@ class EvaluationGateway:
         self._identities = IdentityQueries(session)
 
     def get_judgments(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[JudgmentInfo]:
-        dtos = self._queries.get_judgments(content_ids, instrument_version_id)
+        dtos = self._queries.get_judgments(content_ids, instrument_version_id, assessor_id)
         # One batched lookup for the whole set, whatever its size (ADR-0006): a study of
         # twenty courses has at most a handful of distinct authors.
         assessors = self._identities.list_assessors(sorted({dto.assessor_id for dto in dtos}))
@@ -132,7 +135,10 @@ class EvaluationGateway:
         ]
 
     def get_findings(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[FindingInfo]:
         return [
             FindingInfo(
@@ -145,11 +151,14 @@ class EvaluationGateway:
                 quote=dto.quote,
                 locator=dto.locator,
             )
-            for dto in self._queries.get_findings(content_ids, instrument_version_id)
+            for dto in self._queries.get_findings(content_ids, instrument_version_id, assessor_id)
         ]
 
     def get_criterion_outcomes(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[CriterionOutcomeInfo]:
         return [
             CriterionOutcomeInfo(
@@ -164,7 +173,9 @@ class EvaluationGateway:
                 comment=dto.comment,
                 execution_cause=dto.execution_cause,
             )
-            for dto in self._queries.get_criterion_outcomes(content_ids, instrument_version_id)
+            for dto in self._queries.get_criterion_outcomes(
+                content_ids, instrument_version_id, assessor_id
+            )
         ]
 
     def list_ratifications(self, instrument_version_id: str) -> list[RatificationInfo]:

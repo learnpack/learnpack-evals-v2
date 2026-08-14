@@ -152,13 +152,24 @@ class EvaluationQueries:
         return _queries.list_evaluations_for_contents(self._evaluations, content_ids)
 
     def get_judgments(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[QualityJudgmentDTO]:
-        """Append-only; the most recent per content is the current one. Batch."""
-        return self._judgments.list_for_contents(content_ids, instrument_version_id)
+        """Append-only; the most recent per content is the current one. Batch.
+
+        `assessor_id` narrows to one author — what a study that pins its assessor reads
+        (ADR-0042 §9). Omitted means every author, which is what a caller with no such pin
+        wants and what every caller wanted before there was one.
+        """
+        return self._judgments.list_for_contents(content_ids, instrument_version_id, assessor_id)
 
     def get_criterion_outcomes(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[CriterionOutcomeDTO]:
         """The five states per criterion behind those judgments. Batch.
 
@@ -167,11 +178,18 @@ class EvaluationQueries:
         than to its claim (ADR-0023).
         """
         return self._judgments.list_criterion_outcomes_for_contents(
-            content_ids, instrument_version_id
+            content_ids, instrument_version_id, assessor_id
         )
 
-    def get_findings(self, content_ids: list[UUID], instrument_version_id: str) -> list[FindingDTO]:
-        return self._judgments.list_findings_for_contents(content_ids, instrument_version_id)
+    def get_findings(
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
+    ) -> list[FindingDTO]:
+        return self._judgments.list_findings_for_contents(
+            content_ids, instrument_version_id, assessor_id
+        )
 
     def list_ratifications(self, instrument_version_id: str) -> list[RatificationDTO]:
         """Who may evaluate with that version (ADR-0019) — readiness reads this."""

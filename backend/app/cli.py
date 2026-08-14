@@ -1,8 +1,8 @@
 """Admin CLI: `python -m app.cli seed | set-role | import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
-pin-study | compose-dataset | open-study | publish-study | show-preview | show-report |
-attribute-generator | register-generator | register-generator-version`.
+pin-study | pin-assessor | compose-dataset | open-study | publish-study | show-preview |
+show-report | attribute-generator | register-generator | register-generator-version`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
@@ -176,6 +176,12 @@ from app.modules.evaluation_studies.application.declare_study import (
 from app.modules.evaluation_studies.application.fitness import compute_fitness
 from app.modules.evaluation_studies.application.gathering import gather_report_inputs
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
+from app.modules.evaluation_studies.application.pin_assessor import (
+    AssessorHasNotRatified,
+    InstrumentPinnedFirst,
+    PinAssessor,
+    PinAssessorCommand,
+)
 from app.modules.evaluation_studies.application.pin_instrument import (
     InstrumentNotPublished,
     PinInstrument,
@@ -188,6 +194,8 @@ from app.modules.evaluation_studies.application.publish_study import (
 )
 from app.modules.evaluation_studies.application.report import compose_preview
 from app.modules.evaluation_studies.domain.model import (
+    AssessorAlreadyPinned,
+    AssessorNotPinned,
     DatasetEmpty,
     DatasetLocked,
     InstrumentAlreadyPinned,
@@ -1707,6 +1715,10 @@ _STUDY_ERRORS = (
     InstrumentAlreadyPinned,
     InstrumentNotPinned,
     InstrumentNotPublished,
+    AssessorAlreadyPinned,
+    AssessorNotPinned,
+    AssessorHasNotRatified,
+    InstrumentPinnedFirst,
     UnknownInstrument,
     UnknownBrief,
     DatasetLocked,
@@ -1748,6 +1760,41 @@ def run_pin_study(study_id: UUID, instrument_version_id: str) -> int:
             print(str(exc), file=sys.stderr)
             return 1
     print(f"pinned {instrument_version_id} to study {study.id} ({study.status})")
+    return 0
+
+
+def run_pin_assessor(study_id: UUID, assessor_arg: str) -> int:
+    """Name the judge whose verdicts are this study's result (ADR-0042 §8).
+
+    `name:version` here and an id over HTTP, and the difference is deliberate: the console
+    picks from a list that already carries ids, while a person at a terminal knows the
+    artifact by the name every other command takes. Resolving one into the other is a
+    composition root's job, which is what this file is.
+    """
+    package = _assessor_from_spec(assessor_arg)
+    if package is None:
+        return 1
+    with SessionLocal() as session:
+        row = SqlAlchemyAssessorRepository(session).get_automated(package.name, package.version)
+        if row is None:
+            print(
+                f"{package.display_name} is not registered — run ratify-assessor first",
+                file=sys.stderr,
+            )
+            return 1
+        uow = UnitOfWork(session)
+        use_case = PinAssessor(
+            studies=SqlAlchemyStudyRepository(session),
+            evaluation=StudiesEvaluationGateway(session),
+            publisher=uow.events,
+            uow=uow,
+        )
+        try:
+            study = use_case(PinAssessorCommand(study_id=study_id, assessor_id=row.id))
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print(f"pinned {package.display_name} to study {study.id} ({study.status})")
     return 0
 
 
@@ -1898,12 +1945,14 @@ def run_show_fitness(study_id: UUID) -> int:
             briefs=briefs,
             generators=generators,
             judgments=(
-                evaluation.get_judgments(content_ids, instrument_version_id)
+                evaluation.get_judgments(content_ids, instrument_version_id, study.assessor_id)
                 if instrument_version_id
                 else []
             ),
             outcomes=(
-                evaluation.get_criterion_outcomes(content_ids, instrument_version_id)
+                evaluation.get_criterion_outcomes(
+                    content_ids, instrument_version_id, study.assessor_id
+                )
                 if instrument_version_id
                 else []
             ),
@@ -1928,9 +1977,14 @@ def run_evaluate_study(
     otherwise bury it in progress lines. Ctrl-C cancels — the same token the console will
     use — and the summary still prints, because half a batch is a result too.
     """
-    package = _assessor_from_spec(assessor_spec)
-    if package is None:
-        return 1
+    # Optional now: the study pins its assessor (ADR-0042 §10). Passing one still works and
+    # is checked against the pin, so a GA script written before the pin keeps running and a
+    # disagreement is refused rather than quietly resolved.
+    package = None
+    if assessor_spec is not None:
+        package = _assessor_from_spec(assessor_spec)
+        if package is None:
+            return 1
 
     workers = concurrency if concurrency is not None else get_settings().llm_max_concurrency
     try:
@@ -1951,7 +2005,7 @@ def run_evaluate_study(
 
     print(
         f"evaluating {len(run.pending)} of {len(run.courses)} courses with "
-        f"{package.display_name} against {run.instrument_version_id}, "
+        f"{run.package.display_name} against {run.instrument_version_id}, "
         f"{workers} at a time (study {study_id})",
         file=sys.stderr,
     )
@@ -2615,7 +2669,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     evaluate_study_parser.add_argument("--study-id", required=True)
     evaluate_study_parser.add_argument(
-        "--assessor", required=True, help="name:version - the same declaration `evaluate` needs"
+        "--assessor",
+        default=None,
+        help="name:version — optional since the study pins its assessor; if given it must "
+        "match the pin, and a disagreement is refused rather than resolved",
     )
     evaluate_study_parser.add_argument(
         "--concurrency",
@@ -2642,6 +2699,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     pin_study_parser.add_argument("--study-id", required=True)
     pin_study_parser.add_argument("--instrument-version-id", required=True)
+
+    pin_assessor_parser = subparsers.add_parser(
+        "pin-assessor",
+        help="pin the assessor whose judgments are this study's result (once, before open)",
+    )
+    pin_assessor_parser.add_argument("--study-id", required=True)
+    pin_assessor_parser.add_argument(
+        "--assessor", required=True, help="name:version — must have ratified the pinned version"
+    )
 
     compose_dataset_parser = subparsers.add_parser(
         "compose-dataset", help="compose the study dataset: briefs -> registered contents"
@@ -2809,6 +2875,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_declare_study(args.purpose)
     elif args.command == "pin-study":
         return run_pin_study(UUID(args.study_id), args.instrument_version_id)
+    elif args.command == "pin-assessor":
+        return run_pin_assessor(UUID(args.study_id), args.assessor)
     elif args.command == "compose-dataset":
         return run_compose_dataset(UUID(args.study_id), [UUID(b) for b in args.brief_ids])
     elif args.command == "open-study":

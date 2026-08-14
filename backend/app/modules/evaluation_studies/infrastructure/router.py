@@ -30,6 +30,12 @@ from app.modules.evaluation_studies.application.declare_study import (
 )
 from app.modules.evaluation_studies.application.dtos import StudyDTO
 from app.modules.evaluation_studies.application.open_study import OpenStudy, OpenStudyCommand
+from app.modules.evaluation_studies.application.pin_assessor import (
+    AssessorHasNotRatified,
+    InstrumentPinnedFirst,
+    PinAssessor,
+    PinAssessorCommand,
+)
 from app.modules.evaluation_studies.application.pin_instrument import (
     InstrumentNotPublished,
     PinInstrument,
@@ -41,6 +47,8 @@ from app.modules.evaluation_studies.application.publish_study import (
     PublishStudyCommand,
 )
 from app.modules.evaluation_studies.domain.model import (
+    AssessorAlreadyPinned,
+    AssessorNotPinned,
     DatasetEmpty,
     DatasetLocked,
     InstrumentAlreadyPinned,
@@ -78,6 +86,10 @@ class PinInstrumentRequest(BaseModel):
     instrument_version_id: str
 
 
+class PinAssessorRequest(BaseModel):
+    assessor_id: UUID
+
+
 class ComposeDatasetRequest(BaseModel):
     brief_ids: list[UUID]
 
@@ -87,6 +99,9 @@ class StudyResponse(BaseModel):
     purpose: str
     status: str
     instrument_version_id: str | None
+    # The id alone: what an assessor is called belongs to Identity, and the console already
+    # holds a list of packages keyed by it. Null on studies declared before ADR-0042.
+    assessor_id: UUID | None
     brief_ids: list[UUID]
     content_ids: list[UUID]
     created_at: str | None
@@ -100,6 +115,7 @@ class StudyResponse(BaseModel):
             purpose=dto.purpose,
             status=dto.status,
             instrument_version_id=dto.instrument_version_id,
+            assessor_id=dto.assessor_id,
             brief_ids=list(dto.brief_ids),
             content_ids=list(dto.content_ids),
             created_at=dto.created_at.isoformat() if dto.created_at else None,
@@ -173,6 +189,35 @@ def pin_instrument(
     return _study_response(uow, study_id)
 
 
+@router.post("/{study_id}/assessor", response_model=StudyResponse)
+def pin_assessor(
+    study_id: UUID, request: PinAssessorRequest, admin: AdminAssessor, uow: Uow
+) -> StudyResponse:
+    """Name the judge whose verdicts are this study's result (ADR-0042 §8).
+
+    It takes an id and not `name:version` because the console picks from a list that
+    already carries ids, and resolving an artifact's name is Identity's job, not this
+    endpoint's. The CLI, being a composition root, does that resolution itself.
+    """
+    use_case = PinAssessor(
+        studies=SqlAlchemyStudyRepository(uow.session),
+        evaluation=EvaluationGateway(uow.session),
+        publisher=uow.events,
+        uow=uow,
+    )
+    try:
+        use_case(PinAssessorCommand(study_id=study_id, assessor_id=request.assessor_id))
+    except StudyNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (AssessorAlreadyPinned, DatasetLocked, StudyAlreadyPublished) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (InstrumentPinnedFirst, AssessorHasNotRatified) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return _study_response(uow, study_id)
+
+
 @router.post("/{study_id}/dataset", response_model=StudyResponse)
 def compose_dataset(
     study_id: UUID, request: ComposeDatasetRequest, admin: AdminAssessor, uow: Uow
@@ -206,7 +251,7 @@ def open_study(study_id: UUID, admin: AdminAssessor, uow: Uow) -> StudyResponse:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (StudyAlreadyOpen, StudyAlreadyPublished) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (InstrumentNotPinned, DatasetEmpty) as exc:
+    except (InstrumentNotPinned, AssessorNotPinned, DatasetEmpty) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
@@ -314,12 +359,12 @@ def get_fitness(study_id: UUID, admin: AdminAssessor, uow: Uow) -> dict[str, Any
     evaluation = EvaluationGateway(uow.session)
     content_ids = [content.content_id for content in contents]
     judgments = (
-        evaluation.get_judgments(content_ids, instrument_version_id)
+        evaluation.get_judgments(content_ids, instrument_version_id, study.assessor_id)
         if instrument_version_id
         else []
     )
     outcomes = (
-        evaluation.get_criterion_outcomes(content_ids, instrument_version_id)
+        evaluation.get_criterion_outcomes(content_ids, instrument_version_id, study.assessor_id)
         if instrument_version_id
         else []
     )
@@ -407,8 +452,16 @@ def get_criterion_outcomes(study_id: UUID, admin: AdminAssessor, uow: Uow) -> di
         study=study,
         instrument=instrument,
         contents=contents,
-        judgments=evaluation.get_judgments(content_ids, version_id) if version_id else [],
-        outcomes=(evaluation.get_criterion_outcomes(content_ids, version_id) if version_id else []),
+        judgments=(
+            evaluation.get_judgments(content_ids, version_id, study.assessor_id)
+            if version_id
+            else []
+        ),
+        outcomes=(
+            evaluation.get_criterion_outcomes(content_ids, version_id, study.assessor_id)
+            if version_id
+            else []
+        ),
         frozen_report=frozen.report if frozen is not None else None,
         computed_at=datetime.now(UTC),
     )

@@ -4,11 +4,19 @@ Domain invariants are specified in test_studies_domain.py; here the HTTP mapping
 404/409/422 per act, the readiness/matching composed queries, and the report row.
 """
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
 from test_instrument_authoring_api import import_spec, spec
+
+from app.modules.evaluation.infrastructure.repository import SqlAlchemyRatificationRepository
+from app.modules.identity.application.register_automated_assessor import (
+    RegisterAutomatedAssessor,
+    RegisterAutomatedAssessorCommand,
+)
+from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+from app.platform.db import SessionLocal
 
 SYLLABUS_URL = "https://packages.learn-pack.com"
 
@@ -62,8 +70,35 @@ def register_content(admin_client, cleanup, unique, suffix, brief_id=None) -> st
     return content_id
 
 
+def ratified_assessor(cleanup, unique, instrument_id, ratified_by) -> str:
+    """An automated assessor that has ratified this version — the pin's precondition.
+
+    Written through the same two acts a person performs (register on first ratification,
+    ADR-0019 §2), not through raw INSERTs: a study that pins an assessor no ratification
+    row backs is the state the endpoint exists to refuse, and a fixture that fabricated one
+    would be testing against a world the system cannot reach.
+    """
+    name = f"studies-api-{unique}"
+    with SessionLocal() as session:
+        registered = RegisterAutomatedAssessor(SqlAlchemyAssessorRepository(session))(
+            RegisterAutomatedAssessorCommand(
+                name=name,
+                version="1",
+                display_name=f"Studies API {unique}",
+                source_config={"name": name, "version": "1", "instrumentId": f"qa-{unique}"},
+            )
+        )
+        assessor_id = str(registered.assessor.assessor_id)
+        SqlAlchemyRatificationRepository(session).insert(
+            UUID(assessor_id), instrument_id, UUID(ratified_by)
+        )
+        session.commit()
+    cleanup["assessors"].append(assessor_id)
+    return assessor_id
+
+
 def composed_study(admin_client, cleanup, unique):
-    """declared → pinned → composed, ready to open."""
+    """declared → both pins → composed, ready to open."""
     instrument_id = published_instrument(admin_client, cleanup, unique)
     study_id = declare(admin_client, cleanup)
     brief_id = register_brief(admin_client, cleanup)
@@ -71,6 +106,13 @@ def composed_study(admin_client, cleanup, unique):
     admin_client.post(
         f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
     )
+    assessor_id = ratified_assessor(
+        cleanup, unique, instrument_id, admin_client.get("/me").json()["assessor_id"]
+    )
+    response = admin_client.post(
+        f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id}
+    )
+    assert response.status_code == 200, response.text
     admin_client.post(f"/admin/studies/{study_id}/dataset", json={"brief_ids": [brief_id]})
     return study_id, instrument_id, brief_id
 
@@ -162,6 +204,45 @@ def test_pin_is_once_and_only_published_versions(admin_client, cleanup, unique):
     assert again.status_code == 409  # pinned ONCE
 
 
+def test_the_assessor_pin_needs_a_norm_first_and_a_ratification_against_it(
+    admin_client, cleanup, unique
+):
+    """Its two refusals are its whole contract. There is nothing to ratify against before an
+    instrument is pinned, and an assessor that has not ratified could persist no judgment for
+    this study — so pinning it would set up a round nothing can evaluate."""
+    study_id = declare(admin_client, cleanup)
+    admin_id = admin_client.get("/me").json()["assessor_id"]
+
+    too_early = admin_client.post(
+        f"/admin/studies/{study_id}/assessor", json={"assessor_id": str(uuid4())}
+    )
+    assert too_early.status_code == 422
+    assert "pin one before its assessor" in too_early.json()["detail"]
+
+    instrument_id = published_instrument(admin_client, cleanup, unique)
+    admin_client.post(
+        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
+    )
+
+    stranger = admin_client.post(
+        f"/admin/studies/{study_id}/assessor", json={"assessor_id": str(uuid4())}
+    )
+    assert stranger.status_code == 422
+    assert "has not ratified" in stranger.json()["detail"]
+
+    assessor_id = ratified_assessor(cleanup, unique, instrument_id, admin_id)
+    accepted = admin_client.post(
+        f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id}
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["assessor_id"] == assessor_id
+
+    again = admin_client.post(
+        f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id}
+    )
+    assert again.status_code == 409  # pinned ONCE, like the instrument
+
+
 def test_open_preconditions_map_to_422(admin_client, cleanup, unique):
     study_id = declare(admin_client, cleanup)
     assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 422  # no pin
@@ -170,6 +251,14 @@ def test_open_preconditions_map_to_422(admin_client, cleanup, unique):
     admin_client.post(
         f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
     )
+    no_judge = admin_client.post(f"/admin/studies/{study_id}/open")
+    assert no_judge.status_code == 422  # no assessor pinned
+    assert "no pinned assessor" in no_judge.json()["detail"]
+
+    assessor_id = ratified_assessor(
+        cleanup, unique, instrument_id, admin_client.get("/me").json()["assessor_id"]
+    )
+    admin_client.post(f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id})
     empty = admin_client.post(f"/admin/studies/{study_id}/open")
     assert empty.status_code == 422  # empty dataset
 
@@ -194,7 +283,7 @@ def test_readiness_informs_and_never_blocks(admin_client, cleanup, unique):
     fresh = admin_client.get(f"/admin/studies/{study_id}/readiness").json()
     assert fresh["informative"] is True
     gaps = {g["gap"] for g in fresh["studyGaps"]}
-    assert gaps == {"instrument_not_pinned", "dataset_not_composed"}
+    assert gaps == {"instrument_not_pinned", "assessor_not_pinned", "dataset_not_composed"}
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
     admin_client.post(
@@ -223,7 +312,11 @@ def test_fitness_is_its_own_resource_and_informs_before_there_is_anything_to_mea
     assert body["signal"] == "optimization"
     assert body["formulaVersion"]
     # It answers with its gaps instead of refusing, the way readiness informs.
-    assert {g["gap"] for g in body["gaps"]} == {"instrument_not_pinned", "dataset_not_composed"}
+    assert {g["gap"] for g in body["gaps"]} == {
+        "instrument_not_pinned",
+        "assessor_not_pinned",
+        "dataset_not_composed",
+    }
     assert body["study"] == {}
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
@@ -262,7 +355,11 @@ def test_the_preview_answers_before_publishing_and_never_says_it_was_published(
     assert "publishedAt" not in body, fresh.text
     assert body["composedAt"], fresh.text
     assert body["frozenRecord"]["exists"] is False, fresh.text
-    assert {g["gap"] for g in body["gaps"]} == {"instrument_not_pinned", "dataset_not_composed"}
+    assert {g["gap"] for g in body["gaps"]} == {
+        "instrument_not_pinned",
+        "assessor_not_pinned",
+        "dataset_not_composed",
+    }
     # Never a partial document: the empty sections are there, and every caveat kind.
     assert body["contents"] == [] and body["generatorLevel"] == []
     assert "insufficientEvidence" in body["caveats"], fresh.text
@@ -312,7 +409,11 @@ def test_the_criterion_matrix_is_its_own_resource_and_has_a_denominator_from_the
     assert fresh.status_code == 200, fresh.text
     body = fresh.json()
     assert body["signal"] == "evidence", fresh.text
-    assert {g["gap"] for g in body["gaps"]} == {"instrument_not_pinned", "dataset_not_composed"}
+    assert {g["gap"] for g in body["gaps"]} == {
+        "instrument_not_pinned",
+        "assessor_not_pinned",
+        "dataset_not_composed",
+    }
     assert body["criteria"] == [] and body["contents"] == []
 
     instrument_id = published_instrument(admin_client, cleanup, unique)

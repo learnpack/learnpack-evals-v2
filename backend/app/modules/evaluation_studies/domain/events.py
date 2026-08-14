@@ -33,6 +33,18 @@ def instrument_pinned(study: Study) -> DomainEvent:
     )
 
 
+def assessor_pinned(study: Study) -> DomainEvent:
+    return DomainEvent(
+        event_type="AssessorPinned",
+        aggregate_type=AGGREGATE_TYPE,
+        aggregate_id=str(study.id),
+        payload={
+            "studyId": str(study.id),
+            "assessorId": str(study.assessor_id),
+        },
+    )
+
+
 def study_opened(study: Study) -> DomainEvent:
     return DomainEvent(
         event_type="StudyOpened",
@@ -41,6 +53,8 @@ def study_opened(study: Study) -> DomainEvent:
         payload={
             "studyId": str(study.id),
             "instrumentVersionId": study.instrument_version_id,
+            # Opening fixes the whole triple now, so the event that records the act says so.
+            "assessorId": str(study.assessor_id),
             "briefIds": [str(b) for b in study.brief_ids],
             "contentIds": [str(c) for c in study.content_ids],
         },

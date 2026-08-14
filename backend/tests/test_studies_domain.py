@@ -10,6 +10,8 @@ from uuid import uuid4
 import pytest
 
 from app.modules.evaluation_studies.domain.model import (
+    AssessorAlreadyPinned,
+    AssessorNotPinned,
     DatasetEmpty,
     DatasetLocked,
     InstrumentAlreadyPinned,
@@ -32,6 +34,7 @@ def study(**overrides) -> Study:
 def composed_study() -> Study:
     s = study()
     s.pin_instrument("learnpack-course-qa-v1")
+    s.pin_assessor(uuid4())
     s.compose_dataset((uuid4(),), (uuid4(), uuid4()))
     return s
 
@@ -80,6 +83,7 @@ def test_the_pin_is_immutable_after_open():
 def test_prepared_derives_from_pin_then_compose():
     s = study()
     s.pin_instrument("v1")
+    s.pin_assessor(uuid4())
     assert s.status == "declared"
     s.compose_dataset((), (uuid4(),))
     assert s.status == "prepared"
@@ -90,6 +94,19 @@ def test_prepared_derives_from_compose_then_pin():
     s.compose_dataset((uuid4(),), (uuid4(),))
     assert s.status == "declared"
     s.pin_instrument("v1")
+    s.pin_assessor(uuid4())
+    assert s.status == "prepared"
+
+
+def test_prepared_waits_for_BOTH_pins():
+    """`prepared` means everything opening needs is here, so one pin is not enough — and a
+    study that read `prepared` and then refused to open would be lying about itself."""
+    s = study()
+    s.compose_dataset((), (uuid4(),))
+    s.pin_instrument("v1")
+    assert s.status == "declared"
+
+    s.pin_assessor(uuid4())
     assert s.status == "prepared"
 
 
@@ -117,9 +134,38 @@ def test_open_requires_the_pin():
         s.open(NOW)
 
 
+def test_open_requires_the_assessor_too():
+    """A study's result is a triple, and opening is where the triple is fixed (ADR-0042 §8).
+    Without this, a round could be evaluated by whoever happened to run the batch."""
+    s = study()
+    s.pin_instrument("v1")
+    s.compose_dataset((), (uuid4(),))
+    with pytest.raises(AssessorNotPinned):
+        s.open(NOW)
+
+
+def test_the_assessor_pin_happens_once_and_is_immutable_after_open():
+    """Re-pinning would silently change which judgments the study's own reads count —
+    every number it has already shown would refer to a different population."""
+    s = study()
+    s.pin_instrument("v1")
+    first = uuid4()
+    s.pin_assessor(first)
+
+    with pytest.raises(AssessorAlreadyPinned):
+        s.pin_assessor(uuid4())
+    assert s.assessor_id == first
+
+    s.compose_dataset((), (uuid4(),))
+    s.open(NOW)
+    with pytest.raises(AssessorAlreadyPinned):
+        s.pin_assessor(uuid4())
+
+
 def test_open_requires_a_dataset():
     s = study()
     s.pin_instrument("v1")
+    s.pin_assessor(uuid4())
     with pytest.raises(DatasetEmpty):
         s.open(NOW)
 
@@ -252,6 +298,7 @@ def judgment(content_id, *claims, derived_at=NOW, excluded=(), assessor=HYBRID_1
 def published_study(content_ids, brief_ids=()):
     s = study()
     s.pin_instrument("qa-v1")
+    s.pin_assessor(HYBRID_10.assessor_id)
     s.compose_dataset(tuple(brief_ids), tuple(content_ids))
     s.open(NOW)
     s.publish(uuid4(), NOW)
@@ -635,6 +682,7 @@ def test_a_study_with_nothing_pinned_previews_with_its_gaps_and_every_caveat_kin
     )
     assert [g["gap"] for g in preview["gaps"]] == [
         "instrument_not_pinned",
+        "assessor_not_pinned",
         "dataset_not_composed",
     ]
     assert preview["contents"] == [] and preview["generatorLevel"] == []
@@ -694,7 +742,7 @@ def test_a_pinned_version_that_cannot_be_read_is_its_own_gap():
         instrument=None,
         composed_at=NOW,
     )
-    assert [g["gap"] for g in preview["gaps"]] == ["instrument_not_found"]
+    assert [g["gap"] for g in preview["gaps"]] == ["assessor_not_pinned", "instrument_not_found"]
 
 
 def test_every_caveat_kind_is_always_present():
@@ -804,7 +852,7 @@ def test_readiness_names_the_study_gaps():
     result = compute_readiness(s, None, {}, [], [])
 
     gaps = {g["gap"] for g in result["studyGaps"]}
-    assert gaps == {"instrument_not_pinned", "dataset_not_composed"}
+    assert gaps == {"instrument_not_pinned", "assessor_not_pinned", "dataset_not_composed"}
     assert result["informative"] is True
 
 

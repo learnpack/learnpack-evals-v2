@@ -43,8 +43,12 @@ def test_a_database_behind_the_code_names_both_revisions_and_the_command():
 
 def test_a_database_ahead_of_the_checkout_is_not_told_to_migrate():
     """The stale thing is the code, and migrating would not fix it — telling someone to run
-    a migration here sends them to do something that cannot work."""
-    complaint = drift("0019", "0018", KNOWN)
+    a migration here sends them to do something that cannot work.
+
+    The revision is deliberately far past the real chain: this is a hand-written set, and
+    reusing the next real number would turn into a lie the day that migration is written.
+    """
+    complaint = drift("0099", "0018", KNOWN)
     assert complaint is not None
     assert "does not know" in complaint
     assert "alembic upgrade head" not in complaint

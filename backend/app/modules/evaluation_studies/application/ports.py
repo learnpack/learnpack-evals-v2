@@ -49,16 +49,29 @@ class RegistryGatewayPort(Protocol):
 
 
 class EvaluationGatewayPort(Protocol):
+    """`assessor_id` narrows a read to the study's pinned judge (ADR-0042 §9). `None` means
+    every author — which is what a study declared before the pin existed reads, and what
+    every one of these calls meant before it."""
+
     def get_judgments(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[JudgmentInfo]: ...
 
     def get_findings(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[FindingInfo]: ...
 
     def get_criterion_outcomes(
-        self, content_ids: list[UUID], instrument_version_id: str
+        self,
+        content_ids: list[UUID],
+        instrument_version_id: str,
+        assessor_id: UUID | None = None,
     ) -> list[CriterionOutcomeInfo]: ...
 
     def list_ratifications(self, instrument_version_id: str) -> list[RatificationInfo]: ...

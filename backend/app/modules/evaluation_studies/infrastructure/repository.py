@@ -17,7 +17,8 @@ from app.modules.evaluation_studies.application.dtos import StudyReportDTO
 from app.modules.evaluation_studies.domain.model import Study
 
 _COLUMNS = (
-    "id, purpose, status, instrument_version_id, created_at, opened_at, published_at, published_by"
+    "id, purpose, status, instrument_version_id, assessor_id, "
+    "created_at, opened_at, published_at, published_by"
 )
 
 
@@ -34,6 +35,7 @@ class SqlAlchemyStudyRepository:
             purpose=row["purpose"],
             status=row["status"],
             instrument_version_id=row["instrument_version_id"],
+            assessor_id=row["assessor_id"],
             brief_ids=brief_ids,
             content_ids=content_ids,
             created_at=row["created_at"],
@@ -97,8 +99,8 @@ class SqlAlchemyStudyRepository:
         self._session.execute(
             text(
                 """
-                INSERT INTO studies (id, purpose, status, instrument_version_id)
-                VALUES (:id, :purpose, :status, :instrument_version_id)
+                INSERT INTO studies (id, purpose, status, instrument_version_id, assessor_id)
+                VALUES (:id, :purpose, :status, :instrument_version_id, :assessor_id)
                 """
             ),
             {
@@ -106,6 +108,7 @@ class SqlAlchemyStudyRepository:
                 "purpose": study.purpose,
                 "status": study.status,
                 "instrument_version_id": study.instrument_version_id,
+                "assessor_id": study.assessor_id,
             },
         )
         self._insert_children(study)
@@ -118,6 +121,7 @@ class SqlAlchemyStudyRepository:
                    SET purpose = :purpose,
                        status = :status,
                        instrument_version_id = :instrument_version_id,
+                       assessor_id = :assessor_id,
                        opened_at = :opened_at,
                        published_at = :published_at,
                        published_by = :published_by
@@ -129,6 +133,7 @@ class SqlAlchemyStudyRepository:
                 "purpose": study.purpose,
                 "status": study.status,
                 "instrument_version_id": study.instrument_version_id,
+                "assessor_id": study.assessor_id,
                 "opened_at": study.opened_at,
                 "published_at": study.published_at,
                 "published_by": study.published_by,

@@ -50,8 +50,12 @@ Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
 
 class StartBatchRequest(BaseModel):
-    assessor_name: str
-    assessor_version: str
+    # Optional since the study pins its assessor (ADR-0042 §10). A caller that still names
+    # one is checked against the pin and refused on a disagreement — which keeps a script
+    # written before the pin working, and turns a mismatch into an answer instead of a
+    # silently different run.
+    assessor_name: str | None = None
+    assessor_version: str | None = None
     # Courses already evaluated by this assessor under this version are skipped unless this
     # says otherwise — which is what makes re-running the way to resume (ADR-0040 §6).
     re_evaluate: bool = False
@@ -237,12 +241,14 @@ def start_study_evaluation(
     refused here, before a single call is paid for (ADR-0040 §4).
     """
     _study_or_404(uow, study_id)
-    package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
-    if package is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"unknown assessor {request.assessor_name}:{request.assessor_version}",
-        )
+    package = None
+    if request.assessor_name is not None and request.assessor_version is not None:
+        package = AUTOMATED_ASSESSORS.get((request.assessor_name, request.assessor_version))
+        if package is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"unknown assessor {request.assessor_name}:{request.assessor_version}",
+            )
     workers = request.concurrency or get_settings().llm_max_concurrency
 
     try:
