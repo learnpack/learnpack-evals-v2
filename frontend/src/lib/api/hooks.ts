@@ -4,9 +4,10 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseQueryOptions,
 } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAuthHeaders } from "@/lib/auth";
 import { apiFetch, type RequestOptions } from "./client";
 import type {
@@ -497,15 +498,42 @@ export function usePreviewRunTrace(runId: Uuid | null, ended: boolean) {
 
 // --------------------------------------------------- evaluating a study in batch (ADR-0040)
 
+/** Every read a study's own state feeds, refreshed together — they are one story. The
+ *  header count, the readiness, the fitness and the report all restate what the study now
+ *  is, and a page that refreshed one and not the others contradicts itself on screen.
+ *
+ *  Spelled out rather than left to the `["admin", "studies", id]` prefix they share: that
+ *  prefix also covers the watched run, and a finished run is not stale data — it is the
+ *  record of what happened, and refetching it only risks a 404 once the backend has
+ *  forgotten it. Hence `exact` on the keys that have children under them. */
+function invalidateStudy(qc: QueryClient, studyId: Uuid): void {
+  qc.invalidateQueries({ queryKey: queryKeys.studies, exact: true });
+  qc.invalidateQueries({ queryKey: queryKeys.study(studyId), exact: true });
+  qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId), exact: true });
+  qc.invalidateQueries({ queryKey: queryKeys.studyReadiness(studyId) });
+  qc.invalidateQueries({ queryKey: queryKeys.studyFitness(studyId) });
+  qc.invalidateQueries({ queryKey: queryKeys.studyReport(studyId) });
+}
+
 /** How far the study has been evaluated, plus the runs this backend remembers.
  *
  * The count comes from the database, so it is still right after a restart and counts a
- * batch someone ran from the CLI. Polled only while one of its runs is going. */
+ * batch someone ran from the CLI. */
 export function useStudyEvaluations(studyId: Uuid) {
   const api = useApi();
   return useQuery({
     queryKey: queryKeys.studyEvaluations(studyId),
     queryFn: () => api<StudyEvaluations>(`/admin/studies/${studyId}/evaluations`),
+    // Polled while this backend is running a batch for the study. Three seconds rather
+    // than the run watcher's one: this read joins every judgment of the dataset, and it is
+    // the coarse count, not the progress bar.
+    refetchInterval: (query) =>
+      query.state.data?.runs.some((run) => run.status === "running") ? 3000 : false,
+    // A batch started from a terminal is invisible to that interval — the run registry is
+    // per-process and the CLI never registers in it — so nothing can watch for one.
+    // Coming back to the tab is the moment such a count can be caught up, and it is one
+    // cheap read. Deliberately against the client-wide default.
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -518,15 +546,23 @@ export function useStartStudyEvaluation(studyId: Uuid) {
     retry: false,
     mutationFn: (body: StartBatchRequest) =>
       api<BatchRunStarted>(`/admin/studies/${studyId}/evaluations`, { method: "POST", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId) }),
+    // `exact`: the run keys hang under this one, and there is nothing to refetch about a
+    // run that has only just been created.
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId), exact: true }),
   });
 }
 
 /** The run as it stands, polled while it advances and left alone once it ends — the same
- *  cadence the dry run is watched at. */
+ *  cadence the dry run is watched at.
+ *
+ *  It also carries the page's only feedback loop. The instant a batch stops is the one
+ *  instant everything else on the page is wrong: judgments were persisted while it ran,
+ *  and nothing else asks. */
 export function useStudyEvaluationRun(studyId: Uuid, runId: Uuid | null) {
   const api = useApi();
-  return useQuery({
+  const qc = useQueryClient();
+  const query = useQuery({
     queryKey: queryKeys.studyEvaluationRun(studyId, runId ?? ""),
     queryFn: () => api<BatchRun>(`/admin/studies/${studyId}/evaluations/${runId}`),
     enabled: runId !== null,
@@ -535,6 +571,25 @@ export function useStudyEvaluationRun(studyId: Uuid, runId: Uuid | null) {
     staleTime: Infinity,
     retry: false,
   });
+
+  // Query-level `onSuccess` is gone in v5, so the terminal transition is watched here. The
+  // ref — not the status — is what stops a re-render from paying for it twice: the run is
+  // written down the first time it is seen ended, and every later render sees it.
+  //
+  // It waits for the run's real ending rather than reacting to the cancel act, because
+  // cancelling answers while the run is still `running`: courses in flight are still
+  // landing, and refreshing then would show a reading that is about to change as final.
+  const settled = useRef<Uuid | null>(null);
+  const watched = query.data?.run_id ?? null;
+  const status = query.data?.status;
+  useEffect(() => {
+    if (watched === null || status === undefined || status === "running") return;
+    if (settled.current === watched) return;
+    settled.current = watched;
+    invalidateStudy(qc, studyId);
+  }, [qc, studyId, watched, status]);
+
+  return query;
 }
 
 /** Stop starting new work. What finished stays persisted, so this is safe to click twice —
@@ -548,7 +603,10 @@ export function useCancelStudyEvaluation(studyId: Uuid) {
       api<BatchRun>(`/admin/studies/${studyId}/evaluations/${runId}/cancel`, { method: "POST" }),
     onSuccess: (run) => {
       qc.setQueryData(queryKeys.studyEvaluationRun(studyId, run.run_id), run);
-      qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId) });
+      // `exact`, or the line above is undone: this key is that key's prefix, so a broad
+      // invalidation marks the run stale and the refetch it triggers throws away the
+      // answer the act just handed us.
+      qc.invalidateQueries({ queryKey: queryKeys.studyEvaluations(studyId), exact: true });
     },
   });
 }
@@ -618,7 +676,12 @@ export function useDeclareStudy() {
   return useMutation({
     mutationFn: (body: DeclareStudyRequest) =>
       api<StudyResponse>("/admin/studies", { method: "POST", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.studies }),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: queryKeys.studies, exact: true });
+      // The caller navigates to the new study at once; seeding it means the detail page
+      // renders the study it was asked for instead of a spinner over nothing.
+      qc.setQueryData(queryKeys.study(created.study_id), created);
+    },
   });
 }
 
@@ -628,11 +691,10 @@ function useStudyAct<TBody = void>(path: (id: Uuid) => string) {
   return useMutation({
     mutationFn: ({ studyId, body }: { studyId: Uuid; body?: TBody }) =>
       api<StudyResponse>(path(studyId), { method: "POST", body: body ?? undefined }),
-    onSuccess: (_data, { studyId }) => {
-      qc.invalidateQueries({ queryKey: queryKeys.studies });
-      qc.invalidateQueries({ queryKey: queryKeys.study(studyId) });
-      qc.invalidateQueries({ queryKey: queryKeys.studyReadiness(studyId) });
-    },
+    // Pinning changes the instrument the count is taken under, composing changes what is
+    // counted, opening changes what may run, publishing makes the report exist. One act,
+    // one refresh of the whole story.
+    onSuccess: (_data, { studyId }) => invalidateStudy(qc, studyId),
   });
 }
 
