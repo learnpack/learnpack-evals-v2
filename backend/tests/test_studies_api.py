@@ -236,6 +236,46 @@ def test_choosing_a_judge_needs_a_norm_first_and_a_ratification_against_it(
     assert accepted.json()["assessor_id"] == assessor_id
 
 
+def test_only_the_judge_can_be_cleared_with_null(admin_client, cleanup, unique):
+    """`null` means "clear this" for exactly one field, and is refused for the rest.
+
+    Answering 422 rather than crashing or shrugging: `brief_ids: null` used to reach the
+    materializer and die there as a 500, and `name: null` was dropped on the floor — a
+    caller who asked for something impossible learned nothing either way.
+    """
+    study_id = declare(admin_client, cleanup)
+
+    empty_dataset = admin_client.patch(f"/admin/studies/{study_id}", json={"brief_ids": None})
+    assert empty_dataset.status_code == 422
+    assert "an empty dataset is []" in empty_dataset.json()["detail"]
+
+    nameless = admin_client.patch(f"/admin/studies/{study_id}", json={"name": None})
+    assert nameless.status_code == 422
+    assert admin_client.get(f"/admin/studies/{study_id}").json()["name"] == "A test round"
+
+    unchosen = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"instrument_version_id": None}
+    )
+    assert unchosen.status_code == 422
+
+    # Refused on the way in, too: a creation that cannot be honoured writes no row.
+    created = admin_client.post("/admin/studies", json={"name": "x", "brief_ids": None})
+    assert created.status_code == 422
+
+    # And the one that IS honoured stays honoured.
+    instrument_id = published_instrument(admin_client, cleanup, unique)
+    assessor_id = ratified_assessor(
+        cleanup, unique, instrument_id, admin_client.get("/me").json()["assessor_id"]
+    )
+    admin_client.patch(
+        f"/admin/studies/{study_id}",
+        json={"instrument_version_id": instrument_id, "assessor_id": assessor_id},
+    )
+    cleared = admin_client.patch(f"/admin/studies/{study_id}", json={"assessor_id": None})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["assessor_id"] is None
+
+
 def test_moving_a_draft_to_a_norm_its_judge_never_ratified_is_refused(
     admin_client, cleanup, unique
 ):

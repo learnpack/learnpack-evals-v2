@@ -17,6 +17,11 @@ The checks did not change with the ceremony:
 `UNCHANGED` is the sentinel that distinguishes "the caller said nothing about this" from
 "the caller cleared it" — `None` means clear, which is what re-pointing a draft at a norm
 the current judge never ratified leaves behind.
+
+**Only the judge can be cleared.** A study needs a name and, once chosen, an instrument
+version to check its judge against; and a dataset is emptied with `[]`, which says the same
+thing without a second spelling. A `null` in any of those three is refused rather than
+interpreted, because every reading of it would be a guess about what the caller meant.
 """
 
 from dataclasses import dataclass, field
@@ -55,6 +60,10 @@ class AssessorHasNotRatified(Exception):
     """This judge has not ratified the chosen version, so it could persist nothing."""
 
 
+class NullNotAllowed(Exception):
+    """`null` clears the judge and nothing else — every other field would be a guess."""
+
+
 class _Unchanged:
     """Absent from the request, as opposed to explicitly cleared."""
 
@@ -84,7 +93,9 @@ class DeclareStudyCommand:
 @dataclass(frozen=True)
 class UpdateStudyDraftCommand:
     study_id: UUID
-    name: str | _Unchanged = UNCHANGED
+    # `None` is reachable and refused (see `_rename`): an adapter forwards what it was
+    # sent, and deciding what a cleared name would mean is not the adapter's job.
+    name: str | None | _Unchanged = UNCHANGED
     description: str | None | _Unchanged = UNCHANGED
     selection: StudySelection = field(default_factory=StudySelection)
 
@@ -216,9 +227,14 @@ class UpdateStudyDraft:
         return study
 
 
-def _rename(study: Study, name: str) -> None:
+def _rename(study: Study, name: str | None) -> None:
     """Through `__post_init__` so a blank name is refused on the way in as on the way up:
-    the aggregate owns that rule and there is no second copy of it here."""
+    the aggregate owns that rule and there is no second copy of it here.
+
+    An explicit `null` is the same refusal said earlier — `__post_init__` would reach it as
+    an `AttributeError`, which is a crash where the caller needs a reason."""
+    if name is None:
+        raise NullNotAllowed("name cannot be cleared: a study is read by its name")
     study.name = name
     study.__post_init__()
 
@@ -228,7 +244,18 @@ def selection_from(payload: dict[str, Any]) -> StudySelection:
 
     Adapters (HTTP, CLI) decide what "absent" means for their own transport and hand the
     result here; the use cases never see a request object.
+
+    The two `null`s that mean nothing are refused HERE, at the one place every adapter goes
+    through, rather than in each of them: this is the boundary that knows what a cleared
+    field would have to mean, and a `null` that reached `_Selecting` would fail as a crash
+    instead of an answer.
     """
+    if payload.get("instrument_version_id", UNCHANGED) is None:
+        raise NullNotAllowed(
+            "instrument_version_id cannot be cleared: choose another published version"
+        )
+    if payload.get("brief_ids", UNCHANGED) is None:
+        raise NullNotAllowed("brief_ids cannot be null: an empty dataset is []")
     return StudySelection(
         instrument_version_id=payload.get("instrument_version_id", UNCHANGED),
         assessor_id=payload.get("assessor_id", UNCHANGED),

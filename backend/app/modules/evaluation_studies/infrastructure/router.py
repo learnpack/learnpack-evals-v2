@@ -26,6 +26,7 @@ from app.modules.evaluation_studies.application.draft import (
     DeclareStudyCommand,
     InstrumentNotPublished,
     InstrumentRequiredFirst,
+    NullNotAllowed,
     UnknownBrief,
     UnknownInstrument,
     UpdateStudyDraft,
@@ -152,6 +153,7 @@ def _study_response(uow: UnitOfWork, study_id: UUID) -> StudyResponse:
 _CONFLICT = (DatasetLocked, StudyAlreadySignedOff)
 _UNPROCESSABLE = (
     InvalidStudy,
+    NullNotAllowed,
     UnknownInstrument,
     InstrumentNotPublished,
     InstrumentRequiredFirst,
@@ -208,7 +210,9 @@ def update_study_draft(
         use_case(
             UpdateStudyDraftCommand(
                 study_id=study_id,
-                name=request.name if "name" in sent and request.name is not None else UNCHANGED,
+                # Forwarded as sent, `null` included: refusing it is the application's rule
+                # (a study is read by its name), and answering 422 beats ignoring the key.
+                name=request.name if "name" in sent else UNCHANGED,
                 description=request.description if "description" in sent else UNCHANGED,
                 selection=selection_from(request.model_dump(include=set(_SELECTION_KEYS & sent))),
             )
