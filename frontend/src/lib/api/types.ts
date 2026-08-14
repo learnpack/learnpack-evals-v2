@@ -738,21 +738,25 @@ export interface StudyFitness {
 
 // --- Requests --------------------------------------------------------------
 
+/** A study can be created empty or complete: none of the selection is binding until the
+ *  study opens, which is what pins it (ADR-0043 §1). */
 export interface DeclareStudyRequest {
   name: string;
   description?: string | null;
+  instrument_version_id?: string | null;
+  assessor_id?: Uuid | null;
+  brief_ids?: Uuid[];
 }
 
-export interface PinStudyAssessorRequest {
-  assessor_id: Uuid;
-}
-
-export interface PinStudyInstrumentRequest {
-  instrument_version_id: string;
-}
-
-export interface ComposeStudyDatasetRequest {
-  brief_ids: Uuid[];
+/** A partial update of a draft, where absent and null mean different things: omitting a key
+ *  leaves it alone, sending `assessor_id: null` CLEARS the judge — which is what re-pointing
+ *  a draft at a norm that judge never ratified requires. */
+export interface UpdateStudyDraftRequest {
+  name?: string;
+  description?: string | null;
+  instrument_version_id?: string;
+  assessor_id?: Uuid | null;
+  brief_ids?: Uuid[];
 }
 
 /** Registration by mechanical discovery (ADR-0027): identity, artifacts and content hash

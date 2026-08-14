@@ -23,7 +23,7 @@ import type {
   BrowseResponse,
   CampaignProgress,
   CampaignResponse,
-  ComposeStudyDatasetRequest,
+
   ContentResponse,
   CriterionOutcomes,
   DeclareStudyRequest,
@@ -34,8 +34,7 @@ import type {
   InstrumentResponse,
   Me,
   OpenCampaignRequest,
-  PinStudyAssessorRequest,
-  PinStudyInstrumentRequest,
+  UpdateStudyDraftRequest,
   PreviewEvaluationRequest,
   PreviewRun,
   PreviewRunStarted,
@@ -704,23 +703,24 @@ function useStudyAct<TBody = void>(path: (id: Uuid) => string) {
   return useMutation({
     mutationFn: ({ studyId, body }: { studyId: Uuid; body?: TBody }) =>
       api<StudyResponse>(path(studyId), { method: "POST", body: body ?? undefined }),
-    // Pinning changes the instrument the count is taken under, composing changes what is
-    // counted, opening changes what may run, signing off makes the report exist. One act,
-    // one refresh of the whole story.
+    // Choosing changes the instrument the count is taken under and what is counted,
+    // opening changes what may run, signing off makes the report exist. One act, one
+    // refresh of the whole story.
     onSuccess: (_data, { studyId }) => invalidateStudy(qc, studyId),
   });
 }
 
-export function usePinStudyInstrument() {
-  return useStudyAct<PinStudyInstrumentRequest>((id) => `/admin/studies/${id}/pin`);
-}
-
-export function usePinStudyAssessor() {
-  return useStudyAct<PinStudyAssessorRequest>((id) => `/admin/studies/${id}/assessor`);
-}
-
-export function useComposeStudyDataset() {
-  return useStudyAct<ComposeStudyDatasetRequest>((id) => `/admin/studies/${id}/dataset`);
+/** The whole of a draft's setup, in one call. It replaces the three pin/compose acts the
+ *  console used to perform, because none of them was binding and a person setting a study
+ *  up was never doing three things (ADR-0043 §1). */
+export function useUpdateStudyDraft() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ studyId, body }: { studyId: Uuid; body: UpdateStudyDraftRequest }) =>
+      api<StudyResponse>(`/admin/studies/${studyId}`, { method: "PATCH", body }),
+    onSuccess: (_data, { studyId }) => invalidateStudy(qc, studyId),
+  });
 }
 
 export function useOpenStudy() {
