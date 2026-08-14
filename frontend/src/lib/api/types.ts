@@ -444,6 +444,27 @@ export interface StudyReportResponse {
   signed_off_at: string;
 }
 
+/** Demand × supply for one (instrument version, package format): which criteria have a
+ *  datum to read in that format and which do not. The form uses it to say, before anything
+ *  is saved, how much of the instrument a course in that format can actually answer —
+ *  marked, never hidden, because readiness informs and does not block. */
+export interface MatchingResponse {
+  instrumentVersionId: string;
+  packageFormat: string;
+  adapterVersion: string | null;
+  /** Null when no adapter is registered for the format at all. */
+  extractionAccepted: boolean | null;
+  criteria: {
+    criterionId: string;
+    requiredData: string[];
+    missingData: string[];
+    covered: boolean;
+    onMissingEvidence: string;
+  }[];
+  unmetDemand: { dataRequirementId: string; criterionIds: string[] }[];
+  claims: { claimId: string; criteria: number; coveredCriteria: number }[];
+}
+
 /** A gap a composed-on-read document names instead of refusing to answer: the study is not
  *  finished being set up, and saying so beats a 404 (the readiness stance). */
 export interface StudyGap {
