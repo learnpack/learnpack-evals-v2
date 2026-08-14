@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { StudyStatusBadge } from "@/components/admin/study-status";
+import { StudyReportSection } from "@/components/admin/study-report/report-section";
 import { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
@@ -45,7 +46,6 @@ import {
   useStudyEvaluations,
   useStudyFitness,
   useStudyReadiness,
-  useStudyReport,
 } from "@/lib/api/hooks";
 import type {
   BatchCourseStatus,
@@ -55,9 +55,6 @@ import type {
   StudyEvaluations,
   StudyFitness,
   StudyReadiness,
-  StudyReport,
-  StudyReportContent,
-  StudyReportGenerator,
   StudyResponse,
   Uuid,
 } from "@/lib/api/types";
@@ -75,7 +72,6 @@ export default function StudyDetailPage({
   // Hoisted: the evaluation card and the publish card must quote the same two numbers.
   const evaluations = useStudyEvaluations(studyId);
   const readiness = useStudyReadiness(studyId);
-  const report = useStudyReport(studyId, study?.status === "published");
   const fitness = useStudyFitness(studyId);
 
   if (isLoading) return <LoadingState />;
@@ -101,11 +97,9 @@ export default function StudyDetailPage({
 
       {readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
-      {study.status === "published" && report.isLoading ? (
-        <LoadingState label="Loading the report…" />
-      ) : study.status === "published" && report.data ? (
-        <ReportView report={report.data.report} />
-      ) : null}
+      {/* Readable at every status, not only after the irreversible act: publishing freezes
+          a report, it does not reveal one. */}
+      {study.status === "declared" ? null : <StudyReportSection study={study} />}
 
       {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
           conflation is not — the report publishes no aggregate score, and this denominator
@@ -1292,212 +1286,5 @@ function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-// ---------------------------------------------------------------------- report
-
-const STATUS_COLOR: Record<string, "default" | "destructive" | "secondary"> = {
-  supported: "default",
-  refuted: "destructive",
-  insufficient: "secondary",
-};
-
-function ReportView({ report }: { report: StudyReport }) {
-  return (
-    <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Published {new Date(report.publishedAt).toLocaleString()} · instrument{" "}
-        {report.instrumentVersionId} · dataset of {report.dataset.size} ·{" "}
-        {Object.keys(report.judgmentIdsUsed).length} judgments recorded
-      </p>
-
-      {report.generatorLevel.length > 0 ? (
-        report.generatorLevel.map((generator) => (
-          <GeneratorSection key={generator.generatorVersionId} generator={generator} />
-        ))
-      ) : (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            No generator-level accumulation: no content in the dataset carries a known
-            generator version (see the caveats below).
-          </CardContent>
-        </Card>
-      )}
-
-      {report.contents.map((content) => (
-        <ContentSection key={content.contentId} content={content} />
-      ))}
-
-      <CaveatsSection report={report} />
-    </div>
-  );
-}
-
-function GeneratorSection({ generator }: { generator: StudyReportGenerator }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Generator level — {generator.name ?? generator.generatorVersionId}{" "}
-          {generator.version ?? ""}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {generator.contentsCounted} contents counted
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Claim</TableHead>
-              <TableHead>Supported</TableHead>
-              <TableHead>Refuted</TableHead>
-              <TableHead>Insufficient</TableHead>
-              <TableHead>Coverage</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {generator.perClaim.map((claim) => (
-              <TableRow key={claim.claimId}>
-                <TableCell title={claim.claimId}>{claim.statement}</TableCell>
-                <TableCell>{claim.distribution.supported ?? 0}</TableCell>
-                <TableCell>{claim.distribution.refuted ?? 0}</TableCell>
-                <TableCell>{claim.distribution.insufficient ?? 0}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {claim.coverage.evaluated}/{claim.coverage.of}
-                  {claim.excludedNotApplicable
-                    ? ` · ${claim.excludedNotApplicable} n/a`
-                    : ""}
-                  {claim.notEvaluated ? ` · ${claim.notEvaluated} not evaluated` : ""}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ContentSection({ content }: { content: StudyReportContent }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {content.externalId}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {content.packageFormat} ·{" "}
-            {content.generatorVersionId ? "generator known" : "generator unknown"}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {!content.judgmentId ? (
-          <p className="text-sm text-muted-foreground">Not judged when published.</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2">
-              {(content.claims ?? []).map((claim) => (
-                <Badge key={claim.claimId} variant={STATUS_COLOR[claim.status] ?? "secondary"}>
-                  {claim.claimId}: {claim.status}
-                  {claim.insufficiencyCause ? ` (${claim.insufficiencyCause})` : ""}
-                </Badge>
-              ))}
-            </div>
-            {(content.findings ?? []).length > 0 ? (
-              <ul className="space-y-2 text-sm">
-                {(content.findings ?? []).map((finding) => (
-                  <li key={finding.findingId} className="rounded bg-muted/40 p-2">
-                    <span className="font-medium">{finding.criterionId}</span> —{" "}
-                    {finding.failureMode}
-                    {finding.quote ? (
-                      <blockquote className="mt-1 border-l-2 pl-2 text-xs text-muted-foreground">
-                        “{finding.quote}”
-                      </blockquote>
-                    ) : (
-                      <span className="mt-1 block text-xs italic text-muted-foreground">
-                        no quote — {finding.quoteAbsentCause}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function CaveatsSection({ report }: { report: StudyReport }) {
-  const caveats = report.caveats;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Caveats</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          Always published with the report — publishing silently is impossible.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        <CaveatRow label="Insufficient evidence">
-          {caveats.insufficientEvidence.length === 0
-            ? "none"
-            : caveats.insufficientEvidence
-                .map((c) => `${c.claimId} (${c.cause})`)
-                .join(" · ")}
-        </CaveatRow>
-        <CaveatRow label="Unresolved disagreements">
-          {caveats.unresolvedDisagreements.length === 0
-            ? "none (single automated assessor)"
-            : `${caveats.unresolvedDisagreements.length}`}
-        </CaveatRow>
-        <CaveatRow label="Unknown-generator exclusions">
-          {caveats.unknownExclusions.contentIds.length === 0
-            ? "none"
-            : `${caveats.unknownExclusions.contentIds.length} contents — ${caveats.unknownExclusions.note}`}
-        </CaveatRow>
-        <CaveatRow label="Unaccepted adapters">
-          {caveats.unacceptedAdapters.length === 0
-            ? "none"
-            : caveats.unacceptedAdapters
-                .map((a) => `${a.packageFormat} (${a.adapterVersion ?? "no adapter"})`)
-                .join(" · ")}
-        </CaveatRow>
-        <CaveatRow label="Brief completeness">
-          {caveats.briefCompleteness.length === 0
-            ? "all briefs complete"
-            : caveats.briefCompleteness
-                .map((b) => `${b.origin ?? "manual"}: prompt not recorded`)
-                .join(" · ")}
-        </CaveatRow>
-        <CaveatRow label="Contents without judgment">
-          {caveats.contentsWithoutJudgment.length === 0
-            ? "none"
-            : `${caveats.contentsWithoutJudgment.length}`}
-        </CaveatRow>
-        <CaveatRow label="Execution errors">
-          {(caveats.executionErrors?.perContent ?? []).length === 0
-            ? "none"
-            : `${caveats.executionErrors!.perContent.length} content(s), ` +
-              `${caveats.executionErrors!.perContent.reduce((sum, c) => sum + c.count, 0)} ` +
-              `criteria — ${caveats.executionErrors!.note}`}
-        </CaveatRow>
-        <CaveatRow label="Task-variable patterns">
-          {caveats.taskVariablePatterns.status}: {caveats.taskVariablePatterns.reason}
-        </CaveatRow>
-      </CardContent>
-    </Card>
-  );
-}
-
-function CaveatRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <p>
-      <span className="font-medium">{label}:</span>{" "}
-      <span className="text-muted-foreground">{children}</span>
-    </p>
   );
 }
