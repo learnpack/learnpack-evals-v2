@@ -34,11 +34,9 @@ import {
   useAssessorPackages,
   useBriefs,
   useCancelStudyEvaluation,
-  useComposeStudyDataset,
   useInstruments,
   useOpenStudy,
-  usePinStudyAssessor,
-  usePinStudyInstrument,
+  useUpdateStudyDraft,
   useSignOffStudy,
   useStartStudyEvaluation,
   useStudy,
@@ -136,10 +134,10 @@ function StudyHeader({ study }: { study: StudyResponse }) {
         <StudyStatusBadge status={study.status} />
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        {study.instrument_version_id ?? "no instrument pinned"} ·{" "}
+        {study.instrument_version_id ?? "no instrument chosen"} ·{" "}
         {study.assessor_id
           ? (assessor?.display_name ?? study.assessor_id)
-          : "no assessor pinned"}{" "}
+          : "no judge chosen"}{" "}
         · {study.brief_ids.length} briefs → {study.content_ids.length} courses
       </p>
     </div>
@@ -159,11 +157,11 @@ function actError(err: unknown) {
 
 // ------------------------------------------------------------------------------ setup
 
-/** The three acts that make a study runnable, as three steps instead of three buttons
- *  scattered across a list. Their order is the domain's: the instrument is pinned before
- *  opening and never after, and opening fixes the dataset. */
+/** The choices that make a study runnable. Their order is the one dependency between
+ *  them — the judge list is filtered by ratification against the chosen instrument — and
+ *  none of them is binding: opening is what pins the triple (ADR-0043 §1). */
 function SetupCard({ study }: { study: StudyResponse }) {
-  const pinned = study.instrument_version_id !== null;
+  const chosen = study.instrument_version_id !== null;
   const judged = study.assessor_id !== null;
   const composed = study.content_ids.length > 0;
 
@@ -173,35 +171,29 @@ function SetupCard({ study }: { study: StudyResponse }) {
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <ListChecks className="h-4 w-4 text-muted-foreground" /> Setup
           <span className="text-xs font-normal text-muted-foreground">
-            four steps, in order — the last one freezes the dataset
+            everything here can change until you open the study
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6 text-sm">
         <SetupStep
           n={1}
-          done={pinned}
-          title="Pin the instrument"
-          hint="Which published instrument version this study judges against. Pinned once and never changed: what a study measured has to stay knowable."
+          done={chosen}
+          title="Choose the instrument"
+          hint="Which published instrument version this study judges against. Changeable while the study is a draft; opening is what makes it permanent, because from then on what the study measured has to stay knowable."
         >
-          {pinned ? (
-            <p className="text-muted-foreground">
-              Pinned: <code>{study.instrument_version_id}</code>
-            </p>
-          ) : (
-            <PinStep study={study} />
-          )}
+          <ChooseInstrumentStep study={study} />
         </SetupStep>
 
-        {/* Second, not last: it can only offer assessors that ratified the pinned version,
+        {/* Second, not last: it can only offer assessors that ratified the chosen version,
             so there is nothing to choose from until step 1 is done. */}
         <SetupStep
           n={2}
           done={judged}
-          title="Pin the assessor"
-          hint="Which judge's verdicts are this study's result. Pinned once, like the instrument — a round judged half by one assessor and half by another is not one result. Only assessors that have ratified the pinned version can be picked."
+          title="Choose the judge"
+          hint="Whose verdicts are this study's result. Fixed at opening, like the instrument — a round judged half by one assessor and half by another is not one result. Only assessors that have ratified the chosen version can be picked."
         >
-          <PinAssessorStep study={study} />
+          <ChooseAssessorStep study={study} />
         </SetupStep>
 
         <SetupStep
@@ -217,9 +209,9 @@ function SetupCard({ study }: { study: StudyResponse }) {
           n={4}
           done={false}
           title="Open the study"
-          hint="Opening freezes the dataset and lets the batch run. There is no un-opening."
+          hint="Opening fixes the instrument, the judge and the dataset, and lets the batch run. There is no un-opening."
         >
-          <OpenStep study={study} pinned={pinned} judged={judged} composed={composed} />
+          <OpenStep study={study} chosen={chosen} judged={judged} composed={composed} />
         </SetupStep>
       </CardContent>
     </Card>
@@ -258,16 +250,17 @@ function SetupStep({
   );
 }
 
-function PinStep({ study }: { study: StudyResponse }) {
+function ChooseInstrumentStep({ study }: { study: StudyResponse }) {
   const { data: instruments } = useInstruments();
-  const pin = usePinStudyInstrument();
-  const [selected, setSelected] = useState("");
+  const update = useUpdateStudyDraft();
+  const [selected, setSelected] = useState(study.instrument_version_id ?? "");
   const published = (instruments ?? []).filter((i) => i.status === "published");
+  const changing = Boolean(study.instrument_version_id);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-72">
-        <option value="">Pin a published instrument…</option>
+        <option value="">Choose a published instrument…</option>
         {published.map((i) => (
           <option key={i.instrument_version_id} value={i.instrument_version_id}>
             {i.instrument_version_id}
@@ -277,31 +270,44 @@ function PinStep({ study }: { study: StudyResponse }) {
       <Button
         size="sm"
         variant="outline"
-        disabled={!selected || pin.isPending}
+        disabled={!selected || selected === study.instrument_version_id || update.isPending}
         onClick={() =>
-          pin.mutate(
-            { studyId: study.study_id, body: { instrument_version_id: selected } },
+          update.mutate(
             {
-              onSuccess: () => toast.success("Instrument pinned — once and forever."),
+              studyId: study.study_id,
+              // The judge goes with it when it did not ratify the new version: the endpoint
+              // refuses the pair rather than guessing, so the console says which it meant.
+              body: {
+                instrument_version_id: selected,
+                ...(changing ? { assessor_id: null } : {}),
+              },
+            },
+            {
+              onSuccess: () =>
+                toast.success(
+                  changing
+                    ? "Instrument changed — choose the judge again."
+                    : "Instrument chosen.",
+                ),
               onError: actError,
             },
           )
         }
       >
-        {pin.isPending ? <Spinner /> : null} Pin
+        {update.isPending ? <Spinner /> : null} {changing ? "Change" : "Choose"}
       </Button>
     </div>
   );
 }
 
 /** Step 2, built like step 1 with one difference that matters: the list is filtered by
- *  RATIFICATION against the pinned version, not by existence. An assessor that has not
+ *  RATIFICATION against the chosen version, not by existence. An assessor that has not
  *  ratified would be refused by the endpoint, and an option that cannot work is worse than
  *  no option (the ADR-0036 stance, which the evaluate dialog already took). */
-function PinAssessorStep({ study }: { study: StudyResponse }) {
+function ChooseAssessorStep({ study }: { study: StudyResponse }) {
   const { data: packages } = useAssessorPackages();
-  const pin = usePinStudyAssessor();
-  const [selected, setSelected] = useState("");
+  const update = useUpdateStudyDraft();
+  const [selected, setSelected] = useState(study.assessor_id ?? "");
 
   const eligible = (packages ?? []).filter(
     (pkg) =>
@@ -313,15 +319,8 @@ function PinAssessorStep({ study }: { study: StudyResponse }) {
   );
   const current = (packages ?? []).find((pkg) => pkg.assessor_id === study.assessor_id);
 
-  if (study.assessor_id) {
-    return (
-      <p className="text-muted-foreground">
-        Pinned: <code>{current ? current.display_name : study.assessor_id}</code>
-      </p>
-    );
-  }
   if (!study.instrument_version_id) {
-    return <p className="text-muted-foreground">Pin the instrument first.</p>;
+    return <p className="text-muted-foreground">Choose the instrument first.</p>;
   }
   if (eligible.length === 0) {
     return (
@@ -335,7 +334,7 @@ function PinAssessorStep({ study }: { study: StudyResponse }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-72">
-        <option value="">Pin a ratified assessor…</option>
+        <option value="">Choose a ratified assessor…</option>
         {eligible.map((pkg) => (
           <option key={pkg.assessor_id ?? pkg.name} value={pkg.assessor_id ?? ""}>
             {pkg.display_name}
@@ -345,18 +344,18 @@ function PinAssessorStep({ study }: { study: StudyResponse }) {
       <Button
         size="sm"
         variant="outline"
-        disabled={!selected || pin.isPending}
+        disabled={!selected || selected === study.assessor_id || update.isPending}
         onClick={() =>
-          pin.mutate(
-            { studyId: study.study_id, body: { assessor_id: selected } },
+          update.mutate(
+            { studyId: study.study_id, body: { assessor_id: selected as Uuid } },
             {
-              onSuccess: () => toast.success("Assessor pinned — once and forever."),
+              onSuccess: () => toast.success("Judge chosen."),
               onError: actError,
             },
           )
         }
       >
-        {pin.isPending ? <Spinner /> : null} Pin
+        {update.isPending ? <Spinner /> : null} {current ? "Change" : "Choose"}
       </Button>
     </div>
   );
@@ -365,7 +364,7 @@ function PinAssessorStep({ study }: { study: StudyResponse }) {
 function ComposeStep({ study }: { study: StudyResponse }) {
   const [open, setOpen] = useState(false);
   const { data: briefs } = useBriefs();
-  const compose = useComposeStudyDataset();
+  const compose = useUpdateStudyDraft();
   const [selected, setSelected] = useState<Uuid[]>(study.brief_ids);
   const composed = study.content_ids.length > 0;
 
@@ -421,7 +420,7 @@ function ComposeStep({ study }: { study: StudyResponse }) {
               compose.mutate(
                 { studyId: study.study_id, body: { brief_ids: selected } },
                 {
-                  onSuccess: (updated) => {
+                  onSuccess: (updated: StudyResponse) => {
                     setOpen(false);
                     toast.success(
                       `Dataset composed: ${updated.content_ids.length} courses from ${updated.brief_ids.length} briefs.`,
@@ -442,12 +441,12 @@ function ComposeStep({ study }: { study: StudyResponse }) {
 
 function OpenStep({
   study,
-  pinned,
+  chosen,
   judged,
   composed,
 }: {
   study: StudyResponse;
-  pinned: boolean;
+  chosen: boolean;
   judged: boolean;
   composed: boolean;
 }) {
@@ -456,7 +455,7 @@ function OpenStep({
     <>
       <Button
         size="sm"
-        disabled={!pinned || !judged || !composed || openStudy.isPending}
+        disabled={!chosen || !judged || !composed || openStudy.isPending}
         onClick={() =>
           openStudy.mutate(
             { studyId: study.study_id },
@@ -472,10 +471,10 @@ function OpenStep({
       >
         {openStudy.isPending ? <Spinner /> : null} Open the study
       </Button>
-      {!pinned || !judged || !composed ? (
+      {!chosen || !judged || !composed ? (
         <p className="text-xs text-muted-foreground">
-          Do steps 1 to 3 first: opening fixes the whole triple a result is defined by — the
-          instrument, the assessor and a non-empty dataset.
+          Do steps 1 to 3 first: opening is what fixes the whole triple a result is defined
+          by — the instrument, the judge and a non-empty dataset.
         </p>
       ) : null}
     </>
@@ -564,7 +563,7 @@ function EvaluationCard({
   const phase: EvaluationPhase = judged === 0 ? "none" : judged < courses ? "partial" : "all";
   const blocked =
     !study.instrument_version_id
-      ? "no instrument pinned"
+      ? "no instrument chosen"
       : study.content_ids.length === 0
         ? "no dataset composed"
         : study.status !== "open"
@@ -802,7 +801,7 @@ function RunProgress({ run }: { run: BatchRun }) {
 }
 
 /** The dialog states what is being committed to before it is: real LLM calls per course, on
- *  the backend's key. It no longer asks WHO judges — the study pinned that before it opened
+ *  the backend's key. It no longer asks WHO judges — the study chose that before it opened
  *  (ADR-0042 §8), so the one question left is whether to redo what is already judged. */
 function StartEvaluation({
   study,
@@ -865,7 +864,7 @@ function StartEvaluation({
             <p className="rounded border p-2 text-sm">
               Judged by <span className="font-medium">{chosen?.display_name ?? study.assessor_id}</span>
               <span className="block text-xs text-muted-foreground">
-                The study pinned it before opening, and it cannot change: a round judged half
+                The study chose it before opening, and it cannot change now: a round judged half
                 by one assessor and half by another is not one result.
                 {chosen ? ` ${chosen.executes.length} criteria executed.` : ""}
               </span>
@@ -1130,7 +1129,7 @@ function FitnessLevelTable({ level }: { level: FitnessLevel }) {
 
 function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
   const hasStudyLevel = Boolean(fitness.study.qualities);
-  // The qualities exist the moment an instrument is pinned, each of them `null` — so
+  // The qualities exist the moment an instrument is chosen, each of them `null` — so
   // `hasStudyLevel` was never the question a reader is asking. This is.
   const judged = fitness.contents.filter((content) => content.judged).length;
 
@@ -1167,7 +1166,7 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
 
         {!hasStudyLevel ? (
           <p className="text-muted-foreground">
-            Nothing to measure yet: the study needs a pinned instrument and a dataset.
+            Nothing to measure yet: the study needs an instrument and a dataset.
           </p>
         ) : judged === 0 ? (
           // One honest line instead of a grid of `undefined`. The rule that forbids a zero
@@ -1366,7 +1365,7 @@ function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
         {readiness.studyGaps.length === 0 && claimGaps.length === 0 ? (
           <p className="text-muted-foreground">
             Every claim has criteria, every criterion has a datum in this dataset&apos;s
-            formats, and an assessor has ratified the pinned version — the study can run end
+            formats, and an assessor has ratified the chosen version — the study can run end
             to end.
           </p>
         ) : null}

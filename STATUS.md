@@ -27,9 +27,12 @@ built in three steps.** Step 1 is in: a study carries a `name` and an optional
 and the act that closes a round is a **signature** — `signed_off` in the status, in both
 columns, in the event and in the console. Report `SCHEMA_VERSION` is 3; migration `0020`
 deleted every frozen report, once, under clause 11 — the last moment that was free of
-cost, and the clause says so. Still to come: the draft becomes editable and `open` is what
-pins (step 2), and the console's four setup steps become one form whose primary action is
-*Save & evaluate* (step 3).
+cost, and the clause says so. Step 2 is in too: a draft's instrument, judge and briefs
+**replace freely** until `open`, which is now what pins them — `POST /admin/studies` takes
+the whole selection and `PATCH /admin/studies/{id}` corrects it, where three pin/compose
+endpoints used to be; `InstrumentPinned` and `AssessorPinned` are retired because
+`StudyOpened` already carries the triple. Still to come: the console's four setup steps
+become one form whose primary action is *Save & evaluate* (step 3).
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -318,7 +321,7 @@ signed off (ADR-0006 style; caveats always, never a cross-claim aggregate), the 
 (`GET /admin/instruments/{version}/matching?package_format=…`) and **readiness**
 (`GET /admin/studies/{id}/readiness` — gaps per claim plus the ADR-0019 study-level gap
 "no ratified assessor"; informs, never blocks), the CLI loop
-(`declare-study | pin-study | compose-dataset | open-study | sign-off-study | show-report`),
+(`declare-study | update-study | open-study | sign-off-study | show-report`),
 and the `/admin/studies` console. The brief intake (ADR-0022) landed in the same PR:
 registration derives the brief from `.learn/initialSyllabus.json`, hash identity pairs
 registrations automatically, and the intake dispatches through a **per-format adapter
@@ -1090,8 +1093,8 @@ typo permanent in every report already out — the ADR names the shape it would 
 **Fourth pending input from the team (block 7): sign off the first real study.** The loop is
 live end to end: register real contents (the brief arrives mechanically when the package
 carries `.learn/initialSyllabus.json`), evaluate them, then
-`declare-study → pin-study → compose-dataset → open-study → sign-off-study` (CLI) or the
-same acts in `/admin/studies`. Signing off the first real study **ends the
+`declare-study → open-study → sign-off-study` (CLI, with the whole selection on the
+declaration or corrected later with `update-study`) or the same acts in `/admin/studies`. Signing off the first real study **ends the
 disposable-instrument convention** — the pinned version becomes a reproducibility
 commitment. Readiness (`/admin/studies/{id}/readiness`) names the gaps beforehand;
 matching reports the ADR-0017 unmet demand (objectives/audience/prerequisites have no

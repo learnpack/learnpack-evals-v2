@@ -98,22 +98,23 @@ def ratified_assessor(cleanup, unique, instrument_id, ratified_by) -> str:
 
 
 def composed_study(admin_client, cleanup, unique):
-    """declared → both pins → composed, ready to open."""
+    """A complete draft in one PATCH — ready to open, nothing about it binding yet."""
     instrument_id = published_instrument(admin_client, cleanup, unique)
     study_id = declare(admin_client, cleanup)
     brief_id = register_brief(admin_client, cleanup)
     register_content(admin_client, cleanup, unique, "a", brief_id)
-    admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
-    )
     assessor_id = ratified_assessor(
         cleanup, unique, instrument_id, admin_client.get("/me").json()["assessor_id"]
     )
-    response = admin_client.post(
-        f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id}
+    response = admin_client.patch(
+        f"/admin/studies/{study_id}",
+        json={
+            "instrument_version_id": instrument_id,
+            "assessor_id": assessor_id,
+            "brief_ids": [brief_id],
+        },
     )
     assert response.status_code == 200, response.text
-    admin_client.post(f"/admin/studies/{study_id}/dataset", json={"brief_ids": [brief_id]})
     return study_id, instrument_id, brief_id
 
 
@@ -144,11 +145,11 @@ def test_the_full_lifecycle_over_the_api(admin_client, cleanup, unique):
     assert body["content_ids"] == report["caveats"]["contentsWithoutJudgment"]
     assert report["caveats"]["unknownExclusions"]["contentIds"] == body["content_ids"]
 
-    # Published is immutable — every later act conflicts.
+    # Signed off is immutable — every later act conflicts.
     assert admin_client.post(f"/admin/studies/{study_id}/sign-off").status_code == 409
     assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 409
     assert (
-        admin_client.post(f"/admin/studies/{study_id}/dataset", json={"brief_ids": []})
+        admin_client.patch(f"/admin/studies/{study_id}", json={"brief_ids": []})
     ).status_code == 409
 
     listed = admin_client.get("/admin/studies").json()
@@ -176,93 +177,124 @@ def test_the_list_answers_newest_first_and_carries_the_date_it_sorts_on(
     assert all(study["created_at"] for study in listed), response.text
 
 
-def test_pin_is_once_and_only_published_versions(admin_client, cleanup, unique):
+def test_a_draft_takes_only_published_versions_and_can_change_its_mind(
+    admin_client, cleanup, unique
+):
+    """The refusals are about the version, never about having chosen before: correcting a
+    draft is the whole point of ADR-0043 §1, and it used to cost the study."""
     study_id = declare(admin_client, cleanup)
 
-    unknown = admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": "ghost-v1"}
+    unknown = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"instrument_version_id": "ghost-v1"}
     )
     assert unknown.status_code == 422
 
     draft_id = import_spec(cleanup, spec(unique))
-    draft = admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": draft_id}
+    draft = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"instrument_version_id": draft_id}
     )
     assert draft.status_code == 422
-    assert "publish it before pinning" in draft.json()["detail"]
+    assert "publish it before a study judges against it" in draft.json()["detail"]
 
     admin_client.post(f"/admin/instruments/{draft_id}/publish")
-    assert (
-        admin_client.post(
-            f"/admin/studies/{study_id}/pin", json={"instrument_version_id": draft_id}
-        ).status_code
-        == 200
+    chosen = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"instrument_version_id": draft_id}
     )
-    again = admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": draft_id}
+    assert chosen.status_code == 200, chosen.text
+
+    other_id = published_instrument(admin_client, cleanup, f"{unique}-other")
+    again = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"instrument_version_id": other_id}
     )
-    assert again.status_code == 409  # pinned ONCE
+    assert again.status_code == 200, again.text
+    assert again.json()["instrument_version_id"] == other_id
 
 
-def test_the_assessor_pin_needs_a_norm_first_and_a_ratification_against_it(
+def test_choosing_a_judge_needs_a_norm_first_and_a_ratification_against_it(
     admin_client, cleanup, unique
 ):
     """Its two refusals are its whole contract. There is nothing to ratify against before an
-    instrument is pinned, and an assessor that has not ratified could persist no judgment for
-    this study — so pinning it would set up a round nothing can evaluate."""
+    instrument is chosen, and a judge that has not ratified could persist no judgment for
+    this study — so taking it would set up a round nothing can evaluate."""
     study_id = declare(admin_client, cleanup)
     admin_id = admin_client.get("/me").json()["assessor_id"]
 
-    too_early = admin_client.post(
-        f"/admin/studies/{study_id}/assessor", json={"assessor_id": str(uuid4())}
-    )
+    too_early = admin_client.patch(f"/admin/studies/{study_id}", json={"assessor_id": str(uuid4())})
     assert too_early.status_code == 422
-    assert "pin one before its assessor" in too_early.json()["detail"]
+    assert "choose one before its judge" in too_early.json()["detail"]
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
-    admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
-    )
+    admin_client.patch(f"/admin/studies/{study_id}", json={"instrument_version_id": instrument_id})
 
-    stranger = admin_client.post(
-        f"/admin/studies/{study_id}/assessor", json={"assessor_id": str(uuid4())}
-    )
+    stranger = admin_client.patch(f"/admin/studies/{study_id}", json={"assessor_id": str(uuid4())})
     assert stranger.status_code == 422
     assert "has not ratified" in stranger.json()["detail"]
 
     assessor_id = ratified_assessor(cleanup, unique, instrument_id, admin_id)
-    accepted = admin_client.post(
-        f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id}
-    )
+    accepted = admin_client.patch(f"/admin/studies/{study_id}", json={"assessor_id": assessor_id})
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["assessor_id"] == assessor_id
 
-    again = admin_client.post(
-        f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id}
+
+def test_moving_a_draft_to_a_norm_its_judge_never_ratified_is_refused(
+    admin_client, cleanup, unique
+):
+    """Not silently dropped: which of the two the caller meant is not the API's to guess.
+    The console never sends this, because it clears the judge itself."""
+    study_id, _, _ = composed_study(admin_client, cleanup, unique)
+    other_id = published_instrument(admin_client, cleanup, f"{unique}-other")
+
+    refused = admin_client.patch(
+        f"/admin/studies/{study_id}", json={"instrument_version_id": other_id}
     )
-    assert again.status_code == 409  # pinned ONCE, like the instrument
+    assert refused.status_code == 422
+    assert "has not ratified" in refused.json()["detail"]
+
+    # Saying so explicitly is what makes it work — `null` clears, absent leaves alone.
+    together = admin_client.patch(
+        f"/admin/studies/{study_id}",
+        json={"instrument_version_id": other_id, "assessor_id": None},
+    )
+    assert together.status_code == 200, together.text
+    assert together.json()["assessor_id"] is None
+    assert together.json()["instrument_version_id"] == other_id
 
 
 def test_open_preconditions_map_to_422(admin_client, cleanup, unique):
     study_id = declare(admin_client, cleanup)
-    assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 422  # no pin
+    assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 422  # nothing
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
-    admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
-    )
+    admin_client.patch(f"/admin/studies/{study_id}", json={"instrument_version_id": instrument_id})
     no_judge = admin_client.post(f"/admin/studies/{study_id}/open")
-    assert no_judge.status_code == 422  # no assessor pinned
-    assert "no pinned assessor" in no_judge.json()["detail"]
+    assert no_judge.status_code == 422
+    assert "no judge" in no_judge.json()["detail"]
 
     assessor_id = ratified_assessor(
         cleanup, unique, instrument_id, admin_client.get("/me").json()["assessor_id"]
     )
-    admin_client.post(f"/admin/studies/{study_id}/assessor", json={"assessor_id": assessor_id})
+    admin_client.patch(f"/admin/studies/{study_id}", json={"assessor_id": assessor_id})
     empty = admin_client.post(f"/admin/studies/{study_id}/open")
     assert empty.status_code == 422  # empty dataset
 
     assert admin_client.post(f"/admin/studies/{study_id}/sign-off").status_code == 409  # not open
+
+
+def test_an_open_study_refuses_every_change_to_its_triple(admin_client, cleanup, unique):
+    """Where the pin actually is (ADR-0043 §1): from `open`, and not before."""
+    study_id, instrument_id, brief_id = composed_study(admin_client, cleanup, unique)
+    assert admin_client.post(f"/admin/studies/{study_id}/open").status_code == 200
+
+    other_id = published_instrument(admin_client, cleanup, f"{unique}-other")
+    assert (
+        admin_client.patch(
+            f"/admin/studies/{study_id}", json={"instrument_version_id": other_id}
+        ).status_code
+        == 409
+    )
+    assert (
+        admin_client.patch(f"/admin/studies/{study_id}", json={"brief_ids": []}).status_code == 409
+    )
 
 
 def test_unknown_briefs_and_studies_are_named(admin_client, cleanup, unique):
@@ -270,8 +302,8 @@ def test_unknown_briefs_and_studies_are_named(admin_client, cleanup, unique):
         404
     )
     study_id = declare(admin_client, cleanup)
-    response = admin_client.post(
-        f"/admin/studies/{study_id}/dataset",
+    response = admin_client.patch(
+        f"/admin/studies/{study_id}",
         json={"brief_ids": ["00000000-0000-0000-0000-000000000000"]},
     )
     assert response.status_code == 422
@@ -283,17 +315,15 @@ def test_readiness_informs_and_never_blocks(admin_client, cleanup, unique):
     fresh = admin_client.get(f"/admin/studies/{study_id}/readiness").json()
     assert fresh["informative"] is True
     gaps = {g["gap"] for g in fresh["studyGaps"]}
-    assert gaps == {"instrument_not_pinned", "assessor_not_pinned", "dataset_not_composed"}
+    assert gaps == {"instrument_not_chosen", "assessor_not_chosen", "dataset_not_composed"}
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
-    admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
-    )
+    admin_client.patch(f"/admin/studies/{study_id}", json={"instrument_version_id": instrument_id})
     pinned = admin_client.get(f"/admin/studies/{study_id}/readiness").json()
     gaps = {g["gap"] for g in pinned["studyGaps"]}
     # ADR-0019: nobody is ratified for this fresh version — readiness says so, loudly.
     assert "no_ratified_assessor" in gaps
-    assert "instrument_not_pinned" not in gaps
+    assert "instrument_not_chosen" not in gaps
 
     # The gap report is per claim once the instrument is known.
     assert {c["claimId"] for c in pinned["claims"]} == {"cl-objectives"}
@@ -313,16 +343,14 @@ def test_fitness_is_its_own_resource_and_informs_before_there_is_anything_to_mea
     assert body["formulaVersion"]
     # It answers with its gaps instead of refusing, the way readiness informs.
     assert {g["gap"] for g in body["gaps"]} == {
-        "instrument_not_pinned",
-        "assessor_not_pinned",
+        "instrument_not_chosen",
+        "assessor_not_chosen",
         "dataset_not_composed",
     }
     assert body["study"] == {}
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
-    admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
-    )
+    admin_client.patch(f"/admin/studies/{study_id}", json={"instrument_version_id": instrument_id})
     pinned = admin_client.get(f"/admin/studies/{study_id}/fitness").json()
     # The instrument's qualities are known even before a single content is judged, and each
     # is undefined rather than zero — nothing was measurable yet.
@@ -356,8 +384,8 @@ def test_the_preview_answers_before_signing_off_and_never_says_it_was_signed(
     assert body["composedAt"], fresh.text
     assert body["frozenRecord"]["exists"] is False, fresh.text
     assert {g["gap"] for g in body["gaps"]} == {
-        "instrument_not_pinned",
-        "assessor_not_pinned",
+        "instrument_not_chosen",
+        "assessor_not_chosen",
         "dataset_not_composed",
     }
     # Never a partial document: the empty sections are there, and every caveat kind.
@@ -410,16 +438,14 @@ def test_the_criterion_matrix_is_its_own_resource_and_has_a_denominator_from_the
     body = fresh.json()
     assert body["signal"] == "evidence", fresh.text
     assert {g["gap"] for g in body["gaps"]} == {
-        "instrument_not_pinned",
-        "assessor_not_pinned",
+        "instrument_not_chosen",
+        "assessor_not_chosen",
         "dataset_not_composed",
     }
     assert body["criteria"] == [] and body["contents"] == []
 
     instrument_id = published_instrument(admin_client, cleanup, unique)
-    admin_client.post(
-        f"/admin/studies/{study_id}/pin", json={"instrument_version_id": instrument_id}
-    )
+    admin_client.patch(f"/admin/studies/{study_id}", json={"instrument_version_id": instrument_id})
     pinned = admin_client.get(f"/admin/studies/{study_id}/criterion-outcomes").json()
     assert [c["criterionId"] for c in pinned["criteria"]] == ["cr-min-objectives"]
     # A criterion nothing produced an outcome for is 0 of 0, never a missing row.

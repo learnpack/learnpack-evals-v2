@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from app.modules.evaluation_studies.application.draft import UnknownInstrument
 from app.modules.evaluation_studies.application.gathering import gather_report_inputs
-from app.modules.evaluation_studies.application.pin_instrument import UnknownInstrument
 from app.modules.evaluation_studies.application.ports import (
     DesignGatewayPort,
     EvaluationGatewayPort,

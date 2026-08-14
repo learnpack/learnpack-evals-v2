@@ -1,21 +1,27 @@
 """EvaluationStudy — the round, named (12-define §Studies, 13-code §3.6).
 
-Root aggregate; it owns the **name** (and an optional description), the **two pins**, the
-**recipe** (briefIds) and the **materialized dataset** (contentIds).
-Cycle: declared → prepared → open → signed_off.
-Invariants (12-define, amended by ADR-0042): the instrument **and the assessor** are each
-pinned ONCE, before opening, immutable afterwards · the dataset is fixed at open ·
-signed off means an immutable report, never re-emitted — signing off is a human act, and
-what it adds is the signature, not the visibility (ADR-0041, ADR-0043 §8).
-`prepared` is derived: declared + both pins + composed, in any order.
+Root aggregate; it owns the **name** (and an optional description), the **selection**
+(instrument version + assessor), the **recipe** (briefIds) and the **materialized
+dataset** (contentIds). Cycle: declared → prepared → open → signed_off.
+
+Invariants (12-define, amended by ADR-0042 and again by ADR-0043 §1): while the study is a
+draft the three choices REPLACE FREELY, because nothing can consume them yet — a batch
+refuses any study that is not open. **`open()` is the pin**: from it the triple is
+immutable, which is the whole property ADR-0042 bought and the only form in which the rule
+ever did any work · the dataset is fixed at the same moment · signed off means an
+immutable report, never re-emitted — signing off is a human act, and what it adds is the
+signature, not the visibility (ADR-0041, ADR-0043 §8).
+`prepared` is derived: declared + both choices + composed, in any order, and it is not a
+state a reader is shown.
 
 The name is not the study's *purpose*: the GLOSSARY reserves that word for a typology
 (initial / regression / comparison) nobody has needed to build (ADR-0043 §7).
 
-The second pin is what makes a study's result reproducible: it is the triple dataset ×
-instrument version × assessor, and only two thirds of it used to be fixed. `assessor_id`
-is nullable because studies that predate the decision exist and are read as they were —
-the invariant binds the ACTS, not the reconstruction of a row written before it.
+The judge is the third leg of what makes a result reproducible: the triple dataset ×
+instrument version × assessor. `assessor_id` is nullable both because a draft may not have
+chosen one yet and because studies that predate ADR-0042 exist and are read as they were —
+the invariant binds what happens at `open`, not the reconstruction of a row written before
+the decision.
 """
 
 from dataclasses import dataclass, field
@@ -31,20 +37,12 @@ class StudyNotFound(Exception):
     """No study with that id."""
 
 
-class InstrumentAlreadyPinned(Exception):
-    """The pin happens once; afterwards the instrument version is immutable."""
+class InstrumentNotChosen(Exception):
+    """Opening pins the norm, so there has to be one to pin."""
 
 
-class InstrumentNotPinned(Exception):
-    """Opening requires the pinned norm to exist first."""
-
-
-class AssessorAlreadyPinned(Exception):
-    """The pin happens once; afterwards the assessor is immutable (ADR-0042 §8)."""
-
-
-class AssessorNotPinned(Exception):
-    """Opening requires the judge to be named — a study's result is a triple."""
+class AssessorNotChosen(Exception):
+    """Opening pins the judge too — a study's result is a triple."""
 
 
 class DatasetLocked(Exception):
@@ -88,23 +86,21 @@ class Study:
         if not self.name.strip():
             raise InvalidStudy("name is required")
 
-    def pin_instrument(self, instrument_version_id: str) -> None:
-        # Pinned-once first: an open or signed-off study is necessarily pinned, and THAT is
-        # the answer the caller needs, not the lifecycle state.
-        if self.instrument_version_id is not None:
-            raise InstrumentAlreadyPinned(
-                f"study {self.id} already pins {self.instrument_version_id}"
-            )
+    def select_instrument(self, instrument_version_id: str) -> None:
+        """Choose the norm, replaceably, while the study is still a draft.
+
+        No event of its own, exactly like the dataset: nothing has read this yet, and the
+        act worth recording is the one that makes it binding (ADR-0043 §2)."""
         self._require_mutable()
         self.instrument_version_id = instrument_version_id
         self._maybe_prepare()
 
-    def pin_assessor(self, assessor_id: UUID) -> None:
-        """Name the judge, once. Whether it may judge this instrument version is the
-        application's question (ratification, ADR-0019); the aggregate only holds the
-        once-and-before-open rule, which is the instrument pin's rule exactly."""
-        if self.assessor_id is not None:
-            raise AssessorAlreadyPinned(f"study {self.id} already pins {self.assessor_id}")
+    def select_assessor(self, assessor_id: UUID | None) -> None:
+        """Choose the judge, replaceably. `None` clears it — which is what re-pointing a
+        draft at a norm this judge never ratified leaves behind.
+
+        Whether it MAY judge the chosen version is the application's question
+        (ratification, ADR-0019); the aggregate holds only the draft-or-not rule."""
         self._require_mutable()
         self.assessor_id = assessor_id
         self._maybe_prepare()
@@ -123,11 +119,13 @@ class Study:
         if self.status == "open":
             raise StudyAlreadyOpen(f"study {self.id} is already open")
         if self.instrument_version_id is None:
-            raise InstrumentNotPinned(f"study {self.id} has no pinned instrument")
+            raise InstrumentNotChosen(f"study {self.id} has no instrument")
         if self.assessor_id is None:
-            raise AssessorNotPinned(f"study {self.id} has no pinned assessor")
+            raise AssessorNotChosen(f"study {self.id} has no judge")
         if not self.content_ids:
             raise DatasetEmpty(f"study {self.id} has an empty dataset")
+        # THE pin: from here the triple is what this study's result is defined by, and the
+        # aggregate refuses every change to it (`_require_mutable`).
         self.status = "open"
         self.opened_at = at
 
@@ -147,7 +145,8 @@ class Study:
             raise DatasetLocked(f"study {self.id} is open; its composition is fixed")
 
     def _maybe_prepare(self) -> None:
-        """`prepared` means "everything opening needs is here" — so it waits for both pins."""
+        """`prepared` means "everything opening needs is here" — so it waits for both
+        choices. Internal: the console shows a draft, whichever of the two it is."""
         if (
             self.status == "declared"
             and self.instrument_version_id is not None

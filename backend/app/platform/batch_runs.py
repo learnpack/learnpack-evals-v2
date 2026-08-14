@@ -367,7 +367,7 @@ def prepare(
         if instrument_version_id is None:
             raise BatchRefused(
                 f"study {study_id} has no instrument pinned — pin-study first",
-                kind="instrument_not_pinned",
+                kind="instrument_not_chosen",
             )
         if not study.content_ids:
             raise BatchRefused(
@@ -379,7 +379,7 @@ def prepare(
             raise BatchRefused(
                 f"study {study_id} has no assessor pinned — pin-assessor first; a study's "
                 "result is its dataset, its instrument version AND its judge (ADR-0042)",
-                kind="assessor_not_pinned",
+                kind="assessor_not_chosen",
             )
         assessor = SqlAlchemyAssessorRepository(session).get_by_id(study.assessor_id)
         config = assessor.source_config if assessor is not None else {}
