@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { AppHeader } from "@/components/app-header";
 import { LoadingState } from "@/components/ui/states";
 import { useMe } from "@/lib/api/hooks";
+import { IS_LOCAL_AUTH } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,6 +25,10 @@ const NAV = [
   {
     group: "Measure",
     items: [
+      // First: it is the errand the other two exist to serve. Local only, and behind a
+      // build-time constant, so it leaves a deployed bundle entirely — the scan endpoints
+      // it needs do not exist outside AUTH_MODE=local (ADR-0035).
+      ...(IS_LOCAL_AUTH ? [{ href: "/admin/measure", label: "Import & measure" }] : []),
       { href: "/admin/contents", label: "Courses" },
       { href: "/admin/studies", label: "Studies" },
     ],
@@ -108,8 +113,8 @@ function SideNav({ pathname }: { pathname: string }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  // `startsWith` on purpose: /admin/contents/import belongs to Courses, and
-                  // no destination's href is a prefix of another's.
+                  // `startsWith` on purpose, so a page's own sub-routes keep its entry lit.
+                  // No destination's href is a prefix of another's.
                   aria-current={pathname.startsWith(item.href) ? "page" : undefined}
                   className={cn(
                     "rounded-md px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",

@@ -52,6 +52,7 @@ export function StudyForm({
   initialName,
   initialScope,
   initialBriefIds,
+  autoFocusName = true,
 }: {
   study?: StudyResponse;
   /** What a caller that already knows part of the answer hands over — Courses opens this
@@ -60,6 +61,11 @@ export function StudyForm({
   initialName?: string;
   initialScope?: GeneratorScope;
   initialBriefIds?: Uuid[];
+  /** Whether to put the cursor in the name on mount. True where this form IS the page.
+   *  False where it is one stretch of a longer one: focusing scrolls the browser to it, so
+   *  a form appearing further down would drag the reader past whatever they had not done
+   *  yet — and would do it again on every remount. */
+  autoFocusName?: boolean;
 }) {
   const router = useRouter();
   const instruments = useInstruments();
@@ -210,7 +216,7 @@ export function StudyForm({
         <Field id="study-name" label="Name" hint="Names the round for whoever reads its report later.">
           <Input
             id="study-name"
-            autoFocus={!study}
+            autoFocus={autoFocusName && !study}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. LearnpackV2 — first QA round"
