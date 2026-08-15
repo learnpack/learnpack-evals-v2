@@ -179,14 +179,18 @@ function CompareDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const others = groups.filter((other) => other.version !== null && other.key !== group?.key);
+  // A closed Dialog renders nothing, but React evaluates the children handed to it either
+  // way — so the guard has to be here, not in the `open` prop.
+  if (group === null) return null;
+
+  const others = groups.filter((other) => other.version !== null && other.key !== group.key);
 
   return (
     <Dialog
-      open={group !== null}
+      open
       onClose={onClose}
       title={
-        group?.version
+        group.version
           ? `Compare ${group.version.name} ${group.version.version} with…`
           : "Compare with…"
       }
@@ -199,14 +203,14 @@ function CompareDialog({
       ) : (
         <div className="space-y-2">
           {others.map((other) => {
-            const shared = sharedCommissions(group!, other);
+            const shared = sharedCommissions(group, other);
             return (
               <button
                 key={other.key}
                 type="button"
                 className="flex w-full items-center justify-between gap-3 rounded border p-2 text-left text-sm hover:bg-muted/50"
                 onClick={() =>
-                  router.push(`/admin/studies/new?versions=${group!.key},${other.key}`)
+                  router.push(`/admin/studies/new?versions=${group.key},${other.key}`)
                 }
               >
                 <span className="min-w-0">
