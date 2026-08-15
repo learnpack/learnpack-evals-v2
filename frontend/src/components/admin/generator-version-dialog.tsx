@@ -88,6 +88,10 @@ export function NewGeneratorVersionDialog({
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
+          // The dialog is portalled out of the DOM, but React events still travel the React
+          // tree — and this dialog is opened from inside forms. Without this, registering a
+          // version would also submit the form that asked for one.
+          event.stopPropagation();
           submit();
         }}
       >

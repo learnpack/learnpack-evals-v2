@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -52,9 +53,16 @@ export function Dialog({
     };
   }, [open]);
 
-  if (!open) return null;
+  // Rendered into the body, not where it is written. A modal is written wherever it is
+  // opened from — and that is often inside a form, which would make its own fields
+  // descendants of that form: invalid HTML, and a hydration error. Portalling also keeps it
+  // clear of any ancestor's overflow or stacking context.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  return (
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:items-center">
       <div
         role="dialog"
@@ -76,6 +84,7 @@ export function Dialog({
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         <div className="mt-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
