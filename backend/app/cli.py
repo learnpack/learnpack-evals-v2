@@ -2387,20 +2387,41 @@ def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
     manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
     admin_email, admin_name = WORKBENCH_ADMIN
 
+    # The whole manifest resolves before anything is written — the tree-wide check the local
+    # intake makes for the same reason (ADR-0027 §3). Here it matters more: publishing is
+    # irreversible, so a manifest refused halfway would leave a published version behind that
+    # no rerun can take back.
+    specs: dict[str, Path] = {}
+    for relative in manifest.get("instruments", []):
+        spec_file = manifest_file.parent / relative
+        if not spec_file.is_file():
+            print(f"the manifest names a file that does not exist: {spec_file}", file=sys.stderr)
+            return 1
+        lineage, _ = _instrument_identity(spec_file)
+        if lineage in specs:
+            print(
+                f"the manifest publishes two versions of '{lineage}' ({specs[lineage].name} and "
+                f"{spec_file.name}) — which one an assessor should be ratified against is not "
+                "this command's to guess. Nothing was written",
+                file=sys.stderr,
+            )
+            return 1
+        specs[lineage] = spec_file
+
+    unknown_formats = set(manifest.get("extractions", [])) - set(ADAPTERS_BY_FORMAT)
+    if unknown_formats:
+        print(
+            f"the manifest accepts extractions for formats no adapter reads: "
+            f"{', '.join(sorted(unknown_formats))}. Nothing was written",
+            file=sys.stderr,
+        )
+        return 1
+
     with SessionLocal() as session:
         _ensure_local_assessor(session, admin_email, admin_name, Role.ADMIN)
 
     published: dict[str, str] = {}
-    for relative in manifest.get("instruments", []):
-        spec_file = manifest_file.parent / relative
-        lineage, _ = _instrument_identity(spec_file)
-        if lineage in published:
-            print(
-                f"the manifest publishes two versions of '{lineage}' — which one an assessor "
-                "should be ratified against is not this command's to guess",
-                file=sys.stderr,
-            )
-            return 1
+    for lineage, spec_file in specs.items():
         version_id = _publish_workbench_instrument(spec_file, admin_email)
         if version_id is None:
             return 1

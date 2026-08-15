@@ -144,9 +144,16 @@ def test_running_it_again_changes_nothing(workbench, session, capsys):
     assert session.execute(text("SELECT count(*) FROM assessor_ratifications")).scalar() == before
 
 
-def test_two_versions_of_one_lineage_are_refused(tmp_path, capsys, requires_db):
+def test_two_versions_of_one_lineage_are_refused_before_anything_is_written(
+    tmp_path, capsys, requires_db, session
+):
     """It refuses rather than resolving: which version an assessor should judge with is the
-    decision the manifest exists to record."""
+    decision the manifest exists to record.
+
+    And it refuses before writing, which is the half that cannot be got wrong twice:
+    publishing is irreversible, so a manifest refused halfway would leave a published version
+    behind that no rerun can take back.
+    """
     instruments = WORKBENCH_MANIFEST.parent / "instruments"
     manifest = tmp_path / "workbench.yaml"
     # Absolute entries: a relative one is read against the manifest's own folder, which is
@@ -164,7 +171,35 @@ def test_two_versions_of_one_lineage_are_refused(tmp_path, capsys, requires_db):
     )
 
     assert run_seed_workbench(manifest) == 1
+
     assert "two versions of 'course-drafts-qa'" in capsys.readouterr().err
+    assert not session.execute(
+        text("SELECT 1 FROM instrument_versions WHERE id LIKE 'course-drafts-qa-%'")
+    ).scalar()
+
+
+def test_a_manifest_naming_a_missing_file_writes_nothing(tmp_path, capsys, requires_db, session):
+    """Same rule, the other way it goes wrong: a path that drifted must not publish whatever
+    came before it in the list."""
+    manifest = tmp_path / "workbench.yaml"
+    manifest.write_text(
+        yaml.safe_dump(
+            {
+                "instruments": [
+                    str(WORKBENCH_MANIFEST.parent / "instruments" / "learnpack-course-qa-v1.yaml"),
+                    str(tmp_path / "gone.yaml"),
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert run_seed_workbench(manifest) == 1
+
+    assert "does not exist" in capsys.readouterr().err
+    assert not session.execute(
+        text("SELECT 1 FROM instrument_versions WHERE id = 'learnpack-course-qa-v1'")
+    ).scalar()
 
 
 def test_it_refuses_outside_local_mode(monkeypatch, capsys):
