@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAuthHeaders } from "@/lib/auth";
 import { apiFetch, type RequestOptions } from "./client";
 import type {
+  AcceptExtractionResponse,
   AssessorPackageResponse,
   AssessorResponse,
   AssignContentRequest,
@@ -366,6 +367,40 @@ export function useProfilingCapabilities() {
   return useQuery({
     queryKey: queryKeys.profilingCapabilities,
     queryFn: () => api<ProfileCapabilitiesResponse[]>("/admin/profiling/capabilities"),
+  });
+}
+
+/**
+ * The two acts of the profiling workbench (ADR-0012).
+ *
+ * Both change what the capabilities band and the profile list say, so both invalidate the
+ * pair. Reading is one request per content on purpose — a batch is a loop in the caller
+ * (ADR-0035 §5), which is what keeps a slow package visible and a failure bounded.
+ */
+export function useAcceptExtraction() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (packageFormat: string) =>
+      api<AcceptExtractionResponse>(
+        `/admin/profiling/${encodeURIComponent(packageFormat)}/accept`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.profilingCapabilities });
+      qc.invalidateQueries({ queryKey: queryKeys.profiles });
+    },
+  });
+}
+
+export function useProfileContent() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (contentId: Uuid) =>
+      api<ProfileResponse>(`/admin/contents/${contentId}/profile`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.profiles }),
   });
 }
 

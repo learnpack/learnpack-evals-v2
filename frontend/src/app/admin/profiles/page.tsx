@@ -1,16 +1,28 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Quote } from "lucide-react";
+import { toast } from "sonner";
+import { BookOpen, Quote, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { useProfiles, useProfilingCapabilities } from "@/lib/api/hooks";
+import { Dialog } from "@/components/ui/dialog";
+import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { ApiError } from "@/lib/api/client";
+import {
+  useAcceptExtraction,
+  useContents,
+  useProfileContent,
+  useProfiles,
+  useProfilingCapabilities,
+} from "@/lib/api/hooks";
 import { describeLocator } from "@/lib/locator";
 import type {
+  ContentResponse,
   ProfileCapabilitiesResponse,
   ProfileEntryResponse,
   ProfileResponse,
+  Uuid,
 } from "@/lib/api/types";
 
 /**
@@ -30,6 +42,10 @@ import type {
 export default function ProfilesPage() {
   const { data: profiles, isLoading, error } = useProfiles();
   const { data: capabilities } = useProfilingCapabilities();
+  // What is registered but has no profile — the backlog the band offers to read. Nothing
+  // profiles it retroactively when a format is accepted, so it would otherwise stay unread
+  // for good.
+  const { data: contents } = useContents();
 
   // Failures first — a broken extraction buried under twenty good ones is a failure the
   // page is hiding. Then by course, so the order is stable between visits.
@@ -55,7 +71,7 @@ export default function ProfilesPage() {
         </p>
       </div>
 
-      <ExtractionStatus capabilities={capabilities} />
+      <ExtractionStatus capabilities={capabilities} profiles={profiles} contents={contents} />
 
       {isLoading ? (
         <LoadingState />
@@ -63,8 +79,8 @@ export default function ProfilesPage() {
         <ErrorState message={(error as Error).message} />
       ) : ordered.length === 0 ? (
         <EmptyState
-          title="No courses have been profiled yet"
-          hint="Register a course — with the extraction accepted, profiling runs on its own. To profile one by hand, run app.cli profile-content --content-id <id>."
+          title="No courses have been read yet"
+          hint="With the extraction accepted, registering a course reads it on the spot. Anything registered before that is waiting — the band above offers to read it."
         />
       ) : (
         <>
@@ -93,47 +109,221 @@ export default function ProfilesPage() {
 }
 
 /**
- * Whether each format's current adapter version is trusted. Inverted emphasis on purpose:
- * "accepted" is the resting state and stays quiet, while "not accepted" is the one that
- * changes what the system does — automatic profiling stays off — so it carries the colour
- * and says what to do about it.
+ * Whether each format's current adapter version is trusted, and the two acts that move it.
+ *
+ * Inverted emphasis on purpose: "accepted" is the resting state and stays quiet, while "not
+ * accepted" is the one that changes what the system does — automatic profiling stays off —
+ * so it carries the colour and the act.
+ *
+ * The order of the two acts is the order the domain requires. Reading packages by hand is
+ * how the samples that earn an acceptance are produced, so *Read them now* comes first and
+ * *Accept* is taken afterwards, over evidence that is on this very page. That is also why
+ * neither act appears anywhere else: a button to accept on a screen with no profiles would
+ * invite an irreversible judgement with nothing to read.
  */
 function ExtractionStatus({
   capabilities,
+  profiles,
+  contents,
 }: {
   capabilities: ProfileCapabilitiesResponse[] | undefined;
+  profiles: ProfileResponse[] | undefined;
+  contents: ContentResponse[] | undefined;
 }) {
+  const [accepting, setAccepting] = useState<ProfileCapabilitiesResponse | null>(null);
   if (!capabilities || capabilities.length === 0) return null;
-  const pending = capabilities.filter((c) => !c.accepted);
+
+  const profiled = new Set((profiles ?? []).map((p) => p.content_id));
+  const unreadOf = (format: string) =>
+    (contents ?? []).filter((c) => c.package_format === format && !profiled.has(c.content_id));
 
   return (
-    <div className="mb-6 rounded-lg border bg-muted/30 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {capabilities.map((c) => (
-          <span key={c.package_format} className="flex items-center gap-2 text-sm">
-            <span className="font-medium">{c.package_format}</span>
-            <span className="text-muted-foreground">adapter v{c.adapter_version}</span>
-            {c.accepted ? (
+    <div className="mb-6 space-y-3 rounded-lg border bg-muted/30 px-4 py-3">
+      {capabilities.map((capability) => {
+        const unread = unreadOf(capability.package_format);
+        return (
+          <div
+            key={capability.package_format}
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
+          >
+            <span className="font-medium">{capability.package_format}</span>
+            <span className="text-muted-foreground">adapter v{capability.adapter_version}</span>
+            {capability.accepted ? (
               <span className="text-xs text-muted-foreground">extraction accepted</span>
             ) : (
               <Badge variant="warning">not accepted yet</Badge>
             )}
-          </span>
-        ))}
-      </div>
-      {pending.length > 0 ? (
-        <p className="mt-2 text-xs text-muted-foreground">
+
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              {unread.length > 0 ? (
+                <ReadThemNow
+                  label={`Read ${unread.length} waiting`}
+                  contentIds={unread.map((c) => c.content_id)}
+                />
+              ) : null}
+              {capability.accepted ? null : (
+                <Button size="sm" onClick={() => setAccepting(capability)}>
+                  <ShieldCheck className="h-3.5 w-3.5" /> Accept extraction
+                </Button>
+              )}
+            </span>
+          </div>
+        );
+      })}
+
+      {capabilities.some((c) => !c.accepted) ? (
+        <p className="text-xs text-muted-foreground">
           Registering a course does not profile it until someone accepts the adapter version
-          that reads it. Review the profiles below, then run{" "}
-          <code className="rounded bg-muted px-1 py-0.5">
-            app.cli accept-extraction --package-format{" "}
-            {pending.length === 1 ? pending[0].package_format : "<format>"} --email
-            &lt;admin&gt;
-          </code>
-          .
+          that reads it. Read a few by hand first — those profiles are the evidence the
+          acceptance rests on.
         </p>
       ) : null}
+
+      <AcceptExtractionDialog
+        capability={accepting}
+        unread={accepting ? unreadOf(accepting.package_format).length : 0}
+        reviewed={
+          accepting
+            ? (profiles ?? []).filter((p) => p.package_format === accepting.package_format).length
+            : 0
+        }
+        onClose={() => setAccepting(null)}
+      />
     </div>
+  );
+}
+
+/**
+ * The irreversible one, behind a dialog that states what is being committed to rather than
+ * asking whether you are sure — the shape the console already uses for publishing an
+ * instrument and ratifying an assessor.
+ *
+ * It never blocks on having read nothing: readiness informs. It says so instead, because a
+ * format accepted over zero profiles is an acceptance of nothing.
+ */
+function AcceptExtractionDialog({
+  capability,
+  reviewed,
+  unread,
+  onClose,
+}: {
+  capability: ProfileCapabilitiesResponse | null;
+  reviewed: number;
+  unread: number;
+  onClose: () => void;
+}) {
+  const accept = useAcceptExtraction();
+  if (capability === null) return null;
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Accept ${capability.package_format} extraction?`}
+      description="This is what lets anyone reading a result rule out broken extraction as the explanation."
+    >
+      <ul className="space-y-2 text-sm">
+        <li className="rounded border p-2">
+          <span className="font-medium">
+            Adapter v{capability.adapter_version} becomes trusted for {capability.package_format}
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            From here, registering a course in this format profiles it on the spot. Accepting
+            is recorded with your name and is not undone — a different extraction is a new
+            adapter version.
+          </span>
+        </li>
+        <li className="rounded border p-2">
+          <span className="font-medium">
+            {reviewed === 0
+              ? "Nothing has been read in this format yet"
+              : `${reviewed} profile${reviewed === 1 ? "" : "s"} on this page to judge it by`}
+          </span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {reviewed === 0
+              ? "Nothing is stopping you, but an acceptance over no evidence says nothing. Read a few first."
+              : "Accepting says those extractions are trustworthy enough to stop being a suspect."}
+            {unread > 0
+              ? ` ${unread} course${unread === 1 ? "" : "s"} in this format stay${unread === 1 ? "s" : ""} unread until somebody reads ${unread === 1 ? "it" : "them"} — accepting does not go back over what is already registered.`
+              : ""}
+          </span>
+        </li>
+      </ul>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose} disabled={accept.isPending}>
+          Cancel
+        </Button>
+        <Button
+          disabled={accept.isPending}
+          onClick={() =>
+            accept.mutate(capability.package_format, {
+              onSuccess: (result) => {
+                toast.success(
+                  result.newly_accepted
+                    ? `${capability.package_format} extraction accepted.`
+                    : `${capability.package_format} was already accepted.`,
+                );
+                onClose();
+              },
+              onError: (err) =>
+                toast.error("Could not accept the extraction.", {
+                  description: (err as ApiError).message,
+                }),
+            })
+          }
+        >
+          {accept.isPending ? <Spinner /> : null} Accept extraction
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Reading a set of packages, one request at a time.
+ *
+ * Never a cascade (12-define): the batch is something a person asks for, and the loop lives
+ * here so each request is bounded and the progress is real rather than a spinner over an
+ * unbounded write.
+ */
+function ReadThemNow({ label, contentIds }: { label: string; contentIds: Uuid[] }) {
+  const profile = useProfileContent();
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  async function run() {
+    setProgress({ done: 0, total: contentIds.length });
+    let read = 0;
+    let failed = 0;
+    let refused = 0;
+    for (const contentId of contentIds) {
+      try {
+        const result = await profile.mutateAsync(contentId);
+        if (result.status === "ok") read += 1;
+        else failed += 1;
+      } catch {
+        // 409 and 422 are answers, not crashes: already read, or a package this path
+        // cannot fetch. Counted apart so the summary does not call them failures.
+        refused += 1;
+      }
+      setProgress((previous) => (previous ? { ...previous, done: previous.done + 1 } : previous));
+    }
+    setProgress(null);
+    const summary = [
+      `${read} read`,
+      failed ? `${failed} could not be read` : null,
+      refused ? `${refused} skipped` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    if (failed || refused) toast.warning("Finished reading.", { description: summary });
+    else toast.success("Finished reading.", { description: summary });
+  }
+
+  return (
+    <Button size="sm" variant="outline" onClick={run} disabled={progress !== null}>
+      {progress ? <Spinner /> : <BookOpen className="h-3.5 w-3.5" />}
+      {progress ? `Reading ${progress.done + 1} of ${progress.total}…` : label}
+    </Button>
   );
 }
 
@@ -212,13 +402,13 @@ function ProfileCard({ profile }: { profile: ProfileResponse }) {
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
           <p className="font-medium">The adapter could not read this package</p>
           <p className="mt-1 text-muted-foreground">{profile.error}</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Fix the package or the adapter, then re-run{" "}
-            <code className="rounded bg-muted px-1 py-0.5">
-              app.cli profile-content --content-id {profile.content_id}
-            </code>{" "}
-            — a failed profile is replaced in place.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <ReadThemNow label="Try again" contentIds={[profile.content_id]} />
+            <p className="text-xs text-muted-foreground">
+              Fix the package or the adapter first — a failed profile is replaced in place, and
+              nothing else ever retries it.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
