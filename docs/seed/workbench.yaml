@@ -1,0 +1,55 @@
+# The local workbench: what a fresh database needs before it can measure anything.
+#
+# `python -m app.cli seed-workbench` applies this file. Every entry is an act that is a
+# HUMAN one elsewhere in the system — publishing an instrument and accepting an extraction
+# (ADR-0012), ratifying an assessor (ADR-0019) — and what is replayed here is the repetition,
+# never the decision: the team decided, and this file is where that decision is written down
+# so a rebuilt database does not ask again. The command refuses outside `AUTH_MODE=local`
+# (ADR-0045), and attributes every act to the local admin.
+#
+# It is idempotent. Run it after `alembic upgrade head`, after wiping the database, and
+# whenever this file changes.
+#
+# What it deliberately does NOT do: register courses or generator VERSIONS. Both are facts
+# about a run rather than about the workbench — the courses come from wherever the generator
+# wrote them (`register-package --root <key>`, which registers the version the folder names),
+# and neither belongs in a file that is checked into the repository.
+
+# Instrument versions to import and publish, in order. Paths are relative to this file.
+#
+# ONE VERSION PER LINEAGE. The version published here is the one every assessor of that
+# lineage is ratified against, so two of them would leave the command guessing which — and
+# it refuses instead. To move a lineage forward, bump the instrument (`bump-instrument`),
+# calibrate the new version with `evaluate --dry-run`, and then change the line here: this
+# file is the answer to "which version does this workbench measure with?".
+#
+# Earlier versions of a lineage stay on disk (they are what a bump is cloned from, and three
+# of them are inputs to the test suite) and are simply not listed.
+instruments:
+  - instruments/learnpack-course-qa-v1.yaml
+  - instruments/course-drafts-qa-v6.yaml
+
+# Package formats whose CURRENT extraction adapter is accepted (ADR-0012). Accepting is what
+# arms automatic profiling on registration (ADR-0029), so without it every course registers
+# unread and every evaluation refuses for want of a profile.
+#
+# The adapter VERSION is not written here on purpose: acceptance is always of the adapter the
+# checkout carries, and pinning a version in a file that the code can move underneath is how
+# an acceptance comes to name something that no longer exists.
+extractions:
+  - LearnpackV1
+  - LearnpackV2
+
+# Generator lineages to register (ADR-0031). The name is typed once and never again — nothing
+# renames a lineage — which is why it belongs in a reviewed file rather than in a command
+# somebody retypes. Versions are NOT declared here: they are read off the folder each
+# generation is registered from.
+generators:
+  - learnpack-generator
+
+# Assessors are deliberately absent from this file. Which ones exist is the code registry's
+# answer (`AUTOMATED_ASSESSORS`, ADR-0016: adding a package IS adding an assessor), and which
+# version of its lineage each one judges is already answered above — so every registered
+# package is ratified against the published version of its own lineage. A package whose
+# lineage this file does not publish is reported and left unratified, which is the honest
+# outcome rather than a failure: nothing here decided it should judge.

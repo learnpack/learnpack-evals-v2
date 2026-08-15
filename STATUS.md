@@ -123,6 +123,29 @@ condition attached — *"the refactor becomes worthwhile only if the CLI grows `
 is what this is; the folder convention is ADR-0027 §5's, and both of its readings still refuse
 to mint a generator identity (ADR-0024).
 
+**And a fresh database is now a working one (ADR-0045).** Migrating and seeding left a store
+that held no published instrument, vouched for no adapter and permitted no assessor to judge —
+so `evaluate` refused and `/admin/assessors` listed three packages with no row behind them. The
+ten commands that fixed that were a runbook, which is a list whose order matters and whose
+version ids must be typed right; the failure it produces is a store that looks set up and
+measures with a norm nobody chose. **`seed-workbench` replays them from
+`docs/seed/workbench.yaml`** — instrument versions to publish, formats whose extraction is
+accepted, generator lineages to register — under the local-mode gate and attributed to the
+local admin. What is replayed is the **repetition, never the decision**: it installs exactly
+what the manifest names and passes no `--confirm` to a ratification, so a changed executed
+criterion still stops it (ADR-0019). **Assessors are deliberately not in the manifest**: which
+ones exist is the code registry's answer (ADR-0016), so every package is ratified against the
+published version of its own lineage — one version per lineage, two refused rather than
+resolved — and adding a package needs no edit there to become usable. Idempotent **by asking
+rather than by swallowing**, since a swallowed refusal would also hide ADR-0031's near-miss
+guard firing on a real typo. `task setup` runs it and no longer runs `seed-demo`, which stays
+as its own command (and `task seed:demo`) because the human MVP's two courses and campaign are
+not an operator's data; **`task db:reset`** destroys the volume and rebuilds the whole thing,
+the volume rather than a list of tables because a wipe that enumerates is a wipe that forgets
+the table added last week. Two instrument drafts nothing reads — `course-drafts-qa` v3 and v4 —
+were deleted with it; v1, v2 and v5 stay because the suite reads them, and the assessor's
+coverage test now globs the lineage instead of naming versions.
+
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
 
