@@ -72,10 +72,14 @@ src/
     page.tsx                       # redirects by role (admin → /admin, else → /evaluations)
     sign-in/[[...sign-in]]/        # <SignInScreen/> of the active adapter
     evaluations/                   # evaluator flow (list + 3-step wizard)
-    admin/                         # admin console: contents, generators, briefs,
-                                   # instruments (with Publish), profiles (extraction
-                                   # viewer), assessors (with Ratify), calibration,
-                                   # studies, campaigns, reports
+    admin/                         # admin console. page.tsx is the loop (versions nobody
+                                   # measured + last rounds), and layout.tsx groups the
+                                   # destinations by how often they are needed:
+                                   #   Measure           contents, studies
+                                   #   Definitions       instruments (with Publish),
+                                   #                     assessors (with Ratify),
+                                   #                     generators, briefs, profiles
+                                   #   Human evaluation  campaigns, calibration, reports
   components/
     ui/                            # UI kit (button, card, table, dialog, select,
                                    # collapsible-section…)
@@ -88,6 +92,9 @@ src/
     auth/                          # identity seam: mode.ts + clerk.tsx / local.tsx
     api/                           # client.ts (fetch+headers), types.ts, hooks.ts (TanStack)
     locator.ts                     # decodes an adapter's locator shape into a sentence
+    extraction.ts                  # whether a course was read, out of profiles+capabilities
+    versions.ts                    # courses grouped by the version that made them, and
+                                   # which versions a round has actually measured
     constants.ts                   # rubric id, package format
   middleware.ts                    # protects everything but /sign-in (Clerk or local cookie)
 ```
