@@ -404,9 +404,15 @@ with its cause named for everything else); it is composed in
 
 ### Assessors that carry an LLM (ADR-0034)
 
-`drafts-hybrid` extracts and classifies with an LLM and decides pass/fail in code. It needs
-`LLM_API_KEY` in the environment (see `.env.example`; `LLM_BASE_URL` points at any
-OpenAI-compatible endpoint, OpenRouter by default).
+`drafts-hybrid` extracts and classifies with an LLM and decides pass/fail in code. It needs an
+**OpenRouter** `LLM_API_KEY` in the environment (see `.env.example`).
+
+The transport speaks the OpenAI chat-completions shape, but that does not make the provider
+interchangeable: the models are pinned as OpenRouter slugs — `deepseek/…`, and the namespace
+*is* the provider — and every request carries OpenRouter's own `provider` routing, which is
+how a misbehaving upstream is excluded (ADR-0038). `provider` sits in the assessor's
+`SOURCE_CONFIG`, so it is identity: judging through another provider is a new assessor
+version, not a new `LLM_BASE_URL`.
 
 **The key is *access*. Identity is what decides the answer** and is pinned in the assessor's
 code and declared in its `SOURCE_CONFIG`, prompts fingerprint included: which model judges,

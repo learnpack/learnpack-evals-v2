@@ -40,8 +40,9 @@ Then two lines in `backend/.env`:
 # becomes part of the URL the tree is served at, so pick one and keep it.
 LOCAL_SOURCE_ROOTS=generated=/path/to/your/generator/datasets/generated
 
-# Any OpenAI-compatible endpoint. Only the assessors that carry an LLM need it.
-LLM_API_KEY=<your key>
+# An OpenRouter key — the judges are pinned to models served there. Only the assessors
+# that carry an LLM need it.
+LLM_API_KEY=<your OpenRouter key>
 ```
 
 A folder declared here is mounted when the API starts, so **adding one needs a restart**.
