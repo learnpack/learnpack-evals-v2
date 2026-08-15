@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
-import { useGeneratorVersions, usePackageFormats, useRegisterBySource } from "@/lib/api/hooks";
+import {
+  GeneratorVersionPicker,
+  declaredGeneratorVersionId,
+} from "@/components/admin/generator-version-picker";
+import { usePackageFormats, useRegisterBySource } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import type { EditProvenance, GeneratorVersionResponse } from "@/lib/api/types";
-
-/** The declared "no generator" option — distinct from the unchosen placeholder (ADR-0024). */
-const UNKNOWN_GENERATOR = "unknown";
+import type { EditProvenance } from "@/lib/api/types";
 
 // Registration by discovery (ADR-0027): the form declares a source, never an artifact
 // list — identity, artifacts and content hash come from the package itself. And no
@@ -21,21 +22,11 @@ const UNKNOWN_GENERATOR = "unknown";
 export function ContentForm({ onDone }: { onDone: () => void }) {
   const registerBySource = useRegisterBySource();
   const { data: formats } = usePackageFormats();
-  const { data: generators } = useGeneratorVersions();
-  // Grouped by lineage (ADR-0031), so the list reads as versions of a generator rather than a
-  // flat run of near-identical labels. `<optgroup>` is native — no combobox, no new dependency.
-  const groupedVersions = useMemo(() => {
-    const byName = new Map<string, GeneratorVersionResponse[]>();
-    for (const version of generators ?? []) {
-      byName.set(version.name, [...(byName.get(version.name) ?? []), version]);
-    }
-    return [...byName.entries()];
-  }, [generators]);
 
   const [sourceLocator, setSourceLocator] = useState("");
   const [packageFormat, setPackageFormat] = useState("");
   const [version, setVersion] = useState("");
-  const [generatorVersionId, setGeneratorVersionId] = useState("");
+  const [generator, setGenerator] = useState("");
   const [editProvenance, setEditProvenance] = useState<EditProvenance>("unknown");
 
   // A single supported format needs no choice — preselect it, keep the select visible.
@@ -64,8 +55,8 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
         source_locator: sourceLocator.trim(),
         ...(version.trim() ? { version: version.trim() } : {}),
         // Three states, not two (ADR-0024): the placeholder never reaches here because the
-        // select is required; "unknown" is a declaration, and it is not the same as silence.
-        generator_version_id: generatorVersionId === UNKNOWN_GENERATOR ? null : generatorVersionId,
+        // picker is required; "unknown" is a declaration, and it is not the same as silence.
+        generator_version_id: declaredGeneratorVersionId(generator),
         edit_provenance: editProvenance,
       },
       {
@@ -120,35 +111,9 @@ export function ContentForm({ onDone }: { onDone: () => void }) {
           <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1" />
         </Field>
       </div>
-      <Field
-        label="Generator"
-        required
-        hint={
-          (generators ?? []).length === 0
-            ? "No generator registered yet — declare unknown, or register one first."
-            : "Unknown is a valid answer, but it must be chosen: content with an unknown generator stays out of generator-level accumulation."
-        }
-      >
-        <Select
-          value={generatorVersionId}
-          onChange={(e) => setGeneratorVersionId(e.target.value)}
-          required
-        >
-          <option value="" disabled>
-            Choose…
-          </option>
-          <option value={UNKNOWN_GENERATOR}>Unknown — cannot be attributed</option>
-          {groupedVersions.map(([name, owned]) => (
-            <optgroup key={name} label={name}>
-              {owned.map((v) => (
-                <option key={v.generator_version_id} value={v.generator_version_id}>
-                  {v.version}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </Select>
-      </Field>
+      {/* Unknown is a valid answer, but it has to be chosen: content with an unknown
+          generator stays out of generator-level accumulation, so silence is not it. */}
+      <GeneratorVersionPicker value={generator} onChange={setGenerator} required />
       <Field label="Edit provenance" hint="Was the generator output edited by a human?">
         <Select
           value={editProvenance}

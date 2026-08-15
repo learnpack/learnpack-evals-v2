@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/** The open modals, innermost last. A form can open a dialog of its own — registering a
+ *  generator version from inside the course form is the ordinary case — and without a stack
+ *  both would answer the same Escape, and the inner one closing would give the page back its
+ *  scroll while the outer one is still up. */
+const openDialogs: object[] = [];
 
 /** Minimal controlled modal — enough for the admin forms, no Radix dependency. */
 export function Dialog({
@@ -20,16 +26,31 @@ export function Dialog({
   children: ReactNode;
   className?: string;
 }) {
+  // Held in a ref so the effect depends on `open` alone: an inline `onClose` would otherwise
+  // re-register on every render, and with it re-order the stack under an inner dialog.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
+    const token = {};
+    openDialogs.push(token);
     document.body.style.overflow = "hidden";
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (openDialogs[openDialogs.length - 1] !== token) return;
+      onCloseRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      const at = openDialogs.indexOf(token);
+      if (at !== -1) openDialogs.splice(at, 1);
+      if (openDialogs.length === 0) document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
