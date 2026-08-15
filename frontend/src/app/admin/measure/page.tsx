@@ -30,10 +30,24 @@ import {
   useLocalSourceFolder,
   useLocalSourceRoots,
   usePackageFormats,
+  useProfiles,
+  useProfilingCapabilities,
   useRegisterLocalPackage,
   useScanLocalSource,
 } from "@/lib/api/hooks";
-import type { ScanCandidate, ScanResponse, ScanVerdict, Uuid } from "@/lib/api/types";
+import {
+  extractionStateOf,
+  indexCapabilities,
+  indexProfiles,
+  summarizeExtraction,
+} from "@/lib/extraction";
+import type {
+  EditProvenance,
+  ScanCandidate,
+  ScanResponse,
+  ScanVerdict,
+  Uuid,
+} from "@/lib/api/types";
 import { IS_LOCAL_AUTH } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +72,9 @@ const VERDICT_LABEL: Record<ScanVerdict, string> = {
 const REGISTRABLE: ScanVerdict[] = ["new", "new_version"];
 
 type Outcome = { status: "created" | "unchanged" | "failed" | "attributed"; detail: string };
+
+/** The lot the last batch touched, and how it went. */
+type Batch = { contentIds: Uuid[]; created: number; unchanged: number; failed: number };
 
 export default function ImportCoursesPage() {
   // A build-time constant, so the whole page drops out of a production bundle. Reaching it
@@ -85,6 +102,7 @@ function ImportFromDisk() {
   const [format, setFormat] = useState("");
   const [generator, setGenerator] = useState("");
   const [version, setVersion] = useState("1");
+  const [editProvenance, setEditProvenance] = useState<EditProvenance>("unknown");
 
   // 2 · where to look
   const [root, setRoot] = useState("");
@@ -95,6 +113,9 @@ function ImportFromDisk() {
   const [selected, setSelected] = useState<string[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  /** What the last batch touched. Held so the summary can say whether the lot came back
+   *  readable, and so the round below can remount over what just arrived. */
+  const [batch, setBatch] = useState<Batch | null>(null);
 
   const folder = useLocalSourceFolder(root, path, Boolean(root));
 
@@ -155,6 +176,7 @@ function ImportFromDisk() {
     let created = 0;
     let unchanged = 0;
     let failed = 0;
+    const registered: Uuid[] = [];
 
     // Sequential on purpose: each created course is profiled inside its own request, so
     // firing them together would hide which one is slow and multiply the load for nothing.
@@ -166,9 +188,13 @@ function ImportFromDisk() {
           package_format: format,
           version,
           generator_version_id: declaredGenerator,
+          edit_provenance: editProvenance,
         });
         created += result.created ? 1 : 0;
         unchanged += result.created ? 0 : 1;
+        // Every course the batch touched, created or not: the summary below answers "was
+        // this lot read", and an already-registered course is as much part of the lot.
+        registered.push(result.content.content_id);
         setOutcomes((previous) => ({
           ...previous,
           [candidate.path]: {
@@ -191,6 +217,7 @@ function ImportFromDisk() {
 
     setProgress(null);
     setSelected([]);
+    setBatch({ contentIds: registered, created, unchanged, failed });
     const summary = `${created} registered, ${unchanged} unchanged, ${failed} failed`;
     if (failed) toast.error("Some courses could not be registered.", { description: summary });
     else toast.success("Import finished.", { description: summary });
@@ -264,6 +291,23 @@ function ImportFromDisk() {
             value={generator}
             onChange={setGenerator}
           />
+
+          <div className="space-y-1.5">
+            <Label htmlFor="import-provenance">Was it edited by a person?</Label>
+            <Select
+              id="import-provenance"
+              value={editProvenance}
+              onChange={(event) => setEditProvenance(event.target.value as EditProvenance)}
+            >
+              <option value="unknown">Don&apos;t know</option>
+              <option value="pure">No, pure generator output</option>
+              <option value="human_edited">Yes</option>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              A lot somebody went over by hand and a lot straight out of the generator are
+              different populations — and the generator only answers for one of them.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -412,12 +456,83 @@ function ImportFromDisk() {
                       </p>
                     )}
                   </div>
+
+                  <BatchSummary batch={batch} format={format} />
                 </>
               )}
             </>
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Whether the lot that just arrived came back readable.
+ *
+ * The bit that decides whether measuring it means anything: a course nobody could read
+ * enters a round all the same and comes back with its criteria unassessed. It reads the
+ * profiles the registrations just wrote, which is why both registration hooks now
+ * invalidate them.
+ *
+ * It informs and stops there. Accepting a format's extraction is a human act with an
+ * author, and it still lives in the CLI — so this points at the screen that says how,
+ * rather than printing the command in a second place.
+ */
+function BatchSummary({ batch, format }: { batch: Batch | null; format: string }) {
+  const profiles = useProfiles();
+  const capabilities = useProfilingCapabilities();
+
+  if (batch === null || batch.contentIds.length === 0) return null;
+
+  const known = profiles.data !== undefined && capabilities.data !== undefined;
+  const index = indexCapabilities(capabilities.data);
+  const byContent = indexProfiles(profiles.data, index);
+  // The declared format, not the profile's: a course with no profile has no format to read
+  // one off, and that is exactly the case whose reason the summary has to get right.
+  const states = batch.contentIds.map((contentId) =>
+    extractionStateOf(format, byContent.get(contentId), index),
+  );
+  const { read, notRead, failed } = summarizeExtraction(states);
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-sm">
+      <p className="tabular-nums">
+        <span className="font-medium">
+          {batch.contentIds.length} {batch.contentIds.length === 1 ? "course" : "courses"} in
+          this lot
+        </span>
+        {" — "}
+        {batch.created} newly registered, {batch.unchanged} already there
+        {batch.failed > 0 ? (
+          <span className="text-destructive">, {batch.failed} failed</span>
+        ) : null}
+        .
+      </p>
+      {known ? (
+        <p className="mt-1 tabular-nums text-muted-foreground">
+          {read} read
+          {notRead > 0 ? <span className="text-amber-700"> · {notRead} not read</span> : null}
+          {failed > 0 ? (
+            <span className="text-destructive"> · {failed} could not be read</span>
+          ) : null}
+          {notRead > 0 || failed > 0 ? (
+            <>
+              {" · "}
+              <Link href="/admin/profiles" className="text-primary hover:underline">
+                see why in Profiles
+              </Link>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+      {notRead === batch.contentIds.length ? (
+        <p className="mt-2 text-xs text-amber-700">
+          Nothing in this lot was read, so a round over it would answer nothing. The usual
+          cause is that no one has accepted this format&apos;s extraction yet.
+        </p>
+      ) : null}
     </div>
   );
 }
