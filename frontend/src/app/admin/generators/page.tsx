@@ -8,20 +8,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  useCreateGenerator,
-  useCreateGeneratorVersion,
-  useGenerators,
-  useGeneratorVersions,
-} from "@/lib/api/hooks";
+  CHANGELOG_KEY,
+  NewGeneratorVersionDialog,
+} from "@/components/admin/generator-version-dialog";
+import { useCreateGenerator, useGenerators, useGeneratorVersions } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 import type { GeneratorResponse, GeneratorVersionResponse } from "@/lib/api/types";
-
-/** The one key this console writes into the identity blob (ADR-0030 §2). */
-const CHANGELOG_KEY = "changelog";
 
 export default function GeneratorsPage() {
   const { data: generators, isLoading, error } = useGenerators();
@@ -130,19 +125,13 @@ export default function GeneratorsPage() {
         <GeneratorForm onDone={() => setCreating(false)} />
       </Dialog>
 
-      <Dialog
+      <NewGeneratorVersionDialog
         open={addingVersionTo !== null}
+        generatorId={addingVersionTo?.generator_id ?? ""}
+        generatorName={addingVersionTo?.name ?? ""}
         onClose={() => setAddingVersionTo(null)}
-        title="Register a version"
-        description={addingVersionTo ? `Under ${addingVersionTo.name}.` : undefined}
-      >
-        {addingVersionTo ? (
-          <GeneratorVersionForm
-            generator={addingVersionTo}
-            onDone={() => setAddingVersionTo(null)}
-          />
-        ) : null}
-      </Dialog>
+        onCreated={() => setAddingVersionTo(null)}
+      />
 
       <Dialog
         open={detailsFor !== null}
@@ -242,84 +231,6 @@ function GeneratorForm({ onDone }: { onDone: () => void }) {
         </Button>
         <Button type="submit" disabled={createGenerator.isPending}>
           {createGenerator.isPending ? <Spinner /> : null}
-          Register
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function GeneratorVersionForm({
-  generator,
-  onDone,
-}: {
-  generator: GeneratorResponse;
-  onDone: () => void;
-}) {
-  const createVersion = useCreateGeneratorVersion();
-  const [version, setVersion] = useState("");
-  const [changelog, setChangelog] = useState("");
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const note = changelog.trim();
-    createVersion.mutate(
-      {
-        generatorId: generator.generator_id,
-        body: {
-          version: version.trim(),
-          // An empty field declares nothing — it must not write an empty key into the blob.
-          ...(note ? { metadata: { [CHANGELOG_KEY]: note } } : {}),
-        },
-      },
-      {
-        onSuccess: () => {
-          toast.success("Version registered.");
-          onDone();
-        },
-        onError: (err) => {
-          const apiError = err as ApiError;
-          if (apiError.status === 409) {
-            toast.error(`${generator.name} already has that version.`);
-          } else {
-            toast.error("Could not register the version.", { description: apiError.message });
-          }
-        },
-      },
-    );
-  }
-
-  return (
-    <form onSubmit={submit} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label>
-          Version <span className="text-destructive">*</span>
-        </Label>
-        <Input
-          value={version}
-          onChange={(e) => setVersion(e.target.value)}
-          placeholder="2.4.0"
-          required
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label>Changelog</Label>
-        <Textarea
-          value={changelog}
-          onChange={(e) => setChangelog(e.target.value)}
-          placeholder="What changed in this version, in a sentence or two."
-        />
-        <p className="text-xs text-muted-foreground">
-          Optional reference for whoever reads the results. It cannot be edited afterwards — the
-          declared identity is immutable.
-        </p>
-      </div>
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="outline" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={createVersion.isPending}>
-          {createVersion.isPending ? <Spinner /> : null}
           Register
         </Button>
       </div>

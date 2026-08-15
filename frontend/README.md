@@ -115,6 +115,20 @@ shows up, check that it still works.
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
 - Add the Netlify origin to `ALLOWED_ORIGINS` in the backend.
 
+## Declaring which generator version made something
+
+Every form that asks for one — *Add course*, *Import from disk*, the attribution act — asks
+with the same control (`components/admin/generator-version-picker.tsx`): the lineage, then
+its version, with **New** beside it. Versions change often in early development, so
+registering one is done wherever it is needed rather than in a screen of its own.
+
+The **lineage** is not creatable there: registering a generator is rare, and the refusal that
+stops a typo becoming a second lineage (ADR-0031) needs the undivided attention it gets in
+`/admin/generators`.
+
+The control carries the three states of ADR-0024, and *unknown* is one of them — a
+declaration, not silence — except in attribution, where naming the version is the whole act.
+
 ## Importing courses from disk (local mode only)
 
 `/admin/contents` shows an **Import from disk** button when the build runs with
