@@ -47,7 +47,20 @@ import type {
  *  filtered by ratification against the chosen instrument, and the courses are annotated
  *  against what that instrument can read.
  */
-export function StudyForm({ study }: { study?: StudyResponse }) {
+export function StudyForm({
+  study,
+  initialName,
+  initialScope,
+  initialBriefIds,
+}: {
+  study?: StudyResponse;
+  /** What a caller that already knows part of the answer hands over — Courses opens this
+   *  form with the version it was looking at already chosen. Read once, at mount, and only
+   *  when there is no study: from there the fields belong to whoever is typing in them. */
+  initialName?: string;
+  initialScope?: GeneratorScope;
+  initialBriefIds?: Uuid[];
+}) {
   const router = useRouter();
   const instruments = useInstruments();
   const packages = useAssessorPackages();
@@ -60,14 +73,20 @@ export function StudyForm({ study }: { study?: StudyResponse }) {
   const openStudy = useOpenStudy();
   const startRound = useStartRound();
 
-  const [name, setName] = useState(study?.name ?? "");
+  const [name, setName] = useState(study?.name ?? initialName ?? "");
   const [description, setDescription] = useState(study?.description ?? "");
   const [instrumentId, setInstrumentId] = useState(study?.instrument_version_id ?? "");
+  // Never pre-chosen, even by a caller that could: the instrument and the judge are what
+  // make two rounds comparable (ADR-0042), and neither Courses nor anything else knows
+  // which one this round should answer to.
   const [assessorId, setAssessorId] = useState<string>(study?.assessor_id ?? "");
-  const [briefIds, setBriefIds] = useState<Uuid[]>(study?.brief_ids ?? []);
+  const [briefIds, setBriefIds] = useState<Uuid[]>(study?.brief_ids ?? initialBriefIds ?? []);
   // `null` is "nobody has said yet", which is exactly what the study carries and what
-  // opening refuses (ADR-0044 §2). It is never collapsed into "all" on anyone's behalf.
-  const [scope, setScope] = useState<GeneratorScope | null>(study?.generator_scope ?? null);
+  // opening refuses (ADR-0044 §2). It is never collapsed into "all" on anyone's behalf —
+  // and a caller handing one over IS somebody saying it.
+  const [scope, setScope] = useState<GeneratorScope | null>(
+    study?.generator_scope ?? initialScope ?? null,
+  );
   const [confirming, setConfirming] = useState(false);
 
   const published = (instruments.data ?? []).filter((i) => i.status === "published");

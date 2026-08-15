@@ -115,6 +115,29 @@ shows up, check that it still works.
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
 - Add the Netlify origin to `ALLOWED_ORIGINS` in the backend.
 
+## Courses read by generator version
+
+`/admin/contents` opens grouped by the version that made each course, because that is the
+grain a round measures. A card says what that version brought — courses, commissions, how
+many were read — and carries the two acts that start from there:
+
+- **Measure this version** links to `/admin/studies/new?versions=<id>`.
+- **Compare with…** offers every other version with the number of commissions **both**
+  answered, zero included and in amber. It is the earliest point at which anyone can see
+  that two versions are not answering the same work; the round is not refused, because a
+  cross-format A/B is deliberately legitimate (ADR-0044 §7).
+
+The link carries the versions and nothing else. The study's name and its commissions are
+derived where it lands (`app/admin/studies/new/page.tsx`), so how a dataset is composed is
+decided in one place rather than encoded in a query string. The commissions prefilled are the
+**union** of what those versions answered — the form's own per-version counts and its unpaired
+warning are what tell the reader the rest.
+
+Two things a card says that nothing else does: courses with **no commission** can never enter
+a round, and the **unknown generator** group can never be measured, since a round names the
+versions it measures (ADR-0024, ADR-0044 §6). Its courses are attributed in the flat **List**
+view, which also keeps the format/generator/version filters.
+
 ## Whether a course was read
 
 `/admin/contents` carries an **Extraction** column, because a course that was never read

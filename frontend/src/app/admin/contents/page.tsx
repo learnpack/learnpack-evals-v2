@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, HardDrive, Plus } from "lucide-react";
+import { Boxes, ExternalLink, HardDrive, Plus, Rows3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { ContentForm } from "@/components/admin/content-form";
+import { CoursesByVersion } from "@/components/admin/courses-by-version";
 import { GeneratorVersionPicker } from "@/components/admin/generator-version-picker";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -56,6 +57,9 @@ export default function ContentsPage() {
   const { data: profiles } = useProfiles();
   const { data: capabilities } = useProfilingCapabilities();
   const [creating, setCreating] = useState(false);
+  // By version by default: it is the grain a round measures, and the one a person arrives
+  // with. The flat list is the forensic view, and it keeps the filters.
+  const [view, setView] = useState<"by-version" | "list">("by-version");
   const [format, setFormat] = useState(ALL);
   const [lineage, setLineage] = useState(ALL);
   const [version, setVersion] = useState(ALL);
@@ -146,8 +150,9 @@ export default function ContentsPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Courses</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            AI-generated courses available to evaluate.
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            AI-generated courses available to evaluate, grouped by the generator version that
+            made them — which is the grain a round measures.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -175,6 +180,39 @@ export default function ContentsPage() {
         <EmptyState title="No courses yet" hint="Add your first course to start a campaign." />
       ) : (
         <>
+          {/* Not persisted on purpose: a stored preference is one more thing that can fall
+              out of step with what the page shows, and coming back to the default view
+              costs a click. */}
+          <div className="mb-4 flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={view === "by-version" ? "secondary" : "ghost"}
+              onClick={() => setView("by-version")}
+            >
+              <Boxes className="h-3.5 w-3.5" /> By version
+            </Button>
+            <Button
+              size="sm"
+              variant={view === "list" ? "secondary" : "ghost"}
+              onClick={() => setView("list")}
+            >
+              <Rows3 className="h-3.5 w-3.5" /> List
+            </Button>
+          </div>
+
+          {view === "by-version" ? (
+            <CoursesByVersion
+              contents={contents}
+              generatorVersions={generators ?? []}
+              extractionOf={extractionOf}
+              onInspectUnknown={() => {
+                setFormat(ALL);
+                chooseLineage(UNKNOWN_LINEAGE);
+                setView("list");
+              }}
+            />
+          ) : (
+            <>
           <div className="mb-4 flex flex-wrap items-end gap-3">
             <div className="w-48">
               <Label htmlFor="filter-format" className="text-xs text-muted-foreground">
@@ -341,6 +379,8 @@ export default function ContentsPage() {
                 </Table>
               </CardContent>
             </Card>
+          )}
+            </>
           )}
         </>
       )}
