@@ -11,11 +11,39 @@ what state it is in).
 cp .env.example .env      # fill in DATABASE_URL (Neon) and the Clerk keys
 uv sync
 uv run alembic upgrade head
-uv run python -m app.cli seed          # rubric v1 + pedagogical reference data (idempotent)
+uv run python -m app.cli seed             # rubric v1 + pedagogical reference data (idempotent)
+uv run python -m app.cli seed-workbench   # local only: publish, accept, ratify, register
 uv run uvicorn app.main:app --reload
 ```
 
 `GET /health` verifies that the API boots and the DB responds.
+
+### The workbench: what makes a fresh database able to measure (ADR-0045)
+
+Migrating and seeding leaves a database that holds no published instrument, vouches for no
+extraction adapter and permits no assessor to judge — so `evaluate` refuses and
+`/admin/assessors` lists three packages with no row behind them. Three acts fix that, and all
+three are human acts by decision: publishing an instrument version (ADR-0012), accepting a
+format's extraction (ADR-0012) and ratifying an assessor against a version (ADR-0019).
+
+`seed-workbench` **replays** them from `../docs/seed/workbench.yaml`, which declares the
+instrument versions to publish, the formats to accept and the generator lineages to register.
+What is replayed is the repetition, never the decision: it installs exactly what the manifest
+names, attributes every act to the local admin, and **refuses outside `AUTH_MODE=local`**. It
+is idempotent — a published version is left alone, an existing lineage is reported — so run it
+after every migration and every wipe.
+
+Assessors are not in the manifest on purpose. Which ones exist is the code registry's answer
+(ADR-0016), so every automated package is ratified against the published version of **its own**
+lineage; a package whose lineage the manifest does not publish is reported and left unratified.
+To move a lineage forward, bump the instrument, calibrate the new version with
+`evaluate --dry-run`, and change one line in the manifest.
+
+Courses and generator **versions** are deliberately absent too: both are facts about a run, and
+they are read off the tree each generation is registered from (§*Registering courses*).
+
+`seed-demo` is the other seeder and is not part of setup: it installs the human MVP's demo —
+two evaluators, two frozen courses and an open campaign — for anyone who wants to see that flow.
 
 **The schema is checked at both doors.** The API and the CLI compare the database's revision
 against this checkout's head before doing anything. On a dev box (`AUTH_MODE=local`) a

@@ -20,7 +20,7 @@ Where development stands today: **`STATUS.md`**.
 
 ## Run it locally, no accounts and no cloud
 
-Local mode: database in Docker, **no authentication**, demo users and data pre-loaded.
+Local mode: database in Docker, **no authentication**, and a workbench ready to measure.
 Requires Docker (Compose with `--wait`; the daemon must be running — e.g. Docker Desktop
 started), [Task](https://taskfile.dev/installation/), [uv](https://docs.astral.sh/uv/) and
 Node 20+.
@@ -29,6 +29,15 @@ Node 20+.
 # One-time setup, then daily dev
 task setup
 task dev
+```
+
+`task setup` leaves a database that can **measure**: the instruments
+`docs/seed/workbench.yaml` names are published, their extraction adapters are accepted, every
+automated assessor is ratified, and the generator lineages are registered (ADR-0045). To start
+over from zero — this destroys the local database and rebuilds it:
+
+```bash
+task db:reset
 ```
 
 `task dev` starts Postgres, the API at http://localhost:8000 and the frontend at
@@ -53,9 +62,9 @@ cd backend && docker compose up -d
 cp .env.example .env        # ships in local mode: nothing to fill in
 uv sync
 uv run alembic upgrade head
-uv run python -m app.cli seed        # rubric v1 + pedagogical reference data
-uv run python -m app.cli seed-demo   # users, demo courses (profiled from real frozen
-                                     # packages), instrument draft, open campaign, assignments
+uv run python -m app.cli seed             # rubric v1 + pedagogical reference data
+uv run python -m app.cli seed-workbench   # instruments published, extractions accepted,
+                                          # assessors ratified, generator lineages registered
 uv run uvicorn app.main:app --reload
 
 # 3. Frontend  (http://localhost:3000)
@@ -65,7 +74,12 @@ npm install
 npm run dev
 ```
 
-At `/sign-in` pick who to enter as:
+Sign in at `/sign-in` as `admin@local.dev`, which is the identity the setup creates and
+attributes its acts to.
+
+The **human evaluation** flow needs raters, which the setup does not install — they belong to
+that flow, not to measuring a generator. `task seed:demo` adds them, with two frozen courses and
+an open campaign to work on:
 
 | User | Role | For |
 |---|---|---|
@@ -73,18 +87,22 @@ At `/sign-in` pick who to enter as:
 | `ada.lovelace@local.dev` | evaluator | evaluate |
 | `grace.hopper@local.dev` | evaluator | evaluate (the second rater: without it there is no inter-rater) |
 
-Switch users from the header menu. To start over — wipes the local dataset and reseeds it:
+Switch users from the header menu. To wipe just that demo dataset and reload it:
 `uv run python -m app.cli seed-demo --reset`.
 
 ### Iterating on the seeds
 
+- `docs/seed/workbench.yaml` declares what a local workbench is built from — which instrument
+  versions are published, which extractions are accepted, which generator lineages exist
+  (ADR-0045). Edit it and re-run `uv run python -m app.cli seed-workbench` (idempotent).
 - `docs/seed/rubric-v1.json` + `docs/seed/pedagogical-reference.yaml` are the source of truth
   for the human rubric and the reference data; edit and re-run `uv run python -m app.cli seed`
   (in-place, idempotent).
 - `docs/seed/instruments/*.yaml` are authored instrument drafts;
   `uv run python -m app.cli import-instrument --file <yaml>` creates or replaces the draft.
   Publishing is a deliberate human act (the Publish button in `/admin/instruments`, or
-  `publish-instrument`) — published versions are immutable.
+  `publish-instrument`); the workbench manifest is where the team records which version a local
+  store is set up with. Published versions are immutable.
 
 ## Production
 

@@ -44,11 +44,11 @@ tasks:
       - uv run alembic upgrade head
 
   setup:seed:
-    desc: Load rubric, reference data and demo dataset
+    desc: Load rubric and reference data, then build the workbench (ADR-0045)
     dir: backend
     cmds:
       - uv run python -m app.cli seed
-      - uv run python -m app.cli seed-demo
+      - uv run python -m app.cli seed-workbench
 
   setup:
     desc: One-time local setup (env, deps, DB, migrate, seed)
@@ -77,6 +77,31 @@ tasks:
     dir: backend
     cmds:
       - docker compose down
+
+  db:reset:
+    desc: DESTROY the local database and rebuild it from zero (volume, migrations, workbench)
+    prompt: This deletes every local course, study, judgment and profile. Continue?
+    cmds:
+      # The volume, not a list of tables to truncate: a wipe that enumerates what to delete
+      # is a wipe that forgets the table added last week. Nothing here is a source of truth —
+      # the courses live in the generator's own tree and everything else is rebuilt below.
+      - task: db:destroy
+      - task: db
+      - task: db:wait
+      - task: setup:migrate
+      - task: setup:seed
+
+  db:destroy:
+    internal: true
+    dir: backend
+    cmds:
+      - docker compose down -v
+
+  seed:demo:
+    desc: Add the human-MVP demo (evaluators, two frozen courses, an open campaign)
+    dir: backend
+    cmds:
+      - uv run python -m app.cli seed-demo
 
   backend:
     desc: Run FastAPI dev server (http://localhost:8000)

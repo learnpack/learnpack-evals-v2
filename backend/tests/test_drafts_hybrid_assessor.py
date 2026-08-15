@@ -255,15 +255,22 @@ def test_coverage_is_a_disjoint_union_over_v5():
     assert len(PACKAGE.coverage.executes) == 19
 
 
-def test_coverage_also_decides_every_criterion_of_the_older_versions():
-    """Criterion ids are stable across the lineage (v3 changed one criterion's `requires`,
-    v4 two pass conditions and v5 a third, none of them touching an id), so the one
-    artifact can ratify any published version (ADR-0019)."""
-    for version in ("v1", "v2", "v3", "v4"):
-        spec = yaml.safe_load(
-            (INSTRUMENTS_DIR / f"course-drafts-qa-{version}.yaml").read_text(encoding="utf-8")
-        )
-        assert {raw["id"] for raw in spec["criteria"]} <= PACKAGE.coverage.declared
+def test_coverage_also_decides_every_criterion_of_the_lineages_other_versions():
+    """Criterion ids are stable across the lineage — every revision since v2 changed a
+    `requires` or a pass condition and none touched an id — so the one artifact can ratify
+    any published version (ADR-0019).
+
+    Read off disk rather than from a list of version numbers: versions are cheap and are
+    deleted when nothing reads them any more, and a hardcoded list turns that into a failing
+    test about a file instead of a claim about coverage.
+    """
+    others = sorted(INSTRUMENTS_DIR.glob("course-drafts-qa-v*.yaml"))
+    assert len(others) > 1, "the lineage should have more than the version this assessor pins"
+
+    for spec_file in others:
+        spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        undecided = {raw["id"] for raw in spec["criteria"]} - PACKAGE.coverage.declared
+        assert not undecided, f"{spec_file.name}: {', '.join(sorted(undecided))}"
 
 
 def test_every_executed_failure_index_exists_in_the_real_instrument():

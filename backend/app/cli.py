@@ -1,4 +1,5 @@
-"""Admin CLI: `python -m app.cli seed | set-role | import-learnpack | register-package |
+"""Admin CLI: `python -m app.cli seed | seed-workbench | set-role | import-learnpack |
+register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
 update-study | open-study | sign-off-study | show-preview |
@@ -2301,6 +2302,151 @@ def _batch_summary(view: batch_runs.BatchView) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- seed-workbench
+# The acts that make a fresh local database able to MEASURE something, applied from a
+# manifest (ADR-0045). Each one is a human act elsewhere — publishing an instrument
+# (ADR-0012), accepting an extraction (ADR-0012), ratifying an assessor (ADR-0019) — and each
+# one is replayed here, under the local-mode gate, over artifacts the team already reviewed.
+# It decides nothing: what is published is what the manifest names.
+
+WORKBENCH_MANIFEST = REPO_ROOT / "docs" / "seed" / "workbench.yaml"
+
+# The identity every replayed act is attributed to. It is the same admin `seed-demo` creates,
+# because there is only one local admin and two of them would be two histories.
+WORKBENCH_ADMIN = ("admin@local.dev", "Admin")
+
+
+def _ensure_local_assessor(session: Session, email: str, display_name: str, role: Role) -> UUID:
+    """Create a local identity, or align the role of one that already exists.
+
+    Aligning matters: signing in as `admin@local.dev` before seeding creates that assessor as
+    an `evaluator` (ResolveAssessor's default). Leaving it would print "admin" for someone who
+    then gets 403 everywhere. This is a seeder, not a login path — the ADR-0007 invariant it
+    must not break is that *logging in* never changes a role.
+    """
+    repository = SqlAlchemyAssessorRepository(session)
+    assessor = repository.get_by_email(email)
+    if assessor is None:
+        assessor = Assessor(
+            id=new_id(),
+            # Must match what auth_local derives from `X-Dev-User`, or the sign-in would
+            # create a second assessor for the same person.
+            clerk_user_id=f"local|{email.lower()}",
+            email=email,
+            display_name=display_name,
+            role=role,
+        )
+        repository.add(assessor)
+        session.commit()
+    elif assessor.role is not role:
+        previous = assessor.role
+        assessor.assign_role(role)
+        repository.update(assessor)
+        session.commit()
+        print(f"  {email}: role {previous} -> {role.value}")
+    return assessor.id
+
+
+def _instrument_identity(spec_file: Path) -> tuple[str, str]:
+    """The lineage and the version id an authored YAML will have once imported. Read off the
+    file rather than declared in the manifest: two places to write `course-drafts-qa-v6` is
+    one place to get it wrong, and the importer mints the id from exactly these two fields."""
+    spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+    return spec["instrument_id"], f"{spec['instrument_id']}-{spec['version']}"
+
+
+def _publish_workbench_instrument(spec_file: Path, admin_email: str) -> str | None:
+    """Import the authored YAML and publish it, or leave a published version alone.
+
+    A published version is immutable (ADR-0012), so re-importing over one is refused — which
+    is exactly what makes this the idempotent branch rather than an error to swallow: if the
+    version is already published, the file on disk and the row already agree, and there is
+    nothing to do.
+    """
+    _, version_id = _instrument_identity(spec_file)
+    with SessionLocal() as session:
+        existing = SqlAlchemyInstrumentRepository(session).get(version_id)
+    if existing is not None and existing.is_published:
+        print(f"instrument {version_id} is already published")
+        return version_id
+
+    if run_import_instrument(spec_file) != 0:
+        return None
+    if run_publish_instrument(version_id, admin_email) != 0:
+        return None
+    return version_id
+
+
+def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
+    """Leave a local database able to measure: instruments published, extractions accepted,
+    assessors ratified, generator lineages registered. Idempotent — run it as often as you
+    like, and after every `alembic upgrade head` that reset the store."""
+    if not _local_mode_only("seed-workbench"):
+        return 1
+
+    manifest = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
+    admin_email, admin_name = WORKBENCH_ADMIN
+
+    with SessionLocal() as session:
+        _ensure_local_assessor(session, admin_email, admin_name, Role.ADMIN)
+
+    published: dict[str, str] = {}
+    for relative in manifest.get("instruments", []):
+        spec_file = manifest_file.parent / relative
+        lineage, _ = _instrument_identity(spec_file)
+        if lineage in published:
+            print(
+                f"the manifest publishes two versions of '{lineage}' — which one an assessor "
+                "should be ratified against is not this command's to guess",
+                file=sys.stderr,
+            )
+            return 1
+        version_id = _publish_workbench_instrument(spec_file, admin_email)
+        if version_id is None:
+            return 1
+        published[lineage] = version_id
+
+    for package_format in manifest.get("extractions", []):
+        if run_accept_extraction(package_format, admin_email) != 0:
+            return 1
+
+    # Registering the lineage is guarded against a near miss (ADR-0031) and refuses a
+    # duplicate, so what makes this idempotent is asking first rather than swallowing the
+    # refusal — a swallowed one would also hide the guard firing on a real typo.
+    for name in manifest.get("generators", []):
+        with SessionLocal() as session:
+            known = SqlAlchemyGeneratorRepository(session).find_by_name_key(normalized_name(name))
+        if known is not None:
+            print(f"generator {known.name} is already registered ({known.id})")
+        elif run_register_generator(name, distinct_from=None) != 0:
+            return 1
+
+    # Which assessors exist is the code registry's answer (ADR-0016), not the manifest's:
+    # adding a package is adding an assessor, and it should not also need an edit here to be
+    # usable. What the manifest decides is which VERSION of its lineage each one judges.
+    ratified = 0
+    for package in AUTOMATED_ASSESSORS.values():
+        version_id = published.get(package.instrument_id)
+        if version_id is None:
+            print(
+                f"{package.display_name}: no published version of '{package.instrument_id}' "
+                "in the manifest — not ratified"
+            )
+            continue
+        if run_ratify_assessor(package.name, package.version, version_id, admin_email, []) != 0:
+            return 1
+        ratified += 1
+
+    print(
+        f"\nworkbench ready: {len(published)} instrument(s) published, "
+        f"{len(manifest.get('extractions', []))} extraction(s) accepted, "
+        f"{ratified} assessor(s) ratified\n"
+    )
+    print(f"  sign in at http://localhost:3000 as {admin_email}")
+    print("  register a generation with `register-package --all --root <key>`")
+    return 0
+
+
 # --------------------------------------------------------------------------- seed-demo
 # A ready-to-use local dataset (ADR-0008), for contributors who work on rubrics, metrics and
 # evaluations and should not need a Clerk account or a Neon database to run the app.
@@ -2349,56 +2495,30 @@ DEMO_CONTENTS: list[dict[str, Any]] = [
 ]
 
 
-def _demo_local_mode_only() -> bool:
-    """The guard that keeps demo data out of the real store.
+def _local_mode_only(command: str) -> bool:
+    """The guard that keeps a seeder out of a real store.
 
-    `seed-demo` writes wherever DATABASE_URL points, so it refuses to run unless the process
-    is configured for local development.
+    A seeder writes wherever DATABASE_URL points, so it refuses to run unless the process is
+    configured for local development. For `seed-workbench` the stake is larger than stray
+    rows: it replays acts that are human ones by decision (ADR-0045), and outside a dev box
+    the person who publishes an instrument or ratifies an assessor is a person.
     """
     if get_settings().is_local_auth:
         return True
     print(
-        "seed-demo only runs with AUTH_MODE=local: it writes demo users, courses and a "
-        "campaign, which must never land in a real database.",
+        f"{command} only runs with AUTH_MODE=local: it writes on behalf of the local admin, "
+        "which must never happen in a real database.",
         file=sys.stderr,
     )
     return False
 
 
 def _seed_demo_assessors(session: Session) -> dict[str, UUID]:
-    """Create the demo users, and align the role of any that already exist.
-
-    Aligning matters: signing in as `admin@local.dev` before seeding creates that assessor as
-    an `evaluator` (ResolveAssessor's default). Leaving it would make this command print
-    "admin" for someone who then gets 403 everywhere. This is a seeder, not a login path — the
-    ADR-0007 invariant it must not break is that *logging in* never changes a role.
-    """
-    repository = SqlAlchemyAssessorRepository(session)
-    ids: dict[str, UUID] = {}
-
-    for email, display_name, role in DEMO_ASSESSORS:
-        assessor = repository.get_by_email(email)
-        if assessor is None:
-            assessor = Assessor(
-                id=new_id(),
-                # Must match what auth_local derives from `X-Dev-User`, or the sign-in would
-                # create a second assessor for the same person.
-                clerk_user_id=f"local|{email.lower()}",
-                email=email,
-                display_name=display_name,
-                role=role,
-            )
-            repository.add(assessor)
-            session.commit()
-        elif assessor.role is not role:
-            previous = assessor.role
-            assessor.assign_role(role)
-            repository.update(assessor)
-            session.commit()
-            print(f"  {email}: role {previous} -> {role.value}")
-        ids[email] = assessor.id
-
-    return ids
+    """Create the demo users, and align the role of any that already exist."""
+    return {
+        email: _ensure_local_assessor(session, email, display_name, role)
+        for email, display_name, role in DEMO_ASSESSORS
+    }
 
 
 # The demo courses ARE the frozen real packages of the adapter's fixture suite — same two
@@ -2656,7 +2776,7 @@ def _seed_demo_profiles(content_ids: dict[str, UUID]) -> int:
 
 def run_seed_demo(reset: bool) -> int:
     """Users + courses + profiles + an open campaign + assignments, all pending. Idempotent."""
-    if not _demo_local_mode_only():
+    if not _local_mode_only("seed-demo"):
         return 1
 
     with SessionLocal() as session:
@@ -2785,6 +2905,13 @@ def main(argv: list[str] | None = None) -> int:
         help="which declared source root to read (LOCAL_SOURCE_ROOTS; default: the repo's "
         f"own {BUILTIN_SOURCE_ROOT}/ tree)",
     )
+
+    workbench_parser = subparsers.add_parser(
+        "seed-workbench",
+        help="local-only: publish the instruments, accept the extractions, ratify the "
+        "assessors and register the generator lineages a manifest declares (ADR-0045)",
+    )
+    workbench_parser.add_argument("--file", type=Path, default=WORKBENCH_MANIFEST)
 
     demo_parser = subparsers.add_parser(
         "seed-demo", help="local-only: demo users, courses, campaign and assignments"
@@ -3105,6 +3232,11 @@ def main(argv: list[str] | None = None) -> int:
             args.consumable_url,
             args.root_key,
         )
+    elif args.command == "seed-workbench":
+        if not args.file.exists():
+            print(f"file not found: {args.file}", file=sys.stderr)
+            return 1
+        return run_seed_workbench(args.file)
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)
     elif args.command == "import-instrument":
