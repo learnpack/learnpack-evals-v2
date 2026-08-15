@@ -402,6 +402,52 @@ uv run python -m app.cli evaluate-study --study-id <id>
                                         [--concurrency N] [--re-evaluate]
 ```
 
+### Measuring a generation the generator just wrote
+
+When the courses are a folder rather than a study, `measure` is the whole loop — register,
+open a round over exactly those courses, evaluate it, print the score:
+
+```
+uv run python -m app.cli measure --root generated --path learnpack-generator-04a7dd5-dirty
+                                 [--format LearnpackV2] [--assessor <name>[:<version>]]
+                                 [--instrument-version-id <id>] [--name "..."]
+                                 [--concurrency N] [--re-evaluate]
+```
+
+Nothing new happens in it: it is the six commands a person ran by hand, with the four ids
+that were copied between them derived instead. **The folder's name declares the generator
+version**, and that version — one, not "all of them" — is the round's scope (ADR-0044), which
+is the defect the chaining removes: a round that measures a dataset nobody meant to name. A
+folder declaring `unknown` is refused for the same reason.
+
+**The norm and the judge are derived only when the derivation has one answer.** The
+instrument is the published version bound to the format (an instrument declares which formats
+it binds), and the judge is the assessor that has ratified it — so if two published versions
+bind the format, or two assessors have ratified the version, the command says so and asks for
+`--instrument-version-id` or `--assessor`. `--assessor` takes `name` or `name:version`: the
+version identifies the artifact and stays available, but a loop that runs every day should
+not need editing on every bump. Both are resolved **before** the folder is registered, since
+registering is a fetch per lesson per course and none of it is worth doing for a round with
+nothing to judge it with.
+
+**Re-running resumes the round rather than declaring a second one.** An open study with the
+same name, norm, judge and dataset is continued — the batch already skips what this assessor
+judged — and anything less than an identical match declares a new one.
+
+**A course keeps the generator version it was first registered with.** Re-registering an
+unchanged course returns the existing one and discards the declared generator (ADR-0035 §9),
+so a store that already holds these courses under another version measures them *there*: the
+round scoped to this folder's version finds them missing, and the command names each one
+instead of composing an empty dataset. Attribution is its own act for the `unknown` case
+(`attribute-generator`); for a store that predates the folder convention, the clean answer is
+`task db:reset` and registering each generation through `measure`.
+
+**One JSON document comes out**: `{"batch": …, "fitness": …}` — the run and the score it
+produced, together, because reading them separately is where a value gets paired with the
+wrong round. Progress goes to stderr, as everywhere else here.
+
+The console does the same thing on `/admin/measure`; this is the scriptable path.
+
 **The study decides the assessor** (ADR-0042): it pinned one before it opened, and the run
 uses it. `--assessor` is optional and is *checked* rather than obeyed — passing one that
 disagrees with the pin is refused, so a script written before the pin keeps working and a
@@ -631,8 +677,8 @@ which keeps its own base URL forever. A malformed entry stops the process; a fol
 not exist is reported as absent and skipped. Adding a root needs a restart, because the trees
 are mounted when the app assembles.
 
-**The CLI reads the same roots**: `--root <key>` on `register-package` points it at any
-declared tree, and the built-in `courses` is its default. A key nobody
+**The CLI reads the same roots**: `--root <key>` on `register-package` and on `measure`
+points it at any declared tree, and the built-in `courses` is its default. A key nobody
 declared is refused before anything is read, naming both ways that happens — never declared,
 or declared after the API started, since the trees are mounted when the app assembles. The
 generator folder convention stays the CLI's own (above); the console declares the generator in
