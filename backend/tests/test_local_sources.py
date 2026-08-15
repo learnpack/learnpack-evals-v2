@@ -166,14 +166,36 @@ def test_a_package_under_a_declared_root_registers_locators_into_its_mount(root)
     assert package.consumable_url is None
 
 
-def test_the_builtin_root_mints_the_locator_the_cli_has_always_minted(declare):
-    """Anti-drift. The CLI keeps its own `courses/`-only resolution (it is its whole
-    contract); what may never diverge is the locator both write into a permanent row."""
+def test_the_builtin_root_mints_the_locator_the_cli_has_always_minted(
+    declare, tmp_path, monkeypatch
+):
+    """The CLI resolves through this module now, so the two cannot drift by construction.
+    What this pins is the other half: for the built-in root the locator is byte-for-byte the
+    one the CLI minted before, and those rows are permanent."""
     declare("")
     relative = "learnpack-generator@1.0.0/my-course"
+    monkeypatch.setattr(local_sources, "COURSES_DIR", tmp_path)
+    (tmp_path / relative).mkdir(parents=True)
 
-    from_cli = cli._course_root(cli.COURSES_DIR / "learnpack-generator@1.0.0" / "my-course")
+    from_cli = cli._course_root(local_sources.COURSES_DIR / relative)
     from_module = local_sources.locator_base(local_sources.builtin_root(), relative)
 
-    assert cli.COURSES_DIR == local_sources.COURSES_DIR
     assert from_cli.locator_for("learn.json") == f"{from_module}/learn.json"
+    assert from_cli.locator_for("learn.json").startswith(
+        get_settings().local_packages_base_url.rstrip("/")
+    )
+
+
+def test_the_cli_reads_a_declared_root_and_refuses_an_undeclared_one(root, tmp_path):
+    """ADR-0035 §1 said `--root` was the CLI's missing half. A tree it can read is one the
+    process also serves, so naming a key nobody declared is refused where it is cheap —
+    before anything is written into a row that can never be rewritten."""
+    assert cli._declared_root("runs").path == root.path
+    assert cli._course_root(root.path / "batch" / "course").locator_for("learn.json") == (
+        f"{root.url_base}/batch/course/learn.json"
+    )
+
+    with pytest.raises(cli._UndeclaredRoot, match="LOCAL_SOURCE_ROOTS"):
+        cli._declared_root("nope")
+    with pytest.raises(cli._UndeclaredRoot, match="declared source root"):
+        cli._course_root(tmp_path / "elsewhere")

@@ -4,10 +4,10 @@ Drop downloaded course packages here to register and evaluate them locally, in a
 format the backend supports. Everything in this directory except this README is
 **gitignored**: course content is data, never part of the repo.
 
-This is the **built-in** local source root, and the only one the CLI reads. A tree that lives
-somewhere else is declared with `LOCAL_SOURCE_ROOTS` and registered from the console
-(ADR-0035) — see `backend/README.md` §*Registering courses*. Everything below is about this
-tree and the CLI.
+This is the **built-in** local source root: the one the CLI reads when you do not say
+otherwise. A tree that lives somewhere else is declared with `LOCAL_SOURCE_ROOTS` and read
+with `--root <key>`, from the CLI or from the console (ADR-0035) — see `backend/README.md`
+§*Registering courses*. Everything below is about this tree.
 
 ## Layout
 
@@ -23,9 +23,15 @@ courses/
 ```
 
 The folder name declares the generator (ADR-0024): `<name>` must match a **registered**
-`Generator` and `<version>` one of its registered versions (ADR-0031). The import refuses
-unregistered ones — naming which half is missing — and never creates generator identities. The
-special folder `unknown` registers its courses with no generator.
+`Generator` (ADR-0031) — the import refuses an unregistered one and never creates a generator
+lineage. `<version>` is registered as it is read if it is new, and printed when it is: a
+version is a fact about a run, and the generator being measured changes it with every commit.
+The special folder `unknown` registers its courses with no generator.
+
+A second form is accepted for the trees a generator writes itself — `<name>-<version>`, e.g.
+`learnpack-generator-04a7dd5-dirty` — and means exactly the same thing. It cannot be split on
+its separator (the version carries hyphens too), so it is split against the registry: the
+registered lineage whose name the folder starts with, and the rest is the version.
 
 The convention belongs to the CLI. The console declares the generator in its own form and
 never reads the folder name, so a tree registered from `/admin/contents/import` can be laid
@@ -47,12 +53,12 @@ deployed somewhere, declare it with `--consumable-url <https://…>`.
 ```bash
 cd backend
 
-# one course (path relative to backend/; parent folder must be unknown or <name>@<version>)
+# one course (path relative to backend/, or to the tree itself: `unknown/my-course`)
 uv run python -m app.cli register-package \
   --source ../courses/unknown/my-course \
   --generator unknown
 
-# everything under courses/<name>@<version>/ and courses/unknown/
+# everything under courses/<generator-folder>/
 uv run python -m app.cli register-package --all
 ```
 
