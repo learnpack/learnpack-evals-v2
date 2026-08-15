@@ -549,6 +549,10 @@ function ComposeRound({
   return (
     <StudyForm
       key={`${generatorVersionId}:${batchStamp}`}
+      // Here the form is the last stretch of a page, not the page: taking focus would
+      // scroll the reader past the folder they had not chosen yet, and again after every
+      // batch.
+      autoFocusName={false}
       initialName={version ? `${version.name} ${version.version}` : undefined}
       initialScope={[generatorVersionId]}
       initialBriefIds={[...group.briefIds]}
