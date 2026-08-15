@@ -24,6 +24,7 @@ import {
   declaredGeneratorVersionId,
   isGeneratorDeclared,
 } from "@/components/admin/generator-version-picker";
+import { ReadPackagesButton } from "@/components/admin/read-packages-button";
 import { StudyForm } from "@/components/admin/study-form";
 import type { ApiError } from "@/lib/api/client";
 import {
@@ -568,9 +569,9 @@ function ComposeRound({
  * profiles the registrations just wrote, which is why both registration hooks now
  * invalidate them.
  *
- * It informs and stops there. Accepting a format's extraction is a human act with an
- * author, and it still lives in the CLI — so this points at the screen that says how,
- * rather than printing the command in a second place.
+ * It offers the one act that belongs here — reading what came back unread — and not the
+ * other. Accepting a format's extraction is judged over the profiles it produced, so it
+ * stays on the workbench that renders them; from here it would be accepting blind.
  */
 function BatchSummary({ batch, format }: { batch: Batch | null; format: string }) {
   const profiles = useProfiles();
@@ -619,11 +620,21 @@ function BatchSummary({ batch, format }: { batch: Batch | null; format: string }
           ) : null}
         </p>
       ) : null}
-      {notRead === batch.contentIds.length ? (
-        <p className="mt-2 text-xs text-amber-700">
-          Nothing in this lot was read, so a round over it would answer nothing. The usual
-          cause is that no one has accepted this format&apos;s extraction yet.
-        </p>
+      {known && notRead > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <ReadPackagesButton
+            label={`Read ${notRead} now`}
+            contentIds={batch.contentIds.filter(
+              (contentId) => byContent.get(contentId) === undefined,
+            )}
+          />
+          {notRead === batch.contentIds.length ? (
+            <p className="text-xs text-amber-700">
+              Nothing in this lot was read, so a round over it would answer nothing — usually
+              because no one has accepted this format&apos;s extraction yet.
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

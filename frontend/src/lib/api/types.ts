@@ -157,6 +157,14 @@ export interface ProfileCapabilitiesResponse {
   accepted: boolean;
 }
 
+export interface AcceptExtractionResponse {
+  package_format: string;
+  /** Resolved from the running adapter — never sent by the client. */
+  adapter_version: string;
+  /** False when the pair was already accepted: the act is idempotent. */
+  newly_accepted: boolean;
+}
+
 /** The identity of an automated assessor: the artifact, and the lineage it owes itself to. */
 export interface AutomatedIdentity {
   name: string;

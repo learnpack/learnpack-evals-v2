@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { ClaimStatusBadge } from "@/components/admin/claim-status";
+import { ReadPackagesButton } from "@/components/admin/read-packages-button";
 import { OUTCOME_ORDER, OutcomeBadge } from "@/components/admin/outcome-badge";
 import {
   Table,
@@ -245,13 +246,10 @@ function CalibrationConsole() {
                               <Badge variant={status === "failed" ? "destructive" : "secondary"}>
                                 {status ?? "none"}
                               </Badge>
-                              <p className="text-xs text-muted-foreground">
-                                Profile it first:{" "}
-                                <code className="rounded bg-muted px-1">
-                                  uv run python -m app.cli profile-content --content-id{" "}
-                                  {content.content_id}
-                                </code>
-                              </p>
+                              <ReadPackagesButton
+                                label="Read it now"
+                                contentIds={[content.content_id]}
+                              />
                             </div>
                           )}
                         </TableCell>
@@ -516,12 +514,9 @@ function RunFailure({
       <p className="font-medium text-destructive">{titles[error.kind]}</p>
       <p className="break-words text-muted-foreground">{error.message}</p>
       {error.kind === "profile_missing" && contentId ? (
-        <p className="text-xs text-muted-foreground">
-          Profile it first:{" "}
-          <code className="rounded bg-muted px-1">
-            uv run python -m app.cli profile-content --content-id {contentId}
-          </code>
-        </p>
+        <div className="pt-1">
+          <ReadPackagesButton label="Read it now" contentIds={[contentId]} />
+        </div>
       ) : null}
       {error.kind === "instrument_missing" ? (
         <p className="text-xs text-muted-foreground">
