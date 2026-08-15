@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Folder, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -20,11 +19,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  GeneratorVersionPicker,
+  declaredGeneratorVersionId,
+  isGeneratorDeclared,
+} from "@/components/admin/generator-version-picker";
 import type { ApiError } from "@/lib/api/client";
 import {
   useAttributeGenerator,
-  useCreateGeneratorVersion,
-  useGeneratorVersions,
   useLocalSourceFolder,
   useLocalSourceRoots,
   usePackageFormats,
@@ -34,10 +36,6 @@ import {
 import type { ScanCandidate, ScanResponse, ScanVerdict, Uuid } from "@/lib/api/types";
 import { IS_LOCAL_AUTH } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-
-/** The generator is declared here, not read from a folder name: that convention belongs to
- *  the CLI and to `courses/` (ADR-0035 §8). `unknown` is a declaration of its own (ADR-0024). */
-const UNKNOWN_LINEAGE = "unknown";
 
 const VERDICT_VARIANT: Record<ScanVerdict, BadgeProps["variant"]> = {
   new: "success",
@@ -79,17 +77,14 @@ export default function ImportCoursesPage() {
 
 function ImportFromDisk() {
   const formats = usePackageFormats();
-  const generators = useGeneratorVersions();
   const roots = useLocalSourceRoots(true);
   const scanFolder = useScanLocalSource();
   const registerOne = useRegisterLocalPackage();
 
   // 1 · what is being declared about everything the scan finds
   const [format, setFormat] = useState("");
-  const [lineage, setLineage] = useState("");
-  const [generatorVersionId, setGeneratorVersionId] = useState("");
+  const [generator, setGenerator] = useState("");
   const [version, setVersion] = useState("1");
-  const [creatingVersion, setCreatingVersion] = useState(false);
 
   // 2 · where to look
   const [root, setRoot] = useState("");
@@ -103,34 +98,18 @@ function ImportFromDisk() {
 
   const folder = useLocalSourceFolder(root, path, Boolean(root));
 
-  const lineages = useMemo(() => {
-    const byId = new Map<string, string>();
-    for (const generator of generators.data ?? []) byId.set(generator.generator_id, generator.name);
-    return [...byId].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [generators.data]);
-
-  const versionsOfLineage = useMemo(
-    () =>
-      (generators.data ?? [])
-        .filter((generator) => generator.generator_id === lineage)
-        .sort((a, b) => a.version.localeCompare(b.version)),
-    [generators.data, lineage],
-  );
-
-  // A single supported format needs no choice; a lineage with a single version neither.
+  // A single supported format needs no choice.
   useEffect(() => {
     if (!format && formats.data?.length === 1) setFormat(formats.data[0]);
   }, [format, formats.data]);
   useEffect(() => {
-    if (versionsOfLineage.length === 1) setGeneratorVersionId(versionsOfLineage[0].generator_version_id);
-  }, [versionsOfLineage]);
-  useEffect(() => {
     if (!root && roots.data?.length) setRoot(roots.data[0].key);
   }, [root, roots.data]);
 
-  const declaresUnknown = lineage === UNKNOWN_LINEAGE;
-  const declaredGenerator: Uuid | null = declaresUnknown ? null : generatorVersionId;
-  const generatorDeclared = declaresUnknown || Boolean(generatorVersionId);
+  const generatorDeclared = isGeneratorDeclared(generator);
+  const declaredGenerator: Uuid | null = generatorDeclared
+    ? declaredGeneratorVersionId(generator)
+    : null;
 
   /** The verdicts are only true for the format, version and folder they were computed
    *  against. Rather than show labels that quietly stopped applying, drop them. */
@@ -217,8 +196,8 @@ function ImportFromDisk() {
     else toast.success("Import finished.", { description: summary });
   }
 
-  if (roots.isLoading || formats.isLoading || generators.isLoading) return <LoadingState />;
-  const loadError = roots.error ?? formats.error ?? generators.error;
+  if (roots.isLoading || formats.isLoading) return <LoadingState />;
+  const loadError = roots.error ?? formats.error;
   if (loadError) return <ErrorState message={(loadError as Error).message} />;
 
   const registrable = selected.length;
@@ -277,65 +256,14 @@ function ImportFromDisk() {
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="import-lineage">Generator</Label>
-            <Select
-              id="import-lineage"
-              value={lineage}
-              onChange={(event) => {
-                setLineage(event.target.value);
-                setGeneratorVersionId("");
-              }}
-            >
-              <option value="">Choose…</option>
-              {lineages.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-              <option value={UNKNOWN_LINEAGE}>Unknown — cannot be attributed later by name</option>
-            </Select>
-            {declaresUnknown ? (
-              <p className="text-xs text-muted-foreground">
-                These courses will be excluded from generator-level accumulation. The link can
-                still be filled in later, once.
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="import-generator-version">Generator version</Label>
-            <div className="flex gap-2">
-              <Select
-                id="import-generator-version"
-                value={generatorVersionId}
-                disabled={!lineage || declaresUnknown}
-                onChange={(event) => setGeneratorVersionId(event.target.value)}
-              >
-                <option value="">{lineage && !declaresUnknown ? "Choose…" : "—"}</option>
-                {versionsOfLineage.map((generator) => (
-                  <option
-                    key={generator.generator_version_id}
-                    value={generator.generator_version_id}
-                  >
-                    {generator.version}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!lineage || declaresUnknown}
-                onClick={() => setCreatingVersion(true)}
-              >
-                New
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Not registered yet? <strong>New</strong> adds it to this lineage without leaving
-              the page.
-            </p>
-          </div>
+          {/* Declared here, not read from a folder name: that convention belongs to the CLI
+              and to `courses/` (ADR-0035 §8). Changing it does not invalidate the scan —
+              the generator is no part of the package's identity or its hash. */}
+          <GeneratorVersionPicker
+            className="sm:col-span-2"
+            value={generator}
+            onChange={setGenerator}
+          />
         </CardContent>
       </Card>
 
@@ -490,17 +418,6 @@ function ImportFromDisk() {
           )}
         </CardContent>
       </Card>
-
-      <NewGeneratorVersionDialog
-        open={creatingVersion}
-        generatorId={lineage}
-        generatorName={lineages.find(([id]) => id === lineage)?.[1] ?? ""}
-        onClose={() => setCreatingVersion(false)}
-        onCreated={(id) => {
-          setGeneratorVersionId(id);
-          setCreatingVersion(false);
-        }}
-      />
     </div>
   );
 }
@@ -702,71 +619,4 @@ function CandidateNote({
   }
 
   return <span className={cn(!candidate.title && "italic")}>{candidate.title ?? "no title"}</span>;
-}
-
-function NewGeneratorVersionDialog({
-  open,
-  generatorId,
-  generatorName,
-  onClose,
-  onCreated,
-}: {
-  open: boolean;
-  generatorId: string;
-  generatorName: string;
-  onClose: () => void;
-  onCreated: (generatorVersionId: Uuid) => void;
-}) {
-  const [version, setVersion] = useState("");
-  const create = useCreateGeneratorVersion();
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={`New version of ${generatorName}`}
-      description="Registers a version under this lineage. The lineage itself is never created here — a new generator is a rare, separate act."
-    >
-      <div className="space-y-1.5">
-        <Label htmlFor="new-generator-version">Version</Label>
-        <Input
-          id="new-generator-version"
-          value={version}
-          placeholder="2.1.0"
-          onChange={(event) => setVersion(event.target.value)}
-        />
-      </div>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onClose} disabled={create.isPending}>
-          Cancel
-        </Button>
-        <Button
-          disabled={!version.trim() || create.isPending}
-          onClick={() =>
-            create.mutate(
-              { generatorId, body: { version: version.trim(), metadata: {} } },
-              {
-                onSuccess: (created) => {
-                  setVersion("");
-                  toast.success(`${generatorName} ${created.version} registered.`);
-                  onCreated(created.generator_version_id);
-                },
-                onError: (err) => {
-                  const e = err as ApiError;
-                  toast.error(
-                    e.status === 409
-                      ? "That version is already registered."
-                      : "Could not register the version.",
-                    { description: e.message },
-                  );
-                },
-              },
-            )
-          }
-        >
-          {create.isPending ? <Spinner /> : null} Register version
-        </Button>
-      </div>
-    </Dialog>
-  );
 }
