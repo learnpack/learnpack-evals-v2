@@ -23,7 +23,21 @@ MANIFEST = yaml.safe_load(WORKBENCH_MANIFEST.read_text(encoding="utf-8"))
 
 
 @pytest.fixture
-def workbench(cleanup, requires_db):
+def local_auth(monkeypatch):
+    """Declare the mode the command requires, rather than inheriting it.
+
+    A developer's `.env` says `AUTH_MODE=local` and CI has no `.env` at all, so a test that
+    reads whatever the environment happens to say passes here and fails there — which is what
+    it did. The mode is part of what these tests are about, so they state it.
+    """
+    monkeypatch.setenv("AUTH_MODE", "local")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def workbench(cleanup, requires_db, local_auth):
     """Run the real manifest, and track everything it writes so the suite's database is left
     as it was found. The acceptance matters most: it is global, and a stray one would
     auto-profile every content registered by every later test."""
@@ -145,7 +159,7 @@ def test_running_it_again_changes_nothing(workbench, session, capsys):
 
 
 def test_two_versions_of_one_lineage_are_refused_before_anything_is_written(
-    tmp_path, capsys, requires_db, session
+    tmp_path, capsys, requires_db, session, local_auth
 ):
     """It refuses rather than resolving: which version an assessor should judge with is the
     decision the manifest exists to record.
@@ -178,7 +192,9 @@ def test_two_versions_of_one_lineage_are_refused_before_anything_is_written(
     ).scalar()
 
 
-def test_a_manifest_naming_a_missing_file_writes_nothing(tmp_path, capsys, requires_db, session):
+def test_a_manifest_naming_a_missing_file_writes_nothing(
+    tmp_path, capsys, requires_db, session, local_auth
+):
     """Same rule, the other way it goes wrong: a path that drifted must not publish whatever
     came before it in the list."""
     manifest = tmp_path / "workbench.yaml"
