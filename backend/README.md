@@ -5,7 +5,7 @@ Hard rules: `../docs/ARCHITECTURE.md`. Names: `../docs/GLOSSARY.md`.
 Where development stands today: `../STATUS.md` (this README describes **how it works**, not
 what state it is in).
 
-**Just want to measure a generator's output?** `../docs/MEASURING.md` is that guide, and it
+**Just want to measure a generator's output?** `../docs/RUNBOOK-measuring.md` is that guide, and it
 does not need this file.
 
 ## Where to look
@@ -532,7 +532,7 @@ uv run python -m app.cli measure --root generated --path learnpack-generator-04a
                                  [--concurrency N] [--re-evaluate]
 ```
 
-**Using it is `../docs/MEASURING.md`** — the layout it expects, how to read what comes out,
+**Using it is `../docs/RUNBOOK-measuring.md`** — the layout it expects, how to read what comes out,
 and what the numbers may be compared with. What belongs here is why it is put together this
 way:
 

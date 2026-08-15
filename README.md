@@ -13,7 +13,7 @@ two slices:
 
 Where development stands today: **`STATUS.md`**.
 
-- **`docs/MEASURING.md`** — **measuring what a generator produced**, end to end. Start here if
+- **`docs/RUNBOOK-measuring.md`** — **measuring what a generator produced**, end to end. Start here if
   that is what you came for; it does not assume you will read anything else.
 - **`docs/`** — the design and the why of every boundary. `docs/ARCHITECTURE.md` is the hard
   rules; `docs/GLOSSARY.md` names everything in the code.

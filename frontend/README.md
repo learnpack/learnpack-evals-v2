@@ -241,7 +241,7 @@ realizes. That is not a formality: changing an executor is a new assessor versio
 ## Two happy paths
 
 **Measuring a generator** is the automated one, and it has its own guide:
-`../docs/MEASURING.md`. In the console it is one page — `/admin/measure` — and the result is
+`../docs/RUNBOOK-measuring.md`. In the console it is one page — `/admin/measure` — and the result is
 read on `/admin/studies/[id]`.
 
 **Human evaluation** is the other, and it needs raters. In local mode
