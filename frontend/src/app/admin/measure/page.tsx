@@ -24,9 +24,12 @@ import {
   declaredGeneratorVersionId,
   isGeneratorDeclared,
 } from "@/components/admin/generator-version-picker";
+import { StudyForm } from "@/components/admin/study-form";
 import type { ApiError } from "@/lib/api/client";
 import {
   useAttributeGenerator,
+  useContents,
+  useGeneratorVersions,
   useLocalSourceFolder,
   useLocalSourceRoots,
   usePackageFormats,
@@ -35,6 +38,7 @@ import {
   useRegisterLocalPackage,
   useScanLocalSource,
 } from "@/lib/api/hooks";
+import { groupByVersion } from "@/lib/versions";
 import {
   extractionStateOf,
   indexCapabilities,
@@ -84,7 +88,7 @@ export default function ImportCoursesPage() {
       <div className="max-w-3xl">
         <EmptyState
           title="Importing from disk is a local development affordance"
-          hint="It reads folders on the machine running the API, so it exists only under AUTH_MODE=local. Register a deployed course from Courses → Add course instead."
+          hint="It reads folders on the machine running the API, so it exists only under AUTH_MODE=local. In a deployed console the same errand is two screens: Courses → Add course, then Studies → New study."
         />
       </div>
     );
@@ -116,6 +120,8 @@ function ImportFromDisk() {
   /** What the last batch touched. Held so the summary can say whether the lot came back
    *  readable, and so the round below can remount over what just arrived. */
   const [batch, setBatch] = useState<Batch | null>(null);
+  /** Bumped when a batch ends, to rebuild the round below over what just arrived. */
+  const [batchStamp, setBatchStamp] = useState(0);
 
   const folder = useLocalSourceFolder(root, path, Boolean(root));
 
@@ -218,6 +224,7 @@ function ImportFromDisk() {
     setProgress(null);
     setSelected([]);
     setBatch({ contentIds: registered, created, unchanged, failed });
+    setBatchStamp((previous) => previous + 1);
     const summary = `${created} registered, ${unchanged} unchanged, ${failed} failed`;
     if (failed) toast.error("Some courses could not be registered.", { description: summary });
     else toast.success("Import finished.", { description: summary });
@@ -234,11 +241,12 @@ function ImportFromDisk() {
   return (
     <div className="max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Import courses from disk</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Register generated courses from a folder on the machine running the API. Every folder
-          inside the one you scan is treated as one course, in the format and by the generator
-          declared below. Local development only.
+        <h1 className="text-2xl font-semibold tracking-tight">Import &amp; measure</h1>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+          One errand, top to bottom: say which generator version made these courses, bring
+          them in from a folder on the machine running the API, and start the round that
+          measures them. Every folder inside the one you scan is one course. Nothing is fixed
+          until you start the round. Local development only.
         </p>
       </div>
 
@@ -464,7 +472,87 @@ function ImportFromDisk() {
           )}
         </CardContent>
       </Card>
+
+      {/* 3 --------------------------------------------------------------------- measure
+          No Card of its own: `StudyForm` is one already, and a card inside a card would
+          draw a box around a box for nothing. */}
+      <div className="space-y-3">
+        <div className="text-lg font-semibold leading-none tracking-tight">3 · Measure</div>
+        <ComposeRound
+          generatorVersionId={declaredGenerator}
+          generatorDeclared={generatorDeclared}
+          batchStamp={batchStamp}
+        />
+      </div>
     </div>
+  );
+}
+
+/**
+ * The round, composed where the courses arrived.
+ *
+ * This is `StudyForm` and nothing else — the same instrument, judge, scope and commissions
+ * it asks for anywhere, prefilled with what the page above already declared. Composing a
+ * dataset in a second place would be a second set of rules to keep in step.
+ *
+ * The remount is the delicate part. The form reads its initial values once, at mount, so it
+ * has to be rebuilt when the declared version changes and when a batch finishes — otherwise
+ * the courses just imported would not be ticked, which is the whole errand. The cost is that
+ * a batch discards anything already typed below. Accepted because the page reads top to
+ * bottom: you import, and *then* you scroll down to compose.
+ */
+function ComposeRound({
+  generatorVersionId,
+  generatorDeclared,
+  batchStamp,
+}: {
+  generatorVersionId: Uuid | null;
+  generatorDeclared: boolean;
+  batchStamp: number;
+}) {
+  const contents = useContents();
+  const generatorVersions = useGeneratorVersions();
+
+  if (!generatorDeclared || generatorVersionId === null) {
+    return (
+      <p className="rounded border bg-muted/40 p-3 text-sm text-muted-foreground">
+        {generatorDeclared
+          ? "These courses declare no generator, and a round names the versions it measures — so there is nothing here to compose. Attribute one from Courses to bring them in."
+          : "Declare above which generator version made these courses. A round measures versions, so it cannot be composed until one is named."}
+      </p>
+    );
+  }
+
+  // Mounting before the courses arrive would freeze the commissions at none, and the form
+  // would never pick them up — it reads them once.
+  if (contents.data === undefined || generatorVersions.data === undefined) {
+    return <LoadingState label="Reading what this version made…" />;
+  }
+
+  const group = groupByVersion(contents.data, generatorVersions.data).find(
+    (candidate) => candidate.key === generatorVersionId,
+  );
+  const version = generatorVersions.data.find(
+    (candidate) => candidate.generator_version_id === generatorVersionId,
+  );
+
+  if (!group || group.briefIds.size === 0) {
+    return (
+      <p className="rounded border bg-muted/40 p-3 text-sm text-muted-foreground">
+        Nothing is registered against {version ? `${version.name} ${version.version}` : "this version"}{" "}
+        yet. Register the courses above and the round will compose itself from what they
+        brought.
+      </p>
+    );
+  }
+
+  return (
+    <StudyForm
+      key={`${generatorVersionId}:${batchStamp}`}
+      initialName={version ? `${version.name} ${version.version}` : undefined}
+      initialScope={[generatorVersionId]}
+      initialBriefIds={[...group.briefIds]}
+    />
   );
 }
 

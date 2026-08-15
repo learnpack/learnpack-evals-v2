@@ -164,7 +164,7 @@ unaccepted format may well have been read. Acceptance only explains a *missing* 
 
 ## Declaring which generator version made something
 
-Every form that asks for one — *Add course*, *Import from disk*, the attribution act — asks
+Every form that asks for one — *Add course*, *Import &amp; measure*, the attribution act — asks
 with the same control (`components/admin/generator-version-picker.tsx`): the lineage, then
 its version, with **New** beside it. Versions change often in early development, so
 registering one is done wherever it is needed rather than in a screen of its own.
@@ -176,16 +176,28 @@ stops a typo becoming a second lineage (ADR-0031) needs the undivided attention 
 The control carries the three states of ADR-0024, and *unknown* is one of them — a
 declaration, not silence — except in attribution, where naming the version is the whole act.
 
-## Importing courses from disk (local mode only)
+## Import &amp; measure (local mode only)
 
-`/admin/contents` shows an **Import from disk** button when the build runs with
-`NEXT_PUBLIC_AUTH_MODE=local`. It opens `/admin/contents/import`, which browses the source
-roots the backend declares (`LOCAL_SOURCE_ROOTS`, see `../backend/README.md`), previews what
-registering each folder would do, and registers the ones you tick.
+`/admin/measure` is one errand in three stretches, top to bottom, and it is the page the
+console is arranged around:
 
-The button is behind a build-time constant, so it never reaches a deployed console — and the
-endpoints it uses answer 404 outside local mode anyway. The page states that if you open it
-directly.
+1. **What made these courses** — the generator version, the course format, whether a person
+   edited the output.
+2. **Where they are** — it browses the source roots the backend declares
+   (`LOCAL_SOURCE_ROOTS`, see `../backend/README.md`), previews what registering each folder
+   would do, registers the ones you tick, and then says how many of the lot came back read.
+3. **Measure** — `StudyForm`, the very same one `/admin/studies/new` renders, prefilled with
+   the version declared in 1 and the commissions its courses brought. Composing a dataset in
+   a second place would be a second set of rules to keep in step.
+
+That third stretch reads its initial values once, at mount, so the page rebuilds it when the
+declared version changes and when a batch finishes — otherwise the courses just imported
+would not be ticked. A batch therefore discards anything already typed below it, which the
+top-to-bottom order makes rare: you import, and then you scroll down.
+
+The whole page is behind a build-time constant, so it never reaches a deployed console — the
+scan endpoints answer 404 outside local mode anyway. There the same errand is two screens:
+*Courses → Add course*, then *Studies → New study*.
 
 Two things the page says that are easy to misread as bugs: a folder marked **conflict** needs
 the course version bumped (a registered version is immutable, ADR-0005), and an **already
