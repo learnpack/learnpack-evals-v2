@@ -207,8 +207,23 @@ export function useRegisterBySource() {
         method: "POST",
         body,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
+    onSuccess: () => invalidateAfterRegistration(qc),
   });
+}
+
+/**
+ * Registering a course writes more than the course.
+ *
+ * The intake ACL derives its commission and mints a brief when that one is new (ADR-0022),
+ * and profiling runs inside the same request when the format's extraction is accepted
+ * (ADR-0029). Invalidating only the contents leaves both of those stale — the extraction
+ * column reads the profile that was just written, and a round is composed out of briefs, so
+ * a commission minted a second ago would simply not be on offer.
+ */
+function invalidateAfterRegistration(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: queryKeys.contents });
+  qc.invalidateQueries({ queryKey: queryKeys.briefs });
+  qc.invalidateQueries({ queryKey: queryKeys.profiles });
 }
 
 // ------------------------------------- local source intake (dev only, ADR-0035)
@@ -256,7 +271,7 @@ export function useRegisterLocalPackage() {
     retry: false,
     mutationFn: (body: RegisterLocalRequest) =>
       api<RegisterLocalResponse>("/dev/local-courses/register", { method: "POST", body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
+    onSuccess: () => invalidateAfterRegistration(qc),
   });
 }
 
