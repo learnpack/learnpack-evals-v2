@@ -853,11 +853,12 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
               with different execution-error counts — are not comparable.
             </p>
 
+            <ByGeneratorVersion fitness={fitness} />
+
             {fitness.generators.map((generator) => (
               <div key={generator.generatorVersionId} className="space-y-2">
                 <p className="font-medium">
-                  {generator.name ?? generator.generatorVersionId}
-                  {generator.version ? ` ${generator.version}` : ""}
+                  {generatorLabel(generator)}
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
                     {generator.contents} content{generator.contents === 1 ? "" : "s"} pooled
                   </span>
@@ -900,6 +901,108 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
         )}
       </div>
     </CollapsibleSection>
+  );
+}
+
+function generatorLabel(generator: StudyFitness["generators"][number]) {
+  const name = generator.name ?? generator.generatorVersionId;
+  return generator.version ? `${name} ${generator.version}` : name;
+}
+
+/** The comparison a study measuring several versions exists to make (ADR-0044): one column
+ *  per version over the same commissions, so the answer is read across a row instead of
+ *  reconstructed from tables further down the page.
+ *
+ *  It renders only when there is something to compare. With one version the tables below
+ *  already say everything, and a one-column matrix would dress a single measurement up as a
+ *  comparison — the thing the whole decision is trying not to do. */
+function ByGeneratorVersion({ fitness }: { fitness: StudyFitness }) {
+  const arms = fitness.generators;
+  if (arms.length < 2) return null;
+  const dimensionIds = Object.keys(fitness.study.dimensions ?? {});
+
+  return (
+    <div className="space-y-2">
+      <p className="font-medium">
+        By generator version
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          the same commissions, one column each
+        </span>
+      </p>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Dimension</TableHead>
+              {arms.map((arm) => (
+                <TableHead key={arm.generatorVersionId} className="text-right">
+                  {generatorLabel(arm)}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {dimensionIds.map((id) => (
+              <TableRow key={id}>
+                <TableCell>{id}</TableCell>
+                {arms.map((arm) => (
+                  <TableCell key={arm.generatorVersionId} className="text-right">
+                    <FitnessValue value={arm.dimensions[id]?.fitness ?? null} />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+            <TableRow>
+              <TableCell className="text-xs text-muted-foreground">
+                courses · unassessed · execution errors
+              </TableCell>
+              {arms.map((arm) => (
+                <TableCell
+                  key={arm.generatorVersionId}
+                  className="text-right text-xs text-muted-foreground"
+                >
+                  {arm.contents} · {arm.coverage?.notAssessed ?? "—"} ·{" "}
+                  {arm.coverage?.executionErrors ?? "—"}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+      <UnequalCoverage arms={arms} />
+      <p className="text-xs text-muted-foreground">
+        Read the spread under <em>By brief</em> before reading a gap here: a difference
+        between two columns only means something if it is larger than how much one version
+        varies with itself on the same commission (ADR-0039).
+      </p>
+    </div>
+  );
+}
+
+/** ADR-0023 §7 at the version grain: excluded observations shrink a population, so two
+ *  columns computed over different ones are each correct and their difference is not. Said,
+ *  never enforced — a cross-format comparison is legitimate and sometimes the only one
+ *  available (ADR-0044 §7). */
+function UnequalCoverage({ arms }: { arms: StudyFitness["generators"] }) {
+  // A payload composed before the key existed says nothing rather than saying "equal".
+  if (arms.some((arm) => arm.coverage === undefined)) return null;
+  const perCourse = (arm: StudyFitness["generators"][number]) =>
+    arm.contents === 0 ? null : (arm.coverage?.notAssessed ?? 0) / arm.contents;
+  const rates = new Set(arms.map(perCourse).filter((rate) => rate !== null));
+  if (rates.size < 2) return null;
+
+  return (
+    <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
+      These columns were not measured over the same criteria:{" "}
+      {arms
+        .map(
+          (arm) =>
+            `${generatorLabel(arm)} left ${arm.coverage?.notAssessed ?? 0} unassessed across ${arm.contents} course${arm.contents === 1 ? "" : "s"}`,
+        )
+        .join(", ")}
+      . Each value is correct on its own; the difference between them is not, because they
+      have different denominators.
+    </p>
   );
 }
 

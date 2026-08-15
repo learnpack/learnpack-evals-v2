@@ -755,6 +755,11 @@ export interface StudyFitness {
     name: string | null;
     version: string | null;
     contents: number;
+    /** What THIS version's values were not computed over (ADR-0044). Two versions whose
+     *  coverage differs are each correct and their difference is not — the equal-coverage
+     *  rule of ADR-0023 §7, at the grain a study comparing versions is read. Optional and
+     *  read defensively: a payload composed before this key existed has none. */
+    coverage?: { notAssessed: number; executionErrors: number };
   })[];
   unknownExclusions?: string[];
   study: Partial<FitnessLevel>;

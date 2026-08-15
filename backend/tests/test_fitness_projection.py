@@ -302,6 +302,41 @@ def test_a_generator_pools_its_contents_instead_of_averaging_them():
     assert generator["name"] == "learnpack-generator"
 
 
+def test_each_version_publishes_what_its_values_were_not_computed_over():
+    """The check ADR-0023 §7 demands, at the grain a study comparing versions is read
+    (ADR-0044). Both versions here score 1.0 and they did not do the same thing: one was
+    measured on two criteria, the other on one, because its format cannot supply the second.
+    Without the per-version coverage the two look identical and the difference between them
+    reads as zero."""
+    inst = instrument(
+        claims=[claim("cl", "q")],
+        criteria=[criterion("cr-1", "cl"), criterion("cr-2", "cl")],
+    )
+    old, new = uuid4(), uuid4()
+    readable, partial = uuid4(), uuid4()
+
+    result = project(
+        inst,
+        {
+            readable: {"cr-1": "pass", "cr-2": "pass"},
+            partial: {"cr-1": "pass", "cr-2": "not_assessed"},
+        },
+        generators_of={readable: old, partial: new},
+        generators={
+            old: GeneratorInfo(generator_version_id=old, name="gen", version="2.0.0"),
+            new: GeneratorInfo(generator_version_id=new, name="gen", version="2.1.0"),
+        },
+    )
+
+    by_version = {g["version"]: g for g in result["generators"]}
+    assert by_version["2.0.0"]["qualities"]["q"]["fitness"] == 1.0
+    assert by_version["2.1.0"]["qualities"]["q"]["fitness"] == 1.0
+    assert by_version["2.0.0"]["coverage"] == {"notAssessed": 0, "executionErrors": 0}
+    assert by_version["2.1.0"]["coverage"] == {"notAssessed": 1, "executionErrors": 0}
+    # One function behind both grains, so the study's total is the arms' and cannot drift.
+    assert result["assessorCoverage"]["notAssessed"] == 1
+
+
 def test_an_unknown_generator_is_excluded_from_accumulation_and_named():
     inst = instrument(claims=[claim("cl", "q")], criteria=[criterion("cr", "cl")])
     known_generator, attributed, unknown = uuid4(), uuid4(), uuid4()

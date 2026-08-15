@@ -62,6 +62,9 @@ DENOMINATOR_RULE = {
         "execution_error is likewise out (a failure of our run, not of the generator) and "
         "extends the §7 equal-coverage rule to execution variance: two runs of the same "
         "content are comparable only where their executionError counts permit (ADR-0037 §6). "
+        "The same rule governs the generator grain, which is where a study comparing versions "
+        "is read (ADR-0044): each section carries its own coverage, and two versions whose "
+        "coverage differs are each correct and their DIFFERENCE is not. "
         "The formula version stays 1: the state could not exist in rows persisted before "
         "ADR-0037, so no already-computed value changes."
     ),
@@ -191,6 +194,20 @@ def _level(
     return {
         "qualities": {q: qualities[q] for q in sorted(qualities)},
         "dimensions": dict(sorted(_roll_up(qualities, quality_dimensions).items())),
+    }
+
+
+def _coverage(pool: dict[str, list[str]]) -> dict[str, int]:
+    """What a level's values were NOT computed over: the observations this denominator drops.
+
+    Published at the study grain since ADR-0023 §7 and at the generator grain since ADR-0044,
+    for one reason at both: excluding a state means two populations of different size, so
+    "these numbers may be compared" has to be checkable rather than assumed. One function so
+    the two grains cannot drift into counting different things."""
+    states = [state for criterion_states in pool.values() for state in criterion_states]
+    return {
+        "notAssessed": sum(1 for state in states if state == "not_assessed"),
+        "executionErrors": sum(1 for state in states if state == "execution_error"),
     }
 
 
@@ -335,16 +352,16 @@ def compute_fitness(
                 "name": generator.name if generator else None,
                 "version": generator.version if generator else None,
                 "contents": contents_by_generator[generator_id],
+                # This version's own excluded observations. A study that measures two
+                # versions is read here (ADR-0044), and subtracting two values computed
+                # over different populations is the one mistake this grain invites — so
+                # what each was computed over travels with it, normalizable by `contents`.
+                "coverage": _coverage(pooled_by_generator[generator_id]),
                 **_level(pooled_by_generator[generator_id], quality_criteria, quality_dimensions),
             }
         )
 
-    not_assessed = sum(
-        1 for states in study_pool.values() for state in states if state == "not_assessed"
-    )
-    execution_errors = sum(
-        1 for states in study_pool.values() for state in states if state == "execution_error"
-    )
+    study_coverage = _coverage(study_pool)
     return header | {
         "assessorCoverage": {
             # Two lists that answer two different questions, and the difference is the
@@ -355,8 +372,7 @@ def compute_fitness(
             # different artifacts, which is exactly the comparison the note forbids.
             "ratifiedAssessors": sorted(str(r.assessor_id) for r in ratifications),
             "assessorsUsed": assessors_used(current),
-            "notAssessed": not_assessed,
-            "executionErrors": execution_errors,
+            **study_coverage,
             "note": (
                 "Values computed under different assessor coverage are not comparable: "
                 "not_assessed is outside the denominator, so the population differs. "
