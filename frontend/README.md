@@ -115,6 +115,23 @@ shows up, check that it still works.
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
 - Add the Netlify origin to `ALLOWED_ORIGINS` in the backend.
 
+## Whether a course was read
+
+`/admin/contents` carries an **Extraction** column, because a course that was never read
+enters a study all the same and comes back with its criteria unassessed. Three states, and
+the middle one is the one that reads oddly until you know the domain:
+
+- **read** — a profile was recorded. Quiet, because it asks nothing of anyone.
+- **not read** — no profile exists. Not a failure: automatic profiling declines when no
+  adapter claims the format, when nobody has accepted that adapter's extraction yet, or when
+  the package cannot be fetched over http (ADR-0029).
+- **could not be read** — a profile was recorded as failed; the adapter choked on the package.
+
+The state always comes from the profile row, never from whether the format's extraction is
+accepted — `profile-content` profiles by hand regardless of acceptance, so a course in an
+unaccepted format may well have been read. Acceptance only explains a *missing* profile.
+`/admin/profiles` stays the place that says what to do about either exception.
+
 ## Declaring which generator version made something
 
 Every form that asks for one — *Add course*, *Import from disk*, the attribution act — asks
