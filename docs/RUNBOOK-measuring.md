@@ -90,7 +90,7 @@ beside the course folders are ignored.
 ```bash
 cd backend
 uv run python -m app.cli measure --root generated \
-                                 --path learnpack-generator-04a7dd5-dirty \
+                                 --path learnpack-generator-<version> \
                                  --assessor drafts-hybrid > run.json
 ```
 
@@ -104,9 +104,8 @@ Two flags you will use:
 
 | Flag | When |
 |---|---|
-| `--assessor <name>` | required when more than one judge has been ratified for the instrument. `name` alone picks whatever version the code currently carries; `name:version` pins it. |
+| `--assessor <name>` | required when more than one judge has been ratified for the instrument. `name` alone picks whatever version the code currently carries |
 | `--concurrency N` | how many courses at a time. Defaults to `LLM_MAX_CONCURRENCY` (4). |
-| `--format <name>` | the packaging convention these courses follow. Defaults to `LearnpackV2`. |
 
 Everything else is derived: the instrument comes from the package format, the round's name
 from the folder, the commissions from the packages.

@@ -1,13 +1,14 @@
 # DATA_MODEL — logical Postgres schema
 
 Logical model of the tables the system persists today. Source of truth for shape:
-Alembic migrations under `backend/alembic/versions/` (head = `0017`). Names follow
+Alembic migrations under `backend/alembic/versions/` (head = `0021`). Names follow
 `GLOSSARY.md`. Module boundaries follow `ARCHITECTURE.md`: intra-module foreign keys
 are real; many cross-module identifiers are **app-validated references** (no DB FK),
 shown below as dashed links.
 
 Retired and absent from this model: `metadata_schemas`, `contents.metadata`,
-`campaigns.metadata_view` (ADR-0017).
+`campaigns.metadata_view` (ADR-0017) and `generator_artifacts` (ADR-0030 — a generator
+declares reference data about itself, not artifacts).
 
 ## 1. Module map
 
@@ -325,12 +326,13 @@ erDiagram
     criterion_outcomes {
         uuid evaluation_id PK_FK
         text criterion_id PK
-        text outcome "pass | fail | not_applicable | no_evidence | not_assessed"
+        text outcome "pass|fail|not_applicable|no_evidence|not_assessed|execution_error"
         bool derived
         text quote
         jsonb locator
         text failure_mode
         text comment
+        jsonb execution_cause "iff execution_error; {task, kind, message}"
     }
 
     computed_metrics {
@@ -377,6 +379,13 @@ erDiagram
 `evaluations.content_id` and `evaluations.instrument_version_id` are cross-module references
 without DB FK. Pass outcomes are always quoted and not derived; fail is quoted or
 absence-derived.
+
+**`execution_error` is a sixth outcome and is CHECK-enforced from both sides** (ADR-0037):
+`execution_cause` is present *if and only if* the outcome is `execution_error`, and such a row
+is always `derived` with no quote — it records that the run failed on that criterion, which is
+a fact about the run and never about the content. It is the one outcome that says nothing
+about the evaluand, which is why the fitness projection leaves it out of the denominator
+alongside `not_assessed` and `not_applicable`.
 
 ## 7. orchestration + golden_dataset
 
@@ -481,6 +490,11 @@ erDiagram
 (no FK); `assessor_id` has one, because it is the third leg of the triple a study's result
 is defined by (ADR-0042) and every read of the study filters its judgments by it. The
 fitness projection is computed on read and persists nothing.
+
+`study_reports.report` is the **frozen document**, opaque to SQL: its shape is versioned in
+code (`SCHEMA_VERSION` inside the payload), not by a migration, so a report written under an
+older version keeps the shape it was written with and readers must treat new fields as
+optional (ADR-0041).
 
 ## 9. platform — events outbox
 
