@@ -159,11 +159,8 @@ export default function ContentsPage() {
           {/* Local development only, and a build-time constant: the endpoints behind that
               page do not exist in any other mode, so the button never ships to one. */}
           {IS_LOCAL_AUTH ? (
-            <Link
-              href="/admin/contents/import"
-              className={buttonVariants({ variant: "outline" })}
-            >
-              <HardDrive className="h-4 w-4" /> Import from disk
+            <Link href="/admin/measure" className={buttonVariants({ variant: "outline" })}>
+              <HardDrive className="h-4 w-4" /> Import &amp; measure
             </Link>
           ) : null}
           <Button onClick={() => setCreating(true)}>
