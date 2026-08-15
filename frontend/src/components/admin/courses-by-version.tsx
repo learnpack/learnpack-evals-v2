@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { summarizeExtraction, type ExtractionState } from "@/lib/extraction";
-import type { ContentResponse, GeneratorVersionResponse, Uuid } from "@/lib/api/types";
+import { groupByVersion, sharedCommissions, type VersionGroup } from "@/lib/versions";
+import type { ContentResponse, GeneratorVersionResponse } from "@/lib/api/types";
 
 /**
  * The course list read as what it is: a set of generator versions and what each one made.
@@ -237,61 +238,4 @@ function CompareDialog({
       )}
     </Dialog>
   );
-}
-
-// -------------------------------------------------------------------------------- pure
-
-/** One generator version and everything registered against it. `version: null` is the
- *  declared void of ADR-0024 — a group, but never something a round can measure. */
-type VersionGroup = {
-  /** The version id, or `unknown`. Doubles as the value the study link carries. */
-  key: string;
-  version: GeneratorVersionResponse | null;
-  courses: ContentResponse[];
-  /** The commissions it answered. A course with no brief is counted apart, not as one. */
-  briefIds: Set<Uuid>;
-  withoutBrief: number;
-  formats: string[];
-};
-
-const UNKNOWN = "unknown";
-
-function groupByVersion(
-  contents: ContentResponse[],
-  generatorVersions: GeneratorVersionResponse[],
-): VersionGroup[] {
-  const byKey = new Map<string, ContentResponse[]>();
-  for (const content of contents) {
-    const key = content.generator_version_id ?? UNKNOWN;
-    byKey.set(key, [...(byKey.get(key) ?? []), content]);
-  }
-
-  const groups = [...byKey].map(([key, courses]) => ({
-    key,
-    version:
-      generatorVersions.find((version) => version.generator_version_id === key) ?? null,
-    courses,
-    briefIds: new Set(
-      courses.map((course) => course.brief_id).filter((id): id is Uuid => id !== null),
-    ),
-    withoutBrief: courses.filter((course) => course.brief_id === null).length,
-    formats: [...new Set(courses.map((course) => course.package_format))].sort(),
-  }));
-
-  // Lineage, then version — the same `localeCompare` the rest of the console uses, with the
-  // same known flaw (2.0.10 sorts before 2.0.9). Unknown last: it is not a version.
-  return groups.sort((a, b) => {
-    if (!a.version) return 1;
-    if (!b.version) return -1;
-    return (
-      a.version.name.localeCompare(b.version.name) ||
-      a.version.version.localeCompare(b.version.version)
-    );
-  });
-}
-
-function sharedCommissions(a: VersionGroup, b: VersionGroup): number {
-  let shared = 0;
-  for (const briefId of a.briefIds) if (b.briefIds.has(briefId)) shared += 1;
-  return shared;
 }
