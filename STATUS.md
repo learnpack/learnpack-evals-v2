@@ -82,6 +82,23 @@ per version), so the last screen before the irreversible act says what the round
 **Deliberately not refused:** the cross-format A/B, which is exactly the change worth
 measuring when a generator changes its output format (ADR-0044 §7).
 
+**And the comparison is now legible where it belongs — the fitness projection, not the
+report.** ADR-0023 built the per-generator-version grain as an optimization signal and kept
+it out of `study_reports`; that is where two versions are compared, so this changed nothing
+frozen and `SCHEMA_VERSION` did not move. `FITNESS_FORMULA_VERSION` stays `"1"` too: no
+state entered or left a denominator. Each generator section now carries **its own coverage**
+(`notAssessed`, `executionErrors`), which is what makes ADR-0023 §7's equal-coverage rule
+checkable at this grain instead of merely stated — two versions can both read 1.00 and have
+been measured over a different number of criteria, and before this nothing on the page could
+say so. One `_coverage` helper serves the study grain and the version grain, so the total
+and its parts cannot drift into counting different things. The console renders the versions
+**side by side** — one column each, one row per dimension, with courses/unassessed/errors
+under them — instead of the sequence of separate tables it used to be, plus the amber band
+when the columns' coverage differs and a line pointing at *By brief* first: a gap between
+two columns only means something if it is larger than how much one version varies with
+itself on the same commission (ADR-0039). The matrix renders only from two versions up; with
+one, a single-column comparison would dress a measurement up as something it is not.
+
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
 
