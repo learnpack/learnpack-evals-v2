@@ -64,10 +64,23 @@ already did rather than guessing what they meant. **The CLI contract broke on pu
 `--generator-version-id`, and a study that never passes one cannot open — the GA scripts
 have to name a scope. The console asks for it as a required field between the judge and the
 courses, and narrows the course counts to the versions ticked so the number on screen is the
-number that will run. What the form does **not** do yet: the per-brief × version breakdown
-that makes an unpaired commission visible, and the per-version coverage warning that says
-when two versions' numbers are not comparable (ADR-0023 §7 — the cross-format A/B is
-permitted and warned, never refused).
+number that will run.
+
+**The form then learned to show the comparison, which is the half a person acts on.** Once a
+round measures more than one version, each brief row carries a count **per version** — the
+zeros included, because a commission that answered one version and not another is the
+unpaired A/B that nobody would otherwise notice until the numbers were read (the shape
+ADR-0039 settled for the report, applied where it can still be fixed). Three warnings sit
+under the list, all of them informing and none blocking (12-define invariant 1): commissions
+missing from some arm · **arms whose coverage differs**, which is ADR-0023 §7 said where it
+is actionable — two versions leaving a different number of criteria unassessed have
+different denominators, so their values are each correct and their difference is not · and,
+under *Every version*, the plain statement that the round pools the versions the briefs
+brought and its header reads them as one population. The summary line and the confirmation
+dialog name the scope in the same clause (*comparing 2 generator versions*, with the count
+per version), so the last screen before the irreversible act says what the round is.
+**Deliberately not refused:** the cross-format A/B, which is exactly the change worth
+measuring when a generator changes its output format (ADR-0044 §7).
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
