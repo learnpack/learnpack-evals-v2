@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/** The open modals, innermost last. A form can open a dialog of its own — registering a
+ *  generator version from inside the course form is the ordinary case — and without a stack
+ *  both would answer the same Escape, and the inner one closing would give the page back its
+ *  scroll while the outer one is still up. */
+const openDialogs: object[] = [];
 
 /** Minimal controlled modal — enough for the admin forms, no Radix dependency. */
 export function Dialog({
@@ -20,20 +27,42 @@ export function Dialog({
   children: ReactNode;
   className?: string;
 }) {
+  // Held in a ref so the effect depends on `open` alone: an inline `onClose` would otherwise
+  // re-register on every render, and with it re-order the stack under an inner dialog.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
+    const token = {};
+    openDialogs.push(token);
     document.body.style.overflow = "hidden";
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (openDialogs[openDialogs.length - 1] !== token) return;
+      onCloseRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      const at = openDialogs.indexOf(token);
+      if (at !== -1) openDialogs.splice(at, 1);
+      if (openDialogs.length === 0) document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
 
-  if (!open) return null;
+  // Rendered into the body, not where it is written. A modal is written wherever it is
+  // opened from — and that is often inside a form, which would make its own fields
+  // descendants of that form: invalid HTML, and a hydration error. Portalling also keeps it
+  // clear of any ancestor's overflow or stacking context.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  return (
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:items-center">
       <div
         role="dialog"
@@ -55,6 +84,7 @@ export function Dialog({
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
         <div className="mt-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { ContentForm } from "@/components/admin/content-form";
+import { GeneratorVersionPicker } from "@/components/admin/generator-version-picker";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
@@ -276,7 +277,7 @@ export default function ContentsPage() {
                               ) : null}
                             </span>
                           ) : (
-                            <AttributeGeneratorCell content={c} generators={generators ?? []} />
+                            <AttributeGeneratorCell content={c} />
                           )}
                         </TableCell>
                         <TableCell>
@@ -322,13 +323,7 @@ export default function ContentsPage() {
 
 /** An unknown generator is a declared void — and the one thing that can still be filled,
  *  once (ADR-0024). Everything else about a registered content stays immutable. */
-function AttributeGeneratorCell({
-  content,
-  generators,
-}: {
-  content: ContentResponse;
-  generators: GeneratorVersionResponse[];
-}) {
+function AttributeGeneratorCell({ content }: { content: ContentResponse }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState("");
   const attribute = useAttributeGenerator();
@@ -370,28 +365,14 @@ function AttributeGeneratorCell({
         title={`Attribute a generator to ${content.external_id}`}
         description="Records a generator learnt after registration. It fills the declared unknown once and cannot be changed afterwards."
       >
-        {generators.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No generator version registered yet — register one first in /admin/generators.
-          </p>
-        ) : (
-          <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
-            <option value="" disabled>
-              Choose…
-            </option>
-            {[...new Map(generators.map((g) => [g.name, g] as const)).keys()].map((name) => (
-              <optgroup key={name} label={name}>
-                {generators
-                  .filter((g) => g.name === name)
-                  .map((g) => (
-                    <option key={g.generator_version_id} value={g.generator_version_id}>
-                      {g.version}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </Select>
-        )}
+        {/* No unknown option: attributing IS naming the version, so the answer this act
+            exists to record is the only one it can take. */}
+        <GeneratorVersionPicker
+          value={selected}
+          onChange={setSelected}
+          allowUnknown={false}
+          className="sm:grid-cols-1"
+        />
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)} disabled={attribute.isPending}>
             Cancel
