@@ -1,5 +1,5 @@
-"""Admin CLI: `python -m app.cli seed | seed-workbench | set-role | import-learnpack |
-register-package |
+"""Admin CLI: `python -m app.cli seed | seed-workbench | measure | set-role |
+import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate | declare-study |
 update-study | open-study | sign-off-study | show-preview |
@@ -167,6 +167,7 @@ from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyInstrumentRepository,
     SqlAlchemyReferenceDataRepository,
 )
+from app.modules.evaluation_design.public import InstrumentQueries
 from app.modules.evaluation_studies.application.draft import (
     UNCHANGED,
     AssessorHasNotRatified,
@@ -2121,7 +2122,7 @@ def run_show_preview(study_id: UUID) -> int:
     return 0
 
 
-def run_show_fitness(study_id: UUID) -> int:
+def _fitness_projection(study_id: UUID) -> dict[str, Any] | None:
     """The fitness projection over a study (ADR-0023) — the GA's read, composed on demand.
 
     Deliberately not part of `show-report`: an optimization signal is not a judgment, and
@@ -2131,7 +2132,7 @@ def run_show_fitness(study_id: UUID) -> int:
         study = SqlAlchemyStudyRepository(session).get_by_id(study_id)
         if study is None:
             print(f"study {study_id} not found", file=sys.stderr)
-            return 1
+            return None
         instrument_version_id = study.instrument_version_id
         registry = StudiesRegistryGateway(session)
         contents = registry.get_contents_by_ids(list(study.content_ids))
@@ -2180,29 +2181,29 @@ def run_show_fitness(study_id: UUID) -> int:
             ),
             computed_at=datetime.now(UTC),
         )
+    return projection
+
+
+def run_show_fitness(study_id: UUID) -> int:
+    projection = _fitness_projection(study_id)
+    if projection is None:
+        return 1
     print(json.dumps(projection, indent=2))
     return 0
 
 
-def run_evaluate_study(
-    study_id: UUID, assessor_spec: str | None, concurrency: int | None, re_evaluate: bool
-) -> int:
-    """Evaluate every course of an open study, in one bounded run.
+def _evaluate_batch(
+    study_id: UUID,
+    package: AssessorPackage | None,
+    concurrency: int | None,
+    re_evaluate: bool,
+) -> dict[str, Any] | None:
+    """Run one batch and answer its summary, or `None` when it was refused before starting.
 
-    Progress goes to stderr and the summary to stdout, the same split `evaluate --dry-run`
-    uses: what a script reads is one JSON document, and a batch of twenty courses would
-    otherwise bury it in progress lines. Ctrl-C cancels — the same token the console will
-    use — and the summary still prints, because half a batch is a result too.
+    Progress goes to stderr; the summary is returned rather than printed, because a caller
+    may have more to say in the same JSON document. Ctrl-C cancels — the same token the
+    console uses — and the summary still comes back, because half a batch is a result too.
     """
-    # Optional now: the study pins its assessor (ADR-0042 §10). Passing one still works and
-    # is checked against the pin, so a GA script written before the pin keeps running and a
-    # disagreement is refused rather than quietly resolved.
-    package = None
-    if assessor_spec is not None:
-        package = _assessor_from_spec(assessor_spec)
-        if package is None:
-            return 1
-
     workers = concurrency if concurrency is not None else get_settings().llm_max_concurrency
     try:
         run = batch_runs.prepare(
@@ -2212,7 +2213,7 @@ def run_evaluate_study(
         # Refused before a single call was paid for: every course would have failed the
         # same way, so the message names the act that fixes it.
         print(f"{exc} [{exc.kind}]", file=sys.stderr)
-        return 1
+        return None
 
     trace = observability.trace_path(f"batch-{run.run_id}")
     sinks = [_print_call]
@@ -2248,10 +2249,32 @@ def run_evaluate_study(
     if trace is not None and trace.exists():
         print(f"LLM trace: {trace}", file=sys.stderr)
 
-    print(json.dumps(_batch_summary(view), indent=2))
-    # A batch that ended for a reason is a failed command, even though what succeeded stays
-    # persisted: a script must not read "cancelled" or "refused" as a finished generation.
-    return 0 if view.status == "done" and view.failed == 0 else 1
+    return _batch_summary(view)
+
+
+def _batch_finished(summary: dict[str, Any] | None) -> bool:
+    """A batch that ended for a reason is a failed command, even though what succeeded stays
+    persisted: a script must not read "cancelled" or "refused" as a finished generation."""
+    return summary is not None and summary["status"] == "done" and summary["totals"]["failed"] == 0
+
+
+def run_evaluate_study(
+    study_id: UUID, assessor_spec: str | None, concurrency: int | None, re_evaluate: bool
+) -> int:
+    """Evaluate every course of an open study, in one bounded run."""
+    # Optional now: the study pins its assessor (ADR-0042 §10). Passing one still works and
+    # is checked against the pin, so a GA script written before the pin keeps running and a
+    # disagreement is refused rather than quietly resolved.
+    package = None
+    if assessor_spec is not None:
+        package = _assessor_from_spec(assessor_spec)
+        if package is None:
+            return 1
+
+    summary = _evaluate_batch(study_id, package, concurrency, re_evaluate)
+    if summary is not None:
+        print(json.dumps(summary, indent=2))
+    return 0 if _batch_finished(summary) else 1
 
 
 def _cancel_batch(run: batch_runs.BatchRun) -> None:
@@ -2300,6 +2323,288 @@ def _batch_summary(view: batch_runs.BatchView) -> dict[str, Any]:
             for outcome in view.outcomes
         ],
     }
+
+
+# --------------------------------------------------------------------------- measure
+# One generation, from the folder the generator wrote it into to the score. Nothing new
+# happens here: it is register (ADR-0027) → declare and open a study whose scope is that one
+# version (ADR-0044) → evaluate it in batch (ADR-0040) → read the fitness projection
+# (ADR-0023), which is the sequence a person ran by hand with six commands and four ids
+# copied between them. What the chaining removes is the ids, and with them the failure that
+# was actually happening: a round measuring a dataset nobody meant to name.
+
+# What the generator under measurement emits today. `register-package` keeps LearnpackV1 as
+# its default because changing it would re-read every documented invocation with the wrong
+# adapter; this command is new and can start from where the work is.
+MEASURE_FORMAT = "LearnpackV2"
+
+
+class _NothingToMeasure(Exception):
+    """The generation cannot be turned into a round, and the message says what would fix it."""
+
+
+def _published_instrument_for(package_format: str) -> str:
+    """The published instrument version bound to this format.
+
+    Derived rather than declared: an instrument states which formats it binds (ADR-0032), so
+    asking the store is asking the instrument. More than one published version binding the
+    same format is a real choice and is refused — that is the norm the round is measured
+    against, and `seed-workbench` publishes one per lineage precisely so this is unambiguous.
+    """
+    with SessionLocal() as session:
+        matching = sorted(
+            snapshot.instrument_version_id
+            for snapshot in InstrumentQueries(session).list_instruments()
+            if snapshot.status == "published"
+            and any(binding.package_format == package_format for binding in snapshot.bindings)
+        )
+    if not matching:
+        raise _NothingToMeasure(
+            f"no published instrument binds {package_format} — publish one "
+            "(`seed-workbench`, or the Publish button in /admin/instruments)"
+        )
+    if len(matching) > 1:
+        raise _NothingToMeasure(
+            f"{len(matching)} published instrument versions bind {package_format} "
+            f"({', '.join(matching)}) — name the one this round measures against with "
+            "--instrument-version-id"
+        )
+    return matching[0]
+
+
+def _ratified_judge(instrument_version_id: str, spec: str | None) -> tuple[UUID, AssessorPackage]:
+    """The assessor this round is judged by: the one that has ratified the instrument
+    version, or the one `--assessor` names among them.
+
+    Only ratified packages are offered, which is the ADR-0036 stance — the option that would
+    be refused is never presented. `--assessor` takes `name` or `name:version`: the version
+    is what identifies the artifact (ADR-0016) and stays available, but a loop that runs every
+    day should not have to be edited on every bump to keep naming the current one.
+    """
+    wanted_name, _, wanted_version = (spec or "").partition(":")
+    with SessionLocal() as session:
+        ratified = {
+            info.assessor_id
+            for info in StudiesEvaluationGateway(session).list_ratifications(instrument_version_id)
+        }
+        assessors = SqlAlchemyAssessorRepository(session)
+        candidates = [
+            (row.id, package)
+            for package in AUTOMATED_ASSESSORS.values()
+            if (row := assessors.get_automated(package.name, package.version)) is not None
+            and row.id in ratified
+        ]
+
+    offered = ", ".join(sorted(p.display_name for _, p in candidates)) or "none"
+    if spec:
+        candidates = [
+            (assessor_id, package)
+            for assessor_id, package in candidates
+            if package.name == wanted_name
+            and (not wanted_version or package.version == wanted_version)
+        ]
+        if not candidates:
+            raise _NothingToMeasure(
+                f"{spec} has not ratified {instrument_version_id} — ratified: {offered}"
+            )
+    if not candidates:
+        raise _NothingToMeasure(
+            f"no assessor has ratified {instrument_version_id} — ratify one "
+            "(`seed-workbench`, or the Ratify button in /admin/assessors)"
+        )
+    if len(candidates) > 1:
+        raise _NothingToMeasure(
+            f"{len(candidates)} assessors have ratified {instrument_version_id} ({offered}) — "
+            "name the one that judges this round with --assessor"
+        )
+    return candidates[0]
+
+
+def _recipe_from_contents(
+    content_ids: list[UUID], generator_version_id: UUID
+) -> tuple[list[UUID], list[str], list[str]]:
+    """The briefs a study's recipe is made of, the courses no recipe can reach, and the
+    courses that are not this generation's after all.
+
+    A recipe is briefs, not contents (13-code §3.6), so a course whose package carried no
+    commission cannot enter a study through any recipe. And the dataset is briefs × the
+    scope's versions (ADR-0044), so a course declaring another version does not enter this
+    round either — which happens for a reason worth naming: re-registering an unchanged
+    course returns the existing one untouched and discards the declared generator
+    (ADR-0035 §9), so a course first registered under another version keeps it.
+
+    Both are reported rather than silently dropped: "I registered twelve and the round
+    measured eleven" is exactly the kind of arithmetic nobody re-does.
+    """
+    with SessionLocal() as session:
+        contents = StudiesRegistryGateway(session).get_contents_by_ids(content_ids)
+    brief_ids: list[UUID] = []
+    for content in contents:
+        if content.brief_id is not None and content.generator_version_id == generator_version_id:
+            if content.brief_id not in brief_ids:
+                brief_ids.append(content.brief_id)
+    return (
+        brief_ids,
+        [c.external_id for c in contents if c.brief_id is None],
+        [c.external_id for c in contents if c.generator_version_id != generator_version_id],
+    )
+
+
+def _reusable_study(
+    name: str, instrument_version_id: str, assessor_id: UUID, content_ids: list[UUID]
+) -> Study | None:
+    """An open study this exact round would re-declare, if there is one.
+
+    Re-running `measure` on the same folder has to mean *resume*: the batch already skips
+    what this assessor judged, and declaring a second study over the same courses would split
+    one round's judgments across two documents. The match is deliberately total — same name,
+    same norm, same judge, same dataset — so it can never silently continue a round that is
+    not this one; anything less than identical declares a new study.
+    """
+    with SessionLocal() as session:
+        for study in SqlAlchemyStudyRepository(session).list_all():
+            if (
+                study.name == name
+                and study.status == "open"
+                and study.instrument_version_id == instrument_version_id
+                and study.assessor_id == assessor_id
+                and set(study.content_ids) == set(content_ids)
+            ):
+                return study
+    return None
+
+
+def _declare_and_open(name: str, description: str, selection: StudySelection) -> Study:
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        study = DeclareStudy(
+            studies=SqlAlchemyStudyRepository(session),
+            registry=StudiesRegistryGateway(session),
+            design=StudiesDesignGateway(session),
+            evaluation=StudiesEvaluationGateway(session),
+            publisher=uow.events,
+            uow=uow,
+        )(DeclareStudyCommand(name=name, description=description, selection=selection))
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        return OpenStudy(studies=SqlAlchemyStudyRepository(session), publisher=uow.events, uow=uow)(
+            OpenStudyCommand(study_id=study.id)
+        )
+
+
+def run_measure(
+    root_key: str,
+    path: str,
+    package_format: str,
+    assessor_spec: str | None,
+    instrument_version_id: str | None,
+    name: str | None,
+    concurrency: int | None,
+    re_evaluate: bool,
+) -> int:
+    """A folder of generated courses in, a score out."""
+    try:
+        root = _declared_root(root_key)
+        folder = local_sources.resolve(root, path)
+    except (_UndeclaredRoot, local_sources.LocalSourceError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    # The norm and the judge first, and only then anything that writes. Registering a
+    # generation is a fetch per lesson per course and profiles each one, and reading the
+    # folder's name registers the version it declares — none of which is worth doing for a
+    # round that has nothing to judge it with. Same order the batch itself uses: everything
+    # refusable is refused before anything is paid for (ADR-0040).
+    try:
+        version_id = instrument_version_id or _published_instrument_for(package_format)
+        assessor_id, package = _ratified_judge(version_id, assessor_spec)
+    except _NothingToMeasure as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    if folder.name == "unknown":
+        # A round's scope is which versions it measures (ADR-0044); a folder that declares
+        # none leaves it undeclarable, and "all of them" is not the same statement. Checked
+        # by name rather than by resolving it, so the refusal costs nothing either.
+        print(
+            f"folder '{folder.name}' declares no generator version, so there is nothing for "
+            "the round to be about — register these courses with `register-package` and "
+            "compose a study by hand, or name the version in the folder",
+            file=sys.stderr,
+        )
+        return 1
+    with SessionLocal() as session:
+        try:
+            generator_version_id = _generator_for_folder(session, folder.name)
+        except UnknownGeneratorVersion as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    assert generator_version_id is not None  # only the `unknown` folder answers None
+
+    registration = _register_tree(root.path, package_format, "unknown", folder=folder.name)
+    if registration is None:
+        return 1
+    if not registration.content_ids:
+        print(f"no course of '{folder.name}' could be registered", file=sys.stderr)
+        return 1
+
+    brief_ids, unreachable, other_version = _recipe_from_contents(
+        registration.content_ids, generator_version_id
+    )
+    for external_id in unreachable:
+        print(
+            f"  {external_id}: registered with no commission — a recipe is briefs, so this "
+            "course cannot enter the round",
+            file=sys.stderr,
+        )
+    for external_id in other_version:
+        print(
+            f"  {external_id}: already registered under a different generator version, which "
+            "a re-registration cannot repair (ADR-0035 §9) — it is not part of this round",
+            file=sys.stderr,
+        )
+    if not brief_ids:
+        print(
+            f"nothing of '{folder.name}' belongs to this round: "
+            f"{len(unreachable)} course(s) carry no commission and {len(other_version)} were "
+            "registered under another generator version. A course keeps the version it was "
+            "first registered with, so a store that already holds these under another one "
+            "measures them there — or start from a clean store (`task db:reset`)",
+            file=sys.stderr,
+        )
+        return 1
+
+    study_name = name or folder.name
+    study = _reusable_study(study_name, version_id, assessor_id, registration.content_ids)
+    if study is not None:
+        print(f"resuming the open study {study.id} ({study_name})", file=sys.stderr)
+    else:
+        try:
+            study = _declare_and_open(
+                study_name,
+                f"Measured from {root.key}/{folder.name} with {package.display_name}.",
+                StudySelection(
+                    instrument_version_id=version_id,
+                    assessor_id=assessor_id,
+                    brief_ids=brief_ids,
+                    generator_scope=(generator_version_id,),
+                ),
+            )
+        except _STUDY_ERRORS as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"opened study {study.id} ({study_name}): {_describe(study)}", file=sys.stderr)
+
+    summary = _evaluate_batch(study.id, package, concurrency, re_evaluate)
+    if summary is None:
+        return 1
+    fitness = _fitness_projection(study.id)
+
+    # One document, because one command produced it: a script reading a generation wants the
+    # score beside the run that produced it, and reading the two separately is where a value
+    # gets paired with the wrong round.
+    print(json.dumps({"batch": summary, "fitness": fitness}, indent=2))
+    return 0 if _batch_finished(summary) and fitness is not None else 1
 
 
 # --------------------------------------------------------------------------- seed-workbench
@@ -2927,6 +3232,54 @@ def main(argv: list[str] | None = None) -> int:
         f"own {BUILTIN_SOURCE_ROOT}/ tree)",
     )
 
+    measure_parser = subparsers.add_parser(
+        "measure",
+        help="one generation, folder to score: register, open a round over it, evaluate it "
+        "in batch and print the fitness projection",
+    )
+    measure_parser.add_argument(
+        "--root",
+        dest="root_key",
+        default=BUILTIN_SOURCE_ROOT,
+        help="which declared source root the generation lives in (LOCAL_SOURCE_ROOTS; "
+        f"default: the repo's own {BUILTIN_SOURCE_ROOT}/ tree)",
+    )
+    measure_parser.add_argument(
+        "--path",
+        required=True,
+        help="the folder inside that root holding this generation's courses; its name "
+        "declares the generator version (<name>-<version> or <name>@<version>)",
+    )
+    measure_parser.add_argument(
+        "--format",
+        dest="package_format",
+        default=MEASURE_FORMAT,
+        help=f"the PackageFormat of these courses (default: {MEASURE_FORMAT})",
+    )
+    measure_parser.add_argument(
+        "--assessor",
+        default=None,
+        help="name or name:version — required only when more than one assessor has ratified "
+        "the instrument version this round measures against",
+    )
+    measure_parser.add_argument(
+        "--instrument-version-id",
+        default=None,
+        help="the published version to measure against; derived from the format's binding "
+        "unless more than one publishes it",
+    )
+    measure_parser.add_argument(
+        "--name", default=None, help="what to call the round (default: the folder's name)"
+    )
+    measure_parser.add_argument("--concurrency", type=int, default=None)
+    measure_parser.add_argument(
+        "--re-evaluate",
+        action="store_true",
+        dest="re_evaluate",
+        help="judge courses this assessor already judged too (default: skip them, so "
+        "re-running resumes)",
+    )
+
     workbench_parser = subparsers.add_parser(
         "seed-workbench",
         help="local-only: publish the instruments, accept the extractions, ratify the "
@@ -3252,6 +3605,17 @@ def main(argv: list[str] | None = None) -> int:
             args.version,
             args.consumable_url,
             args.root_key,
+        )
+    elif args.command == "measure":
+        return run_measure(
+            args.root_key,
+            args.path,
+            args.package_format,
+            args.assessor,
+            args.instrument_version_id,
+            args.name,
+            args.concurrency,
+            args.re_evaluate,
         )
     elif args.command == "seed-workbench":
         if not args.file.exists():

@@ -146,6 +146,33 @@ the table added last week. Two instrument drafts nothing reads — `course-draft
 were deleted with it; v1, v2 and v5 stay because the suite reads them, and the assessor's
 coverage test now globs the lineage instead of naming versions.
 
+**And one command now takes a generation from the folder to the score.** Measuring what the
+generator just wrote was `register-package --all` → `declare-study` → `update-study` →
+`open-study` → `evaluate-study` → `show-fitness`, six commands with four ids copied between
+them, which is the pendiente the collaborator's handover was blocked on. **`measure --root
+<key> --path <folder>`** chains them and derives the ids. Nothing new happens inside it: the
+folder's name declares the generator version and that version — one, not "all of them" — is
+the round's scope (ADR-0044), which is the defect the chaining removes rather than the typing.
+The norm is the published instrument bound to the format and the judge is the assessor that
+ratified it, **derived only when the derivation has one answer** and otherwise asking for
+`--instrument-version-id` or `--assessor` (which takes `name` or `name:version`, so a daily
+loop needs no editing on a bump). Both are resolved **before** the folder is registered:
+registering is a fetch per lesson per course and profiles each one, and none of that is worth
+doing for a round with nothing to judge it with — the ADR-0040 stance, applied one level up.
+Re-running **resumes** rather than declaring a second round: an open study with the same name,
+norm, judge and dataset is continued, and anything less than an identical match is a new one.
+Out comes **one** JSON document, `{batch, fitness}`, because reading the run and the score
+separately is where a value gets paired with the wrong round. A folder declaring `unknown` is
+refused — a round's scope is which versions it measures, and "none" is not a version.
+`evaluate-study` and `show-fitness` are unchanged; both now print what `measure` composes.
+**One consequence is worth knowing before the first run:** a course keeps the generator
+version it was first registered with, since a re-registration returns the existing course and
+discards the declared generator (ADR-0035 §9) — so a store that already holds a generation
+under another version measures it there, and `measure` names each such course instead of
+composing an empty dataset. Measured against the real tree, every generation in it is already
+registered under one version, which is the mixed population ADR-0044 was written about;
+`task db:reset` and one `measure` per folder is the clean start.
+
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
 
