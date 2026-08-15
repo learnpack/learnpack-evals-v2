@@ -205,13 +205,28 @@ registered** course whose generator is unknown cannot be fixed by registering it
 re-registering an unchanged package is a no-op, so the row offers the attribution act instead
 (ADR-0024).
 
-## The two acts the console performs on the automated path
+## The three acts the console performs on the automated path
 
-Both are deliberate, irreversible and recorded with their author, so both sit behind a
-dialog that states what is being committed to rather than asking whether you are sure.
+All three are deliberate, irreversible and recorded with their author, so all three sit
+behind a dialog that states what is being committed to rather than asking whether you are
+sure.
 
 **Publish an instrument version** (`/admin/instruments`) freezes it: from there any change
 is a new version.
+
+**Accept an extraction** (`/admin/profiles`) qualifies the adapter version that reads a
+package format (ADR-0012): from there, registering a course in that format reads it on the
+spot. It lives on that page and nowhere else, because it is judged over the profiles that
+page renders — offering it where there are none would invite a judgement with nothing to
+read. Two consequences worth knowing: accepting does **not** go back over courses already
+registered, and reading packages by hand is how the samples that earn an acceptance are
+produced, so **Read them now** comes first.
+
+Reading is not one of the three — it writes a profile, but it decides nothing and can be
+repeated. It is offered per format on `/admin/profiles`, per failed profile as **Try
+again** (nothing else ever retries one: the policy stands down when a row exists, in either
+state), and over a lot that came back unread on `/admin/measure`. Always as an explicit
+batch, one request per course, never a cascade.
 
 **Ratify an assessor** (`/admin/assessors`) is what lets an automated assessor's judgments
 be *persisted* against one published instrument version (ADR-0019, ADR-0036). Two things

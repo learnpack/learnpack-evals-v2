@@ -2,17 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { BookOpen, Quote, ShieldCheck } from "lucide-react";
+import { Quote, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { ReadPackagesButton } from "@/components/admin/read-packages-button";
 import { ApiError } from "@/lib/api/client";
 import {
   useAcceptExtraction,
   useContents,
-  useProfileContent,
   useProfiles,
   useProfilingCapabilities,
 } from "@/lib/api/hooks";
@@ -22,7 +22,6 @@ import type {
   ProfileCapabilitiesResponse,
   ProfileEntryResponse,
   ProfileResponse,
-  Uuid,
 } from "@/lib/api/types";
 
 /**
@@ -156,7 +155,7 @@ function ExtractionStatus({
 
             <span className="ml-auto flex flex-wrap items-center gap-2">
               {unread.length > 0 ? (
-                <ReadThemNow
+                <ReadPackagesButton
                   label={`Read ${unread.length} waiting`}
                   contentIds={unread.map((c) => c.content_id)}
                 />
@@ -279,54 +278,6 @@ function AcceptExtractionDialog({
   );
 }
 
-/**
- * Reading a set of packages, one request at a time.
- *
- * Never a cascade (12-define): the batch is something a person asks for, and the loop lives
- * here so each request is bounded and the progress is real rather than a spinner over an
- * unbounded write.
- */
-function ReadThemNow({ label, contentIds }: { label: string; contentIds: Uuid[] }) {
-  const profile = useProfileContent();
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-
-  async function run() {
-    setProgress({ done: 0, total: contentIds.length });
-    let read = 0;
-    let failed = 0;
-    let refused = 0;
-    for (const contentId of contentIds) {
-      try {
-        const result = await profile.mutateAsync(contentId);
-        if (result.status === "ok") read += 1;
-        else failed += 1;
-      } catch {
-        // 409 and 422 are answers, not crashes: already read, or a package this path
-        // cannot fetch. Counted apart so the summary does not call them failures.
-        refused += 1;
-      }
-      setProgress((previous) => (previous ? { ...previous, done: previous.done + 1 } : previous));
-    }
-    setProgress(null);
-    const summary = [
-      `${read} read`,
-      failed ? `${failed} could not be read` : null,
-      refused ? `${refused} skipped` : null,
-    ]
-      .filter(Boolean)
-      .join(", ");
-    if (failed || refused) toast.warning("Finished reading.", { description: summary });
-    else toast.success("Finished reading.", { description: summary });
-  }
-
-  return (
-    <Button size="sm" variant="outline" onClick={run} disabled={progress !== null}>
-      {progress ? <Spinner /> : <BookOpen className="h-3.5 w-3.5" />}
-      {progress ? `Reading ${progress.done + 1} of ${progress.total}…` : label}
-    </Button>
-  );
-}
-
 const PROVENANCE_LABEL = {
   declared_structured: "declared (structured)",
   declared_in_content: "declared in content",
@@ -403,7 +354,7 @@ function ProfileCard({ profile }: { profile: ProfileResponse }) {
           <p className="font-medium">The adapter could not read this package</p>
           <p className="mt-1 text-muted-foreground">{profile.error}</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <ReadThemNow label="Try again" contentIds={[profile.content_id]} />
+            <ReadPackagesButton label="Try again" contentIds={[profile.content_id]} />
             <p className="text-xs text-muted-foreground">
               Fix the package or the adapter first — a failed profile is replaced in place, and
               nothing else ever retries it.
