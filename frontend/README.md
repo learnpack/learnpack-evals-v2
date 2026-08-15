@@ -238,7 +238,15 @@ version the assessor ratified, the act comes back asking for a decision **per cr
 the dialog lists each one with the `pass_condition` you are confirming the executor still
 realizes. That is not a formality: changing an executor is a new assessor version.
 
-## Demo happy path
+## Two happy paths
+
+**Measuring a generator** is the automated one, and it has its own guide:
+`../docs/MEASURING.md`. In the console it is one page — `/admin/measure` — and the result is
+read on `/admin/studies/[id]`.
+
+**Human evaluation** is the other, and it needs raters. In local mode
+`task seed:demo` installs them with two courses and an open campaign to work on; with Clerk
+they are invited and appear in the picker after their first sign-in.
 
 1. Log in as **admin** → `/admin/contents`: register a course by **package URL** + generator
    + provenance — discovery reads the artifact list from the package itself (ADR-0027), so
@@ -247,8 +255,7 @@ realizes. That is not a formality: changing an executor is a new assessor versio
    consumable URL (ADR-0028): it shows as *not deployed* and cannot be assigned for human
    scoring, so use a real deployed course for this walkthrough.
 2. `/admin/campaigns`: new campaign (quorum, courses).
-3. Invite/log in an **evaluator** in Clerk → appears in the picker → assign them the course
-   in `/admin/campaigns/[id]`.
-4. Log in as the evaluator → `/evaluations` → 3-step wizard → submit.
+3. Assign the course to two evaluators in `/admin/campaigns/[id]`.
+4. Log in as an evaluator → `/evaluations` → 3-step wizard → submit.
 5. Back to admin → progress `1/1` + golden `usable` in the campaign detail; scores and
    inter-rater in `/admin/reports`.
