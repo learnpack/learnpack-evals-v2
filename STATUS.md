@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-14._
+_Last updated: 2026-08-15._
 
 ## Where we are
 
@@ -98,6 +98,30 @@ when the columns' coverage differs and a line pointing at *By brief* first: a ga
 two columns only means something if it is larger than how much one version varies with
 itself on the same commission (ADR-0039). The matrix renders only from two versions up; with
 one, a single-column comparison would dress a measurement up as something it is not.
+
+**And the CLI finally reads the tree the generator actually writes into.** ADR-0035 gave the
+console declared source roots and recorded, as its own deferral, that the CLI stayed on
+`courses/` alone — which is the tree nobody's generator writes to. `register-package` now takes
+`--root <key>` (default the built-in `courses`), resolving through the same
+`local_sources` module the console reads, so the two cannot answer differently about what is
+readable or about the locator a package registers with; a `--source` that is not a URL is read
+from where you stand and then, if that names nothing, relative to the root. An undeclared key is
+refused before anything is read, naming **both** ways that happens — never declared, or declared
+after the API started, since the trees are mounted when the app assembles.
+**The generator folder gained its second convention and its one automatic act.** A generator
+that names its own output folder writes `<name>-<version>` (`learnpack-generator-04a7dd5-dirty`),
+which cannot be split on its separator because the version carries hyphens too — so it is split
+against the registry: the registered lineage whose name the folder starts with, longest match
+wins, and the rest is the version. `courses/`'s `<name>@<version>` is tried first and is
+untouched. A **version** that is new is now registered as it is read, and printed as it happens;
+a **lineage** never is. That asymmetry is the decision: a version is a fact about a run and
+changes with every commit of the generator being measured, while a lineage's name is typed once
+and never again (ADR-0031 guards it with `--distinct-from`), so demanding a second command per
+version would put a manual act inside the loop this intake exists to automate. **No ADR:** ADR-0035
+listed `--root` among its deferrals and rejected the shared-resolution refactor with the
+condition attached — *"the refactor becomes worthwhile only if the CLI grows `--root`"* — which
+is what this is; the folder convention is ADR-0027 §5's, and both of its readings still refuse
+to mint a generator identity (ADR-0024).
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.

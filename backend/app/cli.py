@@ -19,6 +19,7 @@ import signal
 import sys
 from collections.abc import Callable
 from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,7 @@ import yaml
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
+from app.config import BUILTIN_SOURCE_ROOT, get_settings
 from app.modules.content_profiling.application.accept_extraction import (
     AcceptExtraction,
     AcceptExtractionCommand,
@@ -93,7 +94,8 @@ from app.modules.evaluand_registry.domain.content import (
     GeneratorAlreadyAttributed,
     InvalidContent,
 )
-from app.modules.evaluand_registry.domain.generator import normalized_name
+from app.modules.evaluand_registry.domain.generator import Generator, normalized_name
+from app.modules.evaluand_registry.infrastructure import local_sources
 from app.modules.evaluand_registry.infrastructure.acl_learnpack import (
     PACKAGE_FORMAT as LEARNPACK_FORMAT,
 )
@@ -1401,23 +1403,60 @@ def run_import_learnpack(seed_file: Path, base_dir: Path | None = None) -> int:
 # ------------------------------------------------------------------- register-package
 # Discovery-based intake (ADR-0027): humans declare a source, never an artifact list.
 
-COURSES_DIR = REPO_ROOT / "courses"
+
+class _UndeclaredRoot(Exception):
+    """A path, or a `--root` key, that no declared source root covers (ADR-0035 §1)."""
+
+
+def _declared_root(key: str) -> local_sources.SourceRoot:
+    """The tree `--root` names, or a refusal listing the ones that exist.
+
+    A root is declared in the environment and mounted when the app assembles, so naming one
+    the process does not serve is two different mistakes with one symptom — never declared,
+    or declared after the server started. The message says both, because the operator cannot
+    tell them apart from here.
+    """
+    root = local_sources.root_for(key)
+    if root is None:
+        declared = ", ".join(r.key for r in local_sources.configured_roots())
+        raise _UndeclaredRoot(
+            f"no source root named '{key}' (declared: {declared}) — add it to "
+            "LOCAL_SOURCE_ROOTS as '<key>=<folder>' and restart the API, which is what "
+            "mounts it (see backend/README.md)"
+        )
+    return root
+
+
+def _root_holding(directory: Path) -> tuple[local_sources.SourceRoot, str]:
+    """The declared root a path lives under, and the path relative to it.
+
+    Locators are minted into that root's mount, so a package outside every declared tree has
+    no honest registration available: it would register locators nobody can fetch, and the
+    brief intake and profiling would degrade into absences later (ADR-0035 §1). Refusing here
+    is the same call the mount preflight makes one step further down.
+    """
+    resolved = directory.resolve()
+    for root in local_sources.configured_roots():
+        if not root.exists:
+            continue
+        base = root.path.resolve()
+        if resolved == base or base in resolved.parents:
+            return root, resolved.relative_to(base).as_posix()
+    declared = ", ".join(r.key for r in local_sources.configured_roots())
+    raise _UndeclaredRoot(
+        f"'{directory}' is not under any declared source root (declared: {declared}) — "
+        "put it under courses/, or declare its tree in LOCAL_SOURCE_ROOTS and restart the "
+        "API (see backend/README.md)"
+    )
 
 
 def _course_root(course_dir: Path) -> FilesystemPackageRoot:
-    """A local course's root: locators are minted into the dev mount, so the registered
-    package behaves exactly like an http-served one for fetching (brief intake, profiling).
-    The course must live under `courses/` — that is the tree the mount serves. It does not
-    make the course consumable: a local course registers with no consumable URL (ADR-0028)."""
-    try:
-        relative = course_dir.resolve().relative_to(COURSES_DIR.resolve())
-    except ValueError:
-        raise PackageDiscoveryError(
-            f"'{course_dir}' is not under {COURSES_DIR.as_posix()}: local sources live in "
-            "courses/ (the dev mount serves that tree — see courses/README.md)"
-        ) from None
-    base = get_settings().local_packages_base_url.rstrip("/")
-    return FilesystemPackageRoot(course_dir, locator_base=f"{base}/{relative.as_posix()}")
+    """A local course's root: locators are minted into the mount that serves its tree, so the
+    registered package behaves exactly like an http-served one for fetching (brief intake,
+    profiling). It does not make the course consumable: a local course registers with no
+    consumable URL (ADR-0028)."""
+    root, relative = _root_holding(course_dir)
+    return local_sources.package_root(root, relative)
 
 
 def _mount_preflight(root: FilesystemPackageRoot, course_dir: Path) -> bool:
@@ -1440,8 +1479,9 @@ def _mount_preflight(root: FilesystemPackageRoot, course_dir: Path) -> bool:
         print(
             f"the dev mount does not serve this course ({exc}).\n"
             "Start the API with AUTH_MODE=local: registered locators point into "
-            f"{get_settings().local_packages_base_url}, so without it the brief intake and "
-            "profiling would fail silently later.",
+            f"{locator}, so without it the brief intake and profiling would fail silently "
+            "later. A root declared in LOCAL_SOURCE_ROOTS is mounted when the app "
+            "assembles, so one added since the API started needs a restart.",
             file=sys.stderr,
         )
         return False
@@ -1454,38 +1494,79 @@ def _fixed_root(root: PackageRoot) -> Callable[[str], PackageRoot]:
     return factory
 
 
-def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
-    """Resolve a courses/ generator folder to its declaration. Provisional convention
-    (ADR-0027), isolated here so a richer one replaces one function: `<name>@<version>`
-    names a **registered** GeneratorVersion, `unknown` declares none (ADR-0024). Anything
-    else refuses — mechanical intake never mints generator identities.
+def _declared_by_folder(session: Session, folder_name: str) -> tuple[Generator, str]:
+    """Split a generator folder into the lineage it names and the version it declares.
 
-    Two steps since ADR-0031, which is also two distinct answers: the lineage may not exist,
-    or it may exist without that version. Naming which one is the point."""
+    Two conventions, tried in that order, because the trees they belong to are authored by
+    different hands. `<name>@<version>` is the repo's own `courses/` convention (ADR-0027 §5):
+    a human types it, and the separator is unambiguous because `@` appears in neither half.
+    A generator that writes its own output tree names the folder after itself —
+    `learnpack-generator-04a7dd5-dirty` — where the separator is a hyphen the VERSION also
+    contains, so the split cannot be made syntactically at all.
+
+    It is made against the registry instead: the registered lineage whose name the folder
+    starts with, and whatever follows the separating hyphen is the version. That keeps the
+    invariant the first convention had — mechanical intake never mints a generator identity
+    (ADR-0024, ADR-0031) — and it is the reason the lineage must be registered first. The
+    longest match wins, so a lineage whose name is a prefix of another still resolves.
+    """
+    generators = SqlAlchemyGeneratorRepository(session)
+
+    name, sep, version = folder_name.rpartition("@")
+    if sep and name and version:
+        generator = generators.find_by_name_key(normalized_name(name))
+        if generator is None:
+            raise UnknownGeneratorVersion(
+                f"folder '{folder_name}' names no registered generator '{name}' — register it "
+                "first (app.cli register-generator)"
+            )
+        return generator, version
+
+    candidates = [
+        (generator, folder_name[len(generator.name) + 1 :])
+        for generator in generators.list_all()
+        if folder_name.lower().startswith(generator.name.lower() + "-")
+    ]
+    if not candidates:
+        raise UnknownGeneratorVersion(
+            f"folder '{folder_name}' is not 'unknown', not '<name>@<version>', and starts "
+            "with no registered generator's name — register the generator first "
+            "(app.cli register-generator), or rename the folder (see courses/README.md)"
+        )
+    return max(candidates, key=lambda pair: len(pair[0].name))
+
+
+def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
+    """Resolve a generator folder to the `GeneratorVersion` its courses declare (ADR-0024).
+
+    `unknown` declares none. Everything else names a lineage, which must already be
+    registered, and a version — which is **registered here if it is new**. That asymmetry is
+    the decision, not an oversight: a lineage's name is typed once and never again, so a near
+    miss mints a second lineage nobody notices (ADR-0031 guards it with `--distinct-from`),
+    while a version is a fact about a run that changes with every commit of the generator
+    being measured. Demanding a second command for each one would put a manual act inside the
+    loop this intake exists to automate.
+    """
     if folder_name == "unknown":
         return None
-    name, sep, version = folder_name.rpartition("@")
-    if not sep or not name or not version:
-        raise UnknownGeneratorVersion(
-            f"folder '{folder_name}' is not '<name>@<version>' or 'unknown' (see courses/README.md)"
-        )
-    generator = SqlAlchemyGeneratorRepository(session).find_by_name_key(normalized_name(name))
-    if generator is None:
-        raise UnknownGeneratorVersion(
-            f"folder '{folder_name}' names no registered generator '{name}' — register it "
-            "first (app.cli register-generator)"
-        )
+
+    generator, version = _declared_by_folder(session, folder_name)
     versions = SqlAlchemyGeneratorVersionRepository(session)
     match = next(
         (v for v in versions.list_all() if (v.generator_id, v.version) == (generator.id, version)),
         None,
     )
-    if match is None:
-        raise UnknownGeneratorVersion(
-            f"generator '{generator.name}' has no registered version '{version}' — register it "
-            "first (app.cli register-generator-version)"
-        )
-    return match.id
+    if match is not None:
+        return match.id
+
+    uow = UnitOfWork(session)
+    registered = RegisterGeneratorVersion(
+        SqlAlchemyGeneratorRepository(session), versions, uow.events, uow
+    )(RegisterGeneratorVersionCommand(generator_id=generator.id, version=version))
+    # Printed, never silent: registering a version is an act, and a typo in a folder name is
+    # how an individual nobody meant to measure enters the registry.
+    print(f"  registered generator version {generator.name} {version} ({registered.id})")
+    return registered.id
 
 
 def _register_package(
@@ -1579,7 +1660,14 @@ def run_register_package(
     edit_provenance: str,
     version: str,
     consumable_url: str | None,
+    root_key: str = BUILTIN_SOURCE_ROOT,
 ) -> int:
+    """One source: an http(s) URL, or a directory inside a declared source root.
+
+    A relative path is read against `--root`, an absolute one against whichever declared root
+    holds it — the same answer either way, since a package that no root serves has no honest
+    registration available (ADR-0035 §1).
+    """
     generator_version_id = None if generator == "unknown" else UUID(generator)
     if generator_version_id is not None:
         with SessionLocal() as session:
@@ -1599,6 +1687,10 @@ def run_register_package(
         else:
             course_dir = Path(source)
             if not course_dir.is_dir():
+                # A path that names nothing from here is read as one relative to the root,
+                # which is how the folder reads on screen when you list the tree.
+                course_dir = _declared_root(root_key).path / source
+            if not course_dir.is_dir():
                 print(f"'{source}' is neither an http(s) URL nor a directory", file=sys.stderr)
                 return 1
             root = _course_root(course_dir)
@@ -1617,7 +1709,13 @@ def run_register_package(
     except DuplicateContent as exc:
         print(f"CONFLICT: {exc}", file=sys.stderr)
         return 1
-    except (PackageDiscoveryError, InvalidContent, UnknownGeneratorVersion) as exc:
+    except (
+        PackageDiscoveryError,
+        InvalidContent,
+        UnknownGeneratorVersion,
+        _UndeclaredRoot,
+        local_sources.LocalSourceError,
+    ) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
@@ -1628,56 +1726,84 @@ def run_register_package(
     return 0
 
 
-def run_register_package_all(courses_dir: Path, package_format: str, edit_provenance: str) -> int:
-    """Batch local intake: every `courses/<generator-folder>/<course>/` registers through
-    the same use case — batch is a loop, not another path (ADR-0027)."""
-    if not courses_dir.is_dir():
+@dataclass(frozen=True)
+class TreeRegistration:
+    """What registering a tree of generator folders did. `content_ids` carries the courses
+    that ended up registered — created now or unchanged from before — because a caller
+    composing a study out of them cares which packages are in the store, not which ones this
+    run happened to write."""
+
+    created: int
+    unchanged: int
+    conflicts: int
+    invalid: int
+    created_ids: list[UUID]
+    content_ids: list[UUID]
+
+
+def _register_tree(
+    root_dir: Path, package_format: str, edit_provenance: str, folder: str | None = None
+) -> TreeRegistration | None:
+    """Register every `<generator-folder>/<course>/` under `root_dir`, or under one folder of
+    it. `None` means nothing was written: the tree was refused whole.
+
+    Batch is a loop over the same use case, not another path (ADR-0027).
+    """
+    if not root_dir.is_dir():
         print(
-            f"'{courses_dir.as_posix()}' does not exist — create "
-            "courses/<name>@<version>/<course>/ first (see courses/README.md)",
+            f"'{root_dir.as_posix()}' does not exist — a tree holds "
+            "<generator-folder>/<course>/ (see courses/README.md)",
             file=sys.stderr,
         )
-        return 1
+        return None
 
-    generator_dirs = sorted(d for d in courses_dir.iterdir() if d.is_dir())
+    if folder is not None:
+        generator_dirs = [root_dir / folder] if (root_dir / folder).is_dir() else []
+        if not generator_dirs:
+            print(f"'{folder}' is not a folder of {root_dir.as_posix()}", file=sys.stderr)
+            return None
+    else:
+        generator_dirs = sorted(d for d in root_dir.iterdir() if d.is_dir())
+
     course_dirs = [
-        (folder, course)
-        for folder in generator_dirs
-        for course in sorted(d for d in folder.iterdir() if d.is_dir())
+        (parent, course)
+        for parent in generator_dirs
+        for course in sorted(d for d in parent.iterdir() if d.is_dir())
     ]
     if not course_dirs:
-        print(f"no courses found under {courses_dir.as_posix()}")
-        return 0
+        print(f"no courses found under {root_dir.as_posix()}")
+        return TreeRegistration(0, 0, 0, 0, [], [])
 
     # A tree-wide declaration deserves a tree-wide check (the ADR-0024 pattern): every
     # generator folder resolves before anything registers, so a typo is one clean abort.
     generators_by_folder: dict[str, UUID | None] = {}
     problems: list[str] = []
     with SessionLocal() as session:
-        for folder in generator_dirs:
+        for parent in generator_dirs:
             try:
-                generators_by_folder[folder.name] = _generator_for_folder(session, folder.name)
+                generators_by_folder[parent.name] = _generator_for_folder(session, parent.name)
             except UnknownGeneratorVersion as exc:
                 problems.append(str(exc))
     if problems:
         for problem in problems:
             print(problem, file=sys.stderr)
         print("nothing was registered", file=sys.stderr)
-        return 1
+        return None
 
     if not _mount_preflight(_course_root(course_dirs[0][1]), course_dirs[0][1]):
-        return 1
+        return None
 
     created_ids: list[UUID] = []
+    content_ids: list[UUID] = []
     created = unchanged = conflicts = invalid = 0
-    for folder, course_dir in course_dirs:
-        label = f"{folder.name}/{course_dir.name}"
+    for parent, course_dir in course_dirs:
+        label = f"{parent.name}/{course_dir.name}"
         try:
             root = _course_root(course_dir)
             status, detail, content_id = _register_package(
                 str(course_dir),
                 _fixed_root(root),
-                generators_by_folder[folder.name],
+                generators_by_folder[parent.name],
                 package_format,
                 edit_provenance,
                 DEFAULT_VERSION,
@@ -1692,15 +1818,23 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
             continue
         created += status == "created"
         unchanged += status == "unchanged"
+        content_ids.append(content_id)
         if status == "created":
             created_ids.append(content_id)
         print(f"  {status}  {detail}")
 
     print(f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid")
     _report_profiling(created_ids)
+    return TreeRegistration(created, unchanged, conflicts, invalid, created_ids, content_ids)
+
+
+def run_register_package_all(courses_dir: Path, package_format: str, edit_provenance: str) -> int:
+    result = _register_tree(courses_dir, package_format, edit_provenance)
+    if result is None:
+        return 1
     # A failed profile is not a failed registration: the evaluand is registered either way
     # (the hard/soft split of ADR-0027 §3). The exit code stays about registration.
-    return 1 if conflicts or invalid else 0
+    return 1 if result.conflicts or result.invalid else 0
 
 
 # --------------------------------------------------------------------------- studies
@@ -2609,7 +2743,8 @@ def main(argv: list[str] | None = None) -> int:
         help="register a content version by mechanically discovering a package source (ADR-0027)",
     )
     register_parser.add_argument(
-        "--source", help="package base URL, or a course directory under courses/"
+        "--source",
+        help="package base URL, or a course directory — absolute, or relative to --root",
     )
     register_parser.add_argument(
         "--generator",
@@ -2640,10 +2775,16 @@ def main(argv: list[str] | None = None) -> int:
     register_parser.add_argument(
         "--all",
         action="store_true",
-        help="register every course under --courses-dir; each course's generator comes "
-        "from its parent folder (<name>@<version> | unknown)",
+        help="register every course under --root; each course's generator comes from its "
+        "parent folder (<name>@<version> | <name>-<version> | unknown)",
     )
-    register_parser.add_argument("--courses-dir", type=Path, default=COURSES_DIR)
+    register_parser.add_argument(
+        "--root",
+        dest="root_key",
+        default=BUILTIN_SOURCE_ROOT,
+        help="which declared source root to read (LOCAL_SOURCE_ROOTS; default: the repo's "
+        f"own {BUILTIN_SOURCE_ROOT}/ tree)",
+    )
 
     demo_parser = subparsers.add_parser(
         "seed-demo", help="local-only: demo users, courses, campaign and assignments"
@@ -2934,21 +3075,24 @@ def main(argv: list[str] | None = None) -> int:
                 or args.version != DEFAULT_VERSION
             ):
                 print(
-                    "--all takes each course's source and generator from the courses/ "
-                    "tree; --source/--generator/--version/--consumable-url are for single "
+                    "--all takes each course's source and generator from the tree; "
+                    "--source/--generator/--version/--consumable-url are for single "
                     "registration (one URL cannot declare a deployment for many courses)",
                     file=sys.stderr,
                 )
                 return 1
-            return run_register_package_all(
-                args.courses_dir, args.package_format, args.edit_provenance
-            )
+            try:
+                root = _declared_root(args.root_key)
+            except _UndeclaredRoot as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+            return run_register_package_all(root.path, args.package_format, args.edit_provenance)
         if not args.source or args.generator is None:
             # argparse cannot express "required unless --all"; the generator declaration
             # is never defaulted (ADR-0024).
             print(
                 "register-package needs --source and --generator <uuid|unknown>, "
-                "or --all for the courses/ tree",
+                "or --all for a whole tree",
                 file=sys.stderr,
             )
             return 1
@@ -2959,6 +3103,7 @@ def main(argv: list[str] | None = None) -> int:
             args.edit_provenance,
             args.version,
             args.consumable_url,
+            args.root_key,
         )
     elif args.command == "seed-demo":
         return run_seed_demo(args.reset)

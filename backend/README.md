@@ -537,21 +537,40 @@ uv run python -m app.cli register-generator-version   --generator-name learnpack
 ```
 
 ```bash
-# one course, by URL or by a local directory under the repo's courses/ tree
+# one course, by URL or by a local directory inside a declared source root
 uv run python -m app.cli register-package --source https://my-course.learn-pack.com --generator <uuid|unknown>
 uv run python -m app.cli register-package --source ../courses/unknown/my-course --generator unknown
 
 # a course in any other package format — `--format` defaults to LearnpackV1
 uv run python -m app.cli register-package --source ../courses/gen@2.0.0/a-run --generator <uuid> --format LearnpackV2
 
-# every course under courses/<name>@<version>/ and courses/unknown/ (batch)
+# every course under courses/<generator-folder>/ (batch)
 uv run python -m app.cli register-package --all
+
+# every course of another declared tree (see "From other trees" below)
+uv run python -m app.cli register-package --all --root generated --format LearnpackV2
 ```
 
 `--format` names the source's `PackageFormat` and **defaults to `LearnpackV1`**, so a package
 in any other format needs it spelled out — discovery would otherwise read it with the wrong
-adapter and refuse it. `--all` takes one `--format` for the whole tree, so a `courses/` tree
-holding more than one format is registered one format per run.
+adapter and refuse it. `--all` takes one `--format` for the whole tree, so a tree holding more
+than one format is registered one format per run.
+
+`--root` names which **declared source root** to read (below); it defaults to the repo's own
+`courses/` tree, so nothing that worked before needs it. A `--source` that is not an http(s)
+URL is read as a path from where you are standing, and — if that names nothing — as one
+relative to `--root`, which is how the folder reads when you list the tree.
+
+**The generator folder declares the version, and a new version is registered as it is read.**
+Two conventions, tried in that order: `courses/`'s own `<name>@<version>`, and the
+`<name>-<version>` a generator writes when it names its own output folder
+(`learnpack-generator-04a7dd5-dirty`). The second cannot be split syntactically — the version
+carries hyphens of its own — so it is split against the registry: the registered lineage whose
+name the folder starts with, and the rest is the version. A **lineage** is never minted from a
+folder name (that name is typed once and never again, ADR-0031); a **version** is, because it
+changes with every commit of the generator being measured and demanding a second command for
+each one would put a manual act inside the loop this intake exists to automate. Each one is
+printed as it happens.
 
 Local sources need the dev API running (`AUTH_MODE=local`): it serves the repo's
 gitignored `courses/` tree at `/packages` (base URL: `LOCAL_PACKAGES_BASE_URL`, default
@@ -564,7 +583,7 @@ automatically but not assigned for human scoring.
 Re-importing an unchanged course is a no-op (content hash); the same declared version with
 changed content is refused. See `../courses/README.md` for the folder convention.
 
-### From other trees, and from the console (ADR-0035)
+### From other trees, from the CLI and from the console (ADR-0035)
 
 A tree that does not live under `courses/` is declared in the environment, because a
 registered locator has to stay fetchable and only a served tree provides that:
@@ -584,12 +603,17 @@ which keeps its own base URL forever. A malformed entry stops the process; a fol
 not exist is reported as absent and skipped. Adding a root needs a restart, because the trees
 are mounted when the app assembles.
 
-Every declared root is browsable from **`/admin/contents/import`** in local mode: pick the
+**The CLI reads the same roots**: `--root <key>` on `register-package` points it at any
+declared tree, and the built-in `courses` is its default. A key nobody
+declared is refused before anything is read, naming both ways that happens — never declared,
+or declared after the API started, since the trees are mounted when the app assembles. The
+generator folder convention stays the CLI's own (above); the console declares the generator in
+its form instead and applies it to the whole scan.
+
+Every declared root is also browsable from **`/admin/contents/import`** in local mode: pick the
 format and generator version once, walk to the folder that holds the courses, and the scan
 says per subfolder what registering would do — `new`, `new_version`, `unchanged`, `conflict`
-or `unreadable` — before anything is written. The CLI stays the batch tool for `courses/`,
-and the `<name>@<version>/` folder convention is its own: the console declares the generator
-in the form instead, and applies it to the whole scan.
+or `unreadable` — before anything is written.
 
 One thing the console cannot do, and says so: re-registering a course that was registered
 with an unknown generator does **not** fill it in. That registration is a no-op (the bytes

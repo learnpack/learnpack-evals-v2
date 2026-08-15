@@ -1,9 +1,12 @@
-"""The local intake loop (ADR-0027): `courses/<name>@<version>/<course>` → one command.
+"""The local intake loop (ADR-0027): `<tree>/<generator-folder>/<course>` → one command.
 
-The generator folder is a declaration (ADR-0024): it must name a registered
-GeneratorVersion or the literal `unknown`, and the whole tree resolves before anything
-registers. The mount preflight is stubbed — no server runs in tests — and COURSES_DIR is
-pointed at a throwaway tree so locators mint into the fake mount.
+The generator folder is a declaration (ADR-0024): it must name a registered `Generator` —
+either as `<name>@<version>` or as the `<name>-<version>` a generator writes when it names
+its own output folder — or the literal `unknown`, and the whole tree resolves before
+anything registers. The tree itself must be a declared source root (ADR-0035), which is what
+makes the locators it mints fetchable. The mount preflight is stubbed — no server runs in
+tests — and the built-in root is pointed at a throwaway tree so locators mint into the fake
+mount.
 """
 
 import json
@@ -18,6 +21,7 @@ import app.cli as cli
 from app.cli import main, run_register_package, run_register_package_all
 from app.config import get_settings
 from app.modules.content_profiling.public import ContentProfilingQueries
+from app.modules.evaluand_registry.infrastructure import local_sources
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 
@@ -26,7 +30,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 def courses_tree(tmp_path, monkeypatch, requires_db):
     tree = tmp_path / "courses"
     tree.mkdir()
-    monkeypatch.setattr(cli, "COURSES_DIR", tree)
+    monkeypatch.setattr(local_sources, "COURSES_DIR", tree)
     monkeypatch.setattr(cli, "_mount_preflight", lambda root, course_dir: True)
     return tree
 
@@ -156,7 +160,44 @@ def test_a_malformed_folder_name_aborts(courses_tree, cleanup, unique, session, 
     put_course(courses_tree, "not-a-declaration", slug)
 
     assert run_register_package_all(courses_tree, "LearnpackV1", "unknown") == 1
-    assert "not '<name>@<version>' or 'unknown'" in capsys.readouterr().err
+    assert "starts with no registered generator's name" in capsys.readouterr().err
+    assert track(cleanup, session, slug) is None
+
+
+def test_a_folder_named_after_the_generator_declares_its_version(
+    courses_tree, cleanup, unique, session, capsys, generator
+):
+    """The convention of a tree the generator writes itself: `<name>-<version>`, where the
+    version carries hyphens of its own (`04a7dd5-dirty`). Splitting it syntactically is
+    impossible, so the split is made against the registered lineage — and the version, which
+    changes with every commit of the thing being measured, is registered here."""
+    slug = f"cli-selfnamed-{unique}"
+    put_course(courses_tree, f"{generator.name}-9c1f2ab-dirty", slug)
+
+    assert run_register_package_all(courses_tree, "LearnpackV1", "unknown") == 0
+
+    assert track(cleanup, session, slug)
+    version_id = generator_of(session, slug)
+    registered = session.execute(
+        text("SELECT generator_id, version FROM generator_versions WHERE id = :id"),
+        {"id": version_id},
+    ).one()
+    cleanup["generators"].append(version_id)
+    assert registered.version == "9c1f2ab-dirty"
+    assert "registered generator version" in capsys.readouterr().out
+
+
+def test_an_unregistered_lineage_is_never_minted_by_a_folder_name(
+    courses_tree, cleanup, unique, session, capsys
+):
+    """The asymmetry stated: a version is cheap and mechanical, a lineage's name is typed
+    once and never again (ADR-0031), so the folder may declare one and not the other."""
+    slug = f"cli-nolineage-{unique}"
+    put_course(courses_tree, "some-other-generator-abc123", slug)
+
+    assert run_register_package_all(courses_tree, "LearnpackV1", "unknown") == 1
+
+    assert "register-generator" in capsys.readouterr().err
     assert track(cleanup, session, slug) is None
 
 
@@ -195,12 +236,37 @@ def test_a_local_course_registers_without_a_consumable_url(courses_tree, cleanup
     assert consumable_url_of(session, slug) is None
 
 
-def test_a_source_outside_the_tree_is_refused(courses_tree, tmp_path, capsys):
+def test_a_source_outside_every_declared_root_is_refused(courses_tree, tmp_path, capsys):
+    """Locators are minted into the mount that serves the tree, so a package no root serves
+    has no honest registration available — it would register locators nobody can fetch
+    (ADR-0035 §1)."""
     outside = tmp_path / "elsewhere" / "course"
     shutil.copytree(FIXTURES / "bare-course", outside)
 
     assert run_register_package(str(outside), "unknown", "LearnpackV1", "unknown", "1", None) == 1
-    assert "courses/README.md" in capsys.readouterr().err
+    assert "LOCAL_SOURCE_ROOTS" in capsys.readouterr().err
+
+
+def test_a_relative_source_is_read_against_the_root(courses_tree, cleanup, unique, session):
+    """What the operator sees when listing the tree is `<folder>/<course>`, so that is what
+    the command takes — the absolute path stays available and means the same thing."""
+    slug = f"cli-relative-{unique}"
+    put_course(courses_tree, "unknown", slug)
+
+    assert (
+        run_register_package(f"unknown/{slug}", "unknown", "LearnpackV1", "unknown", "1", None) == 0
+    )
+    assert track(cleanup, session, slug)
+
+
+def test_an_undeclared_root_is_refused_before_anything_is_read(courses_tree, capsys):
+    """Two mistakes with one symptom — never declared, or declared after the API started —
+    so the message names both."""
+    assert main(["register-package", "--all", "--root", "nope"]) == 1
+
+    err = capsys.readouterr().err
+    assert "LOCAL_SOURCE_ROOTS" in err
+    assert "restart" in err
 
 
 def test_the_cli_refuses_silence(capsys):
@@ -262,7 +328,7 @@ def test_the_preflight_probes_a_file_the_course_actually_has(tmp_path, monkeypat
     a named manifest tied it to LearnpackV1's convention, so a local course of any other
     format was refused before discovery ever ran — and told to start an API that was already
     running."""
-    monkeypatch.setattr(cli, "COURSES_DIR", tmp_path)
+    monkeypatch.setattr(local_sources, "COURSES_DIR", tmp_path)
     course_dir = tmp_path / "gen@2.0.0" / "a-run"
     (course_dir / "traces").mkdir(parents=True)
     (course_dir / "traces" / "run_metadata.json").write_text("{}", encoding="utf-8")
