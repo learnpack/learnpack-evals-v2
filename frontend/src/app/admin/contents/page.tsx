@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, HardDrive, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
@@ -20,9 +21,18 @@ import {
   useBriefs,
   useContents,
   useGeneratorVersions,
+  useProfiles,
+  useProfilingCapabilities,
 } from "@/lib/api/hooks";
 import type { ContentResponse, GeneratorVersionResponse } from "@/lib/api/types";
 import { IS_LOCAL_AUTH } from "@/lib/auth";
+import {
+  extractionStateOf,
+  indexCapabilities,
+  indexProfiles,
+  summarizeExtraction,
+  type ExtractionState,
+} from "@/lib/extraction";
 
 const generatorName = (g?: GeneratorVersionResponse) => (g ? `${g.name} ${g.version}` : undefined);
 
@@ -40,6 +50,11 @@ export default function ContentsPage() {
   // shares (the pairing key) and whether its generator is known.
   const { data: briefs } = useBriefs();
   const { data: generators } = useGeneratorVersions();
+  // Whether each course was read, from the two resources that already answer it. Neither is
+  // required for the rest of the table: while they load, the column reads as unknown rather
+  // than as a problem.
+  const { data: profiles } = useProfiles();
+  const { data: capabilities } = useProfilingCapabilities();
   const [creating, setCreating] = useState(false);
   const [format, setFormat] = useState(ALL);
   const [lineage, setLineage] = useState(ALL);
@@ -55,6 +70,22 @@ export default function ContentsPage() {
     (c: ContentResponse) =>
       c.generator_version_id ? generatorById.get(c.generator_version_id) : undefined,
     [generatorById],
+  );
+
+  const capabilityIndex = useMemo(() => indexCapabilities(capabilities), [capabilities]);
+  const profileByContent = useMemo(
+    () => indexProfiles(profiles, capabilityIndex),
+    [profiles, capabilityIndex],
+  );
+
+  /** `null` until both answers are in: an empty profile list and a list still loading look
+   *  the same, and rendering "not read" for every course while it loads would be a lie. */
+  const extractionOf = useCallback(
+    (c: ContentResponse): ExtractionState | null =>
+      profiles === undefined || capabilities === undefined
+        ? null
+        : extractionStateOf(c.package_format, profileByContent.get(c.content_id), capabilityIndex),
+    [profiles, capabilities, profileByContent, capabilityIndex],
   );
 
   // Every option below is derived from the registered courses, not from the full catalogue
@@ -217,6 +248,7 @@ export default function ContentsPage() {
             ) : null}
             <p className="ml-auto pb-2 text-sm text-muted-foreground">
               {visible.length} of {contents.length}
+              <ExtractionSummary states={visible.map(extractionOf)} />
             </p>
           </div>
 
@@ -234,6 +266,7 @@ export default function ContentsPage() {
                       <TableHead>Course</TableHead>
                       <TableHead>Version</TableHead>
                       <TableHead>Format</TableHead>
+                      <TableHead>Extraction</TableHead>
                       <TableHead>Brief</TableHead>
                       <TableHead>Generator</TableHead>
                       <TableHead>URL</TableHead>
@@ -245,6 +278,9 @@ export default function ContentsPage() {
                         <TableCell className="font-medium">{c.external_id}</TableCell>
                         <TableCell>{c.version}</TableCell>
                         <TableCell className="text-muted-foreground">{c.package_format}</TableCell>
+                        <TableCell>
+                          <ExtractionCell state={extractionOf(c)} format={c.package_format} />
+                        </TableCell>
                         <TableCell className="max-w-xs">
                           {c.brief_id ? (
                             <span className="line-clamp-2 text-xs" title={c.brief_id}>
@@ -318,6 +354,64 @@ export default function ContentsPage() {
         <ContentForm onDone={() => setCreating(false)} />
       </Dialog>
     </div>
+  );
+}
+
+const NOT_READ_REASON = {
+  format_unsupported: (format: string) => `no adapter reads ${format}`,
+  not_accepted: (format: string) => `${format} extraction is not accepted yet`,
+  unknown: () => "profiling has not run on this package",
+} as const;
+
+/**
+ * Whether one course was read.
+ *
+ * Only the exceptions get colour: a read course is the common case and asks nothing of
+ * anyone, so it stays quiet — the same budget the profile workbench spends. And a course
+ * with no profile is not the same as one the adapter choked on, so the two never share a
+ * badge: one is work not done, the other is work that failed.
+ */
+function ExtractionCell({ state, format }: { state: ExtractionState | null; format: string }) {
+  if (state === null) return <span className="text-xs text-muted-foreground">—</span>;
+  if (state.kind === "read") return <span className="text-xs text-muted-foreground">read</span>;
+
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      {state.kind === "failed" ? (
+        <Badge variant="destructive" title={state.error ?? undefined}>
+          could not be read
+        </Badge>
+      ) : (
+        <Badge variant="warning">not read</Badge>
+      )}
+      <Link href="/admin/profiles" className="text-[11px] text-muted-foreground hover:underline">
+        {state.kind === "failed"
+          ? "see the error in Profiles"
+          : `${NOT_READ_REASON[state.reason](format)} — Profiles`}
+      </Link>
+    </div>
+  );
+}
+
+/** The exceptions among what is on screen. Counted over the visible rows, so it can never
+ *  disagree with the filters right beside it — and silent while the answer is still loading. */
+function ExtractionSummary({ states }: { states: (ExtractionState | null)[] }) {
+  if (states.some((state) => state === null)) return null;
+  const { failed, notRead } = summarizeExtraction(states as ExtractionState[]);
+  if (failed === 0 && notRead === 0) return null;
+
+  return (
+    <>
+      {" · "}
+      <span className="font-medium text-foreground">
+        {[
+          notRead > 0 ? `${notRead} not read` : null,
+          failed > 0 ? `${failed} could not be read` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+    </>
   );
 }
 
