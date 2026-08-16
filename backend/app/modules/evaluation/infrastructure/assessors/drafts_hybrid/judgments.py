@@ -51,7 +51,6 @@ budget, the shape of the question and the grounding rule. Editing it is a new ve
 `drafts-hybrid`.
 """
 
-import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -62,6 +61,7 @@ from app.modules.evaluation.domain.model import (
     ProfileEntryData,
 )
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
+    grounding,
     prompts,
     runtime,
     tasks,
@@ -266,113 +266,13 @@ def _memoized(task_id: str, profile: ProfileData, run: Callable[[], Any]) -> Any
 
 
 # --- grounding: finding the model's quote in the source ----------------------------------
+#
+# The rule itself lives in `grounding.py`, shared with `tasks.py`: what counts as a citation
+# has to mean one thing across this assessor, and the extraction tasks demand verbatim
+# statements exactly as the judged ones demand verbatim passages.
 
-
-def locate(corpus: str, quote: str) -> str | None:
-    """The corpus's OWN span matching `quote` up to whitespace, or `None` if it is not there.
-
-    Two decisions, both learnt from calibration runs that failed on quotes whose judgement
-    was fine:
-
-    - **Whitespace is not content.** A corpus built by this module puts items on their own
-      indented lines, and a model that quotes across one renders the newline and indent as a
-      single space. Comparing byte for byte rejected that, which is a false negative about
-      the course. Runs of whitespace are equal to each other for the purpose of finding the
-      passage.
-    - **Neither is markdown emphasis.** Lesson bodies are markdown, so a sentence can carry
-      `**bold**` or backticks, and a model quoting it drops them about as often as it keeps
-      them. Same class of false negative, same answer: the markers are invisible to the match.
-    - **Nor is a list marker.** A quote that runs from a lead-in into the list under it — "you
-      will master four essential skills: Navigation: Moving through your folders" — is refused
-      by a comparison that keeps the `- ` the source puts between them, and refusing it is a
-      statement about our formatting rather than about the course. Same class again: the
-      marker of a list ITEM is invisible, in every shape markdown gives it.
-    - **What is returned is the SOURCE's text, never the model's.** Tolerating a difference
-      when matching is not the same as storing the difference: the quote that ends up in a
-      report is the span as the course writes it — emphasis markers and bullets included — so
-      ADR-0009 stays exact.
-    """
-    flat_corpus, offsets = _flatten(corpus)
-    flat_quote, _ = _flatten(quote)
-    if not flat_quote:
-        return None
-    at = flat_corpus.find(flat_quote)
-    if at < 0:
-        return None
-    return corpus[offsets[at] : offsets[at + len(flat_quote) - 1] + 1]
-
-
-# Markdown emphasis, dropped when matching a quote against its source. Skipping `_` is the
-# one that can bite in the other direction: it makes `lesson_bodies` and `lessonbodies` equal
-# for the search. Accepted — it is a false positive in the direction we already chose to
-# tolerate, and reaching it needs the model to delete an underscore, which is a formatting
-# edit rather than an invention.
-_EMPHASIS = frozenset("*_`")
-
-# What opens a list item: a bullet or an ordinal, at the start of a line, followed by a space.
-# The trailing space is what keeps this narrow — a line reading "-3 degrees" is not a list, and
-# "1.5 seconds" is not an ordinal.
-_LIST_MARKER = re.compile(r"[ \t]*(?:[-*+]|\d{1,3}[.)])[ \t]+")
-
-
-def _flatten(text: str) -> tuple[str, list[int]]:
-    """`text` with whitespace runs collapsed to one space, emphasis and list markers dropped
-    and the ends stripped, plus, per character kept, the index it came from — which is what
-    lets a match map back to the original.
-
-    Walked line by line rather than character by character, because "is this a list marker?"
-    is a question about the start of a line and the offsets have to survive the answer.
-    """
-    kept: list[str] = []
-    offsets: list[int] = []
-    after_space = True
-    index = 0
-    for line in text.splitlines(keepends=True):
-        marker = _LIST_MARKER.match(line)
-        # The whole marker, indent included, is invisible — but the line still begins after
-        # whatever whitespace preceded it, so the collapsed space between two items survives.
-        start = marker.end() if marker else 0
-        for offset, char in enumerate(line[start:], start=index + start):
-            if char in _EMPHASIS:
-                # Not `continue`-ing through the space branch on purpose: an emphasis marker
-                # is invisible, so `**a** **b**` still flattens to `a b` rather than `ab`.
-                continue
-            if char.isspace():
-                if not after_space:
-                    kept.append(" ")
-                    offsets.append(offset)
-                    after_space = True
-                continue
-            kept.append(char)
-            offsets.append(offset)
-            after_space = False
-        index += len(line)
-    if kept and kept[-1] == " ":
-        kept.pop()
-        offsets.pop()
-    return "".join(kept), offsets
-
-
-def _grounding_violations(label: str, quote: str, corpus: str) -> list[str]:
-    """Why this quote is not evidence — naming the RULE that was broken, not just the fact.
-
-    The generic "not verbatim" message cost a whole evaluation: the model had joined real
-    passages with "..." and, told only that its quote was not verbatim, answered the same
-    thing three times, because from where it stood every fragment WAS copied. Feedback has
-    to name what to do differently.
-    """
-    if locate(corpus, quote) is not None:
-        return []
-    if "..." in quote or "…" in quote:
-        return [
-            f"{label} joins separate passages with an ellipsis. Each entry of "
-            '"evidence" must be ONE CONTINUOUS passage copied from the text: split it '
-            "into several entries instead, one per place in the text."
-        ]
-    return [
-        f"{label} is not a passage from the text shown — copy it character-for-character "
-        f"(got: {quote.strip()[:120]!r})"
-    ]
+locate = grounding.locate
+_grounding_violations = grounding.grounding_violations
 
 
 # --- the generic judge --------------------------------------------------------------------
@@ -478,6 +378,30 @@ def _total(usages: Sequence[LlmUsage]) -> LlmUsage:
 
 def _numbered(failure_modes: Sequence[str]) -> str:
     return "\n".join(f"{index}. {mode}" for index, mode in enumerate(failure_modes))
+
+
+def _indices(values: Any) -> list[int]:
+    """Every index of a validated answer, coerced once — the validator already refused
+    anything `as_index` cannot read."""
+    return [index for value in values if (index := as_index(value)) is not None]
+
+
+def as_index(value: Any) -> int | None:
+    """The integer a model meant by an index, or `None` when it did not mean one.
+
+    `"0"` is accepted because it is the same answer in a different serialization, and two of
+    five field runs met an upstream that quotes its integers — one of them died on it, having
+    spent its attempts fixing the type and then dropping an entry. This is the tolerance
+    `_parse_json` already grants a markdown fence around the JSON, at the same level: how the
+    answer is encoded, never what it says. A boolean is not an index, and neither is `"1.0"`.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
 
 
 def _validate_verdict(answer: Any, corpus: str, failure_mode_count: int) -> list[str]:
@@ -600,7 +524,7 @@ def _ask_per_objective(
         ObjectiveVerdict(
             objective_id=objective_id,
             reason=str(by_id[objective_id]["reason"]).strip(),
-            task_numbers=tuple(int(n) for n in by_id[objective_id]["taskNumbers"]),
+            task_numbers=tuple(_indices(by_id[objective_id]["taskNumbers"])),
             satisfied=bool(by_id[objective_id]["satisfied"]),
             failure_mode_index=(
                 int(mode)
@@ -699,9 +623,10 @@ def _citation_violations(label: str, numbers: Any, allowed: Sequence[int]) -> li
         ]
     violations: list[str] = []
     cited: set[int] = set()
-    for value in numbers:
-        if not isinstance(value, int) or isinstance(value, bool):
-            violations.append(f"{label}.taskNumbers must hold integers (got {value!r})")
+    for raw in numbers:
+        value = as_index(raw)
+        if value is None:
+            violations.append(f"{label}.taskNumbers must hold integers (got {raw!r})")
         elif value not in allowed:
             violations.append(
                 f"{label}.taskNumbers holds {value}, which is not a task listed under this "
@@ -828,7 +753,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             ObjectiveMapping(
                 objective_id=objective_id,
                 reason=str(by_id[objective_id]["reason"]).strip(),
-                task_indices=tuple(int(i) for i in by_id[objective_id]["taskIndices"]),
+                task_indices=tuple(_indices(by_id[objective_id]["taskIndices"])),
             )
             for objective_id in objective_ids
         ]
@@ -867,9 +792,10 @@ def _validate_mapping(answer: Any, objective_ids: Sequence[str], task_count: int
             # No duplicates, which also bounds the list: it cannot be longer than the number
             # of tasks, so a repeating answer is refused instead of growing without end.
             listed: set[int] = set()
-            for value in indices:
-                if not isinstance(value, int) or isinstance(value, bool):
-                    violations.append(f"{label}.taskIndices must hold integers (got {value!r})")
+            for raw in indices:
+                value = as_index(raw)
+                if value is None:
+                    violations.append(f"{label}.taskIndices must hold integers (got {raw!r})")
                 elif not 0 <= value < task_count:
                     violations.append(
                         f"{label}.taskIndices holds {value}, which is not a task index "
@@ -957,7 +883,7 @@ def assessment_reach(profile: ProfileData) -> tuple[list[TaskReach], LlmUsage]:
             max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
         )
-        by_index = {int(entry["index"]): entry for entry in payload["tasks"]}
+        by_index = {as_index(entry["index"]): entry for entry in payload["tasks"]}
         reached = [
             TaskReach(
                 index=index,
@@ -983,8 +909,8 @@ def _validate_reach(answer: Any, lesson_ids: Sequence[str], task_count: int) -> 
         if not isinstance(entry, dict):
             violations.append(f"{label} must be an object")
             continue
-        index = entry.get("index")
-        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < task_count:
+        index = as_index(entry.get("index"))
+        if index is None or not 0 <= index < task_count:
             violations.append(f"{label}.index must be an integer between 0 and {task_count - 1}")
         elif index in seen:
             violations.append(f"{label}.index {index} appears more than once")

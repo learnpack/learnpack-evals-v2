@@ -30,12 +30,21 @@ voted on is still the criterion's verdict, so `SAMPLES` and the tie-break are un
 disagree about WHICH objective disagree about the facts, and samples that name the same one
 and split disagree about the bar. Only the second is a bug report about the instrument.
 
-**And a list marker is formatting.** `locate` already ignored whitespace and emphasis; it now
-ignores the bullet or ordinal that opens a line, because a quote running from a lead-in into
-the list under it was being refused for a `- ` the course put there. That was
-`outcomes_extraction`'s 7 retries in 13 calls. The rule stays narrow — a marker is a bullet or
-an ordinal at the start of a line and followed by a space — and what is stored is still the
-source's own span, bullets included.
+**And three things about citations that the field runs of this very version taught.** A list
+marker is formatting: `locate` already ignored whitespace and emphasis and now ignores the
+bullet or ordinal too, because a quote running from a lead-in into the list under it was being
+refused for a `- ` the course put there. The first attempt dropped the marker only where the
+SOURCE has it, at the start of a line, and that merely turned the false negative around — a
+model that copied the ordinal faithfully became the one refused, at 9 retries in 5 runs. The
+marker is invisible **wherever a break puts it**, on both sides of the comparison, which is
+the only symmetric reading. The rule itself moved to `grounding.py` because
+`outcomes_extraction` was not using it at all: that validator compared bytes against the
+lesson body while every other citation went through `locate`, which is why it was the most
+retried task in the package (7 in 13 calls, then 5 in 10). And an index a model serializes as
+`"0"` is now read as `0` — two of five runs met an upstream that quotes its integers and one
+died on it, spending its attempts fixing the type and then dropping an entry of the twenty.
+How an answer is encoded is not what it says, which is the tolerance `_parse_json` already
+grants a markdown fence.
 
 Untouched on purpose: the shared `JUDGE_USER` and the four criteria that read a lesson body
 (they have not failed once), the vote, the retry ladder, the budgets, and the bar itself —

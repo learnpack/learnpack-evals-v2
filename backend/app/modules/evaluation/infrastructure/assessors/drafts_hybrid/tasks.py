@@ -21,7 +21,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.modules.evaluation.domain.model import ProfileData, ProfileEntryData
-from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import prompts, runtime
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
+    grounding,
+    prompts,
+    runtime,
+)
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.memo import TaskMemo
 from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
     LlmUsage,
@@ -168,7 +172,10 @@ def outcomes_extraction(profile: ProfileData) -> tuple[list[OutcomeStatement], L
         )
         outcomes = [
             OutcomeStatement(
-                statement=str(item["statement"]).strip(),
+                # The lesson's own span, not the model's rendering of it: the validator
+                # accepts a quote that drops a bullet or an emphasis marker, and what a
+                # report shows has to be findable in the course (ADR-0009).
+                statement=grounding.locate(body, str(item["statement"])) or "",
                 verb=str(item["verb"]),
                 is_observable=bool(item["is_observable"]),
             )
@@ -192,11 +199,15 @@ def _validate_outcomes(answer: Any, body: str) -> list[str]:
         statement = item.get("statement")
         if not isinstance(statement, str) or not statement.strip():
             violations.append(f"{label}.statement must be a non-empty string")
-        elif statement.strip() not in body:
-            # The grounding rule: a citation that is not in the source is not evidence.
+        elif grounding.locate(body, statement) is None:
+            # The grounding rule: a citation that is not in the source is not evidence. Read
+            # through `grounding` since v12 — this check used to be byte equality against the
+            # body, which refused a statement quoted across a bullet or with the emphasis
+            # dropped, and refusing THAT is a finding about markdown rather than about the
+            # course. It was the single most retried task in the package.
             violations.append(
-                f"{label}.statement is not a verbatim quote from the lesson — copy the "
-                f"sentence character-for-character (got: {statement.strip()[:120]!r})"
+                f"{label}.statement is not a quote from the lesson — copy the sentence "
+                f"character-for-character (got: {statement.strip()[:120]!r})"
             )
         if not isinstance(item.get("verb"), str) or not str(item.get("verb")).strip():
             violations.append(f"{label}.verb must be a non-empty string")

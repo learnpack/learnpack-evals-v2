@@ -915,6 +915,72 @@ def test_a_quote_that_runs_into_a_list_still_grounds(fake_llm):
     assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
 
 
+def test_a_quote_that_carries_the_marker_across_grounds_too(fake_llm):
+    """The field run that caught the first attempt at this: dropping the marker only where
+    the SOURCE has it — at the start of a line — turned the false negative around instead of
+    removing it. A model that copied the ordinal faithfully was then the one refused, and
+    `closing_integrates` spent 9 retries in 5 runs on it. Both readings are faithful, so the
+    marker is invisible on both sides."""
+    data = judged_profile()
+    data.entries["lesson_bodies"].value[3]["body"] = (
+        "# Wrap up\n\nThe secret is the loop:\n1. **Orient**: run pwd.\n2. **Look**: run ls.\n"
+    )
+    fake_llm(closing_integrates=[verdict_json("The secret is the loop: 1. Orient: run pwd.")] * 2)
+
+    result = run_judged("cr-closing-lesson-integrates", data)
+
+    assert result.passed
+    assert result.quote == "The secret is the loop:\n1. **Orient**: run pwd."
+
+
+def test_an_outcome_quoted_across_a_bullet_grounds(fake_llm):
+    """The oldest retry source in the package: this validator compared bytes against the body
+    while every other citation went through `locate`, so a statement quoted across a numbered
+    list was refused for the `1. ` the lesson puts there. What is stored is the lesson's own
+    span, list markers included."""
+    data = outcomes_profile()
+    data.entries["lesson_bodies"].value[0]["body"] = (
+        "# Welcome\n\nYou will master two skills:\n\n"
+        "1. **Navigation**: moving between folders.\n"
+        "2. **Inspection**: reading files.\n"
+    )
+    client = fake_llm(
+        outcomes=[
+            outcomes_json(
+                ("You will master two skills: Navigation: moving between folders.", "move", True)
+            )
+        ]
+    )
+
+    outcomes, _ = tasks.outcomes_extraction(data)
+
+    assert len(client.calls) == 1  # grounded on the first answer: no retry
+    assert outcomes[0].statement == (
+        "You will master two skills:\n\n1. **Navigation**: moving between folders."
+    )
+
+
+def test_an_index_the_model_quoted_is_still_an_index(fake_llm):
+    """Two of five field runs met an upstream that serializes its integers as strings, and
+    one died on it — three attempts spent fixing the type, the last of them dropping an entry
+    of the twenty. How the answer is encoded is not what it says, the same tolerance
+    `_parse_json` already grants a markdown fence."""
+    quoted = json.dumps(
+        {
+            "tasks": [
+                {"index": str(index), "reason": "what it asks", "referencesLessonIds": ["00.0"]}
+                for index in range(3)
+            ]
+        }
+    )
+    client = fake_llm(assessment_reach=[quoted])
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert len(client.calls) == 1  # accepted as it came, no feedback round
+    assert not result.passed  # one earlier lesson is not two — the verdict is unaffected
+
+
 def test_a_hyphen_that_opens_no_list_is_still_text(fake_llm):
     """The rule is narrow on purpose: a marker is a bullet or an ordinal at the start of a
     line AND followed by a space. `-3 degrees` opens nothing, and neither does `1.5`."""
@@ -1608,7 +1674,7 @@ def test_an_ungrounded_quote_is_a_schema_violation(fake_llm):
     outcomes, usage = tasks.outcomes_extraction(outcomes_profile())
 
     assert usage.calls == 2
-    assert "verbatim" in client.calls[1]["messages"][-1]["content"]
+    assert "not a quote from the lesson" in client.calls[1]["messages"][-1]["content"]
     assert outcomes[0].statement == GROUNDED_OUTCOME
 
 
