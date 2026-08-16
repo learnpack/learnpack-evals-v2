@@ -10,6 +10,7 @@ No server runs, so the mount is served off disk — the locators stay genuine ht
 only the transport changes, exactly as in `test_local_courses_dev_api.py`.
 """
 
+import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
@@ -223,8 +224,14 @@ def test_a_folder_becomes_a_round_and_a_score(
     assert [row.version for row in scope] == ["9c1f2ab-dirty"]
     assert len(no_llm) == 1
 
-    out = capsys.readouterr().out
-    assert '"batch"' in out and '"fitness"' in out
+    # stdout is ONE json document and nothing else — a caller runs this command and parses
+    # what comes back, so a stray line of progress on this stream is a broken contract, not
+    # cosmetic noise. Everything the run says about itself goes to stderr.
+    captured = capsys.readouterr()
+    document = json.loads(captured.out)
+    assert set(document) == {"batch", "fitness"}
+    assert document["batch"]["studyId"] == str(study.id)
+    assert "created" in captured.err  # the registration reported itself, on the other stream
 
 
 def test_running_it_again_resumes_the_same_round(
