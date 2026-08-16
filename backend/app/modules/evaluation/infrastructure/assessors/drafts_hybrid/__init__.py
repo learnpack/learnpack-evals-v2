@@ -1,4 +1,30 @@
-"""`drafts-hybrid` v10 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v11 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v11 reads the assessment a draft PROPOSES, not only the half it delivers (ADR-0046). The
+three criteria that read assessment now take `assessment_offerings` — everything the draft
+offers to assess with, every entry marked `delivered` or `proposed` — where they used to take
+`lesson_assessment_items`. Measured over the five drafts on hand, that is 5, 8, 14, 10 and 14
+proposed exercises against 5, 12, 3, 3 and 3 delivered items: the corpus these three tasks
+were reading was between 18 % and 60 % of what each draft actually offers, and the five
+objectives the v6 era reported as measured by nothing are covered by proposals. Their
+failures were findings about the extraction.
+
+Three things follow, and each is identity. **The corpora show one index space** over
+delivered and proposed together, each entry marked and separated by a blank line, because a
+proposed exercise's prompt runs over several lines and the old one-line-per-item layout would
+have let a single task read as several — the model would answer with indices nobody assigned.
+**The two extraction prompts say what a proposal is** ("what the course commits to asking of
+the learner"), so the model is not left to decide whether something unbuilt counts; the answer
+fields are renamed with them (`taskIndices`, `tasks`), because a field called `itemIndices`
+under a prompt about tasks invites exactly the reading this bump removes. And
+`cr-every-objective-has-an-assessment-item` **reports how much of its coverage rests on
+proposals alone** (`objectives_measured_by_proposal_only`, `assessment_offered`): the
+proposals are written by the same pipeline as the objectives, so alignment between them may
+be partly tautological, and the metric is what makes that measurable rather than arguable.
+
+The judging prompt, the vote, the retry ladder and the other four judged criteria are
+untouched. The instrument moves with this: `course-drafts-qa` v7 is what re-points those
+three criteria and states in each pass condition which kinds it counts.
 
 v10 tells the outcomes extraction which verb to report when the statement wraps its action.
 Reading the eleven runs of the v6 era found the task taking the auxiliary of the wrapper as
@@ -192,7 +218,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "10"
+VERSION = "11"
 INSTRUMENT_ID = "course-drafts-qa"
 
 

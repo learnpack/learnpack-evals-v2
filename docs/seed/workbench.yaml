@@ -27,7 +27,7 @@
 # of them are inputs to the test suite) and are simply not listed.
 instruments:
   - instruments/learnpack-course-qa-v1.yaml
-  - instruments/course-drafts-qa-v6.yaml
+  - instruments/course-drafts-qa-v7.yaml
 
 # Package formats whose CURRENT extraction adapter is accepted (ADR-0012). Accepting is what
 # arms automatic profiling on registration (ADR-0029), so without it every course registers

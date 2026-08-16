@@ -119,7 +119,7 @@ uv run python -m app.cli show-fitness --study-id <id> > fitness.json
 ```json
 {
   "studyId": "1944e1e0-9c2d-4da2-8361-4b1d6a9f232a",
-  "instrumentVersionId": "course-drafts-qa-v6",
+  "instrumentVersionId": "course-drafts-qa-v7",
   "formulaVersion": "1",
   "denominatorRule": {
     "numerator": ["pass"],

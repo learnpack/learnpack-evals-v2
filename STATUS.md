@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-15._
+_Last updated: 2026-08-16._
 
 ## Where we are
 
@@ -187,16 +187,37 @@ items ask for recognition*) does not weaken but **reverses**: the proposals are 
 ADR-0046 admits them as evidence for the alignment claims and mints **one** id carrying the
 whole surface with every entry marked `delivered` or `proposed` — one list rather than two
 because a criterion is silent when any datum it requires is absent, and three of the five drafts
-are a single question block away from being all-proposals. `course-drafts-qa` **v7** is on disk
-as a draft: it mints `assessment_offerings`, re-points its three assessment criteria at it (each
-saying in its own words which of the two kinds it counts) and widens the claim's statement from
-*the assessment items the draft carries* to *the assessment the draft offers*. **Nothing reads it
-yet** — no adapter supplies the id, so those three criteria would derive `not_applicable`;
-`workbench.yaml` still publishes v6. The adapter (v3, its own `ExtractionAccepted` and a
-re-profile) and the assessor that reads the new corpus are the two steps that follow, and until
-the third lands **the campaign changes no verdict**. What it will change when it does: the
-fitness denominator for this lineage, so values from before and after are not comparable
-(ADR-0023 §7).
+are a single question block away from being all-proposals. It landed in three steps.
+`course-drafts-qa` **v7** mints `assessment_offerings`, re-points its three assessment criteria
+at it — each saying in its own words which of the two kinds it counts — and widens the claim's
+statement from *the assessment items the draft carries* to *the assessment the draft offers*.
+The **LearnpackV2 adapter v3** supplies it: the delivered half is the same reading
+`lesson_assessment_items` reports (a test pins that the two can never disagree about a
+question), and a proposal's prompt is the fence's own text, because inside a `question` fence
+the author writes the expected answers while a proposal fence holds the instruction itself.
+And **`drafts-hybrid` v11** reads it: one index space over both kinds with every entry marked,
+separated by blank lines because a proposal's prompt runs over several lines and the old
+one-line-per-item layout would have let one task read as several; two rewritten extraction
+prompts that say what a proposal is; and a new metric,
+`objectives_measured_by_proposal_only`, beside the count of what was offered of each kind.
+
+**What is left to do is the part nobody can automate.** The instrument is a **draft** and
+publishing it is a human act; `workbench.yaml` now names v7, so `seed-workbench` publishes it
+and ratifies `drafts-hybrid:11` against it on a fresh database. On a store that already
+published v6, publishing v7 leaves the lineage with **two** published versions, and `measure`
+refuses to guess between them — pass `--instrument-version-id course-drafts-qa-v7` or start
+from `task db:reset`, which is wanted anyway: the adapter version moved, so every LearnpackV2
+content needs `accept-extraction` and a re-profile before anything reads the new id.
+
+**And the field verification has not been run.** Two questions, both answerable with the three
+drafts already on hand: whether `cr-every-objective-has-an-assessment-item` stops failing where
+a proposal covers the objective (five of them do), and whether
+`cr-assessment-matches-the-declared-verification` still discriminates — the proposals are
+written by the same pipeline as the objectives, so alignment between them may be partly
+tautological, and the honest test is the same drafts judged by `:10` and `:11` and the two
+results compared. Until that is read, the campaign is code, not a finding. One thing is certain
+already: the fitness denominator for this lineage moved, so values from before and after are
+not comparable (ADR-0023 §7).
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.

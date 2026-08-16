@@ -474,19 +474,42 @@ def arc_character(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
 def every_objective_has_an_assessment_item(
     spec: CriterionSpec, profile: ProfileData
 ) -> ExecutorResult:
-    """Every declared objective is measured by at least one shipped item.
+    """Every declared objective is measured by at least one task the draft offers.
 
-    The verdict is CODE's: the model supplies the mapping (which items bear on which
+    The verdict is CODE's: the model supplies the mapping (which tasks bear on which
     objective) and "every objective has at least one" is arithmetic over it. Only the
     matching needed a judge.
+
+    Two metrics answer the question this criterion's widening raises (ADR-0046): how much of
+    the coverage rests on tasks the draft only PROPOSES, and how much assessment of each kind
+    there was to map. A criterion that passes only because every match is a proposal is a
+    different finding from one that passes on delivered work, and the report should not need
+    a trace to tell them apart.
     """
     entry = _entry(profile, "declared_objectives")
+    offerings = list(_entry(profile, "assessment_offerings").value)
     mappings, usage = judgments.assessment_mapping(profile)
-    unmeasured = [mapping for mapping in mappings if not mapping.item_indices]
+    unmeasured = [mapping for mapping in mappings if not mapping.task_indices]
+
+    def proposed_only(mapping: judgments.ObjectiveMapping) -> bool:
+        measured = [offerings[index] for index in mapping.task_indices if index < len(offerings)]
+        return bool(measured) and all(task.get("status") == "proposed" for task in measured)
+
     metrics = (
         _usage_metric("assessment_mapping", usage),
         ComputedMetric("objectives_measured_count", len(mappings) - len(unmeasured)),
         ComputedMetric("objectives_unmeasured", [mapping.objective_id for mapping in unmeasured]),
+        ComputedMetric(
+            "objectives_measured_by_proposal_only",
+            [mapping.objective_id for mapping in mappings if proposed_only(mapping)],
+        ),
+        ComputedMetric(
+            "assessment_offered",
+            {
+                "delivered": sum(1 for o in offerings if o.get("status") != "proposed"),
+                "proposed": sum(1 for o in offerings if o.get("status") == "proposed"),
+            },
+        ),
     )
     if unmeasured:
         # Built with `_result` rather than `_judged` on purpose: nothing here was voted on,
@@ -507,19 +530,19 @@ def every_objective_has_an_assessment_item(
 def assessment_matches_the_declared_verification(
     spec: CriterionSpec, profile: ProfileData
 ) -> ExecutorResult:
-    """The items measuring an objective ask for what its declared verification describes.
+    """The tasks measuring an objective ask for what its declared verification describes.
 
     Reads the mapping the previous criterion paid for (memoized), narrows it in code to the
-    objectives the criterion is about — those that declare a `verifiableBy` AND have items
+    objectives the criterion is about — those that declare a verification AND have tasks
     bearing on them — and judges that set in one question, which is how the pass condition
-    is phrased.
+    is phrased. Delivered and proposed tasks both reach the judge, each marked as what it is.
     """
     entry = _entry(profile, "declared_objectives")
     mappings, mapping_usage = judgments.assessment_mapping(profile)
     corpus = judgments.verification_corpus(profile, mappings)
     if corpus is None:
         # Nothing the criterion is about: no objective both declares a verification and has
-        # an item bearing on it. Vacuously satisfied — the objectives with no item at all
+        # a task bearing on it. Vacuously satisfied — the objectives with no task at all
         # are the previous criterion's finding, not this one's.
         return _result(
             entry,
@@ -550,23 +573,25 @@ def assessment_matches_the_declared_verification(
 def assessment_retrieves_earlier_taught_material(
     spec: CriterionSpec, profile: ProfileData
 ) -> ExecutorResult:
-    """The items collectively draw on at least 2 earlier lessons outside their own module.
+    """The offered tasks collectively draw on at least 2 earlier lessons outside their module.
 
-    Extraction plus a count, not a judgement: the model reports which lessons each item
+    Extraction plus a count, not a judgement: the model reports which lessons each task
     draws on (constrained to identifiers the plan declares, so it cannot invent one) and
-    the reach rule is arithmetic here, where it can be read.
+    the reach rule is arithmetic here, where it can be read. A proposed exercise reaches back
+    exactly as a delivered question does — what the learner must have studied to do it does
+    not depend on who materializes it.
     """
-    entry = _entry(profile, "lesson_assessment_items")
+    entry = _entry(profile, "assessment_offerings")
     reaches, usage = judgments.assessment_reach(profile)
-    items = list(entry.value)
+    offerings = list(entry.value)
     ordered = tasks.ordered_inventory(profile)
     position_by_id = {str(lesson["lessonId"]): index for index, lesson in enumerate(ordered)}
 
     reached: set[str] = set()
     for reach in reaches:
-        if reach.index >= len(items):
+        if reach.index >= len(offerings):
             continue
-        own_id = str(items[reach.index].get("lessonId"))
+        own_id = str(offerings[reach.index].get("lessonId"))
         own_position = position_by_id.get(own_id)
         own_module = _module(own_id)
         for referenced in reach.references:

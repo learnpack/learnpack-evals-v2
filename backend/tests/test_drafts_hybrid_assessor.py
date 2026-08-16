@@ -1,5 +1,5 @@
-"""`drafts-hybrid` v6 — the semantic and judged executors over a fake transport, the
-coverage vs the real v5 YAML, the whole package against the frozen LearnpackV2 fixture,
+"""`drafts-hybrid` v11 — the semantic and judged executors over a fake transport, the
+coverage vs the real v7 YAML, the whole package against the frozen LearnpackV2 fixture,
 the three-way retry (ADR-0037 §7), and ratification.
 
 The fake replaces the TRANSPORT only (the seam is `runtime.get_client`, ADR-0034):
@@ -60,12 +60,12 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "10")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "11")]
 
-_V5_SPEC = yaml.safe_load(
-    (INSTRUMENTS_DIR / "course-drafts-qa-v5.yaml").read_text(encoding="utf-8")
+_V7_SPEC = yaml.safe_load(
+    (INSTRUMENTS_DIR / "course-drafts-qa-v7.yaml").read_text(encoding="utf-8")
 )
-_V5_CRITERIA = {
+_V7_CRITERIA = {
     raw["id"]: CriterionSpec(
         criterion_id=raw["id"],
         pass_condition=raw["pass_condition"],
@@ -75,7 +75,7 @@ _V5_CRITERIA = {
         on_missing_evidence=raw.get("on_missing_evidence", "no_evidence"),
         condition=raw.get("condition"),
     )
-    for raw in _V5_SPEC["criteria"]
+    for raw in _V7_SPEC["criteria"]
 }
 
 
@@ -247,11 +247,11 @@ def outcomes_profile() -> ProfileData:
 # --- coverage vs the shipped instrument ------------------------------------------------
 
 
-def test_coverage_is_a_disjoint_union_over_v5():
-    declared = {raw["id"] for raw in _V5_SPEC["criteria"]}
+def test_coverage_is_a_disjoint_union_over_the_shipped_instrument():
+    declared = {raw["id"] for raw in _V7_SPEC["criteria"]}
     assert PACKAGE.coverage.declared == declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
-    assert PACKAGE.instrument_id == _V5_SPEC["instrument_id"]
+    assert PACKAGE.instrument_id == _V7_SPEC["instrument_id"]
     assert len(PACKAGE.coverage.executes) == 19
 
 
@@ -281,7 +281,7 @@ def test_every_executed_failure_index_exists_in_the_real_instrument():
     }
     for criterion_id in PACKAGE.coverage.executes:
         needed = 2 if criterion_id in two_mode else 1
-        assert len(_V5_CRITERIA[criterion_id].failure_modes) >= needed
+        assert len(_V7_CRITERIA[criterion_id].failure_modes) >= needed
 
 
 def test_source_config_declares_the_semantic_identity():
@@ -326,7 +326,7 @@ def test_source_config_declares_the_semantic_identity():
 
 
 def test_objectives_observable_verbs(fake_llm):
-    spec = _V5_CRITERIA["cr-objectives-observable-verbs"]
+    spec = _V7_CRITERIA["cr-objectives-observable-verbs"]
     run = PACKAGE.executors["cr-objectives-observable-verbs"]
     data = profile(learning_objectives=["build an API", "understand HTTP deeply"])
 
@@ -353,7 +353,7 @@ def test_objectives_observable_verbs(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_falls_back(fake_llm):
-    spec = _V5_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _V7_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
     data = profile(learning_objectives=["analyze systems", "recall terms", "apply patterns"])
 
@@ -367,7 +367,7 @@ def test_objectives_non_decreasing_demand_falls_back(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
-    spec = _V5_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _V7_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
 
     flat_texts = [f"understand topic {n}" for n in range(4)]
@@ -385,7 +385,7 @@ def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
 
 
 def test_outcomes_present(fake_llm):
-    spec = _V5_CRITERIA["cr-outcomes-present"]
+    spec = _V7_CRITERIA["cr-outcomes-present"]
     run = PACKAGE.executors["cr-outcomes-present"]
 
     fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
@@ -403,7 +403,7 @@ def test_outcomes_present(fake_llm):
 
 
 def test_outcomes_observable_verbs(fake_llm):
-    spec = _V5_CRITERIA["cr-outcomes-observable-verbs"]
+    spec = _V7_CRITERIA["cr-outcomes-observable-verbs"]
     run = PACKAGE.executors["cr-outcomes-observable-verbs"]
 
     internal = "you will be able to build a complete web page"
@@ -418,7 +418,7 @@ def test_outcomes_observable_verbs(fake_llm):
 
 
 def test_cognitive_demand_trajectory_rules(fake_llm):
-    spec = _V5_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _V7_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
 
     inventory = [lesson(f"0{n}.0", n) for n in range(7)]  # 00.0 .. 06.0; core = 5 lessons
@@ -447,7 +447,7 @@ def test_cognitive_demand_trajectory_rules(fake_llm):
 
 
 def test_a_short_course_has_no_trajectory_to_judge(fake_llm):
-    spec = _V5_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _V7_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
     client = fake_llm()  # no canned answers: any call would fail the test
 
@@ -466,9 +466,9 @@ def test_paired_criteria_share_one_extraction(fake_llm):
     client = fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
     data = outcomes_profile()
 
-    present = PACKAGE.executors["cr-outcomes-present"](_V5_CRITERIA["cr-outcomes-present"], data)
+    present = PACKAGE.executors["cr-outcomes-present"](_V7_CRITERIA["cr-outcomes-present"], data)
     verbs = PACKAGE.executors["cr-outcomes-observable-verbs"](
-        _V5_CRITERIA["cr-outcomes-observable-verbs"], data
+        _V7_CRITERIA["cr-outcomes-observable-verbs"], data
     )
 
     assert present.passed and verbs.passed
@@ -489,7 +489,7 @@ def test_two_evaluations_of_one_profile_each_ask_for_themselves(fake_llm):
         ]
     )
     data = outcomes_profile()
-    spec = _V5_CRITERIA["cr-outcomes-present"]
+    spec = _V7_CRITERIA["cr-outcomes-present"]
 
     for _ in range(2):
         with drafts_hybrid.cache_scope():
@@ -509,7 +509,7 @@ def test_concurrent_evaluations_do_not_read_each_others_answers(fake_llm):
         ]
     )
     data = outcomes_profile()
-    spec = _V5_CRITERIA["cr-outcomes-present"]
+    spec = _V7_CRITERIA["cr-outcomes-present"]
     passed: list[bool] = []
     barrier = threading.Barrier(2)
 
@@ -557,7 +557,7 @@ def mapping_json(*entries: tuple[str, str, list[int]]) -> str:
                     "objectiveId": objective_id,
                     "reason": "what measures it",
                     "evidence": evidence,
-                    "itemIndices": indices,
+                    "taskIndices": indices,
                 }
                 for objective_id, evidence, indices in entries
             ]
@@ -568,12 +568,18 @@ def mapping_json(*entries: tuple[str, str, list[int]]) -> str:
 def reach_json(*entries: tuple[int, list[str]]) -> str:
     return json.dumps(
         {
-            "items": [
+            "tasks": [
                 {"index": index, "reason": "what it asks", "referencesLessonIds": references}
                 for index, references in entries
             ]
         }
     )
+
+
+PROPOSED_EXERCISE = (
+    "In this exercise, the student writes a page with a heading and a link,\n"
+    "reusing the tags introduced earlier."
+)
 
 
 def judged_profile() -> ProfileData:
@@ -598,15 +604,33 @@ def judged_profile() -> ProfileData:
             },
             {"id": "obj-2", "outcome": "The learner can style a page", "verifiableBy": None},
         ],
-        lesson_assessment_items=[
-            {"lessonId": "02.0", "kind": "quiz", "prompt": "Which tag opens a document?"},
-            {"lessonId": "02.0", "kind": "quiz", "prompt": "Build a page from this brief."},
+        # What the draft offers, mixed on purpose: two tasks it delivers and one it only
+        # proposes, which is the shape every real draft of this format has (ADR-0046).
+        assessment_offerings=[
+            {
+                "lessonId": "02.0",
+                "status": "delivered",
+                "kind": "multipleChoice",
+                "prompt": "Which tag opens a document?",
+            },
+            {
+                "lessonId": "02.0",
+                "status": "delivered",
+                "kind": "multipleChoice",
+                "prompt": "Build a page from this brief.",
+            },
+            {
+                "lessonId": "01.1",
+                "status": "proposed",
+                "kind": "codeChallenge",
+                "prompt": PROPOSED_EXERCISE,
+            },
         ],
     )
 
 
 def run_judged(criterion_id: str, data: ProfileData):
-    return PACKAGE.executors[criterion_id](_V5_CRITERIA[criterion_id], data)
+    return PACKAGE.executors[criterion_id](_V7_CRITERIA[criterion_id], data)
 
 
 def test_the_judge_answers_with_reason_before_verdict():
@@ -631,7 +655,7 @@ def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm
 def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
     """The normative text is never retyped into the assessor: it travels from the spec."""
     client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
-    spec = _V5_CRITERIA["cr-closing-lesson-integrates"]
+    spec = _V7_CRITERIA["cr-closing-lesson-integrates"]
 
     run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -648,7 +672,7 @@ def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_
         ]
         * 2
     )
-    spec = _V5_CRITERIA["cr-closing-lesson-projects-forward"]
+    spec = _V7_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
 
@@ -866,8 +890,8 @@ def test_repetition_is_refused_in_every_free_length_array(fake_llm):
     data = judged_profile()
     fake_llm(
         assessment_reach=[
-            reach_json((0, ["00.0", "00.0", "01.0"]), (1, ["01.0"])),
-            reach_json((0, ["00.0", "01.0"]), (1, ["01.1"])),
+            reach_json((0, ["00.0", "00.0", "01.0"]), (1, ["01.0"]), (2, ["01.0"])),
+            reach_json((0, ["00.0", "01.0"]), (1, ["01.1"]), (2, ["01.0"])),
         ],
     )
     client = runtime.get_client()
@@ -881,7 +905,7 @@ def test_repetition_is_refused_in_every_free_length_array(fake_llm):
 
 def test_the_extraction_tasks_are_bounded_too(fake_llm):
     client = fake_llm(
-        assessment_reach=[reach_json((0, ["00.0", "01.0"]), (1, ["01.1"]))],
+        assessment_reach=[reach_json((0, ["00.0", "01.0"]), (1, ["01.1"]), (2, ["01.0"]))],
     )
 
     run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
@@ -965,7 +989,7 @@ def test_a_losing_majority_carries_the_failing_side_s_mode(fake_llm):
             verdict_json("styled it and published it", verdict=False, failure_mode=1),
         ]
     )
-    spec = _V5_CRITERIA["cr-closing-lesson-projects-forward"]
+    spec = _V7_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
 
@@ -1145,6 +1169,50 @@ def test_every_objective_has_an_item_is_decided_in_code(fake_llm):
     assert result.passed
 
 
+def test_an_objective_measured_only_by_a_proposal_is_measured(fake_llm):
+    """The campaign's whole point (ADR-0046): obj-2 is covered by an exercise the draft
+    proposes and by nothing it delivers, which used to read as an objective measured by
+    nothing at all. The pass is real — and the metric says how much of the coverage rests on
+    proposals, because they are written by the same pipeline as the objectives and agreement
+    between the two is weaker evidence than a delivered task would be."""
+    fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", PROPOSED_EXERCISE, [2]),
+            )
+        ]
+    )
+
+    result = run_judged("cr-every-objective-has-an-assessment-item", judged_profile())
+
+    assert result.passed
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["objectives_measured_by_proposal_only"] == ["obj-2"]
+    assert metrics["assessment_offered"] == {"delivered": 2, "proposed": 1}
+
+
+def test_the_mapping_is_shown_which_tasks_are_only_proposed(fake_llm):
+    """One index space over both kinds, each entry marked and each prompt verbatim: the model
+    answers with indices we assigned, and a proposal's several lines cannot read as several
+    tasks."""
+    client = fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", "Build a page from this brief.", [1]),
+                ("obj-2", PROPOSED_EXERCISE, [2]),
+            )
+        ]
+    )
+
+    run_judged("cr-every-objective-has-an-assessment-item", judged_profile())
+
+    corpus = "\n".join(message["content"] for message in client.calls[0]["messages"])
+    assert "[1] delivered item (multipleChoice): Build a page from this brief." in corpus
+    assert "[2] proposed exercise (codeChallenge): In this exercise" in corpus
+    assert PROPOSED_EXERCISE in corpus  # verbatim, its line break included
+
+
 def test_an_unmeasured_objective_fails_and_is_named(fake_llm):
     fake_llm(
         assessment_mapping=[
@@ -1171,7 +1239,7 @@ def test_an_item_quoting_html_is_shown_as_the_course_writes_it(fake_llm):
     and the run died on it. One real draft ships an item like this."""
     question = 'If the HTML is <h1 class="title">Hello</h1>, what color will the heading be?'
     data = judged_profile()
-    data.entries["lesson_assessment_items"].value[0]["prompt"] = question
+    data.entries["assessment_offerings"].value[0]["prompt"] = question
     client = fake_llm(
         assessment_mapping=[
             mapping_json(("obj-1", question, [0]), ("obj-2", "The learner can style a page", []))
@@ -1231,6 +1299,29 @@ def test_the_verification_judge_is_shown_only_the_objectives_it_is_about(fake_ll
     assert "obj-2" not in asked  # declares no verification
 
 
+def test_the_verification_judge_sees_whether_a_task_is_delivered_or_proposed(fake_llm):
+    """The criterion's pass condition says a proposed exercise counts as what the draft
+    offers to verify an objective. The judge can only apply that sentence knowingly if the
+    corpus says which is which — otherwise it would be weighing a declared verification
+    against a task it cannot tell has been built."""
+    client = fake_llm(
+        assessment_mapping=[
+            mapping_json(
+                ("obj-1", PROPOSED_EXERCISE, [2]),
+                ("obj-2", "Which tag opens a document?", [0]),
+            )
+        ],
+        assessment_verification_match=[verdict_json(PROPOSED_EXERCISE)] * 2,
+    )
+
+    result = run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
+
+    assert result.passed
+    asked = "\n".join(message["content"] for message in client.calls[1]["messages"])
+    assert "proposed exercise (codeChallenge)" in asked
+    assert "Builds one" in asked  # obj-1's declared verification, beside what measures it
+
+
 def test_verification_match_is_vacuous_when_nothing_declares_one(fake_llm):
     data = judged_profile()
     data.entries["declared_objectives"].value[0]["verifiableBy"] = None
@@ -1254,8 +1345,10 @@ def test_verification_match_is_vacuous_when_nothing_declares_one(fake_llm):
 # --- assessment reach: extraction, then a count -----------------------------------------
 
 
-def test_assessment_reach_counts_earlier_lessons_outside_the_item_s_module(fake_llm):
-    fake_llm(assessment_reach=[reach_json((0, ["00.0", "01.0"]), (1, ["01.1", "02.0"]))])
+def test_assessment_reach_counts_earlier_lessons_outside_the_task_s_module(fake_llm):
+    fake_llm(
+        assessment_reach=[reach_json((0, ["00.0", "01.0"]), (1, ["01.1", "02.0"]), (2, ["01.1"]))]
+    )
 
     result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
 
@@ -1264,20 +1357,36 @@ def test_assessment_reach_counts_earlier_lessons_outside_the_item_s_module(fake_
     assert metrics["assessment_reaches_back_to"] == ["00.0", "01.0", "01.1"]
 
 
+def test_a_proposed_exercise_reaches_back_like_a_delivered_one(fake_llm):
+    """ADR-0046: what the learner must have studied to do a task does not depend on who
+    materializes it. The same answers that fail one lesson short in the test above pass here
+    because the proposal draws on a module the delivered tasks never touch — which is the
+    shape of a draft that ships one quiz block and proposes everything else."""
+    fake_llm(assessment_reach=[reach_json((0, ["01.0"]), (1, ["02.0"]), (2, ["00.0", "01.0"]))])
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert result.passed
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    # 01.0 from the delivered task in 02.0, 00.0 from the proposal in 01.1; the proposal's
+    # own module (01) does not count for it, which is the same rule the items obey.
+    assert metrics["assessment_reaches_back_to"] == ["00.0", "01.0"]
+
+
 def test_assessment_that_only_tests_its_own_module_fails(fake_llm):
-    fake_llm(assessment_reach=[reach_json((0, ["02.0"]), (1, ["02.0"]))])
+    fake_llm(assessment_reach=[reach_json((0, ["02.0"]), (1, ["02.0"]), (2, ["01.1"]))])
 
     result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
 
     assert not result.passed
     assert (
         result.failure_mode
-        == _V5_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
+        == _V7_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
     )
 
 
 def test_one_earlier_lesson_is_not_enough(fake_llm):
-    fake_llm(assessment_reach=[reach_json((0, ["01.0"]), (1, ["02.0"]))])
+    fake_llm(assessment_reach=[reach_json((0, ["01.0"]), (1, ["02.0"]), (2, ["01.1"]))])
 
     assert not run_judged(
         "cr-assessment-retrieves-earlier-taught-material", judged_profile()
@@ -1288,8 +1397,8 @@ def test_a_reach_answer_naming_a_lesson_the_plan_never_declared_is_refused(fake_
     """The closed-set form of the grounding rule: an invented lesson would be counted."""
     client = fake_llm(
         assessment_reach=[
-            reach_json((0, ["99.9"]), (1, ["02.0"])),
-            reach_json((0, ["00.0", "01.0"]), (1, ["01.1"])),
+            reach_json((0, ["99.9"]), (1, ["02.0"]), (2, ["01.0"])),
+            reach_json((0, ["00.0", "01.0"]), (1, ["01.1"]), (2, ["01.0"])),
         ]
     )
 
@@ -1367,17 +1476,17 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v5",
-        instrument_id=_V5_SPEC["instrument_id"],
+        instrument_version_id="course-drafts-qa-v7",
+        instrument_id=_V7_SPEC["instrument_id"],
         status="published",
-        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V5_SPEC["claims"]),
-        criteria=tuple(_V5_CRITERIA[raw["id"]] for raw in _V5_SPEC["criteria"]),
+        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V7_SPEC["claims"]),
+        criteria=tuple(_V7_CRITERIA[raw["id"]] for raw in _V7_SPEC["criteria"]),
         bindings=tuple(
             BindingSpec(
                 package_format=raw["package_format"],
                 task_variables=raw.get("task_variables", {}),
             )
-            for raw in _V5_SPEC["bindings"]
+            for raw in _V7_SPEC["bindings"]
         ),
     )
 
@@ -1402,8 +1511,8 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     ][1:-1]
     rising = [1 + (n * 4) // max(len(core_ids) - 1, 1) for n in range(len(core_ids))]
     objective_ids = [str(o["id"]) for o in fixture.entries["declared_objectives"].value]
-    items = list(fixture.entries["lesson_assessment_items"].value)
-    first_question = str(items[0]["prompt"])
+    offerings = list(fixture.entries["assessment_offerings"].value)
+    first_question = str(offerings[0]["prompt"])
 
     client = fake_llm(
         outcomes=[outcomes_json((grounded, "build", True))],
@@ -1421,13 +1530,13 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
             mapping_json(*((objective_id, first_question, [0]) for objective_id in objective_ids))
         ],
         assessment_verification_match=[verdict_json(first_question)] * 2,
-        # Items 3 and 4 sit in lesson 03.2 and are answered to draw on two earlier lessons
-        # from other modules; the rest test only their own.
+        # From the fourth task on, answered to draw on two earlier lessons from other
+        # modules; the ones before it test only their own.
         assessment_reach=[
             reach_json(
                 *(
-                    (index, ["00.0", "01.0"] if index >= 3 else [str(item["lessonId"])])
-                    for index, item in enumerate(items)
+                    (index, ["00.0", "01.0"] if index >= 3 else [str(offering["lessonId"])])
+                    for index, offering in enumerate(offerings)
                 )
             )
         ],
@@ -1513,7 +1622,7 @@ def patched_hybrid_package(unique, monkeypatch):
 
 
 def hybrid_copy_spec(unique: str) -> dict:
-    spec = copy.deepcopy(_V5_SPEC)
+    spec = copy.deepcopy(_V7_SPEC)
     spec["instrument_id"] = f"qa-hybrid-{unique}"
     return spec
 
