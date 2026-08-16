@@ -173,6 +173,31 @@ composing an empty dataset. Measured against the real tree, every generation in 
 registered under one version, which is the mixed population ADR-0044 was written about;
 `task db:reset` and one `measure` per folder is the clean start.
 
+**And what a draft PROPOSES to be assessed on is going to count (ADR-0046), in three steps of
+which this is the first.** The drafts lineage was judging assessment through half of what a
+draft offers: LearnpackV2 emits an exercise as a *proposal* inside the lesson body, the adapter
+excluded those on purpose, and `lesson_assessment_items` therefore collected only what ships
+ready for the learner. Over the five drafts on hand that is 5, 8, 10, 14 and 14 proposed
+exercises against 5, 12, 3, 3 and 3 delivered items — and **the five objectives repeated
+judging reported as measured by nothing are covered by proposals**, several near-verbatim
+against the objective's own declared verification. So `cr-every-objective-has-an-assessment-item`
+was failing as an artifact of the extraction, and the systematic failure of
+`cr-assessment-matches-the-declared-verification` (*declared verifications ask for production,
+items ask for recognition*) does not weaken but **reverses**: the proposals are the production.
+ADR-0046 admits them as evidence for the alignment claims and mints **one** id carrying the
+whole surface with every entry marked `delivered` or `proposed` — one list rather than two
+because a criterion is silent when any datum it requires is absent, and three of the five drafts
+are a single question block away from being all-proposals. `course-drafts-qa` **v7** is on disk
+as a draft: it mints `assessment_offerings`, re-points its three assessment criteria at it (each
+saying in its own words which of the two kinds it counts) and widens the claim's statement from
+*the assessment items the draft carries* to *the assessment the draft offers*. **Nothing reads it
+yet** — no adapter supplies the id, so those three criteria would derive `not_applicable`;
+`workbench.yaml` still publishes v6. The adapter (v3, its own `ExtractionAccepted` and a
+re-profile) and the assessor that reads the new corpus are the two steps that follow, and until
+the third lands **the campaign changes no verdict**. What it will change when it does: the
+fitness denominator for this lineage, so values from before and after are not comparable
+(ADR-0023 §7).
+
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
 
