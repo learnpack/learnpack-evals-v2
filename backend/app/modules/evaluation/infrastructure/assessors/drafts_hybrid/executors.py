@@ -471,6 +471,30 @@ def arc_character(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
     return _judged(bodies, judged, spec, "arc_character")
 
 
+def _cited_task(offerings: list[dict[str, Any]], numbers: tuple[int, ...]) -> str:
+    """The prompt of the first task cited, as the course writes it.
+
+    Since v12 the model cites tasks by number and never transcribes them, so the passage a
+    report shows is fetched here rather than copied by the judge — the course's own text, not
+    the label this package puts around it (ADR-0009).
+    """
+    for number in numbers:
+        if 0 <= number < len(offerings):
+            return str(offerings[number].get("prompt") or "")
+    return ""
+
+
+def _objective_outcome(profile: ProfileData, objective_id: str) -> str:
+    return next(
+        (
+            str(objective["outcome"])
+            for objective in _entry(profile, "declared_objectives").value
+            if str(objective["id"]) == objective_id
+        ),
+        "",
+    )
+
+
 def every_objective_has_an_assessment_item(
     spec: CriterionSpec, profile: ProfileData
 ) -> ExecutorResult:
@@ -521,9 +545,11 @@ def every_objective_has_an_assessment_item(
             spec,
             0,
             (*metrics, ComputedMetric("judgment_assessment_mapping", offender.reason)),
-            quote=offender.evidence or None,
+            # An objective nothing measures has no task to quote, so the citation is the
+            # objective's own words — the finding IS about that objective.
+            quote=_objective_outcome(profile, offender.objective_id),
         )
-    quote = mappings[0].evidence if mappings else entry.quote or ""
+    quote = _cited_task(offerings, mappings[0].task_indices) if mappings else entry.quote or ""
     return _result(entry, True, spec, metrics=metrics, quote=quote)
 
 
@@ -534,13 +560,21 @@ def assessment_matches_the_declared_verification(
 
     Reads the mapping the previous criterion paid for (memoized), narrows it in code to the
     objectives the criterion is about — those that declare a verification AND have tasks
-    bearing on them — and judges that set in one question, which is how the pass condition
-    is phrased. Delivered and proposed tasks both reach the judge, each marked as what it is.
+    bearing on them — and judges them ONE BY ONE, adding the answers up here.
+
+    That last part is v12 and it is the whole fix. Asked for a single verdict over every
+    objective at once, the judge did the adding itself and did it badly: one sample wrote
+    "satisfied except obj-3, whose tasks are recognition items" and answered TRUE, and repeats
+    that agreed on a failure named different objectives and picked different failure modes.
+    Aggregation is code's job everywhere else in this package; here it was the model's only
+    by accident of the answer shape. Now the criterion fails when ANY objective fails, the
+    failure mode is that objective's, and each objective carries its own reason.
     """
     entry = _entry(profile, "declared_objectives")
+    offerings = list(_entry(profile, "assessment_offerings").value)
     mappings, mapping_usage = judgments.assessment_mapping(profile)
-    corpus = judgments.verification_corpus(profile, mappings)
-    if corpus is None:
+    case = judgments.verification_corpus(profile, mappings)
+    if case is None:
         # Nothing the criterion is about: no objective both declares a verification and has
         # a task bearing on it. Vacuously satisfied — the objectives with no task at all
         # are the previous criterion's finding, not this one's.
@@ -553,20 +587,60 @@ def assessment_matches_the_declared_verification(
                 ComputedMetric("verification_pairs_judged", 0),
             ),
         )
-    judged = judgments.judge(
+    corpus, citable = case
+    judged = judgments.judge_per_objective(
         profile,
         spec,
         task_id="assessment_verification_match",
-        source_description="the objectives that declare how they would be verified, with "
-        "the assessment items found to measure them",
+        source_description="the objectives that declare how they would be verified, with the "
+        "assessment tasks found to measure them",
         corpus=corpus,
+        citable=citable,
     )
-    return _judged(
+    metrics = (
+        _usage_metric("assessment_verification_match", judged.usage),
+        _usage_metric("assessment_mapping", mapping_usage),
+        ComputedMetric(
+            "judgment_agreement_assessment_verification_match",
+            {"samples": judged.samples, "agreed": judged.agreed},
+        ),
+        ComputedMetric("verification_pairs_judged", len(judged.verdicts)),
+        ComputedMetric(
+            "verification_by_objective",
+            [
+                {
+                    "objectiveId": verdict.objective_id,
+                    "satisfied": verdict.satisfied,
+                    "reason": verdict.reason,
+                    "taskNumbers": list(verdict.task_numbers),
+                }
+                for verdict in judged.verdicts
+            ],
+        ),
+        # Which objectives each sample failed, not just how many samples agreed: samples that
+        # agree on the verdict and name different objectives disagree about the facts, and
+        # samples that name the same one and split disagree about the bar. Only the second is
+        # a bug report about the instrument, and the verdict alone cannot tell them apart.
+        ComputedMetric(
+            "verification_failed_by_sample", [list(failed) for failed in judged.failed_by_sample]
+        ),
+    )
+    if judged.failed:
+        offender = judged.failed[0]
+        return _result(
+            entry,
+            False,
+            spec,
+            offender.failure_mode_index,
+            metrics,
+            quote=_cited_task(offerings, offender.task_numbers),
+        )
+    return _result(
         entry,
-        judged,
+        True,
         spec,
-        "assessment_verification_match",
-        (_usage_metric("assessment_mapping", mapping_usage),),
+        metrics=metrics,
+        quote=_cited_task(offerings, judged.verdicts[0].task_numbers),
     )
 
 

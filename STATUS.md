@@ -203,7 +203,7 @@ prompts that say what a proposal is; and a new metric,
 
 **What is left to do is the part nobody can automate.** The instrument is a **draft** and
 publishing it is a human act; `workbench.yaml` now names v7, so `seed-workbench` publishes it
-and ratifies `drafts-hybrid:11` against it on a fresh database. On a store that already
+and ratifies the current `drafts-hybrid` against it on a fresh database. On a store that already
 published v6, publishing v7 leaves the lineage with **two** published versions, and `measure`
 refuses to guess between them — pass `--instrument-version-id course-drafts-qa-v7` or start
 from `task db:reset`, which is wanted anyway: the adapter version moved, so every LearnpackV2
@@ -218,6 +218,64 @@ tautological, and the honest test is the same drafts judged by `:10` and `:11` a
 results compared. Until that is read, the campaign is code, not a finding. One thing is certain
 already: the fitness denominator for this lineage moved, so values from before and after are
 not comparable (ADR-0023 §7).
+
+**The first six repeats of v11 found the verification criterion unstable, and `drafts-hybrid`
+v12 is two thirds of the answer.** Same course, same instrument, same assessor, six runs: one
+dead, four fail, one pass — and `assessment_verification_match` spent **21 calls on 6 verdicts,
+9 of them retries**. The traces separate three causes, and the two that are ours are fixed.
+**The corpus this package builds is a template**, so a model asked to copy a line out of twenty
+near-identical ones spliced the prefix of one task onto the body of another; the grounding
+check refused it correctly and the retries never converged — 8 calls, no result. The judge now
+cites tasks **by number** (the closed-set rule `assessment_reach` has used since v3) and the
+passage a report shows is fetched from the profile, which is the course's own text instead of
+our label around it — ADR-0009 more exactly, not less. The mapping loses its quote for the same
+reason: it is the field that killed a run in the previous campaign. **And one verdict over four
+objectives made the model do the arithmetic** — one sample wrote *"satisfied except obj-3"* and
+voted pass, while others agreed on a failure naming different objectives. The judge now answers
+**one entry per objective** and the criterion is the conjunction, computed in code; the vote is
+unchanged, and `verification_failed_by_sample` records which objectives each sample failed, so
+a disagreement about the facts is legible apart from a disagreement about the bar. Riding
+along: `locate` now ignores a **list marker** the way it already ignored emphasis, which is
+what `outcomes_extraction` had been spending 7 retries in 13 calls on.
+
+**Ten field runs measured it, and the first five found a regression this branch had just
+introduced.** Dropping a list marker only where the source has it — at the start of a line —
+merely turned the false negative around: a model that copied the ordinal faithfully became the
+one refused, and `closing_integrates` spent 9 retries in 5 runs on it. The marker is now
+invisible wherever a break puts it, on both sides of the comparison. The same runs exposed
+something older: **`outcomes_extraction` never used the grounding rule at all**, comparing
+bytes against the lesson body while every other citation went through `locate` — which is why
+it has always been the most retried task in the package. The rule now lives in `grounding.py`,
+shared by both halves. And an index a model serializes as `"0"` is read as `0`: two runs met an
+upstream that quotes its integers and one died on it, spending its attempts fixing the type and
+then dropping an entry of the twenty.
+
+**What the last five runs measure.** Retries across the whole evaluation: **20 → 7**.
+`assessment_verification_match`: **10 calls for 5 verdicts and zero retries** across all ten
+v12 runs, against 21 calls for 6 verdicts with 9 retries under v11 — and no run died.
+`closing_integrates` 9 → 0, `assessment_reach` 2 retries and a death → 0. The verdict is
+**fail in 5 of 5**, where v11 gave one death, four fails and a pass. The two rejections that
+remain are the check doing its job: the model reworded a sentence and capitalized a fragment.
+
+**And the per-objective data says exactly where the instrument is under-specified**, which is
+what it was added for. Over ten samples: **obj-2 fails 10/10 and obj-3 fails 9/10** — stable
+findings about the draft, both of them compound verifications whose tasks cover part of what
+they name. **obj-1 fails 3/10 and obj-4 4/10**, and every one of those flips arrives inside a
+sample that failed *all four at once* — a wholesale reading that nothing proposed measures
+anything, which the pass condition says is wrong and the judge keeps reaching for anyway. The
+failure mode splits the same way (0 and 1 for the same objective across runs), because neither
+declared mode names what the judge is actually seeing.
+
+**The third cause is the instrument's and was deliberately left alone.** The declared
+verifications are compound — *create a directory structure, copy files, rename a file, remove a
+directory* — and nothing says whether covering the kind of performance is enough or every named
+element must be asked for; the repeats split exactly there, and the failure mode the judge kept
+reaching for does not name what it was seeing (partial coverage). That is a `course-drafts-qa`
+**v8** with a threshold and a third failure mode, and it goes after v12's field runs, because
+moving the mechanism and the bar in the same round leaves the next campaign unable to say which
+did what. The other open one, older: **the provider is not pinned** — six runs drew seven
+upstreams, with answer lengths from 294 to 1184 tokens and latencies from 3.5 s to 56 s for the
+same question, which is ADR-0034 §3's known gap now with evidence attached.
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.

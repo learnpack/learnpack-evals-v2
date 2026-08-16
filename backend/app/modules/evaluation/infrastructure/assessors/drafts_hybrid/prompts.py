@@ -178,6 +178,67 @@ $corpus
 </source>"""
 )
 
+# --- the per-objective judge (v12) --------------------------------------------------------
+#
+# Same three rules as the judge above, with two differences that are the whole point of this
+# template:
+#
+# 1. **One entry per objective, and the criterion's verdict is arithmetic over them.** Asked
+#    for a single true/false over four objective blocks, the model aggregated — and answered
+#    "satisfied except obj-3" with a verdict of TRUE. Aggregation is code's job everywhere
+#    else in this package; here it was the model's by accident of the answer shape.
+# 2. **Evidence is a NUMBER, not a transcription.** The corpus is a template: every task
+#    begins with the same label and the drafts' own proposals begin with the same sentence,
+#    so a model asked to copy one spliced the prefix of one task onto the body of another and
+#    the grounding check refused an answer whose judgement was fine — 9 retries in 21 calls,
+#    one run dead. Citing by number is the closed-set form of the same rule (`assessment_reach`
+#    has used it since v3): a number the corpus does not offer is refused like a hallucinated
+#    quote, and the passage a report finally shows is fetched from the profile — the course's
+#    own text rather than our label around it, which is ADR-0009 more exactly than before.
+
+PER_OBJECTIVE_JUDGE_SYSTEM = """\
+You judge drafts of educational courses against one explicit criterion at a time, objective
+by objective. You are strict and literal: you judge what the text does, not what it could
+plausibly have meant. Answer with a single JSON object and nothing else — no prose, no
+markdown fences.
+
+You never copy the text you are shown. Every objective you judge names the tasks that decide
+it by their number, and a number you were not given for that objective is not evidence."""
+
+PER_OBJECTIVE_JUDGE_USER = Template(
+    """\
+Below, between <source> tags, is $source_description of a draft course: one block per
+objective, each carrying what the objective promises, how the course declares it would be
+verified, and the assessment tasks the course offers to measure it. Every task is numbered in
+brackets, and a task's text may run over several lines.
+
+Judge EACH objective on its own against this criterion, and against nothing else:
+
+$pass_condition
+
+These are the ways this criterion is known to fail, numbered:
+$failure_modes
+
+Answer with this JSON shape, one entry per objective, in this field order:
+{"objectives": [{"objectiveId": "<the objective's id, exactly as given>",
+"reason": "<one sentence saying what the tasks offered for this objective ask for>",
+"taskNumbers": [<the numbers of the tasks that decide this objective — at least one>],
+"satisfied": <true if this objective satisfies the criterion, false if it does not>,
+"failureMode": <when satisfied is false, the number of the failure above that this objective
+shows; null when it is true>}]}
+
+Cite tasks by their number and never copy their text. Only the tasks listed under an
+objective may be cited for it.
+
+Exactly one entry per objective, in the order given. Decide each one from the criterion's own
+words. An objective that partly satisfies it does not satisfy it: answer false and cite the
+tasks that show where it falls short.
+
+<source>
+$corpus
+</source>"""
+)
+
 # --- assessment mapping (which items bear on which objective) ---------------------------
 #
 # Extraction, not judgement: which items measure which objective is a matter of fact about
@@ -205,11 +266,11 @@ what the objective promises. An objective may be measured by several tasks, a ta
 on several objectives, and an objective may have none: report an empty list rather than
 forcing a match.
 
+Refer to tasks by their index and never copy their text: the indices are what identify them.
+
 Answer with this JSON shape, one entry per objective, in this field order:
 {"objectives": [{"objectiveId": "<the objective's id, exactly as given>",
 "reason": "<one sentence on what measures this objective, or that nothing does>",
-"evidence": "<a passage copied verbatim from the text below: part of one task that bears on
-this objective, or the objective's own outcome when none does>",
 "taskIndices": [<indices>]}]}
 
 Exactly one entry per objective.
@@ -265,6 +326,8 @@ _ALL_TEMPLATES: dict[str, str] = {
     "concept_trajectory_user": CONCEPT_TRAJECTORY_USER.template,
     "judge_system": JUDGE_SYSTEM,
     "judge_user": JUDGE_USER.template,
+    "per_objective_judge_system": PER_OBJECTIVE_JUDGE_SYSTEM,
+    "per_objective_judge_user": PER_OBJECTIVE_JUDGE_USER.template,
     "assessment_mapping_system": ASSESSMENT_MAPPING_SYSTEM,
     "assessment_mapping_user": ASSESSMENT_MAPPING_USER.template,
     "assessment_reach_system": ASSESSMENT_REACH_SYSTEM,

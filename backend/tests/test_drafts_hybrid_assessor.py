@@ -1,4 +1,4 @@
-"""`drafts-hybrid` v11 — the semantic and judged executors over a fake transport, the
+"""`drafts-hybrid` v12 — the semantic and judged executors over a fake transport, the
 coverage vs the real v7 YAML, the whole package against the frozen LearnpackV2 fixture,
 the three-way retry (ADR-0037 §7), and ratification.
 
@@ -23,6 +23,7 @@ import copy
 import dataclasses
 import json
 import threading
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -60,7 +61,7 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "11")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "12")]
 
 _V7_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v7.yaml").read_text(encoding="utf-8")
@@ -549,20 +550,53 @@ def verdict_json(*evidence: str, verdict: bool = True, failure_mode: int | None 
     )
 
 
-def mapping_json(*entries: tuple[str, str, list[int]]) -> str:
+def mapping_json(*entries: tuple[str, list[int]]) -> str:
+    """The mapping's answer since v12: which tasks bear on each objective, by index. No
+    quote — the corpus is a template and asking a model to transcribe one of its lines is
+    what made it splice two of them together."""
     return json.dumps(
         {
             "objectives": [
                 {
                     "objectiveId": objective_id,
                     "reason": "what measures it",
-                    "evidence": evidence,
                     "taskIndices": indices,
                 }
-                for objective_id, evidence, indices in entries
+                for objective_id, indices in entries
             ]
         }
     )
+
+
+VERIFICATION = "cr-assessment-matches-the-declared-verification"
+
+
+def _feedback_of(client) -> str:
+    """What the validator sent back — the last message of the first call that carries one."""
+    return next(
+        call["messages"][-1]["content"] for call in client.calls if len(call["messages"]) > 2
+    )
+
+
+def verification_json(*entries: tuple[Any, ...]) -> str:
+    """The per-objective judge's answer (v12): one entry per objective, the tasks that decide
+    it cited by number, and the criterion's own verdict left to code.
+
+    An entry is `(objectiveId, taskNumbers, satisfied)`, plus the declared failure mode when
+    it is not satisfied — mode 0 by default, since most criteria declare more than one and
+    which one a failing objective shows is the model's to name."""
+    objectives = []
+    for objective_id, numbers, satisfied, *mode in entries:
+        objectives.append(
+            {
+                "objectiveId": objective_id,
+                "reason": "what the tasks offered for it ask for",
+                "taskNumbers": numbers,
+                "satisfied": satisfied,
+                "failureMode": None if satisfied else (mode[0] if mode else 0),
+            }
+        )
+    return json.dumps({"objectives": objectives})
 
 
 def reach_json(*entries: tuple[int, list[str]]) -> str:
@@ -850,6 +884,111 @@ def test_a_quote_that_drops_markdown_emphasis_still_grounds(fake_llm):
     # which is all ADR-0009 asks of a quote.
     assert result.quote == "You have built a **complete page"
     assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
+
+
+def test_a_quote_that_runs_into_a_list_still_grounds(fake_llm):
+    """v12, and the most frequent false rejection left: a lesson introduces its list with a
+    lead-in and the model quotes straight through it, dropping the bullet the source puts in
+    between. Refusing that is a statement about our formatting, not about the course — the
+    same argument emphasis won in v5. `outcomes_extraction` spent 7 retries in 13 calls on
+    this alone."""
+    data = judged_profile()
+    data.entries["lesson_bodies"].value[3]["body"] = (
+        "# Wrap up\n\nYou now master four skills:\n\n"
+        "- **Navigation:** moving between folders.\n"
+        "- **Inspection:** reading files.\n"
+    )
+    fake_llm(
+        closing_integrates=[
+            verdict_json("You now master four skills: Navigation: moving between folders.")
+        ]
+        * 2
+    )
+
+    result = run_judged("cr-closing-lesson-integrates", data)
+
+    assert result.passed
+    # Stored as the course writes it: the bullet and the emphasis are inside the span.
+    assert result.quote == (
+        "You now master four skills:\n\n- **Navigation:** moving between folders."
+    )
+    assert result.quote in data.entries["lesson_bodies"].value[3]["body"]
+
+
+def test_a_quote_that_carries_the_marker_across_grounds_too(fake_llm):
+    """The field run that caught the first attempt at this: dropping the marker only where
+    the SOURCE has it — at the start of a line — turned the false negative around instead of
+    removing it. A model that copied the ordinal faithfully was then the one refused, and
+    `closing_integrates` spent 9 retries in 5 runs on it. Both readings are faithful, so the
+    marker is invisible on both sides."""
+    data = judged_profile()
+    data.entries["lesson_bodies"].value[3]["body"] = (
+        "# Wrap up\n\nThe secret is the loop:\n1. **Orient**: run pwd.\n2. **Look**: run ls.\n"
+    )
+    fake_llm(closing_integrates=[verdict_json("The secret is the loop: 1. Orient: run pwd.")] * 2)
+
+    result = run_judged("cr-closing-lesson-integrates", data)
+
+    assert result.passed
+    assert result.quote == "The secret is the loop:\n1. **Orient**: run pwd."
+
+
+def test_an_outcome_quoted_across_a_bullet_grounds(fake_llm):
+    """The oldest retry source in the package: this validator compared bytes against the body
+    while every other citation went through `locate`, so a statement quoted across a numbered
+    list was refused for the `1. ` the lesson puts there. What is stored is the lesson's own
+    span, list markers included."""
+    data = outcomes_profile()
+    data.entries["lesson_bodies"].value[0]["body"] = (
+        "# Welcome\n\nYou will master two skills:\n\n"
+        "1. **Navigation**: moving between folders.\n"
+        "2. **Inspection**: reading files.\n"
+    )
+    client = fake_llm(
+        outcomes=[
+            outcomes_json(
+                ("You will master two skills: Navigation: moving between folders.", "move", True)
+            )
+        ]
+    )
+
+    outcomes, _ = tasks.outcomes_extraction(data)
+
+    assert len(client.calls) == 1  # grounded on the first answer: no retry
+    assert outcomes[0].statement == (
+        "You will master two skills:\n\n1. **Navigation**: moving between folders."
+    )
+
+
+def test_an_index_the_model_quoted_is_still_an_index(fake_llm):
+    """Two of five field runs met an upstream that serializes its integers as strings, and
+    one died on it — three attempts spent fixing the type, the last of them dropping an entry
+    of the twenty. How the answer is encoded is not what it says, the same tolerance
+    `_parse_json` already grants a markdown fence."""
+    quoted = json.dumps(
+        {
+            "tasks": [
+                {"index": str(index), "reason": "what it asks", "referencesLessonIds": ["00.0"]}
+                for index in range(3)
+            ]
+        }
+    )
+    client = fake_llm(assessment_reach=[quoted])
+
+    result = run_judged("cr-assessment-retrieves-earlier-taught-material", judged_profile())
+
+    assert len(client.calls) == 1  # accepted as it came, no feedback round
+    assert not result.passed  # one earlier lesson is not two — the verdict is unaffected
+
+
+def test_a_hyphen_that_opens_no_list_is_still_text(fake_llm):
+    """The rule is narrow on purpose: a marker is a bullet or an ordinal at the start of a
+    line AND followed by a space. `-3 degrees` opens nothing, and neither does `1.5`."""
+    from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.judgments import locate
+
+    assert locate("it fell to\n-3 degrees today", "-3 degrees") == "-3 degrees"
+    assert locate("it took\n1.5 seconds", "1.5 seconds") == "1.5 seconds"
+    assert locate("a well-formed id", "well-formed id") == "well-formed id"
 
 
 def test_an_answer_cut_off_at_the_budget_is_never_fed_back_and_re_rolls_once(fake_llm):
@@ -1158,8 +1297,8 @@ def test_every_objective_has_an_item_is_decided_in_code(fake_llm):
     fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", "Which tag opens a document?", [0]),
+                ("obj-1", [1]),
+                ("obj-2", [0]),
             )
         ]
     )
@@ -1178,8 +1317,8 @@ def test_an_objective_measured_only_by_a_proposal_is_measured(fake_llm):
     fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", PROPOSED_EXERCISE, [2]),
+                ("obj-1", [1]),
+                ("obj-2", [2]),
             )
         ]
     )
@@ -1199,8 +1338,8 @@ def test_the_mapping_is_shown_which_tasks_are_only_proposed(fake_llm):
     client = fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", PROPOSED_EXERCISE, [2]),
+                ("obj-1", [1]),
+                ("obj-2", [2]),
             )
         ]
     )
@@ -1217,8 +1356,8 @@ def test_an_unmeasured_objective_fails_and_is_named(fake_llm):
     fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", "The learner can style a page", []),
+                ("obj-1", [1]),
+                ("obj-2", []),
             )
         ]
     )
@@ -1240,11 +1379,7 @@ def test_an_item_quoting_html_is_shown_as_the_course_writes_it(fake_llm):
     question = 'If the HTML is <h1 class="title">Hello</h1>, what color will the heading be?'
     data = judged_profile()
     data.entries["assessment_offerings"].value[0]["prompt"] = question
-    client = fake_llm(
-        assessment_mapping=[
-            mapping_json(("obj-1", question, [0]), ("obj-2", "The learner can style a page", []))
-        ]
-    )
+    client = fake_llm(assessment_mapping=[mapping_json(("obj-1", [0]), ("obj-2", []))])
 
     result = run_judged("cr-every-objective-has-an-assessment-item", data)
 
@@ -1258,11 +1393,11 @@ def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
     client = fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", "Which tag opens a document?", [0]),
+                ("obj-1", [1]),
+                ("obj-2", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json("Build a page from this brief.")] * 2,
+        assessment_verification_match=[verification_json(("obj-1", [1], True))] * 2,
     )
     data = judged_profile()
 
@@ -1281,15 +1416,15 @@ def test_the_two_assessment_criteria_share_one_mapping(fake_llm):
 
 def test_the_verification_judge_is_shown_only_the_objectives_it_is_about(fake_llm):
     """Narrowed in code: the criterion excludes objectives with no declared verification,
-    and there is nothing to compare for an objective no item bears on."""
+    and there is nothing to compare for an objective no task bears on."""
     client = fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", "Which tag opens a document?", [0]),
+                ("obj-1", [1]),
+                ("obj-2", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json("Build a page from this brief.")] * 2,
+        assessment_verification_match=[verification_json(("obj-1", [1], True))] * 2,
     )
 
     run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
@@ -1307,11 +1442,11 @@ def test_the_verification_judge_sees_whether_a_task_is_delivered_or_proposed(fak
     client = fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", PROPOSED_EXERCISE, [2]),
-                ("obj-2", "Which tag opens a document?", [0]),
+                ("obj-1", [2]),
+                ("obj-2", [0]),
             )
         ],
-        assessment_verification_match=[verdict_json(PROPOSED_EXERCISE)] * 2,
+        assessment_verification_match=[verification_json(("obj-1", [2], True))] * 2,
     )
 
     result = run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
@@ -1322,14 +1457,121 @@ def test_the_verification_judge_sees_whether_a_task_is_delivered_or_proposed(fak
     assert "Builds one" in asked  # obj-1's declared verification, beside what measures it
 
 
+def test_each_task_is_numbered_by_its_own_index_in_the_offerings(fake_llm):
+    """One number means one task everywhere in this package: the judge cites in the same
+    index space the mapping answers in, so a citation resolves to a row of the profile."""
+    client = fake_llm(
+        assessment_mapping=[mapping_json(("obj-1", [1, 2]), ("obj-2", []))],
+        assessment_verification_match=[verification_json(("obj-1", [1], True))] * 2,
+    )
+
+    run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
+
+    asked = "\n".join(message["content"] for message in client.calls[1]["messages"])
+    assert "[1] delivered item (multipleChoice): Build a page from this brief." in asked
+    assert "[2] proposed exercise (codeChallenge): In this exercise" in asked
+    assert "never copy their text" in asked
+
+
+def test_one_unsatisfied_objective_fails_the_criterion(fake_llm):
+    """The aggregation is code's. Asked for one verdict over every objective at once, the
+    judge did it itself and contradicted its own reason — a sample that wrote "satisfied
+    except obj-3" answered true. Now each objective answers for itself and the criterion is
+    the conjunction."""
+    data = judged_profile()
+    data.entries["declared_objectives"].value[1]["verifiableBy"] = "Styles one"
+    fake_llm(
+        assessment_mapping=[mapping_json(("obj-1", [1]), ("obj-2", [0]))],
+        assessment_verification_match=[
+            verification_json(("obj-1", [1], True), ("obj-2", [0], False, 1))
+        ]
+        * 2,
+    )
+
+    result = run_judged("cr-assessment-matches-the-declared-verification", data)
+
+    assert not result.passed
+    # the failing objective's mode, not the first declared one
+    assert result.failure_mode == _V7_CRITERIA[VERIFICATION].failure_modes[1]
+    # and the quote is the task it cited, fetched from the profile
+    assert result.quote == "Which tag opens a document?"
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert [entry["objectiveId"] for entry in metrics["verification_by_objective"]] == [
+        "obj-1",
+        "obj-2",
+    ]
+    assert metrics["verification_failed_by_sample"] == [["obj-2"], ["obj-2"]]
+
+
+def test_two_samples_that_fail_different_objectives_are_both_reported(fake_llm):
+    """Where the next instrument decision comes from: samples agreeing on the verdict and
+    naming different objectives disagree about the facts, while samples naming the same one
+    and splitting disagree about the bar. The verdict alone cannot tell them apart."""
+    data = judged_profile()
+    data.entries["declared_objectives"].value[1]["verifiableBy"] = "Styles one"
+    fake_llm(
+        assessment_mapping=[mapping_json(("obj-1", [1]), ("obj-2", [0]))],
+        assessment_verification_match=[
+            verification_json(("obj-1", [1], False, 0), ("obj-2", [0], True)),
+            verification_json(("obj-1", [1], True), ("obj-2", [0], False, 1)),
+        ],
+    )
+
+    result = run_judged("cr-assessment-matches-the-declared-verification", data)
+
+    assert not result.passed  # both samples fail the criterion, for different reasons
+    metrics = {m.metric_id: m.value for m in result.metrics}
+    assert metrics["verification_failed_by_sample"] == [["obj-1"], ["obj-2"]]
+    assert metrics["judgment_agreement_assessment_verification_match"] == {
+        "samples": 2,
+        "agreed": 2,
+    }
+
+
+def test_citing_a_task_that_belongs_to_another_objective_is_refused(fake_llm):
+    """The closed-set form of the grounding rule: the judge may only cite the tasks its own
+    block listed, so a number borrowed from a neighbour is a contract violation rather than
+    an interpretation."""
+    data = judged_profile()
+    data.entries["declared_objectives"].value[1]["verifiableBy"] = "Styles one"
+    client = fake_llm(
+        assessment_mapping=[mapping_json(("obj-1", [1]), ("obj-2", [0]))],
+        assessment_verification_match=[
+            verification_json(("obj-1", [0], True), ("obj-2", [0], True)),
+            *[verification_json(("obj-1", [1], True), ("obj-2", [0], True))] * 2,
+        ],
+    )
+
+    result = run_judged("cr-assessment-matches-the-declared-verification", data)
+
+    assert result.passed
+    assert "not a task listed under this objective" in _feedback_of(client)
+
+
+def test_an_objective_decided_on_nothing_is_refused(fake_llm):
+    """A verdict with no citation behind it is not evidence (ADR-0009), and with numbers
+    instead of quotes the rule costs one line."""
+    client = fake_llm(
+        assessment_mapping=[mapping_json(("obj-1", [1]), ("obj-2", []))],
+        assessment_verification_match=[
+            verification_json(("obj-1", [], True)),
+            *[verification_json(("obj-1", [1], True))] * 2,
+        ],
+    )
+
+    run_judged("cr-assessment-matches-the-declared-verification", judged_profile())
+
+    assert "non-empty array of task numbers" in _feedback_of(client)
+
+
 def test_verification_match_is_vacuous_when_nothing_declares_one(fake_llm):
     data = judged_profile()
     data.entries["declared_objectives"].value[0]["verifiableBy"] = None
     client = fake_llm(
         assessment_mapping=[
             mapping_json(
-                ("obj-1", "Build a page from this brief.", [1]),
-                ("obj-2", "Which tag opens a document?", [0]),
+                ("obj-1", [1]),
+                ("obj-2", [0]),
             )
         ]
     )
@@ -1432,7 +1674,7 @@ def test_an_ungrounded_quote_is_a_schema_violation(fake_llm):
     outcomes, usage = tasks.outcomes_extraction(outcomes_profile())
 
     assert usage.calls == 2
-    assert "verbatim" in client.calls[1]["messages"][-1]["content"]
+    assert "not a quote from the lesson" in client.calls[1]["messages"][-1]["content"]
     assert outcomes[0].statement == GROUNDED_OUTCOME
 
 
@@ -1512,7 +1754,6 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     rising = [1 + (n * 4) // max(len(core_ids) - 1, 1) for n in range(len(core_ids))]
     objective_ids = [str(o["id"]) for o in fixture.entries["declared_objectives"].value]
     offerings = list(fixture.entries["assessment_offerings"].value)
-    first_question = str(offerings[0]["prompt"])
 
     client = fake_llm(
         outcomes=[outcomes_json((grounded, "build", True))],
@@ -1526,10 +1767,11 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         closing_integrates=[verdict_json(grounded_closing)] * 2,
         closing_projects_forward=[verdict_json(grounded_closing)] * 2,
         arc_character=[verdict_json(grounded_closing)] * 2,
-        assessment_mapping=[
-            mapping_json(*((objective_id, first_question, [0]) for objective_id in objective_ids))
-        ],
-        assessment_verification_match=[verdict_json(first_question)] * 2,
+        assessment_mapping=[mapping_json(*((objective_id, [0]) for objective_id in objective_ids))],
+        assessment_verification_match=[
+            verification_json(*((objective_id, [0], True) for objective_id in objective_ids))
+        ]
+        * 2,
         # From the fourth task on, answered to draw on two earlier lessons from other
         # modules; the ones before it test only their own.
         assessment_reach=[
