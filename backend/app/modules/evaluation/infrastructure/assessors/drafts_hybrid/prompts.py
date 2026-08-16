@@ -193,20 +193,24 @@ copied character-for-character from the source text."""
 ASSESSMENT_MAPPING_USER = Template(
     """\
 Below, between <mapping> tags, are the learning objectives a course declares and the
-assessment items it ships. Each objective has an id and the outcome it promises. Each item
-has an index and the question it asks.
+assessment tasks it offers. Each objective has an id and the outcome it promises. Each task
+begins with its index in brackets and says whether the course DELIVERS it ready for the
+learner — a question, a quiz — or PROPOSES it for a later step to build into an exercise. A
+proposed exercise is what the course commits to asking of the learner, so it measures an
+objective exactly as a delivered task does. A task's text may run over several lines; a new
+task starts only where a new index in brackets does.
 
-For EACH objective, report the indices of every item that bears on it — an item that
-measures what the objective promises. An objective may be measured by several items, an
-item may bear on several objectives, and an objective may have none: report an empty list
-rather than forcing a match.
+For EACH objective, report the indices of every task that bears on it — a task that measures
+what the objective promises. An objective may be measured by several tasks, a task may bear
+on several objectives, and an objective may have none: report an empty list rather than
+forcing a match.
 
 Answer with this JSON shape, one entry per objective, in this field order:
 {"objectives": [{"objectiveId": "<the objective's id, exactly as given>",
 "reason": "<one sentence on what measures this objective, or that nothing does>",
-"evidence": "<a passage copied verbatim from the text below: the question of one item that
-bears on this objective, or the objective's own outcome when none does>",
-"itemIndices": [<indices>]}]}
+"evidence": "<a passage copied verbatim from the text below: part of one task that bears on
+this objective, or the objective's own outcome when none does>",
+"taskIndices": [<indices>]}]}
 
 Exactly one entry per objective.
 
@@ -224,24 +228,26 @@ copied character-for-character from the source text."""
 
 ASSESSMENT_REACH_USER = Template(
     """\
-Below, between <reach> tags, is a course's lesson plan in delivery order and the
-assessment items it ships. Each item names the lesson it sits in.
+Below, between <reach> tags, is a course's lesson plan in delivery order and the assessment
+tasks it offers. Each task begins with its index in brackets, says whether the course
+delivers it ready for the learner or proposes it for a later step to build, and names the
+lesson it sits in. A task's text may run over several lines; a new task starts only where a
+new index in brackets does.
 
-For EACH item, report which lessons of the plan the learner must have studied in order to
-answer it — the lessons whose material the item draws on. Report the lesson identifiers
-exactly as the plan gives them. An item that only tests its own lesson reports just that
-lesson. Do not guess: report a lesson only when the item's question actually draws on what
-that lesson covers.
+For EACH task, report which lessons of the plan the learner must have studied in order to do
+it — the lessons whose material the task draws on. Report the lesson identifiers exactly as
+the plan gives them. A task that only tests its own lesson reports just that lesson. Do not
+guess: report a lesson only when the task actually draws on what that lesson covers.
 
-This is an extraction task, not a judgement: report what the items draw on, nothing about
+This is an extraction task, not a judgement: report what the tasks draw on, nothing about
 whether the assessment is good.
 
-Answer with this JSON shape, one entry per item, in this field order:
-{"items": [{"index": <the item's index>,
-"reason": "<one sentence on what the item asks for>",
+Answer with this JSON shape, one entry per task, in this field order:
+{"tasks": [{"index": <the task's index>,
+"reason": "<one sentence on what the task asks for>",
 "referencesLessonIds": ["<lesson identifiers from the plan>"]}]}
 
-Exactly one entry per item.
+Exactly one entry per task.
 
 <reach>
 $corpus

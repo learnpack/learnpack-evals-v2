@@ -165,17 +165,23 @@ class Judgement:
 
 @dataclass(frozen=True)
 class ObjectiveMapping:
-    """One declared objective and the assessment items that were found to measure it."""
+    """One declared objective and the assessment tasks that were found to measure it.
+
+    `task_indices` point into `assessment_offerings`, so an entry may be something the draft
+    delivers or something it proposes: what the criterion asks is what the draft commits to
+    measuring (ADR-0046), and the executors read the status back off the profile when the
+    difference matters.
+    """
 
     objective_id: str
     reason: str
     evidence: str
-    item_indices: tuple[int, ...]
+    task_indices: tuple[int, ...]
 
 
 @dataclass(frozen=True)
-class ItemReach:
-    """One assessment item and the lessons it draws on."""
+class TaskReach:
+    """One assessment task and the lessons it draws on."""
 
     index: int
     reason: str
@@ -483,11 +489,11 @@ def arc_corpus(profile: ProfileData) -> str:
     return f"FIRST LESSON OF THE COURSE:\n{opening}\n\nLAST LESSON OF THE COURSE:\n{closing}"
 
 
-def _objectives_and_items_corpus(profile: ProfileData) -> tuple[str, list[dict[str, Any]]]:
-    """The declared objectives beside the shipped items, with the items indexed.
+def _objectives_and_offerings_corpus(profile: ProfileData) -> tuple[str, list[dict[str, Any]]]:
+    """The declared objectives beside everything the draft offers to assess with, indexed.
 
     The indices are ours, assigned by position: the model answers with them, so a matched
-    item resolves back to a row of the profile rather than to a name the model chose.
+    task resolves back to a row of the profile rather than to a name the model chose.
 
     Written as plain labelled lines, never serialized. A corpus that a task will demand
     VERBATIM quotes from must show the course's text exactly as the course writes it: JSON
@@ -497,7 +503,7 @@ def _objectives_and_items_corpus(profile: ProfileData) -> tuple[str, list[dict[s
     back is the defect; another tolerance in `locate` would only have hidden it.
     """
     objectives = list(profile.entries["declared_objectives"].value)
-    items = list(profile.entries["lesson_assessment_items"].value)
+    offerings = list(profile.entries["assessment_offerings"].value)
     objective_lines = "\n".join(
         f"{objective['id']}: {objective['outcome']}"
         + (
@@ -507,18 +513,36 @@ def _objectives_and_items_corpus(profile: ProfileData) -> tuple[str, list[dict[s
         )
         for objective in objectives
     )
-    corpus = f"OBJECTIVES:\n{objective_lines}\n\nASSESSMENT ITEMS:\n{_item_lines(items)}"
-    return corpus, items
+    corpus = (
+        f"OBJECTIVES:\n{objective_lines}\n\n"
+        f"ASSESSMENT THE COURSE OFFERS:\n{_offering_lines(offerings)}"
+    )
+    return corpus, offerings
 
 
-def _item_lines(items: Sequence[Mapping[str, Any]], with_lesson: bool = False) -> str:
-    """One line per shipped item: our index, its kind, and its question as the course
-    writes it. `with_lesson` adds where the item sits, which the reach task needs."""
-    return "\n".join(
-        f"[{index}] {item.get('kind')}"
-        + (f" in lesson {item.get('lessonId')}" if with_lesson else "")
-        + f": {item.get('prompt')}"
-        for index, item in enumerate(items)
+def _stage(offering: Mapping[str, Any]) -> str:
+    """What the draft does with this task, in words the prompt uses (ADR-0046).
+
+    Read off the profile's own `status`, never inferred from the kind: the two are
+    orthogonal, and a format that delivered a code challenge ready to take would say so.
+    """
+    return "proposed exercise" if offering.get("status") == "proposed" else "delivered item"
+
+
+def _offering_lines(offerings: Sequence[Mapping[str, Any]], with_lesson: bool = False) -> str:
+    """One entry per assessment task the course offers: our index, whether it is delivered or
+    proposed, its kind, and its prompt as the course writes it. `with_lesson` adds where the
+    task sits, which the reach task needs.
+
+    Entries are separated by a blank line and each begins with its index, because a proposed
+    exercise's prompt runs over several lines — on one line per entry, a multi-line prompt
+    would read as several tasks and the model would answer with indices nobody assigned.
+    """
+    return "\n\n".join(
+        f"[{index}] {_stage(offering)} ({offering.get('kind')})"
+        + (f" in lesson {offering.get('lessonId')}" if with_lesson else "")
+        + f": {offering.get('prompt')}"
+        for index, offering in enumerate(offerings)
     )
 
 
@@ -526,10 +550,10 @@ def _item_lines(items: Sequence[Mapping[str, Any]], with_lesson: bool = False) -
 
 
 def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], LlmUsage]:
-    """Which shipped items measure which declared objective."""
+    """Which of the tasks the draft offers measure which declared objective."""
 
     def run() -> tuple[list[ObjectiveMapping], LlmUsage]:
-        corpus, items = _objectives_and_items_corpus(profile)
+        corpus, offerings = _objectives_and_offerings_corpus(profile)
         objective_ids = [str(o["id"]) for o in profile.entries["declared_objectives"].value]
         payload, usage = request_structured_output(
             runtime.get_client(),
@@ -537,7 +561,9 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             model=ASSESSMENT_MAPPING_MODEL,
             system_prompt=prompts.ASSESSMENT_MAPPING_SYSTEM,
             user_prompt=prompts.ASSESSMENT_MAPPING_USER.substitute(corpus=corpus),
-            validate=lambda answer: _validate_mapping(answer, corpus, objective_ids, len(items)),
+            validate=lambda answer: _validate_mapping(
+                answer, corpus, objective_ids, len(offerings)
+            ),
             temperature=tasks.TEMPERATURE,
             max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
@@ -548,7 +574,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
                 objective_id=objective_id,
                 reason=str(by_id[objective_id]["reason"]).strip(),
                 evidence=locate(corpus, str(by_id[objective_id]["evidence"])) or "",
-                item_indices=tuple(int(i) for i in by_id[objective_id]["itemIndices"]),
+                task_indices=tuple(int(i) for i in by_id[objective_id]["taskIndices"]),
             )
             for objective_id in objective_ids
         ]
@@ -559,7 +585,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
 
 
 def _validate_mapping(
-    answer: Any, corpus: str, objective_ids: Sequence[str], item_count: int
+    answer: Any, corpus: str, objective_ids: Sequence[str], task_count: int
 ) -> list[str]:
     violations = _shape_violations(answer, "objectives")
     if violations:
@@ -587,23 +613,23 @@ def _validate_mapping(
             violations.append(f"{label}.evidence must be a non-empty string")
         else:
             violations.extend(_grounding_violations(f"{label}.evidence", evidence, corpus))
-        indices = entry.get("itemIndices")
+        indices = entry.get("taskIndices")
         if not isinstance(indices, list):
-            violations.append(f"{label}.itemIndices must be an array")
+            violations.append(f"{label}.taskIndices must be an array")
         else:
             # No duplicates, which also bounds the list: it cannot be longer than the number
-            # of items, so a repeating answer is refused instead of growing without end.
+            # of tasks, so a repeating answer is refused instead of growing without end.
             listed: set[int] = set()
             for value in indices:
                 if not isinstance(value, int) or isinstance(value, bool):
-                    violations.append(f"{label}.itemIndices must hold integers (got {value!r})")
-                elif not 0 <= value < item_count:
+                    violations.append(f"{label}.taskIndices must hold integers (got {value!r})")
+                elif not 0 <= value < task_count:
                     violations.append(
-                        f"{label}.itemIndices holds {value}, which is not an item index "
-                        f"(0 to {item_count - 1})"
+                        f"{label}.taskIndices holds {value}, which is not a task index "
+                        f"(0 to {task_count - 1})"
                     )
                 elif value in listed:
-                    violations.append(f"{label}.itemIndices lists item {value} more than once")
+                    violations.append(f"{label}.taskIndices lists task {value} more than once")
                 else:
                     listed.add(value)
     if not violations and seen != expected:
@@ -612,32 +638,37 @@ def _validate_mapping(
 
 
 def verification_corpus(profile: ProfileData, mappings: Sequence[ObjectiveMapping]) -> str | None:
-    """The objectives the verification criterion is actually about, with their items.
+    """The objectives the verification criterion is actually about, with their tasks.
 
     Narrowed in CODE, not by the judge: the criterion excludes objectives with no declared
-    `verifiableBy` (a structural fact anyone can read off the profile) and there is nothing
-    to compare for an objective no item bears on. `None` means the set is empty, which is a
+    verification (a structural fact anyone can read off the profile) and there is nothing to
+    compare for an objective no task bears on. `None` means the set is empty, which is a
     vacuous pass rather than a question worth asking.
+
+    Each task says whether the draft delivers or proposes it, so a judge weighing a declared
+    verification against what is offered can see which it is — and cannot mistake a proposal
+    for something the learner can already take.
     """
     objectives = {str(o["id"]): o for o in profile.entries["declared_objectives"].value}
-    items = list(profile.entries["lesson_assessment_items"].value)
+    offerings = list(profile.entries["assessment_offerings"].value)
     blocks: list[str] = []
     for mapping in mappings:
         objective = objectives.get(mapping.objective_id)
-        if objective is None or not mapping.item_indices:
+        if objective is None or not mapping.task_indices:
             continue
         verifiable_by = objective.get("verifiableBy")
         if not isinstance(verifiable_by, str) or not verifiable_by.strip():
             continue
         measured = "\n".join(
-            f"  - {items[index].get('kind')}: {items[index].get('prompt')}"
-            for index in mapping.item_indices
-            if index < len(items)
+            f"  - {_stage(offerings[index])} ({offerings[index].get('kind')}): "
+            f"{offerings[index].get('prompt')}"
+            for index in mapping.task_indices
+            if index < len(offerings)
         )
         blocks.append(
             f"OBJECTIVE {mapping.objective_id}: {objective['outcome']}\n"
             f"DECLARED VERIFICATION: {verifiable_by}\n"
-            f"ITEMS THAT MEASURE IT:\n{measured}"
+            f"WHAT THE COURSE OFFERS TO MEASURE IT:\n{measured}"
         )
     return "\n\n".join(blocks) if blocks else None
 
@@ -645,18 +676,18 @@ def verification_corpus(profile: ProfileData, mappings: Sequence[ObjectiveMappin
 # --- task: assessment reach (extraction; the count is the executor's) ---------------------
 
 
-def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
-    """Which lessons each shipped assessment item draws on."""
+def assessment_reach(profile: ProfileData) -> tuple[list[TaskReach], LlmUsage]:
+    """Which lessons each assessment task the draft offers draws on."""
 
-    def run() -> tuple[list[ItemReach], LlmUsage]:
+    def run() -> tuple[list[TaskReach], LlmUsage]:
         ordered = tasks.ordered_inventory(profile)
-        items = list(profile.entries["lesson_assessment_items"].value)
+        offerings = list(profile.entries["assessment_offerings"].value)
         lesson_ids = [str(lesson["lessonId"]) for lesson in ordered]
         # Plain lines, not JSON: same reason as the mapping corpus above.
         plan_lines = "\n".join(f"{lesson['lessonId']}: {lesson.get('title')}" for lesson in ordered)
         corpus = (
             f"LESSON PLAN IN DELIVERY ORDER:\n{plan_lines}\n\n"
-            f"ASSESSMENT ITEMS:\n{_item_lines(items, with_lesson=True)}"
+            f"ASSESSMENT THE COURSE OFFERS:\n{_offering_lines(offerings, with_lesson=True)}"
         )
         payload, usage = request_structured_output(
             runtime.get_client(),
@@ -664,19 +695,19 @@ def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
             model=ASSESSMENT_REACH_MODEL,
             system_prompt=prompts.ASSESSMENT_REACH_SYSTEM,
             user_prompt=prompts.ASSESSMENT_REACH_USER.substitute(corpus=corpus),
-            validate=lambda answer: _validate_reach(answer, lesson_ids, len(items)),
+            validate=lambda answer: _validate_reach(answer, lesson_ids, len(offerings)),
             temperature=tasks.TEMPERATURE,
             max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
         )
-        by_index = {int(entry["index"]): entry for entry in payload["items"]}
+        by_index = {int(entry["index"]): entry for entry in payload["tasks"]}
         reached = [
-            ItemReach(
+            TaskReach(
                 index=index,
                 reason=str(by_index[index]["reason"]).strip(),
                 references=tuple(str(ref) for ref in by_index[index]["referencesLessonIds"]),
             )
-            for index in range(len(items))
+            for index in range(len(offerings))
         ]
         return reached, usage
 
@@ -684,20 +715,20 @@ def assessment_reach(profile: ProfileData) -> tuple[list[ItemReach], LlmUsage]:
     return list(result), usage
 
 
-def _validate_reach(answer: Any, lesson_ids: Sequence[str], item_count: int) -> list[str]:
-    violations = _shape_violations(answer, "items")
+def _validate_reach(answer: Any, lesson_ids: Sequence[str], task_count: int) -> list[str]:
+    violations = _shape_violations(answer, "tasks")
     if violations:
         return violations
     known = set(lesson_ids)
     seen: set[int] = set()
-    for position, entry in enumerate(answer["items"]):
-        label = f"items[{position}]"
+    for position, entry in enumerate(answer["tasks"]):
+        label = f"tasks[{position}]"
         if not isinstance(entry, dict):
             violations.append(f"{label} must be an object")
             continue
         index = entry.get("index")
-        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < item_count:
-            violations.append(f"{label}.index must be an integer between 0 and {item_count - 1}")
+        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < task_count:
+            violations.append(f"{label}.index must be an integer between 0 and {task_count - 1}")
         elif index in seen:
             violations.append(f"{label}.index {index} appears more than once")
         else:
@@ -726,9 +757,9 @@ def _validate_reach(answer: Any, lesson_ids: Sequence[str], item_count: int) -> 
                     )
                 else:
                     drawn.add(value)
-    if not violations and len(seen) != item_count:
+    if not violations and len(seen) != task_count:
         violations.append(
-            f"missing an entry for item index(es): {sorted(set(range(item_count)) - seen)}"
+            f"missing an entry for task index(es): {sorted(set(range(task_count)) - seen)}"
         )
     return violations
 
