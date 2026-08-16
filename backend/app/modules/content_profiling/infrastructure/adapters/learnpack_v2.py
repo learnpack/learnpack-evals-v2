@@ -21,8 +21,18 @@ of what follows:
   read it declare `on_missing_evidence: fail`, so an empty list derives a **fail** for a
   defect that does not exist. Declaring no capability derives `not_applicable` instead
   (`evaluation/domain/derivation.py`, cases b vs c), which is the true statement: this
-  format cannot answer that question. Proposals get their own id when an instrument mints
-  one; until then they are not evidence for anything.
+  format cannot answer that question.
+- Those proposals now have the id this docstring said they would get when an instrument
+  minted one: `assessment_offerings` (ADR-0046) carries everything the package offers to
+  assess with — the components that ship ready for the learner and the exercises it
+  proposes for a later step to build — with every entry marked `delivered` or `proposed`.
+  Marked rather than merged, and merged rather than split: a criterion that must tell the
+  two apart reads the mark, while a criterion asking what the package commits to measuring
+  is not silenced by a package that happens to offer only one of the two kinds. It does not
+  replace `lesson_assessment_items`, which stays exactly what it was — the delivered half —
+  and is what the other lineage's criteria require. `lesson_activities` is untouched by all
+  of this: a proposal is a commitment to assess, not an exercise whose scaffolding anyone
+  can read.
 - There is NO capability for `prerequisites`. `concept_graph[].prerequisites` are
   prerequisites *between concepts inside the course*, not the prior knowledge a learner
   needs to start it. Mapping one to the other would be inference.
@@ -41,9 +51,15 @@ indentation is the format's contract with the markdown renderer, so a task list 
 range is not a quiz the learner would ever see and is not counted as one. LearnpackV1 anchors
 its quizzes at column 0; the two conventions are both valid and deliberately not shared.
 
-`code_challenge_proposal`, `mermaid` diagrams, illustration prompts and Rigo links are not
-assessment items. The first two are author-facing, and the illustration's alt text is a
-prompt for generating an image rather than a caption.
+A `code_challenge_proposal` is never a **delivered** item: nothing in it is something a
+learner can answer as it stands, so it stays out of `lesson_assessment_items` and travels in
+`assessment_offerings` marked `proposed`. `mermaid` diagrams, illustration prompts and Rigo
+links are not assessment at all, under either id — a diagram is author-facing, and the
+illustration's alt text is a prompt for generating an image rather than a caption.
+
+A proposal's prompt is the fence's OWN text, where a `question` fence's prompt is the prose
+that introduces it. The asymmetry is the format's, not a choice: inside a `question` fence
+the author writes the expected answers, while a proposal fence holds the instruction itself.
 
 Artifact kinds the adapter reads (written by discovery, ADR-0027): `run_manifest` ·
 `lesson_plan` · `course_value` · `user_intent` · `lesson_stats` · `lesson_content`. Any
@@ -67,10 +83,12 @@ from app.modules.content_profiling.domain.profile import (
 )
 
 PACKAGE_FORMAT = "LearnpackV2"
-# 2: supplies `declared_objectives` and `lesson_concepts`, the demand course-drafts-qa v2
+# 3: supplies `assessment_offerings`, the demand course-drafts-qa v7 mints so that what a
+# draft PROPOSES to be assessed on stops being invisible (ADR-0046).
+# 2: supplied `declared_objectives` and `lesson_concepts`, the demand course-drafts-qa v2
 # mints for the constructive-alignment dimension. The mapping changed, so the identity of
-# the extraction changed with it — version 1's profiles stay valid and untouched.
-ADAPTER_VERSION = "2"
+# the extraction changed with it — earlier versions' profiles stay valid and untouched.
+ADAPTER_VERSION = "3"
 
 CAPABILITIES = frozenset(
     {
@@ -78,6 +96,7 @@ CAPABILITIES = frozenset(
         "lesson_inventory",
         "lesson_bodies",
         "lesson_assessment_items",
+        "assessment_offerings",
         "learning_objectives",
         "declared_objectives",
         "lesson_concepts",
@@ -95,6 +114,14 @@ KIND_LESSON_CONTENT = "lesson_content"
 # Fence language → assessment item kind. Same vocabulary LearnpackV1 reports, so a criterion
 # reading `kind` reads one word for one thing across formats.
 _ITEM_FENCES = {"question": "openQuestion", "fill_in_the_blank": "fillInTheBlank"}
+
+# The fence that proposes an exercise, and what the offering it produces is called. The kind
+# names the task; the status names its stage. They are orthogonal on purpose — another format
+# could deliver a code challenge ready to take.
+_PROPOSAL_FENCE = "code_challenge_proposal"
+PROPOSED_KIND = "codeChallenge"
+DELIVERED = "delivered"
+PROPOSED = "proposed"
 
 # A quiz option: a task-list item indented 3 to 6 spaces, per the component's own spec —
 # outside that range the markdown does not render as a quiz, so it is not one.
@@ -204,6 +231,43 @@ def _assessment_items(body: str) -> list[dict[str, Any]]:
     return items
 
 
+def _proposed_exercises(body: str) -> list[str]:
+    """The exercises a lesson PROPOSES, each one the text of its own fence.
+
+    A proposal fence holds the instruction itself — it is what a later step turns into an
+    exercise — so unlike the `question` and `fill_in_the_blank` fences, whose bodies hold the
+    author's expected answers, what is reported here is the fence's content and not the prose
+    around it.
+
+    Fences are tracked the same way `_assessment_items` tracks them, so a proposal fence shown
+    INSIDE another fence (a lesson teaching the format, say) is text like any other. A fence
+    left unclosed at the end of a body still reports what it holds: the body is what was
+    delivered, and half a proposal is what a truncated run produced.
+    """
+    proposals: list[str] = []
+    collecting: list[str] | None = None
+    inside_fence = False
+
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if inside_fence:
+                if collecting is not None:
+                    proposals.append("\n".join(collecting).strip())
+                    collecting = None
+                inside_fence = False
+                continue
+            inside_fence = True
+            if stripped[3:].split(" ")[0].strip() == _PROPOSAL_FENCE:
+                collecting = []
+            continue
+        if collecting is not None:
+            collecting.append(line)
+    if collecting is not None:
+        proposals.append("\n".join(collecting).strip())
+    return [proposal for proposal in proposals if proposal]
+
+
 class LearnpackV2Adapter:
     @property
     def package_format(self) -> str:
@@ -228,6 +292,7 @@ class LearnpackV2Adapter:
             inventory,
             self._lesson_bodies(texts_by_slug, inventory),
             self._lesson_assessment_items(texts_by_slug, inventory),
+            self._assessment_offerings(texts_by_slug, inventory),
             self._learning_objectives(package, fetcher),
             self._declared_objectives(package, fetcher),
             self._lesson_concepts(package, fetcher),
@@ -385,6 +450,54 @@ class LearnpackV2Adapter:
             return ProfileEntry(data_requirement_id="lesson_assessment_items", provenance="absent")
         return ProfileEntry(
             data_requirement_id="lesson_assessment_items",
+            provenance="declared_in_content",
+            value=value,
+            quote=_quote(value),
+            locator={"source": "artifacts", "kinds": [KIND_LESSON_CONTENT]},
+        )
+
+    def _assessment_offerings(
+        self, texts_by_slug: dict[str, str], inventory: ProfileEntry
+    ) -> ProfileEntry:
+        """Everything the package offers to assess with, each entry saying which it is.
+
+        Per lesson, what it delivers and then what it proposes — the delivered half is the
+        same reading `lesson_assessment_items` reports, not a second interpretation of it, so
+        the two ids can never disagree about a question.
+
+        Only the five fields the requirement declares: a delivered item's options live under
+        `lesson_assessment_items`, where the id that carries them means one thing for every
+        entry, and a proposal has none to report.
+        """
+        id_by_slug = self._id_by_slug(inventory)
+        value: list[dict[str, Any]] = []
+        for slug in sorted(texts_by_slug):
+            body = texts_by_slug[slug]
+            value.extend(
+                {
+                    "lessonSlug": slug,
+                    "lessonId": id_by_slug.get(slug),
+                    "status": DELIVERED,
+                    "kind": item["kind"],
+                    "prompt": item["prompt"],
+                }
+                for item in _assessment_items(body)
+            )
+            value.extend(
+                {
+                    "lessonSlug": slug,
+                    "lessonId": id_by_slug.get(slug),
+                    "status": PROPOSED,
+                    "kind": PROPOSED_KIND,
+                    "prompt": proposal,
+                }
+                for proposal in _proposed_exercises(body)
+            )
+        if not value:
+            # Neither delivered nor proposed: the same statement, for the same reason.
+            return ProfileEntry(data_requirement_id="assessment_offerings", provenance="absent")
+        return ProfileEntry(
+            data_requirement_id="assessment_offerings",
             provenance="declared_in_content",
             value=value,
             quote=_quote(value),

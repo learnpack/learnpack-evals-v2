@@ -82,13 +82,16 @@ FORMAT_CASES: dict[str, FormatCase] = {
             expects_brief=True,
             # Neither `lesson_activities` nor `prerequisites`: a run's output carries
             # exercise *proposals* rather than exercises, and its concept prerequisites are
-            # between concepts, not entry requirements. Both derive `not_applicable`.
+            # between concepts, not entry requirements. Both derive `not_applicable`. The
+            # proposals themselves are supplied — under `assessment_offerings`, marked as
+            # proposed beside what the package delivers (ADR-0046).
             expected_capabilities=frozenset(
                 {
                     "course_descriptor",
                     "lesson_inventory",
                     "lesson_bodies",
                     "lesson_assessment_items",
+                    "assessment_offerings",
                     "learning_objectives",
                     "declared_objectives",
                     "lesson_concepts",

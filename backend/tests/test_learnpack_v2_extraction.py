@@ -12,6 +12,7 @@ from app.modules.content_profiling.domain.profile import ExtractionError
 from app.modules.content_profiling.infrastructure.adapters.learnpack_v2 import (
     LearnpackV2Adapter,
     _assessment_items,
+    _proposed_exercises,
 )
 from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
@@ -136,10 +137,14 @@ def test_a_group_with_two_correct_options_reports_what_it_marks():
         ),
     ],
 )
-def test_author_facing_components_are_not_assessment_items(label, body):
+def test_author_facing_components_are_not_delivered_assessment_items(label, body):
     """A proposal is the prompt a teacher will later turn into an exercise, and the
     illustration's alt text is a prompt for generating an image. Neither is something a
-    learner answers."""
+    learner can answer as it stands, so neither is a DELIVERED item.
+
+    The proposal is the one of the four that is evidence of something (ADR-0046): it travels
+    in `assessment_offerings` marked `proposed`, and it must never leak into this id, where
+    every entry means "ready for the learner"."""
     assert kinds(body) == []
 
 
@@ -163,6 +168,97 @@ def test_the_fenced_components_take_their_prompt_from_the_prose():
             "correctCount": 0,
         }
     ]
+
+
+# --------------------------------------------------------------- what the package proposes
+
+
+PROPOSAL = """Now it's your turn. Open `index.html` and write an `<img>` tag.
+
+```code_challenge_proposal
+In this exercise, the student needs to write an <img> tag in index.html that
+displays a placeholder image from https://picsum.photos/200/300.
+```
+
+If you get stuck, Rigo can help.
+"""
+
+
+def test_a_proposal_reports_the_fence_s_own_text():
+    """The asymmetry with `question`, and the format's: inside a `question` fence the author
+    writes the expected answers, so its prompt is the prose before it — while a proposal fence
+    holds the instruction itself, and quoting the prose around it would report the lead-in
+    instead of what was proposed."""
+    assert _proposed_exercises(PROPOSAL) == [
+        "In this exercise, the student needs to write an <img> tag in index.html that\n"
+        "displays a placeholder image from https://picsum.photos/200/300."
+    ]
+
+
+def test_every_proposal_of_a_lesson_is_reported():
+    body = (
+        "```code_challenge_proposal\nBuild a nav.\n```\n"
+        "Some prose in between.\n"
+        "```code_challenge_proposal\nStyle it.\n```\n"
+    )
+
+    assert _proposed_exercises(body) == ["Build a nav.", "Style it."]
+
+
+def test_a_proposal_shown_inside_another_fence_is_text_like_any_other():
+    """A lesson that teaches this very format would otherwise be read as proposing an
+    exercise it is only quoting."""
+    assert _proposed_exercises("```markdown\n```code_challenge_proposal\nNot mine.\n```\n") == []
+
+
+def test_an_unclosed_proposal_reports_what_it_holds():
+    """The body is what was delivered: half a proposal is what a truncated run produced, and
+    reporting nothing would hide it."""
+    assert _proposed_exercises("```code_challenge_proposal\nBuild a nav bar with\n") == [
+        "Build a nav bar with"
+    ]
+
+
+def test_the_offerings_carry_both_kinds_marked():
+    """ADR-0046: one id for everything the package offers to assess with, so a criterion
+    asking what the draft commits to measuring sees the whole surface — and can still tell
+    the two apart, because the mark is on every entry."""
+    offerings = extract_fixture()["assessment_offerings"].value
+    statuses = {offering["status"] for offering in offerings}
+
+    assert statuses == {"delivered", "proposed"}
+    proposed = [o for o in offerings if o["status"] == "proposed"]
+    assert len(proposed) == 5
+    assert {o["kind"] for o in proposed} == {"codeChallenge"}
+    assert all(o["lessonId"] and o["prompt"].strip() for o in proposed)
+
+
+def test_the_delivered_offerings_are_the_assessment_items_verbatim():
+    """The two ids report one reading, not two: whatever `lesson_assessment_items` says a
+    lesson delivers is what the offerings mark `delivered`. Nothing downstream could tell
+    which id a quote came from, and nothing should have to."""
+    entries = extract_fixture()
+    delivered = [o for o in entries["assessment_offerings"].value if o["status"] == "delivered"]
+
+    assert [(o["lessonId"], o["kind"], o["prompt"]) for o in delivered] == [
+        (item["lessonId"], item["kind"], item["prompt"])
+        for item in entries["lesson_assessment_items"].value
+    ]
+
+
+def test_the_offerings_declare_only_the_five_fields_the_requirement_names():
+    """A delivered item's options live under `lesson_assessment_items`, where every entry
+    means the same thing. Carrying them here would leave a proposal describing options it
+    does not have."""
+    offerings = extract_fixture()["assessment_offerings"].value
+
+    assert {key for offering in offerings for key in offering} == {
+        "lessonSlug",
+        "lessonId",
+        "status",
+        "kind",
+        "prompt",
+    }
 
 
 # ------------------------------------------------------------------ over the real package
@@ -296,7 +392,37 @@ def test_a_course_with_no_assessment_reports_absence_not_an_empty_list():
 
     assert entries["lesson_assessment_items"].provenance == "absent"
     assert entries["lesson_assessment_items"].value is None
+    # Nothing delivered and nothing proposed is the same statement, for the same reason.
+    assert entries["assessment_offerings"].provenance == "absent"
+    assert entries["assessment_offerings"].value is None
     assert entries["lesson_bodies"].provenance == "declared_in_content"
+
+
+def test_a_course_that_delivers_nothing_but_proposes_something_still_offers_assessment():
+    """The shape ADR-0046 was decided for, and the reason the two are one id: three of the
+    five drafts on hand are a single question block away from this, and under two ids every
+    alignment criterion would go silent on a draft holding exactly the evidence they ask
+    for."""
+    package, fetcher = _package(
+        **{
+            "lesson_plan.json": b'{"course_title": "T", "lessons": [{"id": "00.0"}]}',
+            "stats.json": b'{"lesson_id": "00.0", "lesson_slug": "a-lesson"}',
+            "a-lesson.md": (b"# A lesson\n\n```code_challenge_proposal\nBuild a nav bar.\n```\n"),
+        }
+    )
+
+    entries = {e.data_requirement_id: e for e in LearnpackV2Adapter().extract(package, fetcher)[0]}
+
+    assert entries["lesson_assessment_items"].provenance == "absent"
+    assert entries["assessment_offerings"].value == [
+        {
+            "lessonSlug": "a-lesson",
+            "lessonId": "00.0",
+            "status": "proposed",
+            "kind": "codeChallenge",
+            "prompt": "Build a nav bar.",
+        }
+    ]
 
 
 def test_a_commission_that_declared_no_audience_reports_absence():
