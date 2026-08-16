@@ -112,9 +112,16 @@ course cancels the domain out.
 
 ### How it is computed
 
-In `backend/app/modules/evaluation/infrastructure/assessors/structural/measures.py`, and
+In `backend/app/modules/evaluation/infrastructure/assessors/<name>/measures.py`, and
 therefore versioned with that assessor: changing any of the following is a **new assessor**,
 even when no criterion's wording moves.
+
+**There is one such file per assessor that executes the criterion, and they are deliberately
+copies rather than a shared module** (ADR-0016: sharing would tie two assessors' identities
+together, so one edit would silently change both artifacts). Editing one says nothing about
+the others, which is the point — and it is also the trap: a correction made in one place
+leaves every other assessor computing the old measure, and nothing warns you. If a change is
+meant to apply to all of them, it is that many version bumps.
 
 1. **What counts as prose.** Fenced code blocks and image alt text are removed before
    anything is counted — a code block is not prose, and LearnPack's generated illustrations
@@ -179,3 +186,20 @@ Every threshold here is set against the frozen calibration corpus in
 each package produces. **Changing that set changes what these numbers mean** — recalibrate rather
 than assume they carry over. The last package sits 0.02 above the line, so a careless change to
 the measure flips it; that test exists to make the flip loud.
+
+### The corpus is LearnpackV1, and the criterion no longer is
+
+That corpus is five **LearnpackV1** packages: finished courses, whose lesson bodies are the
+learner-facing text. The criterion has since been inherited by the `course-drafts-qa` lineage
+and now also runs over **LearnpackV2 drafts**, which are a different artefact — what a
+generator emits before a teacher processes it — and **nothing has been recalibrated against
+them**. The 0.20 in force there is a number carried over, not a number measured.
+
+That is a gap in the evidence, not a defect in the measure: `lexical_load` itself does not
+depend on the format, and a threshold set on prose is not obviously wrong on other prose.
+What is unknown is whether drafts spread the same way — whether their within-course median
+and their worst lesson sit at the distances V1 courses do. Recalibrating means the same
+exercise this document records: run the measure over a frozen set of drafts, check that
+reasonable modelling variants agree, and check that the threshold separates the set instead of
+passing or failing all of it. Until that is done, a `fail` on this criterion over a draft is
+weaker evidence than the table above suggests, and it should be read with the lesson in hand.

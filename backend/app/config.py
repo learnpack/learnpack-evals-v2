@@ -103,8 +103,11 @@ class Settings(BaseSettings):
     local_sources_base_url: str = "http://localhost:8000/sources"
 
     # LLM transport (ADR-0034): the environment supplies ACCESS — key and endpoint — never
-    # identity. Which model judges is pinned in each assessor's code; pointing the base URL
-    # at another OpenAI-compatible endpoint moves the traffic, not the judge.
+    # identity. Which model judges is pinned in each assessor's code, so moving the base URL
+    # moves the traffic, not the judge. It has to keep speaking OpenRouter's API all the
+    # same: the assessors pin OpenRouter model ids and send its `provider` routing
+    # (ADR-0038), and `provider` is declared in their SOURCE_CONFIG — so another provider is
+    # a new assessor version, not a new endpoint.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"
     # Where each run's LLM attempts are written, one JSON object per attempt: the prompts
