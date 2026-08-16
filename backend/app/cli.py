@@ -1567,7 +1567,10 @@ def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
     )(RegisterGeneratorVersionCommand(generator_id=generator.id, version=version))
     # Printed, never silent: registering a version is an act, and a typo in a folder name is
     # how an individual nobody meant to measure enters the registry.
-    print(f"  registered generator version {generator.name} {version} ({registered.id})")
+    print(
+        f"  registered generator version {generator.name} {version} ({registered.id})",
+        file=sys.stderr,
+    )
     return registered.id
 
 
@@ -1645,13 +1648,17 @@ def _report_profiling(content_ids: list[UUID]) -> None:
             profiled += profile.status == "ok"
             failed += profile.status == "failed"
     unprofiled = len(content_ids) - profiled - failed
-    print(f"profiling: {profiled} profiled, {failed} failed, {unprofiled} not profiled")
+    print(
+        f"profiling: {profiled} profiled, {failed} failed, {unprofiled} not profiled",
+        file=sys.stderr,
+    )
     if profiled == 0 and failed == 0:
         # The two guards that decline in silence, named where someone will read them.
         print(
             "  nothing was auto-profiled: profiling is armed per adapter version by "
             "`accept-extraction --package-format <format>` (ADR-0012), and only reaches "
-            "packages whose locators are http(s) URLs (ADR-0029)"
+            "packages whose locators are http(s) URLs (ADR-0029)",
+            file=sys.stderr,
         )
 
 
@@ -1721,7 +1728,7 @@ def run_register_package(
         print(str(exc), file=sys.stderr)
         return 1
 
-    print(f"{status}  {detail}")
+    print(f"{status}  {detail}", file=sys.stderr)
     # Single-source registration is what a human runs while debugging one course — exactly
     # when "did it profile?" is the question.
     _report_profiling([content_id] if status == "created" else [])
@@ -1773,7 +1780,7 @@ def _register_tree(
         for course in sorted(d for d in parent.iterdir() if d.is_dir())
     ]
     if not course_dirs:
-        print(f"no courses found under {root_dir.as_posix()}")
+        print(f"no courses found under {root_dir.as_posix()}", file=sys.stderr)
         return TreeRegistration(0, 0, 0, 0, [], [])
 
     # A tree-wide declaration deserves a tree-wide check (the ADR-0024 pattern): every
@@ -1823,9 +1830,12 @@ def _register_tree(
         content_ids.append(content_id)
         if status == "created":
             created_ids.append(content_id)
-        print(f"  {status}  {detail}")
+        print(f"  {status}  {detail}", file=sys.stderr)
 
-    print(f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid")
+    print(
+        f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid",
+        file=sys.stderr,
+    )
     _report_profiling(created_ids)
     return TreeRegistration(created, unchanged, conflicts, invalid, created_ids, content_ids)
 

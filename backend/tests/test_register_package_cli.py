@@ -132,9 +132,11 @@ def test_rerunning_the_tree_is_a_noop(courses_tree, cleanup, unique, session, ca
     capsys.readouterr()
 
     assert run_register_package_all(courses_tree, "LearnpackV1", "unknown") == 0
-    out = capsys.readouterr().out
-    assert "1 created, 0 unchanged" not in out
-    assert "0 created, 1 unchanged" in out
+    # Registration output is progress, so it goes to stderr — stdout is reserved for the
+    # one document a caller parses (`measure`).
+    err = capsys.readouterr().err
+    assert "1 created, 0 unchanged" not in err
+    assert "0 created, 1 unchanged" in err
 
 
 def test_an_unregistered_generator_folder_aborts_the_whole_tree(
@@ -184,7 +186,7 @@ def test_a_folder_named_after_the_generator_declares_its_version(
     ).one()
     cleanup["generators"].append(version_id)
     assert registered.version == "9c1f2ab-dirty"
-    assert "registered generator version" in capsys.readouterr().out
+    assert "registered generator version" in capsys.readouterr().err
 
 
 def test_an_unregistered_lineage_is_never_minted_by_a_folder_name(
@@ -303,7 +305,7 @@ def test_cli_registration_auto_profiles(
     # Not just "a row exists": an unreachable mount leaves one too, `failed`. A count-only
     # assertion would go green on a broken feature.
     assert profile.status == "ok"
-    assert "profiling: 1 profiled" in capsys.readouterr().out
+    assert "profiling: 1 profiled" in capsys.readouterr().err
 
 
 def test_the_batch_reports_that_nothing_was_profiled(
@@ -315,9 +317,9 @@ def test_the_batch_reports_that_nothing_was_profiled(
 
     assert run_register_package_all(courses_tree, "LearnpackV1", "unknown") == 0
 
-    out = capsys.readouterr().out
-    assert "profiling: 0 profiled, 0 failed, 1 not profiled" in out
-    assert "accept-extraction" in out
+    err = capsys.readouterr().err
+    assert "profiling: 0 profiled, 0 failed, 1 not profiled" in err
+    assert "accept-extraction" in err
 
 
 # ------------------------------------------------------------------ the mount preflight
