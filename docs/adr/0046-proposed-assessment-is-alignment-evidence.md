@@ -18,15 +18,20 @@ for anything"*). So `lesson_assessment_items` collects only what ships ready for
 `question` and `fill_in_the_blank` fences and indented quizzes. **No ADR ever ratified that
 decision**; it lived in a docstring and in the headers of the `course-drafts-qa` lineage.
 
-Counted over the five drafts on hand, that leaves most of the assessment surface invisible:
+Counted over the five drafts on hand, with the adapter's own counting on both sides, that
+leaves between 40 % and 82 % of the assessment surface invisible:
 
-| Draft | proposed exercises | shipped question blocks | quiz options |
+| Draft | delivered items | proposed exercises | invisible |
 |---|---|---|---|
-| CSS | 8 | 7 | 20 |
-| HTML | 5 | 4 | 4 |
-| Command line | 14 | 1 | 7 |
-| Git | 10 | 1 | 7 |
-| GitHub | 14 | 1 | 8 |
+| CSS | 12 | 8 | 40 % |
+| HTML | 5 | 5 | 50 % |
+| Command line | 3 | 14 | 82 % |
+| Git | 3 | 10 | 77 % |
+| GitHub | 3 | 14 | 82 % |
+
+The three drafts at the bottom deliver a single question block each: they are one component
+away from offering nothing a learner can answer as it stands, and everything a learner would
+actually do.
 
 And the part that turns a proportion into a defect: **the five objectives that repeated judging
 reported as measured by nothing are covered by proposals**, several of them near-verbatim

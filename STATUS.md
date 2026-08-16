@@ -178,7 +178,7 @@ which this is the first.** The drafts lineage was judging assessment through hal
 draft offers: LearnpackV2 emits an exercise as a *proposal* inside the lesson body, the adapter
 excluded those on purpose, and `lesson_assessment_items` therefore collected only what ships
 ready for the learner. Over the five drafts on hand that is 5, 8, 10, 14 and 14 proposed
-exercises against 4, 7, 1, 1 and 1 shipped question blocks — and **the five objectives repeated
+exercises against 5, 12, 3, 3 and 3 delivered items — and **the five objectives repeated
 judging reported as measured by nothing are covered by proposals**, several near-verbatim
 against the objective's own declared verification. So `cr-every-objective-has-an-assessment-item`
 was failing as an artifact of the extraction, and the systematic failure of
