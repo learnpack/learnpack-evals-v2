@@ -100,16 +100,6 @@ exactly that generator version, judges every course, and prints the result.
 **Progress goes to the screen and the result goes to the file.** That split is deliberate:
 `> run.json` gives you the complete document while you still watch the batch advance.
 
-Two flags you will use:
-
-| Flag | When |
-|---|---|
-| `--assessor <name>` | required when more than one judge has been ratified for the instrument. `name` alone picks whatever version the code currently carries |
-| `--concurrency N` | how many courses at a time. Defaults to `LLM_MAX_CONCURRENCY` (4). |
-
-Everything else is derived: the instrument comes from the package format, the round's name
-from the folder, the commissions from the packages.
-
 **Re-running the same command resumes** — courses this judge already scored are skipped — so
 an interrupted batch is continued by repeating it. Ctrl-C stops it cleanly: what finished
 stays, what was in flight writes nothing, and you still get the summary.
@@ -192,7 +182,7 @@ Each course carries its qualities with the counts behind them, so any number can
 ```
 
 Two criteria, both failed, so 0/2. To see *why* they failed — the passage the judge read and
-the failure mode it named — open `/admin/studies/<id>` in the console and expand the
+the failure mode it named — open `/admin/studies/<id>` in the frontend and expand the
 criterion.
 
 Each course also carries its `briefId`, which is how you group results by commission. **The
@@ -233,23 +223,6 @@ If you need a scalar, you define it. The minimum it has to handle:
 Keep the raw document, not just your scalar. The scalar is a summary you may want to redefine
 later; the document is the measurement.
 
-## What a batch costs
-
-An assessor that carries an LLM spends real calls on your key. `drafts-hybrid` runs at
-roughly **30 calls per course** — `/admin/assessors` shows exactly which criteria it executes
-and which it abstains from, and the abstained ones are why a batch is cheaper than 29 criteria
-would suggest.
-
-| Batch | Calls | Rough wall time at concurrency 4 |
-|---|---|---|
-| 4 courses | ~120 | a few minutes |
-| 12 courses | ~360 | 15–30 minutes |
-| 24 courses | ~720 | 30–60 minutes |
-
-`drafts-structural` is the other judge for the same instrument: it is pure code, spends
-nothing, and covers only the structural criteria. It is a good way to check that a folder
-registers and reads correctly before paying for a real batch.
-
 ## When something does not work
 
 | What you see | What it is |
@@ -279,7 +252,7 @@ Two more worth knowing before they surprise you:
 
 - `/admin/studies/<id>` — the round: the weakest claims, the most-failed criteria, and the
   passage the judge quoted for each.
-- `/admin/measure` — the same loop as the command, in the console.
+- `/admin/measure` — the same loop as the command, in the frontend.
 - `/admin/calibration` — run one course against one instrument without persisting anything,
   and read every LLM call it made.
 - `backend/README.md` — everything else, including how instruments and assessors are built.
