@@ -1,4 +1,45 @@
-"""`drafts-hybrid` v11 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v12 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v12 makes the verification judge point instead of transcribe, and adds its verdict up in
+code. Six repeats of one draft under v11 — same course, same instrument, same assessor —
+answered one dead run, four fails and one pass, and `assessment_verification_match` spent
+**21 calls on 6 verdicts, 9 of them retries**. Reading the traces, two of the three causes
+were ours and are fixed here; the third is the instrument's and is deliberately not touched,
+because moving the mechanism and the bar in the same round leaves the next campaign unable
+to say which did what.
+
+**The corpus is a template, and a model asked to copy from it splices.** Every task is shown
+under the same label and this generator opens every proposal with the same sentence, so an
+answer came back quoting *"proposed exercise (codeChallenge): The student needs to practice
+navigating a directory structure using Tab completion"* — the prefix of one task carrying the
+body of another. The grounding check refused it, correctly, and the retry never converged: 8
+calls, no result. Citing by NUMBER removes the class outright, and it is the same closed-set
+rule `assessment_reach` has used since v3: a number the objective's own block did not list is
+refused like a hallucinated quote, and the passage a report finally shows is fetched from the
+profile — the course's own text rather than the label this package prints around it, which is
+ADR-0009 more exactly than a transcription ever was. The mapping loses its quote for the same
+reason; it is the field that killed a run in the previous campaign.
+
+**One verdict over four objectives made the model do the arithmetic.** A sample wrote
+"satisfied except obj-3, whose removal tasks are recognition items" and answered TRUE; two
+others agreed on a failure while naming different objectives and picking different failure
+modes. The judge now answers ONE ENTRY PER OBJECTIVE — reason, cited task numbers, satisfied,
+and the declared mode when not — and the criterion is the conjunction, computed here. What is
+voted on is still the criterion's verdict, so `SAMPLES` and the tie-break are unchanged, and
+`verification_failed_by_sample` reports which objectives each sample failed: samples that
+disagree about WHICH objective disagree about the facts, and samples that name the same one
+and split disagree about the bar. Only the second is a bug report about the instrument.
+
+**And a list marker is formatting.** `locate` already ignored whitespace and emphasis; it now
+ignores the bullet or ordinal that opens a line, because a quote running from a lead-in into
+the list under it was being refused for a `- ` the course put there. That was
+`outcomes_extraction`'s 7 retries in 13 calls. The rule stays narrow — a marker is a bullet or
+an ordinal at the start of a line and followed by a space — and what is stored is still the
+source's own span, bullets included.
+
+Untouched on purpose: the shared `JUDGE_USER` and the four criteria that read a lesson body
+(they have not failed once), the vote, the retry ladder, the budgets, and the bar itself —
+the sentence about partial satisfaction travels verbatim from the shared judge prompt.
 
 v11 reads the assessment a draft PROPOSES, not only the half it delivers (ADR-0046). The
 three criteria that read assessment now take `assessment_offerings` — everything the draft
@@ -218,7 +259,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "11"
+VERSION = "12"
 INSTRUMENT_ID = "course-drafts-qa"
 
 

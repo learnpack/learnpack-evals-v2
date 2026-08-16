@@ -18,11 +18,15 @@ Three rules keep this honest:
    a new instrument version is an explicit act (ADR-0019), and it is the act where someone
    confirms the criteria that changed.
 
-2. **Every verdict is grounded.** The answer must quote a passage that is a verbatim
-   substring of the text the prompt showed, checked by the validator like any other
-   contract violation: fed back once, fatal when persistent. A verdict whose evidence
-   cannot be found in the source is not evidence (ADR-0009), and the executors pass that
-   quote straight into `ExecutorResult`, so what a report shows is what the judge read.
+2. **Every verdict is grounded, in one of two forms.** Over prose — a lesson body — the
+   answer must quote a passage that is a verbatim substring of the text the prompt showed,
+   checked by the validator like any other contract violation: fed back once, fatal when
+   persistent. Over a corpus this package BUILDS, where every entry carries the same label
+   and near-identical neighbours invite splicing one into another, the answer cites entries
+   by NUMBER and the passage is fetched from the profile afterwards (v12). Both are the same
+   rule — a citation that cannot be verified is not evidence (ADR-0009) — and the second is
+   the stronger one, since what a report shows is then the course's own text rather than the
+   model's rendering of our scaffolding.
 
 3. **The failure mode comes from the instrument's own list.** When the verdict is false the
    model names WHICH declared failure it saw, by number, validated to be in range. It
@@ -30,18 +34,24 @@ Three rules keep this honest:
    contract violation. This is what lets a judged `fail` say something more useful than
    "mode 0" without letting the judge write normative text.
 
-Field order in every answer is `reason` -> `evidence` -> `verdict` -> `failureMode`, and
-the shape shown to the model says so. JSON mode emits fields in the order the model writes
-them, so a verdict-first shape would have it commit before working through its own
-reasoning. Asking for the reason first buys the effect of thinking without paying for
-reasoning tokens — which matters here because `REASONING` stays at `effort: "none"` and
-the budget that killed v1 stays spent on answers.
+Field order in every answer is reason -> evidence -> verdict -> failure mode, and the shape
+shown to the model says so. JSON mode emits fields in the order the model writes them, so a
+verdict-first shape would have it commit before working through its own reasoning. Asking for
+the reason first buys the effect of thinking without paying for reasoning tokens — which
+matters here because `REASONING` stays at `effort: "none"` and the budget that killed v1
+stays spent on answers.
+
+A criterion whose corpus is a SET of units is judged unit by unit and added up in code
+(`judge_per_objective`, v12). Asked for one verdict over four objectives at once, the model
+did the adding itself and contradicted its own reason; aggregation is code's job everywhere
+else in this package, and it was the model's here only by accident of the answer shape.
 
 Everything in this module is IDENTITY (ADR-0034): the models, the sampling, the retry
 budget, the shape of the question and the grounding rule. Editing it is a new version of
 `drafts-hybrid`.
 """
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -164,6 +174,46 @@ class Judgement:
 
 
 @dataclass(frozen=True)
+class ObjectiveVerdict:
+    """One objective judged on its own, citing by number the tasks that decided it."""
+
+    objective_id: str
+    reason: str
+    task_numbers: tuple[int, ...]
+    satisfied: bool
+    failure_mode_index: int | None
+
+
+@dataclass(frozen=True)
+class PerObjectiveJudgement:
+    """A criterion whose corpus is a set of units, judged unit by unit and added up here.
+
+    `verdicts` are the winning sample's, kept whole rather than merged, for the same reason
+    `_decide` keeps one sample's account: a report shows one judge's reading, which is
+    checkable, instead of a synthesis nobody wrote.
+
+    `failed_by_sample` is what makes the next instrument decision possible. Two samples can
+    agree that the criterion fails and disagree about WHICH objective failed — that is a
+    disagreement about the facts — or name the same objective and split on whether it clears
+    the bar, which is a threshold nobody wrote down. The verdict alone cannot tell them apart.
+    """
+
+    verdicts: tuple[ObjectiveVerdict, ...]
+    usage: LlmUsage
+    agreed: int
+    samples: int
+    failed_by_sample: tuple[tuple[str, ...], ...]
+
+    @property
+    def passed(self) -> bool:
+        return all(verdict.satisfied for verdict in self.verdicts)
+
+    @property
+    def failed(self) -> tuple[ObjectiveVerdict, ...]:
+        return tuple(verdict for verdict in self.verdicts if not verdict.satisfied)
+
+
+@dataclass(frozen=True)
 class ObjectiveMapping:
     """One declared objective and the assessment tasks that were found to measure it.
 
@@ -171,11 +221,15 @@ class ObjectiveMapping:
     delivers or something it proposes: what the criterion asks is what the draft commits to
     measuring (ADR-0046), and the executors read the status back off the profile when the
     difference matters.
+
+    There is no quote here since v12. The mapping used to carry a verbatim passage as its
+    evidence, over a corpus where every task begins with the same label — the shape that made
+    a model splice two tasks into one citation and cost a whole evaluation once already. An
+    index resolves to the course's own text in code, which is a citation nobody can garble.
     """
 
     objective_id: str
     reason: str
-    evidence: str
     task_indices: tuple[int, ...]
 
 
@@ -228,10 +282,15 @@ def locate(corpus: str, quote: str) -> str | None:
     - **Neither is markdown emphasis.** Lesson bodies are markdown, so a sentence can carry
       `**bold**` or backticks, and a model quoting it drops them about as often as it keeps
       them. Same class of false negative, same answer: the markers are invisible to the match.
+    - **Nor is a list marker.** A quote that runs from a lead-in into the list under it — "you
+      will master four essential skills: Navigation: Moving through your folders" — is refused
+      by a comparison that keeps the `- ` the source puts between them, and refusing it is a
+      statement about our formatting rather than about the course. Same class again: the
+      marker of a list ITEM is invisible, in every shape markdown gives it.
     - **What is returned is the SOURCE's text, never the model's.** Tolerating a difference
       when matching is not the same as storing the difference: the quote that ends up in a
-      report is the span as the course writes it — emphasis markers included — so ADR-0009
-      stays exact.
+      report is the span as the course writes it — emphasis markers and bullets included — so
+      ADR-0009 stays exact.
     """
     flat_corpus, offsets = _flatten(corpus)
     flat_quote, _ = _flatten(quote)
@@ -250,28 +309,44 @@ def locate(corpus: str, quote: str) -> str | None:
 # edit rather than an invention.
 _EMPHASIS = frozenset("*_`")
 
+# What opens a list item: a bullet or an ordinal, at the start of a line, followed by a space.
+# The trailing space is what keeps this narrow — a line reading "-3 degrees" is not a list, and
+# "1.5 seconds" is not an ordinal.
+_LIST_MARKER = re.compile(r"[ \t]*(?:[-*+]|\d{1,3}[.)])[ \t]+")
+
 
 def _flatten(text: str) -> tuple[str, list[int]]:
-    """`text` with whitespace runs collapsed to one space, emphasis markers dropped and the
-    ends stripped, plus, per character kept, the index it came from — which is what lets a
-    match map back to the original."""
+    """`text` with whitespace runs collapsed to one space, emphasis and list markers dropped
+    and the ends stripped, plus, per character kept, the index it came from — which is what
+    lets a match map back to the original.
+
+    Walked line by line rather than character by character, because "is this a list marker?"
+    is a question about the start of a line and the offsets have to survive the answer.
+    """
     kept: list[str] = []
     offsets: list[int] = []
     after_space = True
-    for index, char in enumerate(text):
-        if char in _EMPHASIS:
-            # Not `continue`-ing through the space branch on purpose: an emphasis marker is
-            # invisible, so `**a** **b**` still flattens to `a b` rather than `ab`.
-            continue
-        if char.isspace():
-            if not after_space:
-                kept.append(" ")
-                offsets.append(index)
-                after_space = True
-            continue
-        kept.append(char)
-        offsets.append(index)
-        after_space = False
+    index = 0
+    for line in text.splitlines(keepends=True):
+        marker = _LIST_MARKER.match(line)
+        # The whole marker, indent included, is invisible — but the line still begins after
+        # whatever whitespace preceded it, so the collapsed space between two items survives.
+        start = marker.end() if marker else 0
+        for offset, char in enumerate(line[start:], start=index + start):
+            if char in _EMPHASIS:
+                # Not `continue`-ing through the space branch on purpose: an emphasis marker
+                # is invisible, so `**a** **b**` still flattens to `a b` rather than `ab`.
+                continue
+            if char.isspace():
+                if not after_space:
+                    kept.append(" ")
+                    offsets.append(offset)
+                    after_space = True
+                continue
+            kept.append(char)
+            offsets.append(offset)
+            after_space = False
+        index += len(line)
     if kept and kept[-1] == " ":
         kept.pop()
         offsets.pop()
@@ -457,6 +532,188 @@ def _validate_verdict(answer: Any, corpus: str, failure_mode_count: int) -> list
     return violations
 
 
+# --- the per-unit judge (v12) -------------------------------------------------------------
+
+
+def judge_per_objective(
+    profile: ProfileData,
+    spec: CriterionSpec,
+    *,
+    task_id: str,
+    source_description: str,
+    corpus: str,
+    citable: Mapping[str, tuple[int, ...]],
+) -> PerObjectiveJudgement:
+    """One criterion, judged objective by objective, with the verdict added up in code.
+
+    Same question as `judge` — the instrument's own `pass_condition` and failure modes — and
+    the same vote: `SAMPLES` answers, a third only when they split. What is voted on is the
+    AGGREGATE (every objective satisfied), because that is what the criterion asserts; the
+    winning sample's per-objective entries are what a reader gets.
+
+    `citable` is the closed set per objective: the task numbers its block showed. An answer
+    citing anything else is a contract violation, which is the grounding rule in the form a
+    numbered corpus allows.
+    """
+
+    def run() -> PerObjectiveJudgement:
+        samples: list[tuple[ObjectiveVerdict, ...]] = []
+        usages: list[LlmUsage] = []
+        while True:
+            verdicts, usage = _ask_per_objective(spec, task_id, source_description, corpus, citable)
+            samples.append(verdicts)
+            usages.append(usage)
+            answers = {all(v.satisfied for v in sample) for sample in samples}
+            if len(samples) >= SAMPLES and (len(answers) == 1 or len(samples) >= MAX_SAMPLES):
+                return _decide_per_objective(samples, usages)
+
+    judged: PerObjectiveJudgement = _memoized(task_id, profile, run)
+    return judged
+
+
+def _ask_per_objective(
+    spec: CriterionSpec,
+    task_id: str,
+    source_description: str,
+    corpus: str,
+    citable: Mapping[str, tuple[int, ...]],
+) -> tuple[tuple[ObjectiveVerdict, ...], LlmUsage]:
+    """One sample: one validated answer, or `AssessorExecutionError`."""
+    payload, usage = request_structured_output(
+        runtime.get_client(),
+        task_id=task_id,
+        model=JUDGE_MODEL,
+        system_prompt=prompts.PER_OBJECTIVE_JUDGE_SYSTEM,
+        user_prompt=prompts.PER_OBJECTIVE_JUDGE_USER.substitute(
+            source_description=source_description,
+            pass_condition=spec.pass_condition.strip(),
+            failure_modes=_numbered(spec.failure_modes),
+            corpus=corpus,
+        ),
+        validate=lambda answer: _validate_per_objective(answer, citable, len(spec.failure_modes)),
+        temperature=tasks.TEMPERATURE,
+        max_tokens=JUDGE_MAX_OUTPUT_TOKENS,
+        reasoning=tasks.REASONING,
+    )
+    by_id = {str(entry["objectiveId"]): entry for entry in payload["objectives"]}
+    verdicts = tuple(
+        ObjectiveVerdict(
+            objective_id=objective_id,
+            reason=str(by_id[objective_id]["reason"]).strip(),
+            task_numbers=tuple(int(n) for n in by_id[objective_id]["taskNumbers"]),
+            satisfied=bool(by_id[objective_id]["satisfied"]),
+            failure_mode_index=(
+                int(mode)
+                if isinstance((mode := by_id[objective_id].get("failureMode")), int)
+                and not isinstance(mode, bool)
+                else None
+            ),
+        )
+        # The corpus's order, not the answer's: what a report lists should not depend on
+        # which entry the model wrote first.
+        for objective_id in citable
+    )
+    return verdicts, usage
+
+
+def _decide_per_objective(
+    samples: Sequence[tuple[ObjectiveVerdict, ...]], usages: Sequence[LlmUsage]
+) -> PerObjectiveJudgement:
+    """The majority verdict over the aggregate, keeping one sample's account of it."""
+    aggregates = [all(verdict.satisfied for verdict in sample) for sample in samples]
+    majority = aggregates.count(True) > aggregates.count(False)
+    winner = next(
+        sample
+        for sample, aggregate in zip(samples, aggregates, strict=True)
+        if aggregate == majority
+    )
+    return PerObjectiveJudgement(
+        verdicts=winner,
+        usage=_total(usages),
+        agreed=aggregates.count(majority),
+        samples=len(samples),
+        failed_by_sample=tuple(
+            tuple(verdict.objective_id for verdict in sample if not verdict.satisfied)
+            for sample in samples
+        ),
+    )
+
+
+def _validate_per_objective(
+    answer: Any, citable: Mapping[str, tuple[int, ...]], failure_mode_count: int
+) -> list[str]:
+    violations = _shape_violations(answer, "objectives")
+    if violations:
+        return violations
+    seen: set[str] = set()
+    for position, entry in enumerate(answer["objectives"]):
+        label = f"objectives[{position}]"
+        if not isinstance(entry, dict):
+            violations.append(f"{label} must be an object")
+            continue
+        objective_id = entry.get("objectiveId")
+        if not isinstance(objective_id, str) or objective_id not in citable:
+            violations.append(
+                f"{label}.objectiveId must be one of the given ids (got {objective_id!r})"
+            )
+            continue
+        if objective_id in seen:
+            violations.append(f"{label}.objectiveId {objective_id!r} appears more than once")
+            continue
+        seen.add(objective_id)
+        if not isinstance(entry.get("reason"), str) or not str(entry.get("reason")).strip():
+            violations.append(f"{label}.reason must be a non-empty string")
+        violations.extend(
+            _citation_violations(label, entry.get("taskNumbers"), citable[objective_id])
+        )
+        satisfied = entry.get("satisfied")
+        if not isinstance(satisfied, bool):
+            violations.append(f"{label}.satisfied must be true or false")
+        mode = entry.get("failureMode")
+        if satisfied is False:
+            if not isinstance(mode, int) or isinstance(mode, bool):
+                violations.append(
+                    f"{label}.failureMode must be an integer from 0 to {failure_mode_count - 1} "
+                    "when satisfied is false"
+                )
+            elif not 0 <= mode < failure_mode_count:
+                violations.append(
+                    f"{label}.failureMode {mode} is not one of the listed failures "
+                    f"(0 to {failure_mode_count - 1})"
+                )
+        elif satisfied is True and mode is not None:
+            violations.append(f"{label}.failureMode must be null when satisfied is true")
+    if not violations and seen != set(citable):
+        violations.append(f"missing an entry for objective id(s): {sorted(set(citable) - seen)}")
+    return violations
+
+
+def _citation_violations(label: str, numbers: Any, allowed: Sequence[int]) -> list[str]:
+    """The closed-set form of the grounding rule: a task number the objective's own block did
+    not show is an invented citation, and at least one is required — an objective decided on
+    nothing is a verdict with no evidence behind it (ADR-0009)."""
+    if not isinstance(numbers, list) or not numbers:
+        return [
+            f"{label}.taskNumbers must be a non-empty array of task numbers from this "
+            f"objective's block (it lists: {', '.join(str(n) for n in allowed)})"
+        ]
+    violations: list[str] = []
+    cited: set[int] = set()
+    for value in numbers:
+        if not isinstance(value, int) or isinstance(value, bool):
+            violations.append(f"{label}.taskNumbers must hold integers (got {value!r})")
+        elif value not in allowed:
+            violations.append(
+                f"{label}.taskNumbers holds {value}, which is not a task listed under this "
+                f"objective (it lists: {', '.join(str(n) for n in allowed)})"
+            )
+        elif value in cited:
+            violations.append(f"{label}.taskNumbers names task {value} more than once")
+        else:
+            cited.add(value)
+    return violations
+
+
 # --- corpora (what each judged criterion is shown) ----------------------------------------
 #
 # Structure is decided here, in code, never by the model: which lesson is the opening and
@@ -561,9 +818,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             model=ASSESSMENT_MAPPING_MODEL,
             system_prompt=prompts.ASSESSMENT_MAPPING_SYSTEM,
             user_prompt=prompts.ASSESSMENT_MAPPING_USER.substitute(corpus=corpus),
-            validate=lambda answer: _validate_mapping(
-                answer, corpus, objective_ids, len(offerings)
-            ),
+            validate=lambda answer: _validate_mapping(answer, objective_ids, len(offerings)),
             temperature=tasks.TEMPERATURE,
             max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
             reasoning=tasks.REASONING,
@@ -573,7 +828,6 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
             ObjectiveMapping(
                 objective_id=objective_id,
                 reason=str(by_id[objective_id]["reason"]).strip(),
-                evidence=locate(corpus, str(by_id[objective_id]["evidence"])) or "",
                 task_indices=tuple(int(i) for i in by_id[objective_id]["taskIndices"]),
             )
             for objective_id in objective_ids
@@ -584,9 +838,7 @@ def assessment_mapping(profile: ProfileData) -> tuple[list[ObjectiveMapping], Ll
     return list(result), usage
 
 
-def _validate_mapping(
-    answer: Any, corpus: str, objective_ids: Sequence[str], task_count: int
-) -> list[str]:
+def _validate_mapping(answer: Any, objective_ids: Sequence[str], task_count: int) -> list[str]:
     violations = _shape_violations(answer, "objectives")
     if violations:
         return violations
@@ -608,11 +860,6 @@ def _validate_mapping(
             seen.add(objective_id)
         if not isinstance(entry.get("reason"), str) or not str(entry.get("reason")).strip():
             violations.append(f"{label}.reason must be a non-empty string")
-        evidence = entry.get("evidence")
-        if not isinstance(evidence, str) or not evidence.strip():
-            violations.append(f"{label}.evidence must be a non-empty string")
-        else:
-            violations.extend(_grounding_violations(f"{label}.evidence", evidence, corpus))
         indices = entry.get("taskIndices")
         if not isinstance(indices, list):
             violations.append(f"{label}.taskIndices must be an array")
@@ -637,8 +884,10 @@ def _validate_mapping(
     return violations
 
 
-def verification_corpus(profile: ProfileData, mappings: Sequence[ObjectiveMapping]) -> str | None:
-    """The objectives the verification criterion is actually about, with their tasks.
+def verification_corpus(
+    profile: ProfileData, mappings: Sequence[ObjectiveMapping]
+) -> tuple[str, dict[str, tuple[int, ...]]] | None:
+    """The objectives the verification criterion is about, with their tasks NUMBERED.
 
     Narrowed in CODE, not by the judge: the criterion excludes objectives with no declared
     verification (a structural fact anyone can read off the profile) and there is nothing to
@@ -648,10 +897,15 @@ def verification_corpus(profile: ProfileData, mappings: Sequence[ObjectiveMappin
     Each task says whether the draft delivers or proposes it, so a judge weighing a declared
     verification against what is offered can see which it is — and cannot mistake a proposal
     for something the learner can already take.
+
+    The numbers are the offering's own index, the same space the mapping answers in, so one
+    number means one task everywhere in this assessor. Returned alongside the text, per
+    objective: they are the only citations the judge may make for it.
     """
     objectives = {str(o["id"]): o for o in profile.entries["declared_objectives"].value}
     offerings = list(profile.entries["assessment_offerings"].value)
     blocks: list[str] = []
+    citable: dict[str, tuple[int, ...]] = {}
     for mapping in mappings:
         objective = objectives.get(mapping.objective_id)
         if objective is None or not mapping.task_indices:
@@ -659,18 +913,21 @@ def verification_corpus(profile: ProfileData, mappings: Sequence[ObjectiveMappin
         verifiable_by = objective.get("verifiableBy")
         if not isinstance(verifiable_by, str) or not verifiable_by.strip():
             continue
+        numbers = tuple(index for index in mapping.task_indices if index < len(offerings))
+        if not numbers:
+            continue
         measured = "\n".join(
-            f"  - {_stage(offerings[index])} ({offerings[index].get('kind')}): "
+            f"  [{index}] {_stage(offerings[index])} ({offerings[index].get('kind')}): "
             f"{offerings[index].get('prompt')}"
-            for index in mapping.task_indices
-            if index < len(offerings)
+            for index in numbers
         )
+        citable[mapping.objective_id] = numbers
         blocks.append(
             f"OBJECTIVE {mapping.objective_id}: {objective['outcome']}\n"
             f"DECLARED VERIFICATION: {verifiable_by}\n"
             f"WHAT THE COURSE OFFERS TO MEASURE IT:\n{measured}"
         )
-    return "\n\n".join(blocks) if blocks else None
+    return ("\n\n".join(blocks), citable) if blocks else None
 
 
 # --- task: assessment reach (extraction; the count is the executor's) ---------------------

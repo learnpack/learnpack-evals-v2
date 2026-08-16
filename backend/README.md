@@ -617,7 +617,7 @@ written.
 
 One trace shows whether a question was answered. Only **repeats of the same content** show
 whether the answer means anything, and they are the cheapest diagnostic available: run one
-draft three times and compare the verdicts criterion by criterion. Four things that
+draft three times and compare the verdicts criterion by criterion. Six things that
 measurement settles, none of them obvious from a single run.
 
 - **Where the model disagrees tells you whose defect it is.** If repeats quote the same
@@ -637,6 +637,21 @@ measurement settles, none of them obvious from a single run.
   from comparing the passages and reasons of different runs. A bare verdict shows a number
   moving and nothing about why, which is the reason the output contract demands evidence at
   all (ADR-0009).
+- **Ask for a transcription only from prose you did not write.** A corpus this system BUILDS
+  — objectives beside the tasks that measure them, one entry per line under the same label —
+  is a template, and a model asked to copy one line out of twenty near-identical ones splices
+  the prefix of one onto the body of another. The grounding check catches it and the run pays
+  for it: one campaign spent 9 retries in 21 calls and lost an evaluation that way. Over a
+  built corpus, number the entries and ask which one, not what it says; the passage a report
+  shows is then fetched from the profile, which is the course's own text rather than the
+  model's rendering of our labels.
+- **Let the model judge one thing at a time and add the answers up in code.** A criterion
+  whose corpus is a set of units (one block per objective, per lesson, per module) invites a
+  single verdict over all of them, and then the aggregation is the model's: repeats will name
+  different units, pick different failure modes, and occasionally contradict their own reason
+  — one answered *"satisfied except obj-3, whose tasks are recognition items"* and voted pass.
+  One entry per unit costs no extra calls, and it turns "which unit failed" into data a
+  reader can compare across runs.
 
 A judged criterion reports how close its vote was, as a
 `judgment_agreement_<task>` metric of `{samples, agreed}`. Treat a criterion that keeps coming
