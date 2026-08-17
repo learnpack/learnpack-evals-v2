@@ -12,8 +12,9 @@ of what follows:
   is what lets a criterion hold the assessment to what the objective itself promised, and
   it is why the same objectives travel under two ids: `learning_objectives` is consumed by
   criteria that count them, `declared_objectives` by criteria that compare against them.
-- `files/lesson_plan.json` names the concept each lesson covers, which `lesson_concepts`
-  carries in the plan's declared order — a course's trajectory without reading any body.
+- `files/lesson_plan.json` names the concepts each lesson covers, which
+  `lesson_concept_coverage` carries in the plan's declared order — a course's trajectory
+  without reading any body.
 - There is NO capability for `lesson_activities`. The format carries *proposals*, not
   exercises: a `code_challenge_proposal` block is the prompt a teacher will later use to
   generate the exercise files, and no exercise file exists yet. Supplying the requirement
@@ -83,12 +84,18 @@ from app.modules.content_profiling.domain.profile import (
 )
 
 PACKAGE_FORMAT = "LearnpackV2"
+# 4: the generator renamed `lesson_plan.json`'s per-lesson `concept_covered: str` to
+# `concepts_covered: list[str]` — a lesson now names a set, not a single concept. Reported
+# under a NEW id, `lesson_concept_coverage` (ADR-0020: one id, one shape), replacing
+# `lesson_concepts` in this adapter's capabilities — the old id's shape stays declared for
+# the instrument versions measured against it, untouched. Packages written before the
+# rename are not read by this version; earlier versions' profiles stay valid and untouched.
 # 3: supplies `assessment_offerings`, the demand course-drafts-qa v7 mints so that what a
 # draft PROPOSES to be assessed on stops being invisible (ADR-0046).
 # 2: supplied `declared_objectives` and `lesson_concepts`, the demand course-drafts-qa v2
 # mints for the constructive-alignment dimension. The mapping changed, so the identity of
 # the extraction changed with it — earlier versions' profiles stay valid and untouched.
-ADAPTER_VERSION = "3"
+ADAPTER_VERSION = "4"
 
 CAPABILITIES = frozenset(
     {
@@ -99,7 +106,7 @@ CAPABILITIES = frozenset(
         "assessment_offerings",
         "learning_objectives",
         "declared_objectives",
-        "lesson_concepts",
+        "lesson_concept_coverage",
         "target_audience",
     }
 )
@@ -555,25 +562,29 @@ class LearnpackV2Adapter:
         trajectory, without reading a single body."""
         artifact = self._single_artifact(package, KIND_LESSON_PLAN)
         if artifact is None:
-            return ProfileEntry(data_requirement_id="lesson_concepts", provenance="absent")
+            return ProfileEntry(data_requirement_id="lesson_concept_coverage", provenance="absent")
 
         lessons = self._json_object(artifact, fetcher).get("lessons")
         concepts = [
             {
                 "lessonId": lesson["id"],
-                "concept": (
-                    lesson["concept_covered"]
-                    if isinstance(lesson.get("concept_covered"), str)
-                    else None
-                ),
+                # [] for a lesson the format lists without naming any concept for it — the
+                # format's own "declares none", not an adapter guess.
+                "concepts": [
+                    concept
+                    for concept in lesson.get("concepts_covered") or []
+                    if isinstance(concept, str)
+                ]
+                if isinstance(lesson.get("concepts_covered"), list)
+                else [],
             }
             for lesson in lessons or []
             if isinstance(lesson, dict) and isinstance(lesson.get("id"), str)
         ]
         if not concepts:
-            return ProfileEntry(data_requirement_id="lesson_concepts", provenance="absent")
+            return ProfileEntry(data_requirement_id="lesson_concept_coverage", provenance="absent")
         return ProfileEntry(
-            data_requirement_id="lesson_concepts",
+            data_requirement_id="lesson_concept_coverage",
             provenance="declared_structured",
             value=concepts,
             quote=_quote(concepts),
@@ -581,7 +592,7 @@ class LearnpackV2Adapter:
                 "source": "artifact",
                 "kind": KIND_LESSON_PLAN,
                 "locator": artifact.locator,
-                "path": "$.lessons[*].concept_covered",
+                "path": "$.lessons[*].concepts_covered",
             },
         )
 

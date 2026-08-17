@@ -309,9 +309,9 @@ def concept_trajectory(profile: ProfileData) -> tuple[list[LessonSophistication]
             return [], LlmUsage(
                 model=CONCEPT_TRAJECTORY_MODEL, calls=0, tokens_in=0, tokens_out=0, latency_ms=0
             )
-        concepts = profile.entries["lesson_concepts"]
-        concept_by_id = {
-            str(record["lessonId"]): record.get("concept") for record in concepts.value
+        concepts = profile.entries["lesson_concept_coverage"]
+        concepts_by_id = {
+            str(record["lessonId"]): record.get("concepts") or [] for record in concepts.value
         }
         plan_lines = "\n".join(
             json.dumps(
@@ -319,7 +319,7 @@ def concept_trajectory(profile: ProfileData) -> tuple[list[LessonSophistication]
                     "lessonId": str(lesson["lessonId"]),
                     "title": lesson.get("title"),
                     "type": lesson.get("type"),
-                    "concept": concept_by_id.get(str(lesson["lessonId"])),
+                    "concepts": concepts_by_id.get(str(lesson["lessonId"]), []),
                 },
                 ensure_ascii=False,
                 sort_keys=True,

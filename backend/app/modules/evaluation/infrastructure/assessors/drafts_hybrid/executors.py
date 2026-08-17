@@ -334,7 +334,7 @@ def cognitive_demand_rises_across_the_course(
     """The concepts the core lessons cover grow in sophistication in delivery order —
     local one-level dips allowed, working below the running peak is not, and a long flat
     trajectory is a list rather than a progression."""
-    entry = _entry(profile, "lesson_concepts")
+    entry = _entry(profile, "lesson_concept_coverage")
     trajectory, usage = tasks.concept_trajectory(profile)
     levels = [lesson.level for lesson in trajectory]
     metrics = (

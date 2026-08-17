@@ -94,9 +94,9 @@ Answer with a single JSON object and nothing else — no prose, no markdown fenc
 CONCEPT_TRAJECTORY_USER = Template(
     """\
 Below is a course plan in delivery order, between <plan> tags: one lesson per line, as a
-JSON object with the lesson's identifier, title, delivery type and the concept it
-declares it covers (null when the plan names none). The course-level opening and closing
-lessons have already been removed.
+JSON object with the lesson's identifier, title, delivery type and the concepts it
+declares it covers (an empty list when the plan names none). The course-level opening and
+closing lessons have already been removed.
 
 For EACH lesson, classify the sophistication of the reasoning it demands from the
 learner, as an integer from 1 to 5:
@@ -106,7 +106,7 @@ learner, as an integer from 1 to 5:
 4 = analysis or combination of several concepts
 5 = evaluation, design or creation integrating multiple concepts
 
-Judge from what the plan declares — the title, the type and the concept — not from what
+Judge from what the plan declares — the title, the type and the concepts — not from what
 the lessons might contain.
 
 Answer with this JSON shape:

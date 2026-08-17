@@ -258,7 +258,10 @@ def test_the_package_against_the_frozen_v2_fixture():
     """The exact partition, measured once and pinned: what PR G's artifact actually says
     about the real draft the corpus holds. `cr-prerequisites-declared` never reaches its
     executor — LearnpackV2 declares no `prerequisites` capability, and unmet demand
-    derives `not_applicable` before execution (derivation case (b))."""
+    derives `not_applicable` before execution (derivation case (b)). Same case for
+    `cr-cognitive-demand-rises-across-the-course`: the fixture carries the new-shape
+    `lesson_concept_coverage` (v8), which v7 — the instrument this test is pinned to — does
+    not require."""
     outcomes, metrics = derive_and_execute(
         _instrument_spec(), _fixture_profile(), PACKAGE.coverage, dict(PACKAGE.executors)
     )
@@ -268,7 +271,10 @@ def test_the_package_against_the_frozen_v2_fixture():
     for outcome in outcomes:
         by_outcome.setdefault(outcome.outcome, set()).add(outcome.criterion_id)
 
-    assert by_outcome["not_applicable"] == {"cr-prerequisites-declared"}
+    assert by_outcome["not_applicable"] == {
+        "cr-prerequisites-declared",
+        "cr-cognitive-demand-rises-across-the-course",
+    }
     assert by_outcome["pass"] == {
         "cr-audience-declared",
         "cr-course-has-development",
@@ -277,7 +283,11 @@ def test_the_package_against_the_frozen_v2_fixture():
         "cr-no-lesson-spikes-in-lexical-load",
         "cr-objectives-min-count",
     }
-    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains)
+    # `cr-cognitive-demand-rises-across-the-course` abstains too, but never reaches that
+    # gate here — capability (b) derives it `not_applicable` first.
+    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains) - {
+        "cr-cognitive-demand-rises-across-the-course"
+    }
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
 
     executed = {o.criterion_id: o for o in outcomes if o.outcome == "pass"}

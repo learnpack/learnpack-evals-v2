@@ -496,36 +496,44 @@ def test_an_objective_without_a_declared_verification_reports_null():
 
 def test_the_lesson_concepts_follow_the_plan_s_declared_order():
     """The trajectory, read without opening a single body."""
-    concepts = extract_fixture()["lesson_concepts"].value
+    concepts = extract_fixture()["lesson_concept_coverage"].value
     inventory = extract_fixture()["lesson_inventory"].value
 
     assert [c["lessonId"] for c in concepts] == [lesson["lessonId"] for lesson in inventory]
-    assert concepts[0] == {"lessonId": "00.0", "concept": "welcome"}
-    assert concepts[1]["concept"] == "HTML as markup language"
+    assert concepts[0] == {"lessonId": "00.0", "concepts": ["welcome"]}
+    assert concepts[1]["concepts"] == ["HTML as markup language"]
+
+
+def test_a_lesson_can_declare_several_concepts():
+    """The format's own set, carried whole — the trajectory does not collapse it to one."""
+    concepts = extract_fixture()["lesson_concept_coverage"].value
+
+    by_id = {c["lessonId"]: c["concepts"] for c in concepts}
+    assert by_id["02.0"] == ["HTML element syntax", "Tags"]
 
 
 def test_the_framing_lessons_declare_their_own_concepts():
     """`welcome` and `course-outro` are named concepts like any other, and they sit outside
     the course's concept graph by convention. The adapter reports what the plan declares and
     leaves that distinction to the criteria that care about it."""
-    concepts = extract_fixture()["lesson_concepts"].value
+    concepts = extract_fixture()["lesson_concept_coverage"].value
 
-    assert concepts[0]["concept"] == "welcome"
-    assert concepts[-1]["concept"] == "course-outro"
+    assert concepts[0]["concepts"] == ["welcome"]
+    assert concepts[-1]["concepts"] == ["course-outro"]
 
 
-def test_a_lesson_that_names_no_concept_reports_null():
+def test_a_lesson_that_names_no_concept_reports_an_empty_list():
     package, fetcher = _package(
         **{
             "lesson_plan.json": (
-                b'{"lessons": [{"id": "00.0"}, {"id": "01.0", "concept_covered": "x"}]}'
+                b'{"lessons": [{"id": "00.0"}, {"id": "01.0", "concepts_covered": ["x"]}]}'
             ),
         }
     )
 
     entries = {e.data_requirement_id: e for e in LearnpackV2Adapter().extract(package, fetcher)[0]}
 
-    assert entries["lesson_concepts"].value == [
-        {"lessonId": "00.0", "concept": None},
-        {"lessonId": "01.0", "concept": "x"},
+    assert entries["lesson_concept_coverage"].value == [
+        {"lessonId": "00.0", "concepts": []},
+        {"lessonId": "01.0", "concepts": ["x"]},
     ]
