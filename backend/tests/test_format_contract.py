@@ -42,6 +42,7 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.shared.domain.ids import new_id
@@ -323,7 +324,12 @@ def _register_from(case: FormatCase, source_dir: Path):
             uow=uow,
             brief_intake=PackageBriefIntake(FilesystemFetcher(source_dir)),
         )
-        return RegisterPackageFromSource(PackageDiscovery(), register)(
+        return RegisterPackageFromSource(
+            PackageDiscovery(),
+            register,
+            SqlAlchemyGeneratorRepository(session),
+            SqlAlchemyGeneratorVersionRepository(session),
+        )(
             RegisterPackageFromSourceCommand(
                 package_format=case.package_format,
                 source_locator=str(source_dir),

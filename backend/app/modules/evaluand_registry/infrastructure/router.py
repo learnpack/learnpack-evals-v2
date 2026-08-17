@@ -48,6 +48,7 @@ from app.modules.evaluand_registry.application.register_generator_version import
     UnknownGenerator,
 )
 from app.modules.evaluand_registry.application.register_package_from_source import (
+    DeclaredGeneratorConflict,
     RegisterPackageFromSource,
     RegisterPackageFromSourceCommand,
 )
@@ -261,7 +262,12 @@ def register_by_source(
         uow=uow,
         brief_intake=PackageBriefIntake(HttpFetcher()),
     )
-    use_case = RegisterPackageFromSource(PackageDiscovery(HttpPackageRoot), register)
+    use_case = RegisterPackageFromSource(
+        PackageDiscovery(HttpPackageRoot),
+        register,
+        SqlAlchemyGeneratorRepository(uow.session),
+        SqlAlchemyGeneratorVersionRepository(uow.session),
+    )
     try:
         registration = use_case(
             RegisterPackageFromSourceCommand(
@@ -274,6 +280,17 @@ def register_by_source(
         )
     except DuplicateContent as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except DeclaredGeneratorConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": str(exc),
+                "declaredGenerator": {
+                    "name": exc.declared_name,
+                    "version": exc.declared_version,
+                },
+            },
+        ) from exc
     except (
         PackageDiscoveryError,
         InvalidContent,

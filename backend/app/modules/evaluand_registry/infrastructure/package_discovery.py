@@ -304,6 +304,7 @@ class LearnpackV2Discovery:
 
         manifest = _parse_json(take(V2_RUN_MANIFEST_PATH, KIND_RUN_MANIFEST), V2_RUN_MANIFEST_PATH)
         external_id = self._external_id(manifest)
+        declared_generator_name, declared_generator_version = self._declared_generator(manifest)
 
         take(V2_USER_INTENT_PATH, KIND_USER_INTENT)
         take(V2_COURSE_VALUE_PATH, KIND_COURSE_VALUE)
@@ -326,7 +327,29 @@ class LearnpackV2Discovery:
             consumable_url=root.consumable_url,
             artifacts=tuple(artifacts),
             content_hash=_content_hash(fetched),
+            declared_generator_name=declared_generator_name,
+            declared_generator_version=declared_generator_version,
         )
+
+    def _declared_generator(self, manifest: Any) -> tuple[str | None, str | None]:
+        """`system_name`/`system_version`, as evidence to cross-check a registration against —
+        never a value discovery itself acts on (ADR-0027 §5, ADR-0031: mechanical intake never
+        mints a generator identity). Unlike every other read in this class, this one is soft:
+        the fields are new, optional, and their absence must not fail discovery.
+
+        Both or neither: a name without a version (or the reverse) is not a resolvable claim
+        about which registered `GeneratorVersion` produced this course, so it is dropped rather
+        than half-used. Taken verbatim — a dev build's version can be a dirty git description
+        (e.g. `59a1591-dirty`), which is exactly the kind of value nothing here should
+        normalize or coerce into a semver.
+        """
+        if not isinstance(manifest, dict):
+            return None, None
+        name = manifest.get("system_name")
+        version = manifest.get("system_version")
+        if isinstance(name, str) and name.strip() and isinstance(version, str) and version.strip():
+            return name, version
+        return None, None
 
     def _external_id(self, manifest: Any) -> str:
         """`<seed>-<run start>`: which instruction produced this course, and which run of it.

@@ -144,3 +144,27 @@ def nearest_name(
         if edit_distance(key, canonical_name(name), cap=cap) <= cap:
             return name
     return None
+
+
+def resolve_declared_generator_version(
+    declared_name: str,
+    declared_version: str,
+    generators: Iterable[Generator],
+    versions: Iterable[GeneratorVersion],
+) -> GeneratorVersion | None:
+    """The registered `GeneratorVersion` a package's self-declared generator names, or None.
+
+    The lineage is matched by `normalized_name` — the same identity key its unique index
+    enforces, not the looser `canonical_name` the near-miss guard uses: this is a lookup, not a
+    typo guard, and folding separators here would silently match a lineage the package did not
+    actually name. The version is matched by exact string, because versions are declarative
+    (ADR-0005) and `UNIQUE(generatorId, version)` never fuzzy-matches one either.
+    """
+    key = normalized_name(declared_name)
+    generator = next((g for g in generators if normalized_name(g.name) == key), None)
+    if generator is None:
+        return None
+    return next(
+        (v for v in versions if v.generator_id == generator.id and v.version == declared_version),
+        None,
+    )

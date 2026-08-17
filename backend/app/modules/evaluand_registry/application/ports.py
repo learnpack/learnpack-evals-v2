@@ -86,6 +86,12 @@ class DiscoveredPackage:
     consumable_url: str | None
     artifacts: tuple[DiscoveredArtifact, ...]
     content_hash: str
+    # What the package itself says produced it — populated only by formats that carry this
+    # (LearnpackV2's `traces/run_metadata.json`; LearnpackV1 leaves both None). This is
+    # evidence to cross-check a registration's declared generator against, never a value that
+    # mints or defaults one (ADR-0024, ADR-0027 §5): mechanical intake never mints identities.
+    declared_generator_name: str | None = None
+    declared_generator_version: str | None = None
 
 
 class PackageDiscoveryError(Exception):

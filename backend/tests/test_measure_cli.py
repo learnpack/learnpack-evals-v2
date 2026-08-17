@@ -28,6 +28,12 @@ from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher
 
 V2_FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v2"
 V2_RUN = "03-html-fundamentals-20260810191731"
+# The folder convention (ADR-0027 §5) and the package's own `system_version` (ADR-0027 §5's
+# cross-check) must agree — read from the fixture rather than duplicated as a literal, so a
+# future regeneration of the fixture cannot silently drift the two apart.
+V2_RUN_VERSION = json.loads(
+    (V2_FIXTURES / V2_RUN / "traces" / "run_metadata.json").read_text(encoding="utf-8")
+)["system_version"]
 INSTRUMENTS = Path(__file__).resolve().parents[2] / "docs" / "seed" / "instruments"
 DRAFTS_SPEC = INSTRUMENTS / "course-drafts-qa-v6.yaml"
 COURSE_SPEC = INSTRUMENTS / "learnpack-course-qa-v1.yaml"
@@ -135,8 +141,22 @@ def generation(runs_root, register_generator_version, unique, cleanup):
     """
     name = f"measure-gen-{unique}"
     register_generator_version(name, "1.0.0")
-    folder = f"{name}-9c1f2ab-dirty"
-    shutil.copytree(V2_FIXTURES / V2_RUN, runs_root / folder / V2_RUN)
+    # The suffix must be what the copied manifest declares (`V2_RUN_VERSION`): a real
+    # generator names its output folder consistently with what it writes into its own
+    # manifest, and the registration path now cross-checks the two (ADR-0027 §5).
+    folder = f"{name}-{V2_RUN_VERSION}"
+    course_dir = runs_root / folder / V2_RUN
+    shutil.copytree(V2_FIXTURES / V2_RUN, course_dir)
+    # The fixture's own `system_name` is the fixed literal "learnpack-generator", but this
+    # generation's lineage is `name` — unique per test run so parallel workers against the
+    # shared Neon DB never collide (ADR-0031's exact-match refusal has no override). A real
+    # generator's own name and its output folder's lineage always agree, so the copy's
+    # manifest is rewritten to agree too, rather than leaving a mismatch the cross-check
+    # would then (correctly) refuse.
+    manifest_path = course_dir / "traces" / "run_metadata.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["system_name"] = name
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     yield folder
 
     from app.platform.db import SessionLocal
@@ -221,7 +241,7 @@ def test_a_folder_becomes_a_round_and_a_score(
         ),
         {"id": study.id},
     ).fetchall()
-    assert [row.version for row in scope] == ["9c1f2ab-dirty"]
+    assert [row.version for row in scope] == [V2_RUN_VERSION]
     assert len(no_llm) == 1
 
     # stdout is ONE json document and nothing else — a caller runs this command and parses
