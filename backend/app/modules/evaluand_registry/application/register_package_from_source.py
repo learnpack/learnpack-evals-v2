@@ -9,13 +9,47 @@ rediscovering an already-registered, unchanged package is a reported no-op.
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.modules.evaluand_registry.application.ports import PackageDiscoveryPort
+from app.modules.evaluand_registry.application.ports import (
+    GeneratorRepositoryPort,
+    GeneratorVersionRepositoryPort,
+    PackageDiscoveryPort,
+)
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
     UnchangedContent,
 )
 from app.modules.evaluand_registry.domain.content import DEFAULT_VERSION, EducationalContent
+from app.modules.evaluand_registry.domain.generator import resolve_declared_generator_version
+
+
+class DeclaredGeneratorConflict(Exception):
+    """The package's self-declared generator does not match the one this registration
+    declared (ADR-0024's channel, cross-checked against ADR-0027's declared surface).
+
+    Refused outright, with no override: the two declarations disagree about a plain fact, and
+    the fix is to correct one of them — the same shape as a content-hash conflict (ADR-0027
+    §4), which also has no override. `selected_id` of `None` (an `unknown` registration) never
+    raises this: `unknown` is legitimate even when the package declares a generator (ADR-0024
+    cl. 1), so that case is a caller-side notice, not a refusal.
+    """
+
+    def __init__(
+        self,
+        *,
+        declared_name: str,
+        declared_version: str,
+        resolved_id: UUID | None,
+        selected_id: UUID | None,
+    ) -> None:
+        self.declared_name = declared_name
+        self.declared_version = declared_version
+        self.resolved_id = resolved_id
+        self.selected_id = selected_id
+        super().__init__(
+            f"the package declares '{declared_name} {declared_version}', "
+            "which does not match the generator version this registration declared"
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -41,12 +75,39 @@ class PackageRegistration:
 
 
 class RegisterPackageFromSource:
-    def __init__(self, discovery: PackageDiscoveryPort, register: RegisterContentVersion) -> None:
+    def __init__(
+        self,
+        discovery: PackageDiscoveryPort,
+        register: RegisterContentVersion,
+        generators: GeneratorRepositoryPort,
+        generator_versions: GeneratorVersionRepositoryPort,
+    ) -> None:
         self._discovery = discovery
         self._register = register
+        self._generators = generators
+        self._generator_versions = generator_versions
 
     def __call__(self, command: RegisterPackageFromSourceCommand) -> PackageRegistration:
         discovered = self._discovery.discover(command.package_format, command.source_locator)
+
+        if discovered.declared_generator_name and discovered.declared_generator_version:
+            resolved = resolve_declared_generator_version(
+                discovered.declared_generator_name,
+                discovered.declared_generator_version,
+                self._generators.list_all(),
+                self._generator_versions.list_all(),
+            )
+            resolved_id = resolved.id if resolved is not None else None
+            selected_id = command.generator_version_id
+            # `unknown` (selected_id is None) never conflicts (ADR-0024 cl. 1) — see the
+            # exception's docstring.
+            if selected_id is not None and selected_id != resolved_id:
+                raise DeclaredGeneratorConflict(
+                    declared_name=discovered.declared_generator_name,
+                    declared_version=discovered.declared_generator_version,
+                    resolved_id=resolved_id,
+                    selected_id=selected_id,
+                )
 
         # A declaration beats what discovery inferred; neither is required (ADR-0028).
         consumable_url = command.consumable_url or discovered.consumable_url

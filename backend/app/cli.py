@@ -86,6 +86,7 @@ from app.modules.evaluand_registry.application.register_generator_version import
     UnknownGenerator,
 )
 from app.modules.evaluand_registry.application.register_package_from_source import (
+    DeclaredGeneratorConflict,
     RegisterPackageFromSource,
     RegisterPackageFromSourceCommand,
 )
@@ -1599,7 +1600,12 @@ def _register_package(
             # Locators are URLs in both modes (http sources and the dev mount).
             brief_intake=PackageBriefIntake(HttpFetcher()),
         )
-        use_case = RegisterPackageFromSource(PackageDiscovery(root_factory), register)
+        use_case = RegisterPackageFromSource(
+            PackageDiscovery(root_factory),
+            register,
+            SqlAlchemyGeneratorRepository(session),
+            SqlAlchemyGeneratorVersionRepository(session),
+        )
         registration = use_case(
             RegisterPackageFromSourceCommand(
                 package_format=package_format,
@@ -1817,7 +1823,7 @@ def _register_tree(
                 edit_provenance,
                 DEFAULT_VERSION,
             )
-        except DuplicateContent as exc:
+        except (DuplicateContent, DeclaredGeneratorConflict) as exc:
             conflicts += 1
             print(f"  CONFLICT  {label}: {exc}", file=sys.stderr)
             continue
@@ -2930,7 +2936,12 @@ def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
                 uow=uow,
                 brief_intake=PackageBriefIntake(FilesystemFetcher(DEMO_PACKAGES_DIR)),
             )
-            use_case = RegisterPackageFromSource(PackageDiscovery(_demo_root), register)
+            use_case = RegisterPackageFromSource(
+                PackageDiscovery(_demo_root),
+                register,
+                SqlAlchemyGeneratorRepository(session),
+                SqlAlchemyGeneratorVersionRepository(session),
+            )
             try:
                 registration = use_case(
                     RegisterPackageFromSourceCommand(

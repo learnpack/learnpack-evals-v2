@@ -33,6 +33,7 @@ from app.modules.evaluand_registry.application.register_content_version import (
     UnknownGeneratorVersion,
 )
 from app.modules.evaluand_registry.application.register_package_from_source import (
+    DeclaredGeneratorConflict,
     RegisterPackageFromSource,
     RegisterPackageFromSourceCommand,
 )
@@ -41,6 +42,7 @@ from app.modules.evaluand_registry.domain.content import (
     EducationalContent,
     InvalidContent,
 )
+from app.modules.evaluand_registry.domain.generator import resolve_declared_generator_version
 from app.modules.evaluand_registry.domain.package import InvalidPackage
 from app.modules.evaluand_registry.infrastructure import local_sources
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
@@ -56,6 +58,7 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
     SqlAlchemyContentRepository,
+    SqlAlchemyGeneratorRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
 from app.modules.evaluand_registry.infrastructure.router import ContentResponse
@@ -127,6 +130,16 @@ class ScanCandidate(BaseModel):
     existing: ExistingContent | None = None
     #: The existing row declares no generator, so the attribution act applies (ADR-0024).
     can_attribute_generator: bool = False
+    #: What the package itself declares produced it (LearnpackV2 only; ADR-0027 §5). Neutral
+    #: facts, not a verdict — this does not depend on what the caller declared in the request,
+    #: so it never goes stale when that declaration changes after the scan (contrast with
+    #: `verdict`, which `register` always re-derives regardless).
+    declared_generator_name: str | None = None
+    declared_generator_version: str | None = None
+    #: The already-registered `GeneratorVersion` the declared name+version resolves to, if any.
+    #: Never minted here — a caller comparing this against its own declaration decides whether
+    #: to suggest it, register it, or flag a mismatch; discovery only reports what it found.
+    resolved_generator_version_id: UUID | None = None
 
 
 class ScanRequest(BaseModel):
@@ -325,6 +338,10 @@ def scan_source_folder(request: ScanRequest, admin: AdminAssessor, uow: Uow) -> 
     relative = local_sources.relative_to(source_root, directory)
 
     registered = _registered_by_external_id(uow, request.package_format)
+    # Read once for the whole scan, same reasoning as `registered` above: a dev-only preview
+    # does not earn a per-candidate query.
+    generators = SqlAlchemyGeneratorRepository(uow.session).list_all()
+    generator_versions = SqlAlchemyGeneratorVersionRepository(uow.session).list_all()
     candidates: list[ScanCandidate] = []
     mount_detail: str | None = None
     probed = False
@@ -355,6 +372,15 @@ def scan_source_folder(request: ScanRequest, admin: AdminAssessor, uow: Uow) -> 
         verdict, existing = _verdict(
             discovered.content_hash, request.version, registered[discovered.external_id]
         )
+        resolved_generator_version_id: UUID | None = None
+        if discovered.declared_generator_name and discovered.declared_generator_version:
+            resolved = resolve_declared_generator_version(
+                discovered.declared_generator_name,
+                discovered.declared_generator_version,
+                generators,
+                generator_versions,
+            )
+            resolved_generator_version_id = resolved.id if resolved is not None else None
         candidates.append(
             ScanCandidate(
                 name=child.name,
@@ -367,6 +393,9 @@ def scan_source_folder(request: ScanRequest, admin: AdminAssessor, uow: Uow) -> 
                 existing=_existing_response(existing),
                 can_attribute_generator=existing is not None
                 and existing.generator_version_id is None,
+                declared_generator_name=discovered.declared_generator_name,
+                declared_generator_version=discovered.declared_generator_version,
+                resolved_generator_version_id=resolved_generator_version_id,
             )
         )
 
@@ -409,7 +438,12 @@ def register_local_package(
         brief_intake=PackageBriefIntake(HttpFetcher()),
     )
     discovery = PackageDiscovery(local_sources.fixed_root(package))
-    use_case = RegisterPackageFromSource(discovery, register)
+    use_case = RegisterPackageFromSource(
+        discovery,
+        register,
+        SqlAlchemyGeneratorRepository(uow.session),
+        SqlAlchemyGeneratorVersionRepository(uow.session),
+    )
     try:
         registration = use_case(
             RegisterPackageFromSourceCommand(
@@ -422,6 +456,17 @@ def register_local_package(
         )
     except DuplicateContent as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except DeclaredGeneratorConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": str(exc),
+                "declaredGenerator": {
+                    "name": exc.declared_name,
+                    "version": exc.declared_version,
+                },
+            },
+        ) from exc
     except (
         PackageDiscoveryError,
         InvalidContent,

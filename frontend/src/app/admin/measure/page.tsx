@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Folder, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { NewGeneratorVersionDialog } from "@/components/admin/generator-version-dialog";
 import {
   GeneratorVersionPicker,
   declaredGeneratorVersionId,
@@ -30,6 +31,7 @@ import type { ApiError } from "@/lib/api/client";
 import {
   useAttributeGenerator,
   useContents,
+  useGenerators,
   useGeneratorVersions,
   useLocalSourceFolder,
   useLocalSourceRoots,
@@ -40,6 +42,7 @@ import {
   useScanLocalSource,
 } from "@/lib/api/hooks";
 import { groupByVersion } from "@/lib/versions";
+import { declarationSignal, looksLikeSameGeneratorName } from "@/lib/generator-declaration";
 import {
   extractionStateOf,
   indexCapabilities,
@@ -102,12 +105,21 @@ function ImportFromDisk() {
   const roots = useLocalSourceRoots(true);
   const scanFolder = useScanLocalSource();
   const registerOne = useRegisterLocalPackage();
+  const generators = useGenerators();
 
   // 1 · what is being declared about everything the scan finds
   const [format, setFormat] = useState("");
   const [generator, setGenerator] = useState("");
   const [version, setVersion] = useState("1");
   const [editProvenance, setEditProvenance] = useState<EditProvenance>("unknown");
+  /** Registering the lineage's declared-but-unregistered version, prefilled from a scan
+   *  candidate (ADR-0027 §5) — a shortcut into the same dialog `GeneratorVersionPicker`
+   *  offers, never a second way to mint one. */
+  const [assistedRegister, setAssistedRegister] = useState<{
+    generatorId: string;
+    generatorName: string;
+    version: string;
+  } | null>(null);
 
   // 2 · where to look
   const [root, setRoot] = useState("");
@@ -139,6 +151,44 @@ function ImportFromDisk() {
     ? declaredGeneratorVersionId(generator)
     : null;
 
+  /** What the scanned packages themselves declare, before anything is chosen above — a
+   *  shortcut, never a default: nothing here is selected until the operator clicks it
+   *  (ADR-0024). Only offered while nothing has been declared yet, so it never second-guesses
+   *  a choice already made. */
+  const declaredSuggestion = useMemo(() => {
+    if (generatorDeclared) return null;
+    const withDeclared = (scan?.result.candidates ?? []).find(
+      (candidate) => candidate.declared_generator_name && candidate.declared_generator_version,
+    );
+    if (!withDeclared?.declared_generator_name || !withDeclared.declared_generator_version) {
+      return null;
+    }
+    const lineage = (generators.data ?? []).find((g) =>
+      looksLikeSameGeneratorName(g.name, withDeclared.declared_generator_name!),
+    );
+    return {
+      name: withDeclared.declared_generator_name,
+      version: withDeclared.declared_generator_version,
+      resolvedId: withDeclared.resolved_generator_version_id,
+      lineageId: lineage?.generator_id ?? null,
+    };
+  }, [scan, generatorDeclared, generators.data]);
+
+  // A row checked before the declaration changed can end up disagreeing with it; drop it
+  // rather than let a stale checkbox reach `register` and 409 (ADR-0027 §5) — the scan itself
+  // stays valid (it never depended on the declaration), only the selection is pruned.
+  useEffect(() => {
+    setSelected((previous) =>
+      previous.filter((path) => {
+        const candidate = scan?.result.candidates.find((c) => c.path === path);
+        return (
+          !candidate ||
+          declarationSignal(candidate, declaredGenerator, generatorDeclared) !== "conflict"
+        );
+      }),
+    );
+  }, [scan, declaredGenerator, generatorDeclared]);
+
   /** The verdicts are only true for the format, version and folder they were computed
    *  against. Rather than show labels that quietly stopped applying, drop them. */
   function invalidateScan() {
@@ -163,7 +213,12 @@ function ImportFromDisk() {
           setProgress(null);
           setSelected(
             result.candidates
-              .filter((candidate) => REGISTRABLE.includes(candidate.verdict))
+              .filter(
+                (candidate) =>
+                  REGISTRABLE.includes(candidate.verdict) &&
+                  declarationSignal(candidate, declaredGenerator, generatorDeclared) !==
+                    "conflict",
+              )
               .map((candidate) => candidate.path),
           );
         },
@@ -301,6 +356,65 @@ function ImportFromDisk() {
             onChange={setGenerator}
           />
 
+          {declaredSuggestion ? (
+            <div className="sm:col-span-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+              <p>
+                The scanned packages declare{" "}
+                <strong>
+                  {declaredSuggestion.name} {declaredSuggestion.version}
+                </strong>
+                .
+              </p>
+              {declaredSuggestion.resolvedId ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => setGenerator(declaredSuggestion.resolvedId!)}
+                >
+                  Use this version
+                </Button>
+              ) : declaredSuggestion.lineageId ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() =>
+                    setAssistedRegister({
+                      generatorId: declaredSuggestion.lineageId!,
+                      generatorName: declaredSuggestion.name,
+                      version: declaredSuggestion.version,
+                    })
+                  }
+                >
+                  Register {declaredSuggestion.name} {declaredSuggestion.version} now
+                </Button>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  No lineage named &quot;{declaredSuggestion.name}&quot; is registered —{" "}
+                  <Link href="/admin/generators" className="text-primary hover:underline">
+                    register it
+                  </Link>{" "}
+                  first.
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          <NewGeneratorVersionDialog
+            open={assistedRegister !== null}
+            generatorId={assistedRegister?.generatorId ?? ""}
+            generatorName={assistedRegister?.generatorName ?? ""}
+            initialVersion={assistedRegister?.version ?? ""}
+            onClose={() => setAssistedRegister(null)}
+            onCreated={(generatorVersionId) => {
+              setGenerator(generatorVersionId);
+              setAssistedRegister(null);
+            }}
+          />
+
           <div className="space-y-1.5">
             <Label htmlFor="import-provenance">Was it edited by a person?</Label>
             <Select
@@ -433,6 +547,7 @@ function ImportFromDisk() {
                       )
                     }
                     declaredGenerator={declaredGenerator}
+                    generatorDeclared={generatorDeclared}
                     onAttributed={(candidatePath) =>
                       setOutcomes((previous) => ({
                         ...previous,
@@ -682,6 +797,7 @@ function CandidateTable({
   busy,
   onToggle,
   declaredGenerator,
+  generatorDeclared,
   onAttributed,
 }: {
   candidates: ScanCandidate[];
@@ -690,6 +806,7 @@ function CandidateTable({
   busy: boolean;
   onToggle: (path: string) => void;
   declaredGenerator: Uuid | null;
+  generatorDeclared: boolean;
   onAttributed: (path: string) => void;
 }) {
   return (
@@ -706,7 +823,9 @@ function CandidateTable({
       <TableBody>
         {candidates.map((candidate) => {
           const outcome = outcomes[candidate.path];
-          const registrable = REGISTRABLE.includes(candidate.verdict) && !outcome;
+          const signal = declarationSignal(candidate, declaredGenerator, generatorDeclared);
+          const registrable =
+            REGISTRABLE.includes(candidate.verdict) && !outcome && signal !== "conflict";
           return (
             <TableRow key={candidate.path}>
               <TableCell>
@@ -746,6 +865,7 @@ function CandidateTable({
                   <CandidateNote
                     candidate={candidate}
                     declaredGenerator={declaredGenerator}
+                    generatorDeclared={generatorDeclared}
                     busy={busy}
                     onAttributed={() => onAttributed(candidate.path)}
                   />
@@ -762,15 +882,41 @@ function CandidateTable({
 function CandidateNote({
   candidate,
   declaredGenerator,
+  generatorDeclared,
   busy,
   onAttributed,
 }: {
   candidate: ScanCandidate;
   declaredGenerator: Uuid | null;
+  generatorDeclared: boolean;
   busy: boolean;
   onAttributed: () => void;
 }) {
   const attribute = useAttributeGenerator();
+  const signal = declarationSignal(candidate, declaredGenerator, generatorDeclared);
+
+  // Takes priority over every verdict-specific note below: it says why the row cannot be
+  // registered as declared, which is the more actionable fact regardless of what else the
+  // verdict says (ADR-0027 §5 — refused outright, no override).
+  if (signal === "conflict") {
+    return (
+      <span className="text-destructive">
+        this package declares{" "}
+        <strong>
+          {candidate.declared_generator_name} {candidate.declared_generator_version}
+        </strong>
+        , not what you declared above — fix the declaration or exclude this folder
+      </span>
+    );
+  }
+
+  const notice =
+    signal === "notice" ? (
+      <span className="block text-amber-700">
+        this package declares {candidate.declared_generator_name}{" "}
+        {candidate.declared_generator_version}; registering as unknown
+      </span>
+    ) : null;
 
   if (candidate.verdict === "unreadable") {
     return (
@@ -782,59 +928,77 @@ function CandidateNote({
 
   if (candidate.verdict === "conflict") {
     return (
-      <span>
-        version {candidate.existing?.version} already registered with different bytes — bump the
-        course version above to register these as a new version
-      </span>
+      <>
+        {notice}
+        <span>
+          version {candidate.existing?.version} already registered with different bytes — bump
+          the course version above to register these as a new version
+        </span>
+      </>
     );
   }
 
   if (candidate.verdict === "new_version") {
-    return <span>already registered as version {candidate.existing?.version}, with other bytes</span>;
+    return (
+      <>
+        {notice}
+        <span>already registered as version {candidate.existing?.version}, with other bytes</span>
+      </>
+    );
   }
 
   if (candidate.verdict === "unchanged") {
     return (
-      <span className="flex flex-wrap items-center gap-2">
-        <span>
-          identical bytes registered as version {candidate.existing?.version} —{" "}
-          <Link href="/admin/contents" className="text-primary hover:underline">
-            see it in Courses
-          </Link>
-        </span>
-        {/* Re-registering cannot fill this in: the no-op returns the existing content and
-            discards the generator just declared. Attribution is its own act (ADR-0024). */}
-        {candidate.can_attribute_generator && declaredGenerator ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy || attribute.isPending}
-            onClick={() =>
-              attribute.mutate(
-                {
-                  contentId: candidate.existing!.content_id,
-                  body: { generator_version_id: declaredGenerator },
-                },
-                {
-                  onSuccess: () => {
-                    toast.success("Generator attributed.");
-                    onAttributed();
+      <>
+        {notice}
+        <span className="flex flex-wrap items-center gap-2">
+          <span>
+            identical bytes registered as version {candidate.existing?.version} —{" "}
+            <Link href="/admin/contents" className="text-primary hover:underline">
+              see it in Courses
+            </Link>
+          </span>
+          {/* Re-registering cannot fill this in: the no-op returns the existing content and
+              discards the generator just declared. Attribution is its own act (ADR-0024). */}
+          {candidate.can_attribute_generator && declaredGenerator ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || attribute.isPending}
+              onClick={() =>
+                attribute.mutate(
+                  {
+                    contentId: candidate.existing!.content_id,
+                    body: { generator_version_id: declaredGenerator },
                   },
-                  onError: (err) =>
-                    toast.error("Could not attribute.", { description: (err as ApiError).message }),
-                },
-              )
-            }
-          >
-            {attribute.isPending ? <Spinner /> : null} Attribute generator
-          </Button>
-        ) : null}
-        {candidate.can_attribute_generator && !declaredGenerator ? (
-          <span className="text-amber-700">its generator is unknown</span>
-        ) : null}
-      </span>
+                  {
+                    onSuccess: () => {
+                      toast.success("Generator attributed.");
+                      onAttributed();
+                    },
+                    onError: (err) =>
+                      toast.error("Could not attribute.", {
+                        description: (err as ApiError).message,
+                      }),
+                  },
+                )
+              }
+            >
+              {attribute.isPending ? <Spinner /> : null} Attribute generator
+            </Button>
+          ) : null}
+          {candidate.can_attribute_generator && !declaredGenerator ? (
+            <span className="text-amber-700">its generator is unknown</span>
+          ) : null}
+        </span>
+      </>
     );
   }
 
-  return <span className={cn(!candidate.title && "italic")}>{candidate.title ?? "no title"}</span>;
+  return (
+    <>
+      {notice}
+      <span className={cn(!candidate.title && "italic")}>{candidate.title ?? "no title"}</span>
+    </>
+  );
 }

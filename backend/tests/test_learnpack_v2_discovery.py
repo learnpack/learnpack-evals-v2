@@ -192,6 +192,39 @@ def test_an_undeclared_identity_refuses_the_package(tmp_path, mutate, message):
         discover(edited(tmp_path, "traces/run_metadata.json", mutate))
 
 
+# ------------------------------------------------------------------ the declared generator
+
+
+def test_the_declared_generator_is_the_system_name_and_version_verbatim():
+    """Evidence to cross-check a registration's declared generator against, taken exactly as
+    the run manifest states it — including a dev build's dirty git description, which is
+    exactly the kind of value nothing here should normalize or parse as a semver."""
+    discovered = discover()
+    assert discovered.declared_generator_name == "learnpack-generator"
+    assert discovered.declared_generator_version == "59a1591-dirty"
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda m: {k: v for k, v in m.items() if k != "system_name"}, id="no name"),
+        pytest.param(lambda m: {**m, "system_name": "   "}, id="blank name"),
+        pytest.param(
+            lambda m: {k: v for k, v in m.items() if k != "system_version"}, id="no version"
+        ),
+        pytest.param(lambda m: {**m, "system_version": ""}, id="blank version"),
+    ],
+)
+def test_a_missing_declared_generator_is_absent_not_a_refusal(tmp_path, mutate):
+    """Soft, unlike every other read in this class (ADR-0027's "no soft spot" is about the
+    course's own commission, not this new, optional cross-check): a package that predates
+    this field, or a format that never declares one, still registers — the comparison simply
+    has nothing to compare."""
+    discovered = discover(edited(tmp_path, "traces/run_metadata.json", mutate))
+    assert discovered.declared_generator_name is None
+    assert discovered.declared_generator_version is None
+
+
 # ------------------------------------------------------------------ the commission
 
 

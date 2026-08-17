@@ -899,6 +899,14 @@ export interface ScanCandidate {
   existing: ExistingContent | null;
   /** The existing row declares no generator, so the attribution act applies (ADR-0024). */
   can_attribute_generator: boolean;
+  /** What the package itself declares produced it (LearnpackV2's `traces/run_metadata.json`
+   *  only — null for every other format). Neutral facts, not a verdict: they do not depend
+   *  on what the caller declared, so they never go stale when that declaration changes after
+   *  the scan (ADR-0027 §5). */
+  declared_generator_name: string | null;
+  declared_generator_version: string | null;
+  /** The already-registered `GeneratorVersion` the declaration above resolves to, if any. */
+  resolved_generator_version_id: Uuid | null;
 }
 
 export interface ScanRequest {

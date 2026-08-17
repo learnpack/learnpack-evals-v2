@@ -13,6 +13,7 @@ from app.modules.evaluand_registry.domain.generator import (
     edit_distance,
     nearest_name,
     normalized_name,
+    resolve_declared_generator_version,
 )
 from app.shared.domain.ids import new_id
 
@@ -80,6 +81,48 @@ def test_short_names_are_held_to_a_tighter_threshold():
     # guard would question every short name against every other.
     assert nearest_name("gpt", ["abc"]) is None
     assert nearest_name("gpt", ["gpt2"]) == "gpt2"
+
+
+# --- Matching a package's self-declared generator against the registry (ADR-0027 §5) ------
+
+
+def test_a_declared_generator_resolves_by_normalized_name_and_exact_version():
+    lineage = Generator(id=new_id(), name="LearnPack Generator")
+    version = GeneratorVersion(id=new_id(), generator_id=lineage.id, version="2.0.0")
+    other_version = GeneratorVersion(id=new_id(), generator_id=lineage.id, version="1.9.0")
+
+    resolved = resolve_declared_generator_version(
+        "  learnpack   generator  ", "2.0.0", [lineage], [version, other_version]
+    )
+    assert resolved is version
+
+
+def test_a_declared_generator_never_resolves_by_the_looser_canonical_form():
+    """Unlike the near-miss guard, this is a lookup, not a typo guard: folding separators
+    here would match a lineage the package did not actually name."""
+    lineage = Generator(id=new_id(), name="learnpack_generator")
+    version = GeneratorVersion(id=new_id(), generator_id=lineage.id, version="2.0.0")
+
+    assert (
+        resolve_declared_generator_version("learnpack-generator", "2.0.0", [lineage], [version])
+        is None
+    )
+
+
+def test_a_declared_version_never_resolves_by_edit_distance():
+    """Versions are declarative (ADR-0005): a near-miss version string is simply not a
+    match, the same way `UNIQUE(generatorId, version)` never fuzzy-matches one."""
+    lineage = Generator(id=new_id(), name="learnpack-generator")
+    version = GeneratorVersion(id=new_id(), generator_id=lineage.id, version="2.0.0")
+
+    assert (
+        resolve_declared_generator_version("learnpack-generator", "2.0.1", [lineage], [version])
+        is None
+    )
+
+
+def test_a_declared_generator_with_no_matching_lineage_does_not_resolve():
+    assert resolve_declared_generator_version("unregistered-generator", "1.0.0", [], []) is None
 
 
 def test_brief_requires_text():

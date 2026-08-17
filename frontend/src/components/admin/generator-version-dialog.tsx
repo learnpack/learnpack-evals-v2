@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -27,18 +27,28 @@ export function NewGeneratorVersionDialog({
   open,
   generatorId,
   generatorName,
+  initialVersion = "",
   onClose,
   onCreated,
 }: {
   open: boolean;
   generatorId: string;
   generatorName: string;
+  /** Prefills the version field — e.g. what a scanned package itself declares (ADR-0027 §5).
+   *  Still just a starting point: the operator can edit or clear it before submitting. */
+  initialVersion?: string;
   onClose: () => void;
   onCreated: (generatorVersionId: Uuid) => void;
 }) {
   const create = useCreateGeneratorVersion();
-  const [version, setVersion] = useState("");
+  const [version, setVersion] = useState(initialVersion);
   const [changelog, setChangelog] = useState("");
+
+  // Adopt a new prefill only when the dialog (re)opens — never mid-edit, which would clobber
+  // what the operator is typing.
+  useEffect(() => {
+    if (open) setVersion(initialVersion);
+  }, [open, initialVersion]);
 
   function close() {
     setVersion("");
