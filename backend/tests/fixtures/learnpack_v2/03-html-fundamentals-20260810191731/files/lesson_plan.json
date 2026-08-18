@@ -9,7 +9,8 @@
       "type": "READ",
       "module_number": 0,
       "duration_minutes": 1,
-      "concept_covered": "welcome",
+      "concepts_covered": ["welcome"],
+      "lesson_focus": "Orient the learner to what this course builds toward.",
       "key_insight": null
     },
     {
@@ -18,7 +19,8 @@
       "type": "READ",
       "module_number": 1,
       "duration_minutes": 2,
-      "concept_covered": "HTML as markup language",
+      "concepts_covered": ["HTML as markup language"],
+      "lesson_focus": "Establish HTML as a markup language rather than a programming language.",
       "key_insight": "HTML is not a programming language — it's a markup language that describes and structures content."
     },
     {
@@ -27,7 +29,8 @@
       "type": "READ",
       "module_number": 1,
       "duration_minutes": 2,
-      "concept_covered": "HTML document skeleton",
+      "concepts_covered": ["HTML document skeleton"],
+      "lesson_focus": "Introduce the boilerplate every HTML document shares.",
       "key_insight": null
     },
     {
@@ -36,7 +39,8 @@
       "type": "READ",
       "module_number": 2,
       "duration_minutes": 2,
-      "concept_covered": "HTML element syntax",
+      "concepts_covered": ["HTML element syntax", "Tags"],
+      "lesson_focus": "Explain how opening and closing tags delimit an element's content.",
       "key_insight": "Every piece of content lives between an opening and closing tag (or inside a self-closing one) — and getting the nesting right is what gives a page structure."
     },
     {
@@ -45,7 +49,8 @@
       "type": "CODE",
       "module_number": 2,
       "duration_minutes": 4,
-      "concept_covered": "HTML attributes",
+      "concepts_covered": ["HTML attributes"],
+      "lesson_focus": "Practice adding attributes that configure an element's behavior.",
       "key_insight": "Attributes are the 'settings' on an HTML element — without them, an image has no source and a link has no destination."
     },
     {
@@ -54,7 +59,8 @@
       "type": "CODE",
       "module_number": 2,
       "duration_minutes": 4,
-      "concept_covered": "Heading and paragraph elements",
+      "concepts_covered": ["Heading elements", "Paragraph elements"],
+      "lesson_focus": "Structure text content with headings and paragraphs.",
       "key_insight": null
     },
     {
@@ -63,7 +69,8 @@
       "type": "CODE",
       "module_number": 3,
       "duration_minutes": 4,
-      "concept_covered": "Anchor elements",
+      "concepts_covered": ["Anchor elements"],
+      "lesson_focus": "Connect pages together with links.",
       "key_insight": null
     },
     {
@@ -72,7 +79,8 @@
       "type": "CODE",
       "module_number": 3,
       "duration_minutes": 4,
-      "concept_covered": "Image elements",
+      "concepts_covered": ["Image elements"],
+      "lesson_focus": "Embed images and describe them for accessibility.",
       "key_insight": null
     },
     {
@@ -81,7 +89,8 @@
       "type": "QUIZ",
       "module_number": 3,
       "duration_minutes": 3,
-      "concept_covered": "Nesting and indentation",
+      "concepts_covered": ["Nesting", "Indentation"],
+      "lesson_focus": "Check that nested elements are indented consistently.",
       "key_insight": null
     },
     {
@@ -90,7 +99,8 @@
       "type": "CODE",
       "module_number": 4,
       "duration_minutes": 3,
-      "concept_covered": "Complete HTML page construction",
+      "concepts_covered": ["Complete HTML page construction"],
+      "lesson_focus": "Combine every earlier concept into one complete page.",
       "key_insight": null
     },
     {
@@ -99,7 +109,8 @@
       "type": "READ",
       "module_number": 4,
       "duration_minutes": 1,
-      "concept_covered": "course-outro",
+      "concepts_covered": ["course-outro"],
+      "lesson_focus": "Consolidate what the course covered and point at what comes next.",
       "key_insight": null
     }
   ]

@@ -423,8 +423,8 @@ def test_cognitive_demand_trajectory_rules(fake_llm):
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
 
     inventory = [lesson(f"0{n}.0", n) for n in range(7)]  # 00.0 .. 06.0; core = 5 lessons
-    concepts = [{"lessonId": f"0{n}.0", "concept": f"concept {n}"} for n in range(7)]
-    data = profile(lesson_inventory=inventory, lesson_concepts=concepts)
+    concepts = [{"lessonId": f"0{n}.0", "concepts": [f"concept {n}"]} for n in range(7)]
+    data = profile(lesson_inventory=inventory, lesson_concept_coverage=concepts)
     core_ids = [f"0{n}.0" for n in range(1, 6)]
 
     # Rising with a one-level consolidation dip: 2,3,2,4,5 — allowed.
@@ -437,7 +437,7 @@ def test_cognitive_demand_trajectory_rules(fake_llm):
     early_peak = run(spec, data)
     assert not early_peak.passed
     assert early_peak.failure_mode == spec.failure_modes[0]
-    assert json.loads(early_peak.quote) == {"concept": "concept 3", "lessonId": "03.0"}
+    assert json.loads(early_peak.quote) == {"concepts": ["concept 3"], "lessonId": "03.0"}
 
     # Five equal core lessons: a list, not a progression.
     tasks.clear_task_cache()
@@ -454,7 +454,7 @@ def test_a_short_course_has_no_trajectory_to_judge(fake_llm):
 
     data = profile(
         lesson_inventory=[lesson("00.0", 0), lesson("01.0", 1), lesson("02.0", 2)],
-        lesson_concepts=[{"lessonId": "01.0", "concept": "the one core concept"}],
+        lesson_concept_coverage=[{"lessonId": "01.0", "concepts": ["the one core concept"]}],
     )
     assert run(spec, data).passed
     assert not client.calls  # one core lesson is a point, not a trajectory — no spend
@@ -1735,23 +1735,20 @@ def _instrument_spec() -> InstrumentSpec:
 
 def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     """The exact partition over the real draft, with the fake transport answering what a
-    well-behaved model would: the five semantic criteria and the seven judged ones EXECUTE
+    well-behaved model would: the four semantic criteria and the seven judged ones EXECUTE
     (they no longer derive `not_assessed`, which is this artifact's reason to exist), the
-    structural results match `drafts-structural`'s pinned run, and the memoization holds —
-    ten questions for twelve criteria."""
+    structural results match `drafts-structural`'s pinned run, and the memoization holds.
+
+    `cr-cognitive-demand-rises-across-the-course` derives `not_applicable` here: the fixture
+    carries the new-shape `lesson_concept_coverage` (v8), which v7 — the instrument this test
+    is pinned to — does not require. That is ADR-0017's case (b), unmet demand for this
+    format, not a defect; the assessor is not yet ratified against v8."""
     fixture = _fixture_profile()
     opening_body, _ = tasks.opening_lesson_body(fixture)
     closing_body, _ = judgments.closing_lesson_body(fixture)
     grounded = next(line for line in opening_body.splitlines() if line.strip()).strip()
     grounded_closing = next(line for line in closing_body.splitlines() if line.strip()).strip()
     objective_count = len(fixture.entries["learning_objectives"].value)
-    core_ids = [
-        str(lesson["lessonId"])
-        for lesson in sorted(
-            fixture.entries["lesson_inventory"].value, key=lambda entry: entry["position"]
-        )
-    ][1:-1]
-    rising = [1 + (n * 4) // max(len(core_ids) - 1, 1) for n in range(len(core_ids))]
     objective_ids = [str(o["id"]) for o in fixture.entries["declared_objectives"].value]
     offerings = list(fixture.entries["assessment_offerings"].value)
 
@@ -1762,7 +1759,6 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
                 *[("understand", True), ("apply", True), ("create", True)][:objective_count]
             )
         ],
-        trajectory=[trajectory_json(dict(zip(core_ids, rising, strict=True)))],
         opening_connects_backwards=[verdict_json(grounded)] * 2,
         closing_integrates=[verdict_json(grounded_closing)] * 2,
         closing_projects_forward=[verdict_json(grounded_closing)] * 2,
@@ -1793,7 +1789,10 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     for outcome in outcomes:
         by_outcome.setdefault(outcome.outcome, set()).add(outcome.criterion_id)
 
-    assert by_outcome["not_applicable"] == {"cr-prerequisites-declared"}
+    assert by_outcome["not_applicable"] == {
+        "cr-prerequisites-declared",
+        "cr-cognitive-demand-rises-across-the-course",
+    }
     assert by_outcome["pass"] == {
         # the structural six, exactly as drafts-structural's pinned run
         "cr-audience-declared",
@@ -1802,12 +1801,11 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         "cr-module-structure-well-formed",
         "cr-no-lesson-spikes-in-lexical-load",
         "cr-objectives-min-count",
-        # the semantic five, executed at last
+        # the semantic four, executed at last
         "cr-objectives-observable-verbs",
         "cr-outcomes-present",
         "cr-outcomes-observable-verbs",
         "cr-objectives-non-decreasing-demand",
-        "cr-cognitive-demand-rises-across-the-course",
         # the judged seven, executed at last
         "cr-opening-lesson-connects-backwards",
         "cr-closing-lesson-integrates",
@@ -1821,17 +1819,17 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
     assert all(not o.derived and o.quote for o in outcomes if o.outcome == "pass")
 
-    # Twelve criteria, fifteen calls: five judged criteria are voted on twice each, while
+    # Eleven criteria, fourteen calls: five judged criteria are voted on twice each, while
     # two share the outcomes extraction and two share the assessment mapping.
-    assert len(client.calls) == 15
+    assert len(client.calls) == 14
 
     metric_values = {m.metric_id: m.value for m in metrics}
     assert metric_values["stated_outcomes_count"] == 1
     assert len(metric_values["objective_bloom_levels"]) == objective_count
-    assert metric_values["concept_sophistication_levels"] == rising
+    assert "concept_sophistication_levels" not in metric_values
     assert metric_values["objectives_unmeasured"] == []
     assert metric_values["assessment_reaches_back_to"] == ["00.0", "01.0"]
-    for task_id in ("outcomes_extraction", "objectives_classification", "concept_trajectory"):
+    for task_id in ("outcomes_extraction", "objectives_classification"):
         spent = metric_values[f"llm_{task_id}"]
         assert spent["calls"] == 1 and spent["tokens_in"] > 0
     # Every judged criterion travels with the judge's own words about what it read.
