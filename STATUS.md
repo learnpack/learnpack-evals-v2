@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-16._
+_Last updated: 2026-08-17._
 
 ## Where we are
 
@@ -201,13 +201,14 @@ one-line-per-item layout would have let one task read as several; two rewritten 
 prompts that say what a proposal is; and a new metric,
 `objectives_measured_by_proposal_only`, beside the count of what was offered of each kind.
 
-**What is left to do is the part nobody can automate.** The instrument is a **draft** and
-publishing it is a human act; `workbench.yaml` now names v7, so `seed-workbench` publishes it
-and ratifies the current `drafts-hybrid` against it on a fresh database. On a store that already
-published v6, publishing v7 leaves the lineage with **two** published versions, and `measure`
-refuses to guess between them — pass `--instrument-version-id course-drafts-qa-v7` or start
-from `task db:reset`, which is wanted anyway: the adapter version moved, so every LearnpackV2
-content needs `accept-extraction` and a re-profile before anything reads the new id.
+**Publishing v7 needed the same human act every version does.** The instrument is a **draft**
+until someone publishes it; `seed-workbench` does that from `workbench.yaml` and ratifies the
+current `drafts-hybrid` against whatever it names, on a fresh database. On a store that already
+published an earlier version, publishing a new one leaves the lineage with **two** published
+versions, and `measure` refuses to guess between them — pass `--instrument-version-id` explicitly
+or start from `task db:reset`, which is wanted anyway whenever the adapter version also moved:
+every content of that format needs `accept-extraction` and a re-profile before anything reads
+the new id.
 
 **And the field verification has not been run.** Two questions, both answerable with the three
 drafts already on hand: whether `cr-every-objective-has-an-assessment-item` stops failing where
@@ -276,6 +277,24 @@ moving the mechanism and the bar in the same round leaves the next campaign unab
 did what. The other open one, older: **the provider is not pinned** — six runs drew seven
 upstreams, with answer lengths from 294 to 1184 tokens and latencies from 3.5 s to 56 s for the
 same question, which is ADR-0034 §3's known gap now with evidence attached.
+
+**The generator renamed a declared field, and the chain that follows a package format change
+went through once more.** `files/lesson_plan.json`'s per-lesson `concept_covered: str` became
+`concepts_covered: list[str]` (plus an unrelated `lesson_focus` no criterion consumes, so it
+stays unmapped). ADR-0020 makes one id one shape, so the reshaped datum is a **new** id,
+`lesson_concept_coverage`, rather than an edited `lesson_concepts` — the same move ADR-0046 made
+for `assessment_offerings` beside `lesson_assessment_items`. `lesson_concepts` stays exactly
+what it was, for the packages already measured against it. **The LearnpackV2 adapter is v4**;
+the one criterion that read the old id, `cr-cognitive-demand-rises-across-the-course`, now reads
+the new one, in a **draft** `course-drafts-qa-v8` that changes nothing else. `workbench.yaml`
+now names it, so `task db:reset` publishes v8, accepts adapter v4 and ratifies `drafts-hybrid`
+against v8 on a fresh database in one pass. On a store that already ratified `drafts-hybrid`
+against v7, ratifying it against v8 needs the confirmation the criterion's changed `requires`
+demands: `ratify-assessor ... --confirm cr-cognitive-demand-rises-across-the-course`.
+
+**The v8 name is claimed twice, unresolved.** A separate, unmerged branch already writes
+`course-drafts-qa-v8.yaml` for the unrelated coverage-threshold revision described above.
+Whichever merges second must rename; nothing here decides which.
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
