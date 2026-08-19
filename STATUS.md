@@ -332,6 +332,28 @@ no pass condition is consulted. It is **deliberately not identity (ADR-0034)**: 
 imports it, `SOURCE_CONFIG` does not name it, its prompts stay out of the fingerprinted
 templates, and tests pin that line in both directions — so it costs nobody a ratification.
 
+**The extraction only became usable on the second model tried, and the first three drafts say
+so.** Under the flash model the failures were all at the OUTPUT CONTRACT rather than at the
+reading — `lessonId` dropped and entries answered by position, `mode` renamed to `type`,
+quotes spliced with an ellipsis — and three drafts yielded 3, 1 and 0 touches with two runs
+dead. Under `openai/gpt-5.6-luna` at `high` reasoning effort the same three yield 40, 97 and
+77, one call each, no retry and not one row dropped for a quote that would not ground. Two of
+the fixes on the way were ours and are worth keeping whatever model runs it: the quote is
+asked for BEFORE the two classifications, because a field written after them is the field a
+model drops, and a touch reported without one costs its row rather than the run.
+
+**But the dump is a sampler, not yet an instrument, and no count out of it should be read as a
+measurement.** One draft run twice at identical settings gave **40 touches and 29**, agreement
+on `mode` for **half** the touches the two runs shared, and the same cited passage for under a
+third. Part of that is benign — a lesson can deal with a concept in two places and both
+citations are true, which also means a `mode` compared across two different sentences is not a
+disagreement about the same thing — but the size of it is not. The reading rule that follows is
+the union of repeats as the rows worth judging, with how often a row recurs treated as part of
+what is being judged. **`medium` effort is not the saving it looks like:** it holds the
+contract, runs four to five times faster for a quarter of the output tokens, and nearly stops
+using `same_as_taught` (49 answers to 14 across three drafts, 31 touches moving one way against
+4 the other, and zero on one draft) — which is the axis a bar gets set on.
+
 **What is open is the reading.** The bar itself — what `applied` means, who owns a backward
 reference, whether the premature-use question needs its own extraction — is written with the
 owner after the tables are read, not before. Until that happens the three criteria stay
