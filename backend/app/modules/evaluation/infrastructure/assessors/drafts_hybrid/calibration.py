@@ -1,0 +1,610 @@
+"""A calibration dump: what each lesson does with the concepts the course declares.
+
+**This is not identity (ADR-0034), and nothing here decides an outcome.** No executor
+imports this module, `SOURCE_CONFIG` does not name it, its prompts stay out of
+`prompts._ALL_TEMPLATES` — the dict the ratification drift-guard fingerprints — and no
+criterion is answered from what it produces. Editing this file is not a version of
+`drafts-hybrid`. It exists to decide what three criteria should ASK, before any of them is
+written, and a test pins that separation so it cannot drift into the judging path.
+
+The three are `cr-later-lessons-apply-earlier-concepts`, `cr-concepts-introduced-before-use`
+and `cr-adjacent-pair-has-a-bridge`. An earlier attempt implemented and measured them, and
+the measurement was that two never fail and one always does — not a cost problem and not a
+representation problem, but three defects in what was being asked:
+
+1. **A backward reference is measured by nobody.** The reuse criterion excludes it in as
+   many words ("judged elsewhere") and sends it to the bridge criterion, which sees only
+   adjacent pairs and only the ends of each. An opening that says "this is a behavioral
+   version of the change-pain heuristic from earlier lessons" falls between the two.
+2. **The reuse criterion asked for a comparison the model could not make** — work "the
+   lesson which teaches it did not already do" — while the corpus excluded the frame
+   lessons, so for every concept taught in the opening the other term was not in view.
+3. **One prompt written for one criterion was read by two.** Its whole framing looked
+   backward and it capped touches at three "clearest", while the premature-use criterion
+   needs a FORWARD use, which is rare and was never asked for.
+
+So this dump is deliberately WIDER than any criterion and carries no threshold:
+
+- every lesson is shown, frame ones included and marked, so the lesson that teaches a
+  concept is always in view (defect 2);
+- concepts declared LATER than the lesson touching them are wanted just as much, and which
+  direction a touch runs is computed here, from the plan (defect 3);
+- the semantic call is split into two independent axes, `mode` and `newness`, because the
+  single `applied` fused them and a fused answer cannot be re-cut without paying for
+  another run;
+- each row carries the ZONE of its quote (opening / middle / closing, from the offset) and
+  the DISTANCE in lessons, which is what says whether an adjacent-pair frame with a window
+  at each end could ever catch the references a course actually has (defect 1);
+- nothing is voted on, nothing is counted, and no pass condition is consulted.
+
+What is kept from the earlier attempt is what three field runs paid for: the numbered
+closed concept set read off the plan rather than extracted, `shown_body`, naming per block
+the concept numbers a lesson may not report, and answering per unit inside one call.
+"""
+
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass
+from string import Template
+from typing import Any
+
+from app.modules.evaluation.domain.model import ProfileData
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
+    grounding,
+    runtime,
+    tasks,
+)
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.judgments import as_index
+from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_output import (
+    LlmUsage,
+    request_structured_output,
+)
+
+# The data this dump cannot run without. Named here so the caller can refuse with a cause
+# instead of raising a KeyError halfway through building a corpus.
+REQUIRED_DATA = ("lesson_bodies", "lesson_inventory", "lesson_concept_coverage")
+
+MODEL = "deepseek/deepseek-v4-flash-0731"
+TEMPERATURE = 0.0
+REASONING = {"effort": "none", "enabled": False}
+
+# One entry per lesson, each nesting up to `MAX_TOUCHES` quoted touches, so the answer grows
+# as lessons x touches. Eight is above anything a lesson has legitimately shown and well
+# under what the budget holds; the cap exists because a free-length array in an output schema
+# is what every degeneration in this package's history came out of, not to enforce parsimony.
+MAX_OUTPUT_TOKENS = 8000
+MAX_TOUCHES = 8
+
+# What a lesson does with a concept another lesson declares. Two axes rather than one: the
+# earlier attempt's `applied` meant "uses it AND does something new with it", so a reader
+# who disagreed with where that line sat had no way to move it without buying another run.
+# Split, the same answer supports every bar anyone might write.
+MODES = ("uses_as_known", "re_explains", "points_at")
+NEWNESS = ("new_context", "same_as_taught", "n_a")
+
+# Where in its lesson a quote sits. The cut is 1200 characters at each end because that is
+# the window an adjacent-pair bridge task reads, so "how many backward references sit
+# outside the opening" is answerable against the design that would have to catch them.
+ZONE_WINDOW_CHARS = 1200
+ZONE_OPENING = "opening"
+ZONE_MIDDLE = "middle"
+ZONE_CLOSING = "closing"
+
+# Where a concept sits relative to the lesson touching it, by the plan's delivery order.
+DIRECTION_EARLIER = "earlier"
+DIRECTION_LATER = "later"
+DIRECTION_OWN = "own"
+
+_IMAGE = re.compile(r"!\[.*?\]\([^)]*\)", re.S)
+_DIAGRAM = re.compile(r"```mermaid\b.*?```", re.S | re.I)
+
+
+CONCEPT_TOUCHES_SYSTEM = """\
+You analyse how the lessons of a course refer to one another. Answer with a single JSON
+object and nothing else — no prose, no markdown fences. Every value described as verbatim
+must be copied character-for-character from the source text."""
+
+CONCEPT_TOUCHES_USER = Template(
+    """\
+Below, between <lessons> tags, is the list of concepts a course declares — each with its
+number in brackets and the lesson that teaches it — followed by the lessons themselves. A
+lesson block starts at a line of the form "===== LESSON <id>: <title> =====", names the
+concepts that lesson teaches itself, and runs until the next block.
+
+For EACH lesson, report every concept FROM ANOTHER LESSON that the lesson deals with, and
+what it does with each one. A lesson that deals with none reports an empty list.
+
+Report ALL of them, not only the clearest. A concept counts whether the lesson that teaches
+it comes BEFORE or AFTER this one: a lesson working with material the course only teaches
+later is exactly as reportable as one working with material it already taught, and both are
+wanted here.
+
+Do not report the concepts a lesson teaches itself — its own block names those numbers.
+
+Answer for the lessons shown here and no others, one entry each, even when the entry is
+empty.
+
+For every concept you report, answer TWO independent questions.
+
+First, "mode" — what the lesson does with it:
+
+- "uses_as_known": the lesson treats the concept as available and operates with it — an
+  example, an exercise, a walkthrough or an explanation that USES it without teaching it.
+- "re_explains": the lesson explains, defines or summarises the concept again.
+- "points_at": the lesson only points at it ("as we saw in lesson 01.2", "this builds on
+  what you already know about X"), without using or re-explaining it.
+
+Second, "newness" — how the work compares with the lesson that teaches the concept, which is
+shown to you in this same corpus:
+
+- "new_context": the lesson does something with the concept that the teaching lesson did
+  not do — a different example, a different problem, a different application.
+- "same_as_taught": the same work again — the teaching lesson's example, explanation or
+  exercise repeated with little or no change.
+- "n_a": there is no work to compare, which is the ordinary answer for "points_at".
+
+The two are independent: answer each on its own terms, and do not let one decide the other.
+
+Quote, verbatim, the passage of THAT lesson that shows what you reported. Copy it exactly
+as the lesson writes it, as one continuous passage — do not join separate places together.
+
+This is an extraction task, not a judgement: report what each lesson does. Nothing here
+asks whether the course is good, and no answer of yours decides anything about it.
+
+Answer with this JSON shape, one entry per lesson, in this field order:
+{"lessons": [{"lessonId": "<the lesson's id>",
+"touches": [{"conceptIndex": <a number from the concept list>,
+"reason": "<one sentence on what this lesson does with it>",
+"mode": "uses_as_known" | "re_explains" | "points_at",
+"newness": "new_context" | "same_as_taught" | "n_a",
+"quote": "<verbatim passage from this lesson>"}]}]}
+
+At most $max_touches entries in "touches". Exactly one entry per lesson.
+
+<lessons>
+$corpus
+</lessons>"""
+)
+
+
+@dataclass(frozen=True)
+class ConceptTouchRow:
+    """One place one lesson deals with one concept another lesson declares.
+
+    Everything the model answered is `mode`, `newness`, `quote` and `reason`. Everything
+    else on this row is computed here — where the concept is taught, which way the touch
+    runs, how far, and where in the lesson the passage sits — because those are facts of
+    the plan and of the text, and an answer that carried them would be free to move a
+    concept in time.
+    """
+
+    lesson_id: str
+    lesson_position: int
+    is_frame: bool
+    concept_index: int
+    concept: str
+    taught_in: str
+    taught_position: int | None
+    direction: str
+    distance: int | None
+    mode: str
+    newness: str
+    zone: str
+    offset: int
+    quote: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class DumpSummary:
+    """What one dump covered, so a reader knows what the absence of rows means."""
+
+    lessons: int
+    frame_lessons: int
+    concepts: int
+    rows: int
+    dropped: tuple[str, ...]
+
+
+def shown_body(body: str) -> str:
+    """A lesson body as this dump shows it: its own text, minus the pictures.
+
+    An illustration in this format carries its GENERATION PROMPT as alt text — three hundred
+    characters describing a picture nobody wrote as prose. One of them reads "cards labeled
+    task, audience, goal, and limitation", naming four concepts of the course's first
+    module: left in, it is a passage a model can honestly quote as a later lesson dealing
+    with earlier material, when what it actually quotes is our own image request.
+
+    A mermaid block goes for a second reason, found in the field. It is diagram SOURCE, not
+    a sentence anyone reads, and it sits in the middle of a paragraph: asked to quote around
+    one, the model read straight through and returned text from both sides of a diagram it
+    silently skipped, which the grounding check refused and the retry repeated.
+
+    Nothing else is removed. Code fences and worked examples are where a concept is most
+    often put to work rather than restated, and this dump exists to see that.
+    """
+    return _IMAGE.sub("", _DIAGRAM.sub("", body))
+
+
+def all_lessons(profile: ProfileData) -> list[dict[str, Any]]:
+    """Every lesson in declared order, with the text shown, marking the frame ones.
+
+    The frame lessons — first and last by declared position — are IN the corpus, unlike the
+    earlier attempt's `ordered[1:-1]`. They teach concepts too, and asking a model how a
+    lesson's work compares with the lesson that teaches the concept while hiding that lesson
+    is asking for the half of a comparison. They are marked so a reader can exclude them
+    afterwards, which is a decision the criteria get to make and this dump does not.
+    """
+    ordered = tasks.ordered_inventory(profile)
+    bodies = {
+        str(lesson.get("lessonId")): str(lesson.get("body") or "")
+        for lesson in profile.entries["lesson_bodies"].value
+    }
+    last = len(ordered) - 1
+    return [
+        {
+            "lessonId": str(lesson["lessonId"]),
+            "title": lesson.get("title"),
+            "position": position,
+            "isFrame": position in (0, last),
+            "body": shown_body(bodies.get(str(lesson["lessonId"]), "")),
+        }
+        for position, lesson in enumerate(ordered)
+    ]
+
+
+def declared_concepts(profile: ProfileData) -> list[dict[str, Any]]:
+    """The course's own concept map, flattened and numbered, each keeping its lesson.
+
+    Read off `lesson_concept_coverage` — what the generator says each lesson covers — rather
+    than extracted from the bodies. It costs no call, it is the datum
+    `cr-cognitive-demand-rises-across-the-course` already trusts, and it turns the expensive
+    half of these questions ("what had the course taught by the time this lesson runs?")
+    into a closed set the model matches against instead of an association it has to infer
+    over the whole corpus. It also removes entity canonicalization entirely: the vocabulary
+    is the generator's, so nothing has to decide whether two spellings are one concept.
+    """
+    numbered: list[dict[str, Any]] = []
+    for record in profile.entries["lesson_concept_coverage"].value:
+        lesson_id = str(record.get("lessonId"))
+        for concept in record.get("concepts") or []:
+            text = str(concept).strip()
+            if text:
+                numbered.append({"lessonId": lesson_id, "concept": text})
+    return numbered
+
+
+def own_concepts(
+    lessons: Sequence[Mapping[str, Any]], concepts: Sequence[Mapping[str, Any]]
+) -> dict[str, tuple[int, ...]]:
+    """Per lesson, the concept numbers the course declares that lesson itself teaches.
+
+    Shown in the lesson's own block so the prompt can say "not these". Asked simply which
+    numbered concepts a lesson works with, a model answers with the lesson's own — true,
+    salient and useless to every question here. Naming the two or three numbers a lesson may
+    NOT report is that instruction at a size a model holds; enumerating the twenty-odd it
+    MAY report is the same instruction at a size that made both drafts die.
+    """
+    return {
+        str(lesson["lessonId"]): tuple(
+            index
+            for index, concept in enumerate(concepts)
+            if str(concept["lessonId"]) == str(lesson["lessonId"])
+        )
+        for lesson in lessons
+    }
+
+
+def concept_lines(concepts: Sequence[Mapping[str, Any]]) -> str:
+    """One numbered line per declared concept, naming where the course teaches it."""
+    return "\n".join(
+        f"[{index}] taught in lesson {concept['lessonId']}: {concept['concept']}"
+        for index, concept in enumerate(concepts)
+    )
+
+
+def lesson_blocks(lessons: Sequence[Mapping[str, Any]], own: Mapping[str, Sequence[int]]) -> str:
+    """One block per lesson: its id, the concepts it teaches itself, and its body verbatim.
+
+    Plain labelled blocks, never serialized — a lesson body is markdown full of quotes,
+    braces and backslashes, and this task asks for verbatim passages out of it.
+    """
+    return "\n\n".join(
+        f"===== LESSON {lesson['lessonId']}: {lesson.get('title')} =====\n"
+        f"(this lesson teaches concept "
+        f"{', '.join(str(index) for index in own[str(lesson['lessonId'])]) or 'none'} "
+        f"— do not report those)\n"
+        f"{lesson['body']}"
+        for lesson in lessons
+    )
+
+
+def zone_of(offset: int, body_length: int) -> str:
+    """Where in its lesson a passage sits, by the bridge window's own measure.
+
+    A lesson shorter than one window is entirely `opening`, and that is the honest answer
+    rather than a special case: a head window over such a body shows all of it, so every
+    passage in it is one an adjacent-pair task would have been given.
+    """
+    if offset < ZONE_WINDOW_CHARS:
+        return ZONE_OPENING
+    if offset >= max(body_length - ZONE_WINDOW_CHARS, 0):
+        return ZONE_CLOSING
+    return ZONE_MIDDLE
+
+
+def direction_of(taught_position: int | None, lesson_position: int) -> tuple[str, int | None]:
+    """Which way a touch runs and how far, in lessons of the declared order."""
+    if taught_position is None:
+        return DIRECTION_OWN, None
+    if taught_position < lesson_position:
+        return DIRECTION_EARLIER, lesson_position - taught_position
+    if taught_position > lesson_position:
+        return DIRECTION_LATER, taught_position - lesson_position
+    return DIRECTION_OWN, 0
+
+
+def dump_concept_touches(
+    profile: ProfileData,
+) -> tuple[list[ConceptTouchRow], DumpSummary, LlmUsage]:
+    """One call, one row per touch, no verdict anywhere.
+
+    A row is DROPPED rather than the answer refused whenever the loss is one row: a quote
+    that will not ground, a lesson nobody asked about, a duplicate. The earlier attempt
+    learned that asymmetry the expensive way — a per-lesson array is a dozen chances to slip
+    and a validator that refuses the whole answer turns any one of them into a dead run. In
+    a dump a missing row costs a reader one line; a dead run costs the corpus.
+    """
+    lessons = all_lessons(profile)
+    concepts = declared_concepts(profile)
+    frame_count = sum(1 for lesson in lessons if lesson["isFrame"])
+    if not lessons or not concepts:
+        summary = DumpSummary(
+            lessons=len(lessons),
+            frame_lessons=frame_count,
+            concepts=len(concepts),
+            rows=0,
+            dropped=("nothing to ask about: the profile declares no lesson or no concept",),
+        )
+        return [], summary, LlmUsage(model=MODEL, calls=0, tokens_in=0, tokens_out=0, latency_ms=0)
+
+    lesson_ids = [str(lesson["lessonId"]) for lesson in lessons]
+    own = own_concepts(lessons, concepts)
+    corpus = (
+        f"CONCEPTS THE COURSE DECLARES:\n{concept_lines(concepts)}\n\n"
+        f"LESSONS:\n{lesson_blocks(lessons, own)}"
+    )
+    payload, usage = request_structured_output(
+        runtime.get_client(),
+        task_id="concept_touches_dump",
+        model=MODEL,
+        system_prompt=CONCEPT_TOUCHES_SYSTEM,
+        user_prompt=CONCEPT_TOUCHES_USER.substitute(corpus=corpus, max_touches=MAX_TOUCHES),
+        validate=lambda answer: validate_touches(answer, len(concepts)),
+        temperature=TEMPERATURE,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        reasoning=REASONING,
+    )
+    rows, dropped = _rows_from(payload, lessons, lesson_ids, concepts)
+    summary = DumpSummary(
+        lessons=len(lessons),
+        frame_lessons=frame_count,
+        concepts=len(concepts),
+        rows=len(rows),
+        dropped=tuple(dropped),
+    )
+    return rows, summary, usage
+
+
+def _rows_from(
+    payload: Any,
+    lessons: Sequence[Mapping[str, Any]],
+    lesson_ids: Sequence[str],
+    concepts: Sequence[Mapping[str, Any]],
+) -> tuple[list[ConceptTouchRow], list[str]]:
+    """The answer turned into rows, saying out loud what it had to throw away.
+
+    `dropped` is reported rather than swallowed: a dump whose silence could mean either "the
+    course does not do this" or "the answer was unusable there" is not evidence about the
+    course.
+    """
+    by_lesson = {str(lesson["lessonId"]): lesson for lesson in lessons}
+    positions = {str(lesson["lessonId"]): int(lesson["position"]) for lesson in lessons}
+    taught_at = {
+        index: positions.get(str(concept["lessonId"])) for index, concept in enumerate(concepts)
+    }
+    rows: list[ConceptTouchRow] = []
+    dropped: list[str] = []
+    answered: set[str] = set()
+    for entry in payload["lessons"]:
+        lesson_id = str(entry.get("lessonId"))
+        if lesson_id not in by_lesson:
+            dropped.append(f"an entry for {lesson_id!r}, which is not a lesson of this course")
+            continue
+        if lesson_id in answered:
+            dropped.append(f"a second entry for lesson {lesson_id}")
+            continue
+        answered.add(lesson_id)
+        lesson = by_lesson[lesson_id]
+        body = str(lesson["body"])
+        seen: set[int] = set()
+        for touch in entry.get("touches") or []:
+            index = as_index(touch.get("conceptIndex"))
+            if index is None or not 0 <= index < len(concepts) or index in seen:
+                dropped.append(
+                    f"lesson {lesson_id}: a touch on concept {touch.get('conceptIndex')!r}"
+                )
+                continue
+            seen.add(index)
+            span = grounding.locate(body, str(touch.get("quote") or ""))
+            if span is None:
+                dropped.append(
+                    f"lesson {lesson_id}: a touch on concept {index}, "
+                    f"whose quote is not in that lesson"
+                )
+                continue
+            offset = body.find(span)
+            taught_position = taught_at.get(index)
+            direction, distance = direction_of(taught_position, positions[lesson_id])
+            rows.append(
+                ConceptTouchRow(
+                    lesson_id=lesson_id,
+                    lesson_position=positions[lesson_id],
+                    is_frame=bool(lesson["isFrame"]),
+                    concept_index=index,
+                    concept=str(concepts[index]["concept"]),
+                    taught_in=str(concepts[index]["lessonId"]),
+                    taught_position=taught_position,
+                    direction=direction,
+                    distance=distance,
+                    mode=str(touch["mode"]),
+                    newness=str(touch["newness"]),
+                    zone=zone_of(offset, len(body)),
+                    offset=offset,
+                    # The source's own span, never the model's rendering (ADR-0009).
+                    quote=span,
+                    reason=str(touch.get("reason") or "").strip(),
+                )
+            )
+    missing = [lesson_id for lesson_id in lesson_ids if lesson_id not in answered]
+    if missing:
+        dropped.append(f"no entry at all for lesson(s): {', '.join(missing)}")
+    return rows, dropped
+
+
+def validate_touches(answer: Any, concept_count: int) -> list[str]:
+    """Refuse only what makes the answer unreadable; everything else is a dropped row.
+
+    What is refused is the shape and the two closed vocabularies — a `mode` outside its
+    three values is the model answering a different question, and no reader can repair it.
+    An out-of-range index, a duplicate, a missing entry and an ungrounded quote are all
+    survivable, and are reported by `_rows_from` instead, because refusing the whole answer
+    over one of a hundred touches is how the earlier attempt lost two field runs.
+    """
+    if not isinstance(answer, dict):
+        return ['the answer must be a JSON object with a "lessons" array']
+    if not isinstance(answer.get("lessons"), list):
+        return ['"lessons" must be an array']
+    violations: list[str] = []
+    for position, entry in enumerate(answer["lessons"]):
+        label = f"lessons[{position}]"
+        if not isinstance(entry, dict):
+            violations.append(f"{label} must be an object")
+            continue
+        if not isinstance(entry.get("lessonId"), str):
+            violations.append(f"{label}.lessonId must be the lesson's id, as a string")
+        touches = entry.get("touches")
+        if touches is None:
+            continue
+        if not isinstance(touches, list):
+            violations.append(
+                f"{label}.touches must be an array (use [] when the lesson deals with none)"
+            )
+            continue
+        if len(touches) > MAX_TOUCHES:
+            violations.append(
+                f"{label}.touches holds {len(touches)} entries; report at most {MAX_TOUCHES}"
+            )
+        for at, touch in enumerate(touches):
+            entry_label = f"{label}.touches[{at}]"
+            if not isinstance(touch, dict):
+                violations.append(f"{entry_label} must be an object")
+                continue
+            if touch.get("mode") not in MODES:
+                violations.append(f"{entry_label}.mode must be one of: {', '.join(MODES)}")
+            if touch.get("newness") not in NEWNESS:
+                violations.append(f"{entry_label}.newness must be one of: {', '.join(NEWNESS)}")
+            quote = touch.get("quote")
+            if not isinstance(quote, str) or not quote.strip():
+                violations.append(f"{entry_label}.quote must be a non-empty string")
+    return violations
+
+
+# --- what a reader gets ------------------------------------------------------------------
+
+
+_COLUMNS = (
+    "lesson",
+    "pos",
+    "frame",
+    "#",
+    "concept",
+    "taught in",
+    "dir",
+    "dist",
+    "mode",
+    "newness",
+    "zone",
+    "quote",
+    "your call",
+)
+
+
+def render_markdown(
+    rows: Sequence[ConceptTouchRow], summary: DumpSummary, title: str, usage: LlmUsage
+) -> str:
+    """The table a person marks up, with an empty column for their own call.
+
+    The reader's column is the point of the whole exercise: `mode` and `newness` are what
+    the model saw, `your call` is where the bar actually goes, and the two side by side are
+    the only measurement of the distance between them that exists.
+    """
+    lines = [
+        f"# Concept touches — {title}",
+        "",
+        f"{summary.lessons} lessons ({summary.frame_lessons} frame) · "
+        f"{summary.concepts} declared concepts · {summary.rows} touches · "
+        f"{usage.calls} call(s), {usage.tokens_in} in / {usage.tokens_out} out, "
+        f"{usage.clean_retries} clean retries",
+        "",
+        "No verdict is computed here and no threshold is applied: `mode` and `newness` are "
+        "what the model reported, and `your call` is empty on purpose.",
+        "",
+        "| " + " | ".join(_COLUMNS) + " |",
+        "|" + "|".join("---" for _ in _COLUMNS) + "|",
+    ]
+    for row in sorted(rows, key=lambda r: (r.lesson_position, r.concept_index)):
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    row.lesson_id,
+                    str(row.lesson_position),
+                    "yes" if row.is_frame else "",
+                    str(row.concept_index),
+                    _cell(row.concept),
+                    row.taught_in,
+                    row.direction,
+                    "" if row.distance is None else str(row.distance),
+                    row.mode,
+                    row.newness,
+                    row.zone,
+                    _cell(row.quote),
+                    "",
+                )
+            )
+            + " |"
+        )
+    if summary.dropped:
+        lines.extend(["", "## What the answer did not yield", ""])
+        lines.extend(f"- {note}" for note in summary.dropped)
+    return "\n".join(lines) + "\n"
+
+
+def _cell(text: str) -> str:
+    """Table cells hold markdown, so a pipe or a newline in a quote would break the row."""
+    return " ".join(text.split()).replace("|", "\\|")
+
+
+def as_json(rows: Sequence[ConceptTouchRow], summary: DumpSummary, usage: LlmUsage) -> str:
+    """The same rows unrendered, so a second reading needs no second call."""
+    return json.dumps(
+        {
+            "summary": asdict(summary),
+            "usage": asdict(usage),
+            "rows": [asdict(row) for row in rows],
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
