@@ -271,12 +271,13 @@ declared mode names what the judge is actually seeing.
 verifications are compound — *create a directory structure, copy files, rename a file, remove a
 directory* — and nothing says whether covering the kind of performance is enough or every named
 element must be asked for; the repeats split exactly there, and the failure mode the judge kept
-reaching for does not name what it was seeing (partial coverage). That is a `course-drafts-qa`
-**v8** with a threshold and a third failure mode, and it goes after v12's field runs, because
-moving the mechanism and the bar in the same round leaves the next campaign unable to say which
-did what. The other open one, older: **the provider is not pinned** — six runs drew seven
-upstreams, with answer lengths from 294 to 1184 tokens and latencies from 3.5 s to 56 s for the
-same question, which is ADR-0034 §3's known gap now with evidence attached.
+reaching for does not name what it was seeing (partial coverage). That is a **future
+`course-drafts-qa` revision** with a threshold and a third failure mode, and it goes after
+v12's field runs, because moving the mechanism and the bar in the same round leaves the next
+campaign unable to say which did what. The other open one, older: **the provider is not
+pinned** — six runs drew seven upstreams, with answer lengths from 294 to 1184 tokens and
+latencies from 3.5 s to 56 s for the same question, which is ADR-0034 §3's known gap now with
+evidence attached.
 
 **The generator renamed a declared field, and the chain that follows a package format change
 went through once more.** `files/lesson_plan.json`'s per-lesson `concept_covered: str` became
@@ -291,10 +292,6 @@ now names it, so `task db:reset` publishes v8, accepts adapter v4 and ratifies `
 against v8 on a fresh database in one pass. On a store that already ratified `drafts-hybrid`
 against v7, ratifying it against v8 needs the confirmation the criterion's changed `requires`
 demands: `ratify-assessor ... --confirm cr-cognitive-demand-rises-across-the-course`.
-
-**The v8 name is claimed twice, unresolved.** A separate, unmerged branch already writes
-`course-drafts-qa-v8.yaml` for the unrelated coverage-threshold revision described above.
-Whichever merges second must rename; nothing here decides which.
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
