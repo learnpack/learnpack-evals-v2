@@ -1,8 +1,9 @@
 """Admin CLI: `python -m app.cli seed | seed-workbench | measure | set-role |
 import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
-accept-extraction | reprofile | ratify-assessor | evaluate | dump-concept-touches |
-declare-study | update-study | open-study | sign-off-study | show-preview |
+accept-extraction | reprofile | ratify-assessor | evaluate |
+dump-concept-touches | dump-concept-map | declare-study | update-study | open-study |
+sign-off-study | show-preview |
 show-report | attribute-generator | register-generator | register-generator-version`.
 
 The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
@@ -1017,6 +1018,82 @@ def run_dump_concept_touches(raw_content_id: str, out_dir: Path) -> int:
         "  by direction: "
         + ", ".join(f"{name}={count}" for name, count in sorted(directions.items()))
     )
+    print(f"  {usage.calls} call(s), {usage.tokens_in} in / {usage.tokens_out} out")
+    for note in summary.dropped:
+        print(f"  not yielded: {note}", file=sys.stderr)
+    print(f"table: {table}")
+    print(f"rows:  {data}")
+    if trace is not None and trace.exists():
+        print(f"LLM trace: {trace}")
+    return 0
+
+
+def run_dump_concept_map(raw_content_id: str, out_dir: Path) -> int:
+    """Write the calibration table of where each concept is defined, used and assessed.
+
+    The concept-major sibling of `dump-concept-touches`, and the same stance: no instrument
+    is read, no criterion is answered, nothing is persisted. What it adds is that the plan's
+    concept-to-lesson assignment is never shown to the model, so where the text defines a
+    concept can be compared afterwards against where the plan says it is taught.
+    """
+    try:
+        content_id = UUID(raw_content_id)
+    except ValueError:
+        print(f"invalid content id: {raw_content_id}", file=sys.stderr)
+        return 1
+
+    with SessionLocal() as session:
+        profile = ProfilingGateway(session).get_profile(content_id)
+    if profile is None:
+        print(
+            f"no ok profile for {content_id} - run profile-content (or reprofile) first",
+            file=sys.stderr,
+        )
+        return 1
+    missing = [
+        datum
+        for datum in calibration.REQUIRED_DATA
+        if datum not in profile.entries or profile.entries[datum].is_absent
+    ]
+    if missing:
+        print(
+            f"the profile of {content_id} ({profile.package_format}) supplies no "
+            f"{', '.join(missing)} - nothing to dump",
+            file=sys.stderr,
+        )
+        return 1
+
+    trace = observability.trace_path(f"map-{new_id()}")
+    sinks = [_print_call]
+    if trace is not None:
+        sinks.append(observability.jsonl_sink(trace))
+    try:
+        with observability.collecting(observability.fan_out(*sinks)):
+            rows, summary, usage = calibration.dump_concept_map(profile)
+    except AssessorExecutionError as exc:
+        print(f"the extraction never produced a readable answer: {exc}", file=sys.stderr)
+        if trace is not None:
+            print(f"the prompts and raw answers are in {trace}", file=sys.stderr)
+        return 1
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"concept-map-{content_id}"
+    table = out_dir / f"{stem}.md"
+    data = out_dir / f"{stem}.json"
+    table.write_text(
+        calibration.render_map_markdown(rows, summary, str(content_id), usage), encoding="utf-8"
+    )
+    data.write_text(calibration.map_as_json(rows, summary, usage), encoding="utf-8")
+
+    groups = Counter(row.bucket for row in rows)
+    off_plan = sum(1 for row in rows if row.bucket == "defined_in" and not row.declared_here)
+    print(
+        f"{summary.rows} appearances of {summary.found} of {summary.concepts} concepts "
+        f"over {summary.lessons} lessons"
+    )
+    print("  by group: " + ", ".join(f"{k}={v}" for k, v in sorted(groups.items())))
+    # The reading this shape exists for: where the prose defines a concept the plan did not.
+    print(f"  defined where the plan does not declare it: {off_plan}")
     print(f"  {usage.calls} call(s), {usage.tokens_in} in / {usage.tokens_out} out")
     for note in summary.dropped:
         print(f"  not yielded: {note}", file=sys.stderr)
@@ -3504,6 +3581,21 @@ def main(argv: list[str] | None = None) -> int:
         help="where the table and its rows are written (default: runs/concept-touches)",
     )
 
+    map_parser = subparsers.add_parser(
+        "dump-concept-map",
+        help=(
+            "calibration: table where each concept is defined, explained, used, assessed or "
+            "mentioned - the plan's own assignment is never shown to the model"
+        ),
+    )
+    map_parser.add_argument("--content-id", required=True)
+    map_parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("runs/concept-map"),
+        help="where the table and its rows are written (default: runs/concept-map)",
+    )
+
     evaluate_study_parser = subparsers.add_parser(
         "evaluate-study",
         help="evaluate every course of an open study in one bounded, cancellable run",
@@ -3769,6 +3861,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.command == "dump-concept-touches":
         return run_dump_concept_touches(args.content_id, args.out)
+    elif args.command == "dump-concept-map":
+        return run_dump_concept_map(args.content_id, args.out)
     elif args.command == "evaluate-study":
         return run_evaluate_study(
             UUID(args.study_id), args.assessor, args.concurrency, args.re_evaluate

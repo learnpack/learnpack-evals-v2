@@ -641,3 +641,389 @@ def as_json(rows: Sequence[ConceptTouchRow], summary: DumpSummary, usage: LlmUsa
         indent=2,
         ensure_ascii=False,
     )
+
+
+# --- the concept-major dump ----------------------------------------------------------------
+#
+# The same corpus asked the other way round, and the reason is measured rather than aesthetic.
+# The lesson-major dump above is unstable in two specific places, and both are properties of
+# its SHAPE rather than of the question:
+#
+# - Its answer is a list of lessons each holding a variable-length list of touches, so two
+#   runs at identical settings reported 40 touches and 29. Here the answer has exactly one
+#   entry per concept, and how many concepts there are is a fact of the plan — the output
+#   length is pinned, which is the move v12 made when it went from one verdict over four
+#   objectives to one entry per objective.
+# - Its `newness` axis asked how a passage compares with the lesson that TEACHES the concept,
+#   a lesson the model had to go and find; between two runs of one model that answer inverted
+#   wholesale (25 `same_as_taught` against 8). Here every appearance of one concept is decided
+#   inside a single entry, so the comparison is in view by construction.
+#
+# And one thing it can do that the other cannot. The plan's concept-to-lesson assignment is
+# NOT shown: the model gets bare concept names and is asked where the text defines and uses
+# them. That un-entangles the answer from the generator's own bookkeeping, and it turns the
+# session's worst confound into a measurement — a draft whose `04.0` does the work its plan
+# assigns to `04.1` shows up as `defined_in` disagreeing with `declaredIn`, mechanically,
+# instead of quietly suppressing another criterion's numerator.
+#
+# Duplicate names are merged before asking. Five pairs of this format's concepts share a name
+# across lessons, and in the lesson-major dump that forced an arbitrary choice between two
+# indices which then decided a touch's direction — 6 of 97 rows on one draft. One entry per
+# distinct name dissolves that rather than resolving it by coin flip.
+
+# Where a lesson sits for one concept. Each lesson goes in exactly ONE of these per concept:
+# the group that best describes what it does. `explained_in`, `used_as_known_in` and
+# `mentioned_in` are the lesson-major `re_explains`, `uses_as_known` and `points_at` under
+# other names, so the two experiments stay comparable; `defined_in` and `assessed_in` are what
+# this shape adds.
+BUCKETS = ("defined_in", "explained_in", "used_as_known_in", "assessed_in", "mentioned_in")
+
+# A degeneration bound per group, not a claim about pedagogy: a free-length array in an output
+# schema is what every runaway in this package's history came out of. Six is above what any
+# concept has legitimately shown over a sixteen-lesson draft.
+MAX_LESSONS_PER_BUCKET = 6
+
+CONCEPT_MAP_SYSTEM = """\
+You analyse where the concepts of a course are taught and used. Answer with a single JSON
+object and nothing else — no prose, no markdown fences. Every value described as verbatim
+must be copied character-for-character from the source text."""
+
+CONCEPT_MAP_USER = Template(
+    """\
+Below, between <course> tags, is a numbered list of the concepts a course covers, followed by
+every lesson of that course. A lesson block starts at a line of the form
+"===== LESSON <id>: <title> =====" and runs until the next block.
+
+You are NOT told which lesson teaches which concept. Working that out from the text is part
+of the task.
+
+For EACH concept in the list, report the lessons that deal with it, sorting each lesson into
+exactly ONE of these five groups — the one that best describes what that lesson does with
+that concept:
+
+- "defined_in": the lesson INTRODUCES the concept — it names it and says what it is, for a
+  reader not assumed to know it yet.
+- "explained_in": the lesson elaborates, restates or summarises the concept without
+  introducing it.
+- "used_as_known_in": the lesson OPERATES with the concept, treating the reader as already
+  having it — an example, a walkthrough or an explanation that uses it without teaching it.
+- "assessed_in": the lesson puts a task, question or exercise to the learner that checks
+  whether they have the concept.
+- "mentioned_in": the lesson names the concept without doing any of the above.
+
+A lesson appears at most once per concept, in one group only. A concept no lesson deals with
+reports five empty lists — do not force every concept to be found.
+
+For every lesson you list, quote verbatim the passage of THAT lesson which shows it. Copy it
+exactly as the lesson writes it, as one continuous passage — never join separate places
+together. A lesson you cannot quote is one not to list.
+
+This is an extraction task, not a judgement: report where the text puts each concept. Nothing
+here asks whether the course is good, and no answer of yours decides anything about it.
+
+Answer with this JSON shape, one entry per concept, all of them, in this field order:
+{"concepts": [{"conceptIndex": <the number from the list>,
+"defined_in":       [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"explained_in":     [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"used_as_known_in": [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"assessed_in":      [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"mentioned_in":     [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}
+
+At most $max_lessons lessons in any one group. Exactly one entry per concept.
+
+<course>
+$corpus
+</course>"""
+)
+
+
+@dataclass(frozen=True)
+class ConceptAppearanceRow:
+    """One concept, met in one lesson, in one of the five groups.
+
+    `declared_in` and `declared_here` are the PLAN's answer, joined here and never shown to
+    the model — which is the whole point of this shape. Where a `defined_in` row's
+    `declared_here` is false, the generator's plan and the generator's prose disagree about
+    where a concept is taught, and that is a finding rather than noise.
+    """
+
+    concept_index: int
+    concept: str
+    bucket: str
+    lesson_id: str
+    lesson_position: int
+    is_frame: bool
+    declared_in: tuple[str, ...]
+    declared_here: bool
+    zone: str
+    offset: int
+    quote: str
+
+
+@dataclass(frozen=True)
+class MapSummary:
+    """What one map covered, so a reader knows what the absence of a row means."""
+
+    concepts: int
+    lessons: int
+    rows: int
+    found: int
+    dropped: tuple[str, ...]
+
+
+def distinct_concepts(profile: ProfileData) -> list[dict[str, Any]]:
+    """One entry per distinct concept NAME, keeping every lesson the plan declares it in.
+
+    Merged rather than one entry per declaration: this format declares the same name in two
+    different lessons five times over on one draft, and asking a model to choose between two
+    identical labels is asking it to guess.
+    """
+    order = {str(lesson["lessonId"]): int(lesson["position"]) for lesson in all_lessons(profile)}
+    merged: dict[str, dict[str, Any]] = {}
+    for record in profile.entries["lesson_concept_coverage"].value:
+        lesson_id = str(record.get("lessonId"))
+        for concept in record.get("concepts") or []:
+            text = str(concept).strip()
+            if not text:
+                continue
+            slot = merged.setdefault(text.casefold(), {"concept": text, "declaredIn": []})
+            if lesson_id not in slot["declaredIn"]:
+                slot["declaredIn"].append(lesson_id)
+    return [
+        {
+            "concept": slot["concept"],
+            "declaredIn": tuple(slot["declaredIn"]),
+            "declaredPositions": tuple(order[lid] for lid in slot["declaredIn"] if lid in order),
+        }
+        for slot in merged.values()
+    ]
+
+
+def bare_concept_lines(concepts: Sequence[Mapping[str, Any]]) -> str:
+    """The concept list as the model sees it: numbers and names, and no lesson."""
+    return "\n".join(f"[{index}] {c['concept']}" for index, c in enumerate(concepts))
+
+
+def plain_lesson_blocks(lessons: Sequence[Mapping[str, Any]]) -> str:
+    """One block per lesson, with nothing said about which concepts are its own."""
+    return "\n\n".join(
+        f"===== LESSON {lesson['lessonId']}: {lesson.get('title')} =====\n{lesson['body']}"
+        for lesson in lessons
+    )
+
+
+def dump_concept_map(
+    profile: ProfileData,
+) -> tuple[list[ConceptAppearanceRow], MapSummary, LlmUsage]:
+    """One call, one entry per concept, no verdict anywhere."""
+    lessons = all_lessons(profile)
+    concepts = distinct_concepts(profile)
+    if not lessons or not concepts:
+        summary = MapSummary(
+            concepts=len(concepts),
+            lessons=len(lessons),
+            rows=0,
+            found=0,
+            dropped=("nothing to ask about: the profile declares no lesson or no concept",),
+        )
+        return [], summary, LlmUsage(model=MODEL, calls=0, tokens_in=0, tokens_out=0, latency_ms=0)
+
+    corpus = (
+        f"CONCEPTS THE COURSE COVERS:\n{bare_concept_lines(concepts)}\n\n"
+        f"LESSONS:\n{plain_lesson_blocks(lessons)}"
+    )
+    payload, usage = request_structured_output(
+        runtime.get_client(),
+        task_id="concept_map_dump",
+        model=MODEL,
+        system_prompt=CONCEPT_MAP_SYSTEM,
+        user_prompt=CONCEPT_MAP_USER.substitute(corpus=corpus, max_lessons=MAX_LESSONS_PER_BUCKET),
+        validate=lambda answer: validate_concept_map(answer, len(concepts)),
+        temperature=TEMPERATURE,
+        max_tokens=MAX_OUTPUT_TOKENS,
+        reasoning=REASONING,
+    )
+    rows, dropped = _map_rows_from(payload, lessons, concepts)
+    summary = MapSummary(
+        concepts=len(concepts),
+        lessons=len(lessons),
+        rows=len(rows),
+        found=len({row.concept_index for row in rows}),
+        dropped=tuple(dropped),
+    )
+    return rows, summary, usage
+
+
+def _map_rows_from(
+    payload: Any, lessons: Sequence[Mapping[str, Any]], concepts: Sequence[Mapping[str, Any]]
+) -> tuple[list[ConceptAppearanceRow], list[str]]:
+    """The answer turned into rows, saying out loud what it had to throw away."""
+    by_id = {str(lesson["lessonId"]): lesson for lesson in lessons}
+    rows: list[ConceptAppearanceRow] = []
+    dropped: list[str] = []
+    answered: set[int] = set()
+    for entry in payload["concepts"]:
+        index = as_index(entry.get("conceptIndex")) if isinstance(entry, dict) else None
+        if index is None or not 0 <= index < len(concepts) or index in answered:
+            shown = entry.get("conceptIndex") if isinstance(entry, dict) else entry
+            dropped.append(f"an entry for concept {shown!r}")
+            continue
+        answered.add(index)
+        info = concepts[index]
+        for bucket in BUCKETS:
+            seen: set[str] = set()
+            for appearance in entry.get(bucket) or []:
+                if not isinstance(appearance, dict):
+                    dropped.append(f"concept {index} {bucket}: an entry that is not an object")
+                    continue
+                lesson_id = str(appearance.get("lessonId"))
+                if lesson_id not in by_id or lesson_id in seen:
+                    dropped.append(f"concept {index} {bucket}: lesson {lesson_id!r}")
+                    continue
+                seen.add(lesson_id)
+                body = str(by_id[lesson_id]["body"])
+                quote = appearance.get("quote")
+                if not isinstance(quote, str) or not quote.strip():
+                    dropped.append(f"concept {index} {bucket} in {lesson_id}: no quote")
+                    continue
+                span = grounding.locate(body, quote)
+                if span is None:
+                    dropped.append(
+                        f"concept {index} {bucket} in {lesson_id}: quote not in that lesson"
+                    )
+                    continue
+                offset = body.find(span)
+                rows.append(
+                    ConceptAppearanceRow(
+                        concept_index=index,
+                        concept=str(info["concept"]),
+                        bucket=bucket,
+                        lesson_id=lesson_id,
+                        lesson_position=int(by_id[lesson_id]["position"]),
+                        is_frame=bool(by_id[lesson_id]["isFrame"]),
+                        declared_in=tuple(info["declaredIn"]),
+                        declared_here=lesson_id in info["declaredIn"],
+                        zone=zone_of(offset, len(body)),
+                        offset=offset,
+                        quote=span,
+                    )
+                )
+    missing = [i for i in range(len(concepts)) if i not in answered]
+    if missing:
+        dropped.append(f"no entry at all for concept(s): {missing}")
+    return rows, dropped
+
+
+def validate_concept_map(answer: Any, concept_count: int) -> list[str]:
+    """Refuse only what makes the answer unreadable; everything else is a dropped row.
+
+    Same asymmetry the lesson-major dump learned in the field: a group name outside the five
+    is the model answering a different question and no reader can repair it, while a missing
+    quote, an unknown lesson and a duplicate cost one row each.
+    """
+    if not isinstance(answer, dict):
+        return ['the answer must be a JSON object with a "concepts" array']
+    if not isinstance(answer.get("concepts"), list):
+        return ['"concepts" must be an array']
+    violations: list[str] = []
+    for position, entry in enumerate(answer["concepts"]):
+        label = f"concepts[{position}]"
+        if not isinstance(entry, dict):
+            violations.append(f"{label} must be an object")
+            continue
+        if as_index(entry.get("conceptIndex")) is None:
+            violations.append(f"{label}.conceptIndex must be a number from the list shown")
+        unknown = [key for key in entry if key not in ("conceptIndex", *BUCKETS)]
+        if unknown:
+            violations.append(
+                f"{label} carries {unknown[0]!r}, which is not one of the five groups: "
+                f"{', '.join(BUCKETS)}"
+            )
+        for bucket in BUCKETS:
+            value = entry.get(bucket)
+            if value is None:
+                continue
+            if not isinstance(value, list):
+                violations.append(f"{label}.{bucket} must be an array (use [] when empty)")
+            elif len(value) > MAX_LESSONS_PER_BUCKET:
+                violations.append(
+                    f"{label}.{bucket} holds {len(value)} lessons; list at most "
+                    f"{MAX_LESSONS_PER_BUCKET}"
+                )
+    return violations
+
+
+_MAP_COLUMNS = (
+    "#",
+    "concept",
+    "group",
+    "lesson",
+    "pos",
+    "frame",
+    "plan declares it in",
+    "here?",
+    "zone",
+    "quote",
+    "your call",
+)
+
+
+def render_map_markdown(
+    rows: Sequence[ConceptAppearanceRow], summary: MapSummary, title: str, usage: LlmUsage
+) -> str:
+    """The table a person marks up, concept by concept."""
+    lines = [
+        f"# Concept map — {title}",
+        "",
+        f"{summary.concepts} distinct concepts ({summary.found} placed somewhere) · "
+        f"{summary.lessons} lessons · {summary.rows} appearances · "
+        f"{usage.calls} call(s), {usage.tokens_in} in / {usage.tokens_out} out, "
+        f"{usage.clean_retries} clean retries",
+        "",
+        "The model was NOT told where the plan declares each concept: `plan declares it in` "
+        "and `here?` are joined afterwards. A `defined_in` row whose `here?` is empty is the "
+        "plan and the prose disagreeing about where a concept is taught.",
+        "",
+        "| " + " | ".join(_MAP_COLUMNS) + " |",
+        "|" + "|".join("---" for _ in _MAP_COLUMNS) + "|",
+    ]
+    ordered = sorted(
+        rows, key=lambda r: (r.concept_index, BUCKETS.index(r.bucket), r.lesson_position)
+    )
+    for row in ordered:
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    str(row.concept_index),
+                    _cell(row.concept),
+                    row.bucket,
+                    row.lesson_id,
+                    str(row.lesson_position),
+                    "yes" if row.is_frame else "",
+                    " ".join(row.declared_in),
+                    "yes" if row.declared_here else "",
+                    row.zone,
+                    _cell(row.quote),
+                    "",
+                )
+            )
+            + " |"
+        )
+    if summary.dropped:
+        lines.extend(["", "## What the answer did not yield", ""])
+        lines.extend(f"- {note}" for note in summary.dropped)
+    return "\n".join(lines) + "\n"
+
+
+def map_as_json(rows: Sequence[ConceptAppearanceRow], summary: MapSummary, usage: LlmUsage) -> str:
+    """The same rows unrendered, so a second reading needs no second call."""
+    return json.dumps(
+        {
+            "summary": asdict(summary),
+            "usage": asdict(usage),
+            "rows": [asdict(row) for row in rows],
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
