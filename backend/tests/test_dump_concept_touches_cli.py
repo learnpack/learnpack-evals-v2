@@ -66,7 +66,6 @@ def a_row(**overrides) -> calibration.ConceptTouchRow:
         "zone": "opening",
         "offset": 40,
         "quote": "We reuse the recursive descent on a new grammar.",
-        "reason": "because",
     }
     return calibration.ConceptTouchRow(**{**fields, **overrides})
 

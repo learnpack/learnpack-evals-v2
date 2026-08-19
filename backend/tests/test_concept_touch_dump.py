@@ -132,13 +132,7 @@ def touched(lesson_id: str, *touches: dict) -> dict:
 def touch(
     index: int, quote: str, mode: str = "uses_as_known", newness: str = "new_context"
 ) -> dict:
-    return {
-        "conceptIndex": index,
-        "reason": "because",
-        "mode": mode,
-        "newness": newness,
-        "quote": quote,
-    }
+    return {"conceptIndex": index, "quote": quote, "mode": mode, "newness": newness}
 
 
 # --- what the code computes, never the model ---------------------------------------------
@@ -224,6 +218,27 @@ def test_an_ungrounded_quote_loses_its_row_and_nothing_else(fake_llm):
     # The duplicate index is dropped before the quote is even looked at; one good row stands.
     assert [row.quote for row in rows] == [BACKWARD_QUOTE]
     assert any("concept 0" in note for note in summary.dropped)
+
+
+def test_a_touch_reported_with_no_quote_costs_its_row_and_not_the_run(fake_llm):
+    """The field's own lesson: a provider that omits the quote omits it on every attempt, so
+    refusing spends three rounds and loses touches the model genuinely found. It is told
+    apart from an unfindable quote, because 'saw something it would not cite' and 'cited
+    something that is not there' are different facts about the extraction."""
+    quoteless = {"conceptIndex": 0, "mode": "uses_as_known", "newness": "same_as_taught"}
+    fake_llm(
+        answer(
+            touched("00.0"),
+            touched("01.0"),
+            touched("02.0", quoteless),
+            touched("03.0"),
+        )
+    )
+    rows, summary, usage = calibration.dump_concept_touches(four_lesson_profile())
+
+    assert usage.calls == 1
+    assert rows == []
+    assert any("reported with no quote" in note for note in summary.dropped)
 
 
 def test_a_quote_from_the_wrong_lesson_is_dropped_not_refused(fake_llm):

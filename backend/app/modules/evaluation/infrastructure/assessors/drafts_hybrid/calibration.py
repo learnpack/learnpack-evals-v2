@@ -125,7 +125,13 @@ Do not report the concepts a lesson teaches itself — its own block names those
 Answer for the lessons shown here and no others, one entry each, even when the entry is
 empty.
 
-For every concept you report, answer TWO independent questions.
+For every concept you report, QUOTE FIRST. Copy, verbatim, the passage of that lesson which
+shows the lesson dealing with the concept — exactly as the lesson writes it, as one
+continuous passage, never joining separate places together. Quote before you classify: the
+passage is what the two answers below are about, and a touch you cannot quote is one you
+must simply not report.
+
+Then answer TWO independent questions about the passage you quoted.
 
 First, "mode" — what the lesson does with it:
 
@@ -146,19 +152,16 @@ shown to you in this same corpus:
 
 The two are independent: answer each on its own terms, and do not let one decide the other.
 
-Quote, verbatim, the passage of THAT lesson that shows what you reported. Copy it exactly
-as the lesson writes it, as one continuous passage — do not join separate places together.
-
 This is an extraction task, not a judgement: report what each lesson does. Nothing here
 asks whether the course is good, and no answer of yours decides anything about it.
 
-Answer with this JSON shape, one entry per lesson, in this field order:
+Answer with this JSON shape, one entry per lesson, in this field order — the top-level key
+is "lessons", and every touch carries all four fields:
 {"lessons": [{"lessonId": "<the lesson's id>",
 "touches": [{"conceptIndex": <a number from the concept list>,
-"reason": "<one sentence on what this lesson does with it>",
+"quote": "<verbatim passage from this lesson>",
 "mode": "uses_as_known" | "re_explains" | "points_at",
-"newness": "new_context" | "same_as_taught" | "n_a",
-"quote": "<verbatim passage from this lesson>"}]}]}
+"newness": "new_context" | "same_as_taught" | "n_a"}]}]}
 
 At most $max_touches entries in "touches". Exactly one entry per lesson.
 
@@ -172,7 +175,9 @@ $corpus
 class ConceptTouchRow:
     """One place one lesson deals with one concept another lesson declares.
 
-    Everything the model answered is `mode`, `newness`, `quote` and `reason`. Everything
+    Everything the model answered is `quote`, `mode` and `newness`, in that order — the
+    quote first because a touch that cannot be cited is not one to report, and because a
+    field written after two classifications is the field a model drops. Everything
     else on this row is computed here — where the concept is taught, which way the touch
     runs, how far, and where in the lesson the passage sits — because those are facts of
     the plan and of the text, and an answer that carried them would be free to move a
@@ -193,7 +198,6 @@ class ConceptTouchRow:
     zone: str
     offset: int
     quote: str
-    reason: str
 
 
 @dataclass(frozen=True)
@@ -437,7 +441,16 @@ def _rows_from(
                 )
                 continue
             seen.add(index)
-            span = grounding.locate(body, str(touch.get("quote") or ""))
+            quote = touch.get("quote")
+            if not isinstance(quote, str) or not quote.strip():
+                # Worth telling apart from the one below: a touch reported with NO quote is
+                # the model saying it saw something it would not cite, which is a fact about
+                # the extraction, while an unfindable quote is a fact about the citation.
+                dropped.append(
+                    f"lesson {lesson_id}: a touch on concept {index}, reported with no quote"
+                )
+                continue
+            span = grounding.locate(body, quote)
             if span is None:
                 dropped.append(
                     f"lesson {lesson_id}: a touch on concept {index}, "
@@ -464,7 +477,6 @@ def _rows_from(
                     offset=offset,
                     # The source's own span, never the model's rendering (ADR-0009).
                     quote=span,
-                    reason=str(touch.get("reason") or "").strip(),
                 )
             )
     missing = [lesson_id for lesson_id in lesson_ids if lesson_id not in answered]
@@ -515,9 +527,11 @@ def validate_touches(answer: Any, concept_count: int) -> list[str]:
                 violations.append(f"{entry_label}.mode must be one of: {', '.join(MODES)}")
             if touch.get("newness") not in NEWNESS:
                 violations.append(f"{entry_label}.newness must be one of: {', '.join(NEWNESS)}")
-            quote = touch.get("quote")
-            if not isinstance(quote, str) or not quote.strip():
-                violations.append(f"{entry_label}.quote must be a non-empty string")
+            # A missing quote is NOT refused here, and the field taught that the hard way: a
+            # provider that omits the field omits it on every attempt, so making it fatal
+            # spent three rounds and killed the run over touches the model had genuinely
+            # found. It costs its own row instead, reported like any other loss — same rule
+            # as a quote that will not ground, which is the same defect one step later.
     return violations
 
 
