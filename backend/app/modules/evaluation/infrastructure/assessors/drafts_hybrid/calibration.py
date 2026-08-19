@@ -65,15 +65,34 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_ou
 # instead of raising a KeyError halfway through building a corpus.
 REQUIRED_DATA = ("lesson_bodies", "lesson_inventory", "lesson_concept_coverage")
 
-MODEL = "deepseek/deepseek-v4-flash-0731"
+# Under test, and only here: the judging tasks stay on the flash model. The first field
+# runs failed at the OUTPUT CONTRACT rather than at the reading — `lessonId` dropped and the
+# entries answered positionally, `mode` renamed to `type`, quotes spliced with an ellipsis —
+# which is the failure a more capable model is supposed to make disappear. Reasoning is on
+# at `high` for the same reason: this task holds a numbered concept set against a dozen
+# lesson bodies, which is the shape the flash model was answering by position.
+MODEL = "openai/gpt-5.6-luna"
+
+# This model does not take a temperature. It is still sent, because the transport owns that
+# field and OpenRouter drops a parameter an upstream does not support rather than refusing
+# the request; if that ever stops being true the transport is where it gets fixed, not here.
 TEMPERATURE = 0.0
-REASONING = {"effort": "none", "enabled": False}
+
+# `effort` and `max_tokens` are alternatives, never both (OpenRouter's reasoning guide), and
+# `enabled` is redundant once `effort` is set — so this is the whole declaration.
+REASONING = {"effort": "high"}
 
 # One entry per lesson, each nesting up to `MAX_TOUCHES` quoted touches, so the answer grows
-# as lessons x touches. Eight is above anything a lesson has legitimately shown and well
-# under what the budget holds; the cap exists because a free-length array in an output schema
-# is what every degeneration in this package's history came out of, not to enforce parsimony.
-MAX_OUTPUT_TOKENS = 8000
+# as lessons x touches. Eight is above anything a lesson has legitimately shown; the cap
+# exists because a free-length array in an output schema is what every degeneration in this
+# package's history came out of, not to enforce parsimony.
+#
+# The budget is four times what the flash model needed, and the reason is the failure that
+# killed `drafts-hybrid:1`: a reasoning model bills its thinking as output tokens, so the
+# thinking competes with the answer for this number and can take all of it. At `high` effort
+# over a dozen lesson bodies that is a real risk, and a run cut at the budget teaches
+# nothing about whether the model can hold the contract.
+MAX_OUTPUT_TOKENS = 32000
 MAX_TOUCHES = 8
 
 # What a lesson does with a concept another lesson declares. Two axes rather than one: the
