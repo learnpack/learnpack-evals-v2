@@ -647,41 +647,92 @@ def as_json(rows: Sequence[ConceptTouchRow], summary: DumpSummary, usage: LlmUsa
 #
 # The same corpus asked the other way round, and the reason is measured rather than aesthetic.
 # The lesson-major dump above is unstable in two specific places, and both are properties of
-# its SHAPE rather than of the question:
+# its SHAPE rather than of its question: its answer is a list of lessons each holding a
+# variable-length list of touches, so two runs at identical settings reported 40 touches and
+# 29; and its `newness` axis asked how a passage compares with the lesson that TEACHES the
+# concept, a lesson the model had to go and find, which inverted wholesale between two runs of
+# one model. Here every appearance of one concept is decided together.
 #
-# - Its answer is a list of lessons each holding a variable-length list of touches, so two
-#   runs at identical settings reported 40 touches and 29. Here the answer has exactly one
-#   entry per concept, and how many concepts there are is a fact of the plan — the output
-#   length is pinned, which is the move v12 made when it went from one verdict over four
-#   objectives to one entry per objective.
-# - Its `newness` axis asked how a passage compares with the lesson that TEACHES the concept,
-#   a lesson the model had to go and find; between two runs of one model that answer inverted
-#   wholesale (25 `same_as_taught` against 8). Here every appearance of one concept is decided
-#   inside a single entry, so the comparison is in view by construction.
+# And the plan's concept-to-lesson assignment is NOT shown. The model gets bare concept names
+# and is asked where the text states, develops, uses and checks them; the assignment is joined
+# back on afterwards. That un-entangles the answer from the generator's own bookkeeping, and it
+# turns the session's worst confound into a measurement — over two drafts, two independent
+# readers placed 0 definitions away from the plan on the draft that reads as cumulative and 5
+# on the draft that does not.
 #
-# And one thing it can do that the other cannot. The plan's concept-to-lesson assignment is
-# NOT shown: the model gets bare concept names and is asked where the text defines and uses
-# them. That un-entangles the answer from the generator's own bookkeeping, and it turns the
-# session's worst confound into a measurement — a draft whose `04.0` does the work its plan
-# assigns to `04.1` shows up as `defined_in` disagreeing with `declaredIn`, mechanically,
-# instead of quietly suppressing another criterion's numerator.
-#
-# Duplicate names are merged before asking. Five pairs of this format's concepts share a name
-# across lessons, and in the lesson-major dump that forced an arbitrary choice between two
-# indices which then decided a touch's direction — 6 of 97 rows on one draft. One entry per
-# distinct name dissolves that rather than resolving it by coin flip.
+# Duplicate names are merged before asking. Five pairs of one draft's concepts share a name
+# across lessons, and choosing between two identical labels decided a touch's direction in 6 of
+# 97 rows under the lesson-major shape.
 
-# Where a lesson sits for one concept. Each lesson goes in exactly ONE of these per concept:
-# the group that best describes what it does. `explained_in`, `used_as_known_in` and
-# `mentioned_in` are the lesson-major `re_explains`, `uses_as_known` and `points_at` under
-# other names, so the two experiments stay comparable; `defined_in` and `assessed_in` are what
-# this shape adds.
-BUCKETS = ("defined_in", "explained_in", "used_as_known_in", "assessed_in", "mentioned_in")
+# --- what the five groups are, and why they are these five ---------------------------------
+#
+# EVERY GROUP IS A LOCAL, OBSERVABLE ACT. `defines` used to read "introduces the concept, for a
+# reader not assumed to know it yet", and that clause smuggled a global question into a local
+# one: whether the reader is assumed to know it depends on everything before. Which appearance
+# is the INTRODUCTION is `min(position)` over what came back — arithmetic, done here. The model
+# reports the act; the code does the ordering. That is the rule every other field of this
+# module already followed and this one did not.
+#
+# Two consequences worth stating. A concept may now be reported as stated by SEVERAL lessons,
+# which is not a contradiction but a finding: the first is the introduction and every later one
+# is the course defining again what it had already defined. And the perfect agreement the
+# earlier vocabulary produced (18 of 18, 20 of 20 between independent readers) is not directly
+# comparable, because both readers said in as many words that they had FORCED a single answer —
+# what that measured was "which lesson is the best candidate", not "which lessons state it".
+#
+# `develops` is separated from `defines` for a reason that is pedagogical rather than
+# mechanical. Stating again what a concept is breaks the sense of continuity — the course is
+# starting over. Adding to a concept later (reasons, consequences, limits) is compatible with
+# continuity and often is continuity. The earlier vocabulary put both in one `explained_in`
+# bucket, whose definition said "elaborates, RESTATES or summarises", so a rule that counted
+# that bucket as evidence of building was counting re-definitions as evidence of building. That
+# is the mechanism behind "C3 works for the wrong reason".
+#
+# The asymmetry `develops` carries: it counts toward continuity when present and is never
+# required. A course cannot be asked to explain everything twice; it can be asked not to define
+# anything twice.
+GROUP_DEFINITIONS = """\
+- "defines": the lesson says WHAT THE CONCEPT IS. Report this wherever it happens and however
+  many lessons do it — you are not being asked which lesson introduces it, only which lessons
+  state what it is.
+- "develops": the lesson ADDS to the concept — reasons, consequences, details, limits, a
+  fuller treatment than a bare statement of what it is. Saying the same thing again in other
+  words is NOT developing it: that is stating what it is a second time, and belongs in
+  "defines".
+- "uses_as_known": the lesson OPERATES with the concept, treating the reader as already having
+  it — an example, a walkthrough or an explanation that uses it without saying what it is.
+- "assessed": the lesson puts a task, question or exercise to the learner that checks whether
+  they have the concept.
+- "mentions": the lesson names the concept without doing any of the above.
+
+Two tie-breaks, for the two places this is genuinely hard:
+
+- A lesson that both states what a concept is and adds to it goes in "defines". The statement
+  is the load-bearing act; the addition rides on it.
+- A lesson that works through an example and names the concept in passing while doing so goes
+  in "uses_as_known". The work is the substance; the naming is an aside."""
+
+BUCKETS = ("defines", "develops", "uses_as_known", "assessed", "mentions")
 
 # A degeneration bound per group, not a claim about pedagogy: a free-length array in an output
-# schema is what every runaway in this package's history came out of. Six is above what any
-# concept has legitimately shown over a sixteen-lesson draft.
+# schema is what every runaway in this package's history came out of.
 MAX_LESSONS_PER_BUCKET = 6
+
+ANSWER_SHAPE = """\
+{"concepts": [{"conceptIndex": <the number from the list>,
+"defines":        [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"develops":       [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"uses_as_known":  [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"assessed":       [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"mentions":       [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}"""
+
+QUOTE_RULE = """\
+For every lesson you list, quote verbatim the passage of THAT lesson which shows it. Copy it
+exactly as the lesson writes it, as one continuous passage — never join separate places
+together. A lesson you cannot quote is one not to list.
+
+This is an extraction task, not a judgement: report where the text puts each concept. Nothing
+here asks whether the course is good, and no answer of yours decides anything about it."""
 
 CONCEPT_MAP_SYSTEM = """\
 You analyse where the concepts of a course are taught and used. Answer with a single JSON
@@ -694,40 +745,22 @@ Below, between <course> tags, is a numbered list of the concepts a course covers
 every lesson of that course. A lesson block starts at a line of the form
 "===== LESSON <id>: <title> =====" and runs until the next block.
 
-You are NOT told which lesson teaches which concept. Working that out from the text is part
-of the task.
+You are NOT told which lesson teaches which concept. Working that out from the text is part of
+the task.
 
 For EACH concept in the list, report the lessons that deal with it, sorting each lesson into
-exactly ONE of these five groups — the one that best describes what that lesson does with
-that concept:
+exactly ONE of these five groups — the one that best describes what that lesson does with that
+concept:
 
-- "defined_in": the lesson INTRODUCES the concept — it names it and says what it is, for a
-  reader not assumed to know it yet.
-- "explained_in": the lesson elaborates, restates or summarises the concept without
-  introducing it.
-- "used_as_known_in": the lesson OPERATES with the concept, treating the reader as already
-  having it — an example, a walkthrough or an explanation that uses it without teaching it.
-- "assessed_in": the lesson puts a task, question or exercise to the learner that checks
-  whether they have the concept.
-- "mentioned_in": the lesson names the concept without doing any of the above.
+$groups
 
-A lesson appears at most once per concept, in one group only. A concept no lesson deals with
-reports five empty lists — do not force every concept to be found.
+A lesson appears at most once per concept. A concept no lesson deals with reports five empty
+lists — do not force every concept to be found.
 
-For every lesson you list, quote verbatim the passage of THAT lesson which shows it. Copy it
-exactly as the lesson writes it, as one continuous passage — never join separate places
-together. A lesson you cannot quote is one not to list.
-
-This is an extraction task, not a judgement: report where the text puts each concept. Nothing
-here asks whether the course is good, and no answer of yours decides anything about it.
+$quote_rule
 
 Answer with this JSON shape, one entry per concept, all of them, in this field order:
-{"concepts": [{"conceptIndex": <the number from the list>,
-"defined_in":       [{"lessonId": "<id>", "quote": "<verbatim>"}],
-"explained_in":     [{"lessonId": "<id>", "quote": "<verbatim>"}],
-"used_as_known_in": [{"lessonId": "<id>", "quote": "<verbatim>"}],
-"assessed_in":      [{"lessonId": "<id>", "quote": "<verbatim>"}],
-"mentioned_in":     [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}
+$shape
 
 At most $max_lessons lessons in any one group. Exactly one entry per concept.
 
@@ -736,15 +769,45 @@ $corpus
 </course>"""
 )
 
+CONCEPT_MAP_MODULE_USER = Template(
+    """\
+Below, between <module> tags, is a numbered list of the concepts a WHOLE course covers,
+followed by the lessons of ONE MODULE of that course. A lesson block starts at a line of the
+form "===== LESSON <id>: <title> =====" and runs until the next block.
+
+The other modules are not shown, and you do not need them. Report only what the lessons in
+front of you do, and never name a lesson that is not shown here. Whether some other lesson of
+the course also deals with a concept is not your question.
+
+Report the concepts these lessons deal with, sorting each lesson into exactly ONE of these
+five groups — the one that best describes what that lesson does with that concept:
+
+$groups
+
+A lesson appears at most once per concept. **Omit a concept these lessons do not deal with**
+rather than reporting it with empty lists.
+
+$quote_rule
+
+Answer with this JSON shape, one entry per concept you report, in this field order:
+$shape
+
+At most $max_lessons lessons in any one group.
+
+<module>
+$corpus
+</module>"""
+)
+
 
 @dataclass(frozen=True)
 class ConceptAppearanceRow:
     """One concept, met in one lesson, in one of the five groups.
 
-    `declared_in` and `declared_here` are the PLAN's answer, joined here and never shown to
-    the model — which is the whole point of this shape. Where a `defined_in` row's
-    `declared_here` is false, the generator's plan and the generator's prose disagree about
-    where a concept is taught, and that is a finding rather than noise.
+    `declared_in` and `declared_here` are the PLAN's answer, joined here and never shown to the
+    model — which is the whole point of this shape. Where a `defines` row's `declared_here` is
+    false, the generator's plan and the generator's prose disagree about where a concept is
+    taught.
     """
 
     concept_index: int
@@ -766,6 +829,7 @@ class MapSummary:
 
     concepts: int
     lessons: int
+    calls: int
     rows: int
     found: int
     dropped: tuple[str, ...]
@@ -812,52 +876,118 @@ def plain_lesson_blocks(lessons: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
+def modules_of(lessons: Sequence[Mapping[str, Any]]) -> list[tuple[str, list[Mapping[str, Any]]]]:
+    """The lessons grouped by the module their identifier names, in delivery order.
+
+    The unit of the fan-out. A module is two or three lessons rather than a dozen, which is
+    the difference between "where does this concept appear in sixteen lessons" — a search the
+    models answered by finding the salient place and missing the diffuse ones — and a question
+    about text they can hold at once.
+    """
+    grouped: dict[str, list[Mapping[str, Any]]] = {}
+    for lesson in lessons:
+        module = str(lesson["lessonId"]).split(".")[0]
+        grouped.setdefault(module, []).append(lesson)
+    return sorted(grouped.items())
+
+
+def _map_prompt(
+    concepts: Sequence[Mapping[str, Any]], lessons: Sequence[Mapping[str, Any]], *, per_module: bool
+) -> str:
+    template = CONCEPT_MAP_MODULE_USER if per_module else CONCEPT_MAP_USER
+    label = "CONCEPTS THE COURSE COVERS"
+    corpus = f"{label}:\n{bare_concept_lines(concepts)}\n\nLESSONS:\n{plain_lesson_blocks(lessons)}"
+    return template.substitute(
+        groups=GROUP_DEFINITIONS,
+        quote_rule=QUOTE_RULE,
+        shape=ANSWER_SHAPE,
+        max_lessons=MAX_LESSONS_PER_BUCKET,
+        corpus=corpus,
+    )
+
+
 def dump_concept_map(
-    profile: ProfileData,
+    profile: ProfileData, *, per_module: bool = False
 ) -> tuple[list[ConceptAppearanceRow], MapSummary, LlmUsage]:
-    """One call, one entry per concept, no verdict anywhere."""
+    """The concept map, in one call over the course or one call per module.
+
+    `per_module` fans out. Nothing about the question changes with it — which is the point:
+    every group is a local act, so a call that sees one module can answer completely about the
+    lessons in front of it, and which appearance is the introduction is decided here, over the
+    merged rows. It costs one call per module and buys each call a corpus it can hold.
+    """
     lessons = all_lessons(profile)
     concepts = distinct_concepts(profile)
     if not lessons or not concepts:
         summary = MapSummary(
             concepts=len(concepts),
             lessons=len(lessons),
+            calls=0,
             rows=0,
             found=0,
             dropped=("nothing to ask about: the profile declares no lesson or no concept",),
         )
         return [], summary, LlmUsage(model=MODEL, calls=0, tokens_in=0, tokens_out=0, latency_ms=0)
 
-    corpus = (
-        f"CONCEPTS THE COURSE COVERS:\n{bare_concept_lines(concepts)}\n\n"
-        f"LESSONS:\n{plain_lesson_blocks(lessons)}"
+    batches = (
+        [(name, shown) for name, shown in modules_of(lessons)]
+        if per_module
+        else [("the whole course", lessons)]
     )
-    payload, usage = request_structured_output(
-        runtime.get_client(),
-        task_id="concept_map_dump",
-        model=MODEL,
-        system_prompt=CONCEPT_MAP_SYSTEM,
-        user_prompt=CONCEPT_MAP_USER.substitute(corpus=corpus, max_lessons=MAX_LESSONS_PER_BUCKET),
-        validate=lambda answer: validate_concept_map(answer, len(concepts)),
-        temperature=TEMPERATURE,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        reasoning=REASONING,
-    )
-    rows, dropped = _map_rows_from(payload, lessons, concepts)
+    rows: list[ConceptAppearanceRow] = []
+    dropped: list[str] = []
+    spend: list[LlmUsage] = []
+    for name, shown in batches:
+        payload, usage = request_structured_output(
+            runtime.get_client(),
+            task_id="concept_map_dump",
+            model=MODEL,
+            system_prompt=CONCEPT_MAP_SYSTEM,
+            user_prompt=_map_prompt(concepts, shown, per_module=per_module),
+            validate=lambda answer: validate_concept_map(answer, len(concepts)),
+            temperature=TEMPERATURE,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            reasoning=REASONING,
+        )
+        spend.append(usage)
+        # A module's call may only name the lessons it was shown; anything else is dropped.
+        batch_rows, batch_dropped = _map_rows_from(payload, shown, concepts)
+        rows.extend(batch_rows)
+        dropped.extend(f"{name}: {note}" for note in batch_dropped)
+
+    placed = {row.concept_index for row in rows}
+    never = [i for i in range(len(concepts)) if i not in placed]
+    if never:
+        # The completeness check lives here rather than in any one call, because under a
+        # fan-out no single call can know that nobody placed a concept.
+        dropped.append(f"no lesson anywhere deals with concept(s): {never}")
     summary = MapSummary(
         concepts=len(concepts),
         lessons=len(lessons),
+        calls=len(batches),
         rows=len(rows),
-        found=len({row.concept_index for row in rows}),
+        found=len(placed),
         dropped=tuple(dropped),
     )
-    return rows, summary, usage
+    return rows, summary, _sum_usage(spend)
+
+
+def _sum_usage(spend: Sequence[LlmUsage]) -> LlmUsage:
+    """What the whole fan-out spent, so cost per dump stays readable."""
+    return LlmUsage(
+        model=spend[0].model,
+        calls=sum(u.calls for u in spend),
+        tokens_in=sum(u.tokens_in for u in spend),
+        tokens_out=sum(u.tokens_out for u in spend),
+        latency_ms=sum(u.latency_ms for u in spend),
+        clean_retries=sum(u.clean_retries for u in spend),
+    )
 
 
 def _map_rows_from(
     payload: Any, lessons: Sequence[Mapping[str, Any]], concepts: Sequence[Mapping[str, Any]]
 ) -> tuple[list[ConceptAppearanceRow], list[str]]:
-    """The answer turned into rows, saying out loud what it had to throw away."""
+    """One answer turned into rows, saying out loud what it had to throw away."""
     by_id = {str(lesson["lessonId"]): lesson for lesson in lessons}
     rows: list[ConceptAppearanceRow] = []
     dropped: list[str] = []
@@ -908,17 +1038,14 @@ def _map_rows_from(
                         quote=span,
                     )
                 )
-    missing = [i for i in range(len(concepts)) if i not in answered]
-    if missing:
-        dropped.append(f"no entry at all for concept(s): {missing}")
     return rows, dropped
 
 
 def validate_concept_map(answer: Any, concept_count: int) -> list[str]:
     """Refuse only what makes the answer unreadable; everything else is a dropped row.
 
-    Same asymmetry the lesson-major dump learned in the field: a group name outside the five
-    is the model answering a different question and no reader can repair it, while a missing
+    Same asymmetry the lesson-major dump learned in the field: a group name outside the five is
+    the model answering a different question and no reader can repair it, while a missing
     quote, an unknown lesson and a duplicate cost one row each.
     """
     if not isinstance(answer, dict):
@@ -953,6 +1080,27 @@ def validate_concept_map(answer: Any, concept_count: int) -> list[str]:
     return violations
 
 
+def redefinitions(rows: Sequence[ConceptAppearanceRow]) -> list[ConceptAppearanceRow]:
+    """Every `defines` row that is not the first one for its concept.
+
+    The finding the split between `defines` and `develops` exists to make visible: a course
+    that states again what it already stated is starting over rather than building. Computed
+    here, never asked — which appearance is the introduction is `min(position)`.
+    """
+    first: dict[int, int] = {}
+    for row in rows:
+        if row.bucket != "defines":
+            continue
+        seen = first.get(row.concept_index)
+        if seen is None or row.lesson_position < seen:
+            first[row.concept_index] = row.lesson_position
+    return [
+        row
+        for row in rows
+        if row.bucket == "defines" and row.lesson_position != first[row.concept_index]
+    ]
+
+
 _MAP_COLUMNS = (
     "#",
     "concept",
@@ -972,17 +1120,19 @@ def render_map_markdown(
     rows: Sequence[ConceptAppearanceRow], summary: MapSummary, title: str, usage: LlmUsage
 ) -> str:
     """The table a person marks up, concept by concept."""
+    again = {(r.concept_index, r.lesson_id) for r in redefinitions(rows)}
     lines = [
         f"# Concept map — {title}",
         "",
         f"{summary.concepts} distinct concepts ({summary.found} placed somewhere) · "
-        f"{summary.lessons} lessons · {summary.rows} appearances · "
-        f"{usage.calls} call(s), {usage.tokens_in} in / {usage.tokens_out} out, "
+        f"{summary.lessons} lessons · {summary.rows} appearances · {summary.calls} call(s) · "
+        f"{usage.calls} request(s), {usage.tokens_in} in / {usage.tokens_out} out, "
         f"{usage.clean_retries} clean retries",
         "",
         "The model was NOT told where the plan declares each concept: `plan declares it in` "
-        "and `here?` are joined afterwards. A `defined_in` row whose `here?` is empty is the "
-        "plan and the prose disagreeing about where a concept is taught.",
+        "and `here?` are joined afterwards. A `defines` row whose `here?` is empty is the plan "
+        "and the prose disagreeing about where a concept is taught. A `defines` row marked "
+        "`(again)` is the course stating a second time what it already stated.",
         "",
         "| " + " | ".join(_MAP_COLUMNS) + " |",
         "|" + "|".join("---" for _ in _MAP_COLUMNS) + "|",
@@ -991,13 +1141,14 @@ def render_map_markdown(
         rows, key=lambda r: (r.concept_index, BUCKETS.index(r.bucket), r.lesson_position)
     )
     for row in ordered:
+        group = row.bucket + (" (again)" if (row.concept_index, row.lesson_id) in again else "")
         lines.append(
             "| "
             + " | ".join(
                 (
                     str(row.concept_index),
                     _cell(row.concept),
-                    row.bucket,
+                    group,
                     row.lesson_id,
                     str(row.lesson_position),
                     "yes" if row.is_frame else "",
@@ -1022,6 +1173,7 @@ def map_as_json(rows: Sequence[ConceptAppearanceRow], summary: MapSummary, usage
         {
             "summary": asdict(summary),
             "usage": asdict(usage),
+            "redefinitions": [asdict(row) for row in redefinitions(rows)],
             "rows": [asdict(row) for row in rows],
         },
         indent=2,

@@ -1028,7 +1028,7 @@ def run_dump_concept_touches(raw_content_id: str, out_dir: Path) -> int:
     return 0
 
 
-def run_dump_concept_map(raw_content_id: str, out_dir: Path) -> int:
+def run_dump_concept_map(raw_content_id: str, out_dir: Path, per_module: bool) -> int:
     """Write the calibration table of where each concept is defined, used and assessed.
 
     The concept-major sibling of `dump-concept-touches`, and the same stance: no instrument
@@ -1069,7 +1069,7 @@ def run_dump_concept_map(raw_content_id: str, out_dir: Path) -> int:
         sinks.append(observability.jsonl_sink(trace))
     try:
         with observability.collecting(observability.fan_out(*sinks)):
-            rows, summary, usage = calibration.dump_concept_map(profile)
+            rows, summary, usage = calibration.dump_concept_map(profile, per_module=per_module)
     except AssessorExecutionError as exc:
         print(f"the extraction never produced a readable answer: {exc}", file=sys.stderr)
         if trace is not None:
@@ -1078,6 +1078,7 @@ def run_dump_concept_map(raw_content_id: str, out_dir: Path) -> int:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"concept-map-{content_id}"
+
     table = out_dir / f"{stem}.md"
     data = out_dir / f"{stem}.json"
     table.write_text(
@@ -1086,14 +1087,18 @@ def run_dump_concept_map(raw_content_id: str, out_dir: Path) -> int:
     data.write_text(calibration.map_as_json(rows, summary, usage), encoding="utf-8")
 
     groups = Counter(row.bucket for row in rows)
-    off_plan = sum(1 for row in rows if row.bucket == "defined_in" and not row.declared_here)
+    off_plan = sum(1 for row in rows if row.bucket == "defines" and not row.declared_here)
+    again = calibration.redefinitions(rows)
     print(
         f"{summary.rows} appearances of {summary.found} of {summary.concepts} concepts "
-        f"over {summary.lessons} lessons"
+        f"over {summary.lessons} lessons, in {summary.calls} call(s)"
     )
     print("  by group: " + ", ".join(f"{k}={v}" for k, v in sorted(groups.items())))
     # The reading this shape exists for: where the prose defines a concept the plan did not.
     print(f"  defined where the plan does not declare it: {off_plan}")
+    # Computed, never asked: the first statement is the introduction and the rest are the
+    # course starting over on something it had already established.
+    print(f"  stated again after already being stated: {len(again)}")
     print(f"  {usage.calls} call(s), {usage.tokens_in} in / {usage.tokens_out} out")
     for note in summary.dropped:
         print(f"  not yielded: {note}", file=sys.stderr)
@@ -3590,6 +3595,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     map_parser.add_argument("--content-id", required=True)
     map_parser.add_argument(
+        "--per-module",
+        action="store_true",
+        help="one call per module instead of one over the whole course (the fan-out)",
+    )
+    map_parser.add_argument(
         "--out",
         type=Path,
         default=Path("runs/concept-map"),
@@ -3862,7 +3872,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "dump-concept-touches":
         return run_dump_concept_touches(args.content_id, args.out)
     elif args.command == "dump-concept-map":
-        return run_dump_concept_map(args.content_id, args.out)
+        return run_dump_concept_map(args.content_id, args.out, args.per_module)
     elif args.command == "evaluate-study":
         return run_evaluate_study(
             UUID(args.study_id), args.assessor, args.concurrency, args.re_evaluate

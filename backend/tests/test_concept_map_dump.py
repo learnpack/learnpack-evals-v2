@@ -3,7 +3,7 @@
 This shape exists because the lesson-major one is unstable where its SHAPE makes it so, and
 because the plan's concept-to-lesson assignment was entangled with the answer. So the two
 things worth pinning here are that the assignment never reaches the prompt, and that it is
-joined back onto every row — a `defined_in` row the plan does not declare is the finding the
+joined back onto every row — a `defines` row the plan does not declare is the finding the
 whole shape was built to surface.
 """
 
@@ -134,26 +134,26 @@ def test_the_plan_is_joined_after_the_answer_and_can_disagree_with_it(fake_llm):
     fake_llm(
         answer(
             concept(0),
-            concept(1, defined_in=[("01.0", DEFINES)], used_as_known_in=[("02.0", USES)]),
+            concept(1, defines=[("01.0", DEFINES)], uses_as_known=[("02.0", USES)]),
         )
     )
     rows, summary, _ = calibration.dump_concept_map(a_profile())
 
-    defined = next(r for r in rows if r.bucket == "defined_in")
+    defined = next(r for r in rows if r.bucket == "defines")
     assert defined.lesson_id == "01.0"
     assert defined.declared_in == ("02.0",)
     # The finding: the prose defines it where the plan does not declare it.
     assert defined.declared_here is False
-    used = next(r for r in rows if r.bucket == "used_as_known_in")
+    used = next(r for r in rows if r.bucket == "uses_as_known")
     assert used.declared_here is True
     assert summary.found == 1
 
 
 def test_every_group_reaches_a_row_with_its_own_zone(fake_llm):
-    fake_llm(answer(concept(0), concept(1, mentioned_in=[("02.0", USES)])))
+    fake_llm(answer(concept(0), concept(1, mentions=[("02.0", USES)])))
     rows, _, _ = calibration.dump_concept_map(a_profile())
 
-    assert [r.bucket for r in rows] == ["mentioned_in"]
+    assert [r.bucket for r in rows] == ["mentions"]
     assert rows[0].zone == "opening"
 
 
@@ -164,7 +164,7 @@ def test_a_quote_that_will_not_ground_costs_its_row(fake_llm):
     fake_llm(
         answer(
             concept(0),
-            concept(1, defined_in=[("01.0", "a sentence nobody wrote")]),
+            concept(1, defines=[("01.0", "a sentence nobody wrote")]),
         )
     )
     rows, summary, usage = calibration.dump_concept_map(a_profile())
@@ -174,15 +174,73 @@ def test_a_quote_that_will_not_ground_costs_its_row(fake_llm):
     assert any("quote not in that lesson" in note for note in summary.dropped)
 
 
-def test_a_concept_nobody_answered_for_is_reported(fake_llm):
-    fake_llm(answer(concept(1, defined_in=[("01.0", DEFINES)])))
+def test_a_concept_no_lesson_deals_with_is_reported(fake_llm):
+    fake_llm(answer(concept(1, defines=[("01.0", DEFINES)])))
     _, summary, _ = calibration.dump_concept_map(a_profile())
 
-    assert any("no entry at all for concept(s): [0]" in note for note in summary.dropped)
+    assert any("no lesson anywhere deals with concept(s): [0]" in n for n in summary.dropped)
+
+
+def test_a_concept_may_be_stated_by_more_than_one_lesson(fake_llm):
+    """`defines` is a local act now. Two lessons stating what a concept is is not a
+    contradiction to be resolved in the prompt — it is the finding, and which one is the
+    introduction is arithmetic over the rows."""
+    fake_llm(answer(concept(0), concept(1, defines=[("01.0", DEFINES), ("02.0", USES)])))
+    rows, _, _ = calibration.dump_concept_map(a_profile())
+
+    assert sorted(r.lesson_id for r in rows) == ["01.0", "02.0"]
+    again = calibration.redefinitions(rows)
+    # 01.0 comes first, so it is the introduction and 02.0 is the course starting over.
+    assert [r.lesson_id for r in again] == ["02.0"]
+    assert "(again)" in calibration.render_map_markdown(
+        rows,
+        calibration.MapSummary(2, 3, 1, len(rows), 1, ()),
+        "t",
+        calibration.LlmUsage(model="m", calls=1, tokens_in=1, tokens_out=1, latency_ms=1),
+    )
+
+
+def test_the_earliest_statement_is_the_introduction_whatever_order_it_arrives_in(fake_llm):
+    fake_llm(answer(concept(0), concept(1, defines=[("02.0", USES), ("01.0", DEFINES)])))
+    rows, _, _ = calibration.dump_concept_map(a_profile())
+    assert [r.lesson_id for r in calibration.redefinitions(rows)] == ["02.0"]
+
+
+def test_the_fan_out_asks_once_per_module_and_shows_only_that_module(fake_llm):
+    """Each call sees its own lessons and the whole concept list. Nothing about the question
+    changes, because every group is a local act."""
+    # Modules 00, 01 and 02 are asked in that order, each about its own lessons.
+    client = fake_llm(
+        answer(),
+        answer(concept(1, defines=[("01.0", DEFINES)])),
+        answer(concept(1, uses_as_known=[("02.0", USES)])),
+    )
+    rows, summary, usage = calibration.dump_concept_map(a_profile(), per_module=True)
+
+    # Three modules (00, 01, 02) -> three calls, and the spend is summed across them.
+    assert summary.calls == 3
+    assert usage.calls == 3
+    assert sorted((r.lesson_id, r.bucket) for r in rows) == [
+        ("01.0", "defines"),
+        ("02.0", "uses_as_known"),
+    ]
+    first = " ".join(m["content"] for m in client.calls[0]["messages"])
+    assert "===== LESSON 00.0" in first and "===== LESSON 01.0" not in first
+    # The whole concept list travels with every call even though the lessons do not.
+    assert "[1] closure" in first
+
+
+def test_the_fan_out_drops_a_lesson_the_call_was_not_shown(fake_llm):
+    # Module 01's call names 02.0, a lesson it was never shown.
+    fake_llm(answer(), answer(concept(1, defines=[("02.0", USES)])), answer())
+    rows, summary, _ = calibration.dump_concept_map(a_profile(), per_module=True)
+
+    assert rows == []
+    assert any("'02.0'" in note for note in summary.dropped)
 
 
 def test_a_group_outside_the_five_is_a_contract_violation(fake_llm):
-    bad = json.dumps({"concepts": [{"conceptIndex": 0, "taught_in": []}]})
+    bad = json.dumps({"concepts": [{"conceptIndex": 0, "defined_in": []}]})
     good = answer(concept(0), concept(1))
     client = fake_llm(bad, good)
     rows, _, usage = calibration.dump_concept_map(a_profile())
@@ -201,7 +259,7 @@ def test_a_persistent_violation_ends_the_dump(fake_llm):
 
 
 def test_more_lessons_than_the_cap_is_refused():
-    over = {"conceptIndex": 0, "defined_in": [{"lessonId": "x", "quote": "q"}] * 7}
+    over = {"conceptIndex": 0, "defines": [{"lessonId": "x", "quote": "q"}] * 7}
     assert calibration.validate_concept_map({"concepts": [over]}, 2)
 
 
@@ -209,7 +267,7 @@ def test_more_lessons_than_the_cap_is_refused():
 
 
 def test_the_table_shows_the_plan_beside_the_answer(fake_llm):
-    fake_llm(answer(concept(0), concept(1, defined_in=[("01.0", DEFINES)])))
+    fake_llm(answer(concept(0), concept(1, defines=[("01.0", DEFINES)])))
     rows, summary, usage = calibration.dump_concept_map(a_profile())
     table = calibration.render_map_markdown(rows, summary, "closures draft", usage)
 
@@ -217,7 +275,7 @@ def test_the_table_shows_the_plan_beside_the_answer(fake_llm):
     assert "| plan declares it in |" in table
     assert "02.0" in table  # what the plan says, beside the lesson the model answered
     assert json.loads(calibration.map_as_json(rows, summary, usage))["rows"][0]["bucket"] == (
-        "defined_in"
+        "defines"
     )
 
 
