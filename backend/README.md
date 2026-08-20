@@ -650,12 +650,51 @@ uv run python -m app.cli register-package --all
 
 # every course of another declared tree (see "From other trees" below)
 uv run python -m app.cli register-package --all --root generated --format LearnpackV2
+
+# every course a file names, by URL (batch)
+uv run python -m app.cli register-package --from-csv ./courses.csv \
+  --generator-name learnpack-generator --generator-version 2.4.0 [--register-new-version]
 ```
 
 `--format` names the source's `PackageFormat` and **defaults to `LearnpackV1`**, so a package
 in any other format needs it spelled out — discovery would otherwise read it with the wrong
 adapter and refuse it. `--all` takes one `--format` for the whole tree, so a tree holding more
 than one format is registered one format per run.
+
+### A generation, from a list of URLs (`--from-csv`)
+
+Three ways of naming what to register, one act underneath: `--source` is one course, `--all` a
+tree of folders, `--from-csv` a **list**. The list declares one format and one generator for all
+of it — the rule `--all` already follows — so a file mixing two of either is two runs.
+
+**The file is read forgivingly**, because what arrives is a spreadsheet somebody exported: the
+**first column** of each row and nothing else, skipping a header row, blank lines, rows parked
+behind a `#`, and duplicates. The columns beside the URL are ignored. What is refused is an
+entry that is not `http(s)` — that is a course this path would register wrong, and a local one
+belongs to `--source` or `--all`.
+
+**The generator is declared once, by id or by name:**
+
+```bash
+--generator <uuid|unknown>                       # as a single registration declares it
+--generator-name <lineage> --generator-version <version>   # the friendlier pair
+```
+
+The **lineage is resolved, never created** (ADR-0031: its name is typed once and never again).
+The **version may be created**, since it changes with every commit of the generator being
+measured — but only with `--register-new-version`, which takes no value: the version is always
+the one you typed. Without it, an unregistered version stops the run before a single course is
+fetched. That is the difference from `--all`, where the version is read off a folder the
+generator itself named: here a typo would not mint one stray version, it would attribute the
+whole list to it, and content is never retired (ADR-0033) while `attribute-generator` only fills
+an `unknown` and never corrects one.
+
+**Everything that would fail for every row fails once**, before the first fetch: the file, the
+format, the generator. After that a course that fails is one line of the summary and the batch
+carries on — and **re-running the same file finishes it**, because an unchanged package is a
+reported no-op. That property is why this is a plain foreground command with no progress bar to
+watch and nothing to cancel: measured against real courses, a new course costs about **9 s** and
+one already registered about **4.6 s**, so fifty of them is roughly seven minutes of terminal.
 
 `--root` names which **declared source root** to read (below); it defaults to the repo's own
 `courses/` tree, so nothing that worked before needs it. A `--source` that is not an http(s)

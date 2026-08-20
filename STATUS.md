@@ -1995,8 +1995,9 @@ the data in the package).
   notice — profiles are built from locators, never from this URL; human evaluation is what a
   missing declaration blocks, and the console says so instead of framing a 404.
   `register-package --source <url|dir>` registers
-  one, `register-package --all` the whole tree; the seeder registers the demo courses
-  through the same path, declaring their real URLs. Both commands **auto-profile** what they
+  one, `register-package --all` the whole tree, **`register-package --from-csv <file>` a list
+  of URLs**; the seeder registers the demo courses through the same path, declaring their real
+  URLs. Both commands **auto-profile** what they
   create once the extraction is accepted, and print what the policy did — until **ADR-0029**
   they never did, because the CLI process subscribed only the evaluation policy while the API
   subscribed four. There is one shared list now. The API side:
@@ -2075,6 +2076,24 @@ the data in the package).
   new instance, and reading each artifact once is now a **format contract**, checked for every
   registered format. **A whole registration is about 8 s against the ~31 s it started at.**
   What is left is the retry budget that would tell a tired origin from a real 404.
+
+  **And that speed is what made a generation a single command rather than a run.**
+  `register-package --from-csv <file>` registers every course a file names — one format and
+  one generator for all of them, the rule `--all` already follows for a tree — and the loop
+  underneath is the same `_register_sources` both batches now share. The file is read
+  forgivingly (first column, skip a header, blanks, `#`, duplicates, ignore the columns a
+  spreadsheet put beside the URL) and refuses only what it would register wrong: an entry
+  that is not http(s). Everything that would fail for every row fails **before the first
+  fetch** — the file, the format, the generator — and after that a course that fails is one
+  line of the summary. The generator is declared by id or by `--generator-name` +
+  `--generator-version`: the lineage is resolved and never minted (ADR-0031), the version may
+  be minted but only with `--register-new-version`, because unlike `--all` — which reads a
+  version off a folder the generator itself named — a typo here would attribute a whole list
+  to a phantom version. **Measured on real courses: ~9 s for a new one, ~4.6 s for one already
+  registered**, so fifty is roughly seven minutes in the foreground. That is what buys the
+  decision NOT to build the intake run: **re-running the file finishes it**, since an unchanged
+  package is a no-op, so there is nothing to resume, cancel or watch. The run comes back the
+  day a list has to be started from a browser — CLI-only is the deferral, not an oversight.
 
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
   wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,
