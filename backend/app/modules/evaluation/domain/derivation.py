@@ -25,7 +25,8 @@ minted HERE from the failure the executor raised — raising is not deciding (AD
 Exact coverage by construction: exactly one outcome per criterion of the snapshot.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from typing import Protocol, TypeVar
 
 from app.modules.evaluation.domain.model import (
     OUTCOME_EXECUTION_ERROR,
@@ -48,6 +49,43 @@ from app.modules.evaluation.domain.model import (
 
 Executor = Callable[[CriterionSpec, ProfileData], ExecutorResult]
 
+_T = TypeVar("_T")
+_R = TypeVar("_R")
+
+
+class RunIndependently(Protocol):
+    """Apply `work` to every item and answer in the SAME order.
+
+    The criteria of one derivation are independent: each is decided from its own spec, the
+    profile and the coverage, and none reads another's outcome. This is how the derivation
+    SAYS so — and it is all it says. Whether anything happens at once, on threads, in another
+    process or one after the next is the caller's business, and the answer must not differ
+    either way.
+
+    The mechanism is injected rather than chosen here because the domain has no business
+    knowing it. An executor's work is minutes of network calls, and running several at once
+    needs things this layer must not learn about: what carries a run's memoized answers, its
+    trace sink and its cancellation token from one thread to the next. Those live in the
+    infrastructure that owns them, so the implementation does too
+    (`app/platform/concurrency.py`); the default below keeps this module correct on its own.
+    """
+
+    def __call__(self, work: Callable[[_T], _R], items: Sequence[_T]) -> Sequence[_R]: ...
+
+
+def one_at_a_time[T, R](work: Callable[[T], R], items: Sequence[T]) -> Sequence[R]:
+    """The default: each in turn, in order. Pure, and the whole contract satisfied."""
+    return [work(item) for item in items]
+
+
+# What one executable criterion answered. An executor may fail two ways and neither is
+# raised through the runner: a typed `ExecutionFailure` is a fact of this run that the budget
+# below may absorb, and an `InvalidAutomatedEvaluation` is a bug in the artifact that must
+# propagate. Carrying them as VALUES is what keeps the runner's contract free of exception
+# semantics — and what lets both be re-raised in criterion order rather than in whatever
+# order the work happened to finish.
+_Answer = ExecutorResult | ExecutionFailure | InvalidAutomatedEvaluation
+
 # The failure budget (ADR-0037 §3): the proportion of the criteria mapped for execution
 # that may carry `execution_error` before the evaluation is not worth persisting. Past it
 # the original failure propagates and the run aborts whole, nothing persisted — ADR-0034
@@ -67,8 +105,14 @@ def derive_and_execute(
     profile: ProfileData,
     coverage: Coverage,
     executors: Mapping[str, Executor],
+    run: RunIndependently = one_at_a_time,
 ) -> tuple[tuple[CriterionOutcome, ...], tuple[ComputedMetric, ...]]:
-    """One outcome per criterion of the snapshot; raw metrics from the executors."""
+    """One outcome per criterion of the snapshot; raw metrics from the executors.
+
+    Causes (a)-(d) are decided here, in order and for free: they read declared facts and
+    nothing else. Only (e) reaches an executor, and those go through `run` together — see
+    `RunIndependently`. Whatever it does, the outcomes come back in the instrument's order.
+    """
     format_covered = any(
         binding.package_format == profile.package_format for binding in instrument.bindings
     )
@@ -86,45 +130,110 @@ def derive_and_execute(
     )
     allowed = int(EXECUTION_FAILURE_BUDGET * executable)
 
+    # Everything decidable from declared facts, decided first. What is left over is the set
+    # of criteria whose evidence has to be looked at.
+    declared: list[tuple[CriterionOutcome, tuple[ComputedMetric, ...]] | None] = []
+    judgeable: list[CriterionSpec] = []
+    for criterion in instrument.criteria:
+        early = _derive_without_judging(
+            criterion, profile, coverage, format_covered, binding_variables
+        )
+        declared.append(early)
+        if early is None:
+            judgeable.append(criterion)
+
+    answers = run(lambda criterion: _judge(criterion, profile, executors), judgeable)
+    answered = dict(zip((c.criterion_id for c in judgeable), answers, strict=True))
+
+    # Everything below is decided in the INSTRUMENT's order, over answers that are already
+    # in. That is what keeps the outcome of a run independent of which executor happened to
+    # finish first: the same answers always produce the same outcomes, the same budget
+    # arithmetic, and the same exception out of the same criterion.
     outcomes: list[CriterionOutcome] = []
     metrics: dict[str, ComputedMetric] = {}
     failures = 0
-    for criterion in instrument.criteria:
-        try:
-            outcome = _derive_one(
-                criterion, profile, coverage, executors, format_covered, binding_variables
-            )
-        except ExecutionFailure as exc:
-            # Only the typed failure: `InvalidAutomatedEvaluation` is a registration bug
-            # and keeps propagating on the first criterion that exposes it.
+    for criterion, early in zip(instrument.criteria, declared, strict=True):
+        if early is not None:
+            outcomes.append(early[0])
+            for metric in early[1]:
+                metrics[metric.metric_id] = metric
+            continue
+        answer = answered[criterion.criterion_id]
+        if isinstance(answer, InvalidAutomatedEvaluation):
+            # A bug in the artifact, never softened into an outcome and never absorbed by
+            # the budget (ADR-0037 §1): it propagates on the first criterion that exposes it.
+            raise answer
+        if isinstance(answer, ExecutionFailure):
             failures += 1
             if failures > allowed:
                 # Past the budget this was not an evaluation; the original failure
-                # propagates and the run aborts whole (ADR-0037 §3).
-                raise
+                # propagates and the run aborts whole (ADR-0037 §3). Counted in the
+                # instrument's order, so the same run always fails on the same criterion.
+                raise answer
             outcomes.append(
                 CriterionOutcome(
                     criterion_id=criterion.criterion_id,
                     outcome=OUTCOME_EXECUTION_ERROR,
                     derived=True,
-                    execution_cause=ExecutionCause(task=exc.task, kind=exc.kind, message=str(exc)),
+                    execution_cause=ExecutionCause(
+                        task=answer.task, kind=answer.kind, message=str(answer)
+                    ),
                 )
             )
             continue
-        outcomes.append(outcome[0])
-        for metric in outcome[1]:
+        scored = _scored(criterion, answer)
+        outcomes.append(scored[0])
+        for metric in scored[1]:
             metrics[metric.metric_id] = metric
     return tuple(outcomes), tuple(metrics.values())
 
 
-def _derive_one(
+def _judge(
+    criterion: CriterionSpec, profile: ProfileData, executors: Mapping[str, Executor]
+) -> _Answer:
+    """(e) The executor looks at the evidence. Never raises what the caller must order."""
+    executor = executors.get(criterion.criterion_id)
+    if executor is None:
+        return InvalidAutomatedEvaluation(
+            f"criterion {criterion.criterion_id} is judgeable but the assessor maps no "
+            "executor for it — its coverage does not match this instrument version "
+            "(ratification should have caught this, ADR-0019)"
+        )
+    try:
+        return executor(criterion, profile)
+    except ExecutionFailure as exc:
+        return exc
+
+
+def _scored(
+    criterion: CriterionSpec, result: ExecutorResult
+) -> tuple[CriterionOutcome, tuple[ComputedMetric, ...]]:
+    if not result.passed and result.failure_mode not in criterion.failure_modes:
+        raise InvalidAutomatedEvaluation(
+            f"criterion {criterion.criterion_id}: executor reported failure mode "
+            f"{result.failure_mode!r}, which the criterion does not declare"
+        )
+    return (
+        CriterionOutcome(
+            criterion_id=criterion.criterion_id,
+            outcome=OUTCOME_PASS if result.passed else OUTCOME_FAIL,
+            derived=False,
+            quote=result.quote,
+            locator=result.locator,
+            failure_mode=None if result.passed else result.failure_mode,
+        ),
+        result.metrics,
+    )
+
+
+def _derive_without_judging(
     criterion: CriterionSpec,
     profile: ProfileData,
     coverage: Coverage,
-    executors: Mapping[str, Executor],
     format_covered: bool,
     binding_variables: Mapping[str, object],
-) -> tuple[CriterionOutcome, tuple[ComputedMetric, ...]]:
+) -> tuple[CriterionOutcome, tuple[ComputedMetric, ...]] | None:
+    """Causes (a)-(d), or `None` when the criterion is judgeable and (e) has to run."""
     # (a) applicability: binding coverage + conditional criteria via task variables.
     if not format_covered or _condition_excludes(criterion, binding_variables):
         return _derived(criterion, OUTCOME_NOT_APPLICABLE), ()
@@ -155,31 +264,8 @@ def _derive_one(
     if criterion.criterion_id in coverage.abstains:
         return _derived(criterion, OUTCOME_NOT_ASSESSED), ()
 
-    # (e) judgeable: the executor looks at the evidence.
-    executor = executors.get(criterion.criterion_id)
-    if executor is None:
-        raise InvalidAutomatedEvaluation(
-            f"criterion {criterion.criterion_id} is judgeable but the assessor maps no "
-            "executor for it — its coverage does not match this instrument version "
-            "(ratification should have caught this, ADR-0019)"
-        )
-    result = executor(criterion, profile)
-    if not result.passed and result.failure_mode not in criterion.failure_modes:
-        raise InvalidAutomatedEvaluation(
-            f"criterion {criterion.criterion_id}: executor reported failure mode "
-            f"{result.failure_mode!r}, which the criterion does not declare"
-        )
-    return (
-        CriterionOutcome(
-            criterion_id=criterion.criterion_id,
-            outcome=OUTCOME_PASS if result.passed else OUTCOME_FAIL,
-            derived=False,
-            quote=result.quote,
-            locator=result.locator,
-            failure_mode=None if result.passed else result.failure_mode,
-        ),
-        result.metrics,
-    )
+    # (e) judgeable: not decidable from declared facts. `_judge` looks at the evidence.
+    return None
 
 
 def _derived(criterion: CriterionSpec, outcome: str) -> CriterionOutcome:

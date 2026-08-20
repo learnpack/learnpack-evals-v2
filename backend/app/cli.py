@@ -249,6 +249,7 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyCampaignRepository,
 )
 from app.platform import batch_runs, observability, schema_version
+from app.platform.concurrency import all_at_once
 from app.platform.db import SessionLocal
 from app.platform.events import dispatcher
 from app.platform.policies import register_all_policies
@@ -842,6 +843,7 @@ def run_evaluate(
                 profiles=profiles,
                 coverage=package.coverage,
                 executors=with_progress(package.executors, _print_step),
+                run_criteria=all_at_once,
             )
             sinks = [_print_call]
             if trace is not None:
@@ -894,6 +896,7 @@ def run_evaluate(
             ratifications=SqlAlchemyRatificationRepository(session),
             coverage=package.coverage,
             executors=dict(package.executors),
+            run_criteria=all_at_once,
             publisher=uow.events,
             uow=uow,
         )

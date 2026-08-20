@@ -332,3 +332,89 @@ def test_one_outcome_per_criterion_of_the_snapshot():
 def test_coverage_overlap_is_rejected():
     with pytest.raises(InvalidAutomatedEvaluation, match="disjoint"):
         Coverage(frozenset({"cr-x"}), {"cr-x": "also abstained"})
+
+
+# --- the runner: what the derivation delegates, and what it keeps (ADR-0048) -------
+
+
+def test_only_the_judgeable_criteria_reach_the_runner():
+    """Causes (a)-(d) are decided from declared facts and never cost a call, so a criterion
+    the format cannot feed or the assessor abstains from must not be handed over."""
+    handed: list[str] = []
+
+    def watching(work, items):
+        handed.extend(c.criterion_id for c in items)
+        return [work(item) for item in items]
+
+    instr = instrument(
+        criterion("cr-judged"),
+        criterion("cr-abstained"),
+        criterion("cr-no-capability", required_data=("nobody-declares-this",)),
+    )
+    outcomes, _ = derive_and_execute(
+        instr,
+        profile({"datum": declared()}),
+        Coverage(frozenset({"cr-judged"}), {"cr-abstained": "cannot judge it"}),
+        {"cr-judged": passing_executor},
+        watching,
+    )
+
+    assert handed == ["cr-judged"]
+    assert [o.outcome for o in outcomes] == ["pass", "not_assessed", "not_applicable"]
+
+
+def test_the_outcomes_are_in_the_instruments_order_whatever_the_runner_does():
+    """The runner may do the work in any order — that is the whole point of delegating it —
+    so the derivation must not read anything into the order it comes back in."""
+
+    def backwards(work, items):
+        # Done last-first, answered first-last: the contract is about the ANSWERS' order.
+        done = {index: work(item) for index, item in reversed(list(enumerate(items)))}
+        return [done[index] for index in range(len(items))]
+
+    def quoting(spec, prof) -> ExecutorResult:
+        return ExecutorResult(passed=True, quote=f"seen for {spec.criterion_id}")
+
+    ids = [f"cr-{i}" for i in range(4)]
+    instr = instrument(*(criterion(cid) for cid in ids))
+    outcomes, _ = derive_and_execute(
+        instr,
+        profile({"datum": declared()}),
+        Coverage(frozenset(ids), {}),
+        {cid: quoting for cid in ids},
+        backwards,
+    )
+
+    assert [o.criterion_id for o in outcomes] == ids
+    assert [o.quote for o in outcomes] == [f"seen for {cid}" for cid in ids]
+
+
+def test_the_budget_fails_on_the_same_criterion_however_the_work_was_ordered():
+    """Which failure aborts a run is decided in the instrument's order, over answers that are
+    already in — so a run that dies does not die differently depending on scheduling."""
+
+    def backwards(work, items):
+        done = {index: work(item) for index, item in reversed(list(enumerate(items)))}
+        return [done[index] for index in range(len(items))]
+
+    def failing(task: str):
+        def executor(spec, prof) -> ExecutorResult:
+            raise ExecutionFailure(f"{task} gave up", task=task, kind="degeneration")
+
+        return executor
+
+    ids = [f"cr-{i}" for i in range(5)]  # int(0.25 * 5) = 1 tolerated
+    instr = instrument(*(criterion(cid) for cid in ids))
+    executors = {cid: passing_executor for cid in ids} | {
+        "cr-1": failing("first"),
+        "cr-3": failing("second"),
+    }
+
+    with pytest.raises(ExecutionFailure, match="second gave up"):
+        derive_and_execute(
+            instr,
+            profile({"datum": declared()}),
+            Coverage(frozenset(ids), {}),
+            executors,
+            backwards,
+        )

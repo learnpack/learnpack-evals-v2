@@ -289,6 +289,23 @@ and governs capacity per account. **How many COURSES a batch runs at once is now
 setting** (`BATCH_MAX_COURSES`, 4): it used to default to the transport's ceiling, which stopped
 making sense when one course became several requests — one is bounded by the database pool, the
 other by what the account is served.
+
+**And then the derivation stopped looking at its criteria one at a time (ADR-0048), which took
+an evaluation from 283 s to 149 s** — same verdicts, same map, no 429 and no retry. What made
+that a decision rather than a patch is where the concurrency went. The obvious repair is a
+thread pool inside `derivation.py`, and the line that gives it away is `copy_context()`: a
+worker starts with an empty context, and what a run carries there — the assessor's memoized
+answers, the trace sink, the cancellation token — belongs to layers the domain must not know
+about. So the domain **declares** that its criteria are independent and asks for the answers in
+order; the mechanism is injected, its default is sequential, and the concurrent implementation
+lives in `platform/concurrency.py` beside the things it has to carry. The domain gained no
+import it did not have and its twenty derivation tests run unchanged. Two costs are real and
+stated in the ADR: a run past its failure budget now pays for the calls already in flight, and
+per-call throughput dips when more is in flight (96–125 tokens per second against 106–134).
+`drafts-hybrid` needed one thing to be safe under it — a memo entry claimed **before** the work
+starts, so two criteria sharing a task no longer both find it missing and both pay — and
+`LLM_MAX_CONCURRENCY` moved to **16**, since a course's peak is now its map alongside the judged
+criteria and the single-call tasks.
 It pins its own model, effort and output budget, all three declared in `SOURCE_CONFIG`: the
 flash model the rest of the package uses does not hold this output contract.
 

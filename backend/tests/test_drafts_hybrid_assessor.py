@@ -24,6 +24,7 @@ import dataclasses
 import json
 import re
 import threading
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -54,6 +55,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_ou
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform import observability
+from app.platform.concurrency import all_at_once
 from app.platform.db import SessionLocal
 from app.platform.llm import (
     LlmCompletion,
@@ -942,6 +944,38 @@ def test_paired_criteria_share_one_extraction(fake_llm):
 
     assert present.passed and verbs.passed
     assert len(client.calls) == 1  # the second criterion read the memoized extraction
+
+
+def test_paired_criteria_asking_at_the_same_moment_still_pay_once(monkeypatch):
+    """Once means once when the two arrive together, which is how the derivation now runs
+    them (ADR-0048).
+
+    "Look it up, run it if missing" is two steps, and the second criterion used to arrive
+    between them: it found nothing remembered — the answer was still on the wire — and asked
+    the same question again. The window is forced open here rather than hoped for: the second
+    criterion does not start looking until the first is already inside the call.
+    """
+    data = outcomes_profile()
+    inner = FakeLlmClient(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))] * 2)
+    asking = threading.Event()
+
+    class Slow:
+        def complete(self, **kwargs):
+            asking.set()  # the first criterion is on the wire, and stays there a while
+            time.sleep(0.2)
+            return inner.complete(**kwargs)
+
+    monkeypatch.setattr(runtime, "get_client", lambda: Slow())
+
+    def ask(criterion_id: str):
+        if criterion_id == "cr-outcomes-observable-verbs":
+            assert asking.wait(timeout=20)
+        return PACKAGE.executors[criterion_id](_SHIPPED_CRITERIA[criterion_id], data)
+
+    present, verbs = all_at_once(ask, ["cr-outcomes-present", "cr-outcomes-observable-verbs"])
+
+    assert present.passed and verbs.passed
+    assert len(inner.calls) == 1  # the second waited for the first's answer instead of buying one
 
 
 def test_two_evaluations_of_one_profile_each_ask_for_themselves(fake_llm):

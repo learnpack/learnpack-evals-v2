@@ -50,6 +50,7 @@ from app.modules.evaluation.infrastructure.assessors import AssessorPackage
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.evaluation.infrastructure.gateways import DesignInstrumentGateway, ProfilingGateway
 from app.platform import observability
+from app.platform.concurrency import all_at_once
 from app.platform.db import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -275,6 +276,7 @@ def execute(run: PreviewRun) -> None:
                 profiles=ProfilingGateway(session),
                 coverage=run.package.coverage,
                 executors=with_progress(run.package.executors, run.record_step),
+                run_criteria=all_at_once,
             )
             preview = use_case(run.command)
     except ProfileNotAvailable as exc:
