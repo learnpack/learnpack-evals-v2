@@ -704,9 +704,18 @@ package read the same from here. The answer is to lower the ceiling, not to re-r
 the fix that would tell the two apart, a retry budget for transport failures as distinct from a
 404, is not built.
 
-**Only the discovery half is read this way.** Profiling re-reads the package afterwards, one
-artifact at a time, inside the same registration (ADR-0029). So when timing a registration,
-time the two halves apart: the CLI's `created …` line closes the discovery, and what
+**What it measures, on a real course** (39 artifacts on `learn-pack.com`, about half a second a
+request): reading the declared surface takes **19.6 s one file at a time and 4.4 s at the
+default ceiling of eight** — 6.4 s at four, 3.2 s at sixteen, 3.1 s at twenty-four, no failure
+at any of them. Flat past sixteen, because what is left by then is the part that cannot fan out
+at all: three manifests read one after the next, since each one names the next. To try a
+different ceiling on your own origin, measure the same way and read both things — the wall
+clock, and whether any artifact started failing.
+
+**Only the discovery half is read this way, and it is now the smaller half.** Profiling
+re-reads the package afterwards, one artifact at a time, inside the same registration
+(ADR-0029): on that same course, **9.9 s against the discovery's 4.4 s**. So when timing a
+registration, time the two apart — the CLI's `created …` line closes the discovery, and what
 `register-package` prints after it is the profiling.
 
 ### From other trees, from the CLI and from the console (ADR-0035)

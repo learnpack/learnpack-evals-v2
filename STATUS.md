@@ -2058,9 +2058,15 @@ the data in the package).
   off on 429, here the origin is somebody else's course server, nothing backs off, and a fetch
   that fails refuses the whole registration. Which is also what a wrong ceiling would look
   like: a course that used to register and now does not, indistinguishable from a broken
-  package. **Only the discovery half reads this way** — profiling still re-reads the package an
-  artifact at a time inside the same registration, so the two halves are timed apart, and the
-  retry budget that would tell a tired origin from a real 404 is not built.
+  package. **Measured on a real course** — 39 artifacts on `learn-pack.com`, about half a second
+  a request — reading the declared surface went **19.6 s → 4.4 s**, and the curve is flat past
+  sixteen (6.4 s at four, 3.2 s at sixteen, 3.1 s at twenty-four, no failure at any of them):
+  what is left by then is the three manifests that cannot fan out, since each names the next.
+  The default stays at eight because that is one origin and the setting applies to all of them.
+  **Only the discovery half reads this way, and it is now the smaller half**: profiling
+  re-reads the package an artifact at a time inside the same registration — **9.9 s against
+  4.4 s on that course** — which makes it the next thing to fix, ahead of the retry budget that
+  would tell a tired origin from a real 404.
 
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
   wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,

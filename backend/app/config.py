@@ -195,8 +195,18 @@ class Settings(BaseSettings):
     # fails refuses the whole registration (ADR-0027) — so overshooting costs a package that
     # reads as broken when what happened is that we asked too fast.
     #
-    # Eight because it is several times faster than one and nowhere near a burst; the number to
-    # raise it to is a measurement nobody has taken against a real origin yet.
+    # Eight, measured against one real origin — a 39-artifact course on `learn-pack.com`, where
+    # a request costs about half a second. Reading its declared surface took 19.6 s one file at
+    # a time, 6.4 s at four, 4.4 s at eight, 3.2 s at sixteen and 3.1 s at twenty-four, with no
+    # failure at any of them. So the curve is flat past sixteen — what is left by then is the
+    # part that cannot fan out at all: three manifests read one after the next, because each one
+    # names the next.
+    #
+    # It stops at eight rather than sixteen because that measurement is ONE origin, and this
+    # setting applies to every origin a course may be served from. The LLM ceiling could be
+    # raised on its own measurement since there is one endpoint behind it and being wrong there
+    # costs retries; being wrong here costs a registration. Sixteen buys about a second on the
+    # origin measured, which is the trade to weigh if it ever matters.
     http_max_concurrency: int = 8
 
     @model_validator(mode="after")
