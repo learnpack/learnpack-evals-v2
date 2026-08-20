@@ -2090,9 +2090,13 @@ the data in the package).
   be minted but only with `--register-new-version`, because unlike `--all` — which reads a
   version off a folder the generator itself named — a typo here would attribute a whole list
   to a phantom version. **Measured on real courses: ~9 s for a new one, ~4.6 s for one already
-  registered**, so fifty is roughly seven minutes in the foreground. That is what buys the
-  decision NOT to build the intake run: **re-running the file finishes it**, since an unchanged
-  package is a no-op, so there is nothing to resume, cancel or watch. The run comes back the
+  registered**, so fifty is roughly seven minutes in the foreground — short enough to sit in
+  front of. That is what buys the decision NOT to build the intake run, and the argument is
+  narrower than "a run is unnecessary": progress and cancelling are already there, as the line
+  per course a terminal prints and the Ctrl-C it answers to, with nothing to undo because each
+  course is its own transaction. What **re-running the file** removes is the third thing a run
+  exists for — outliving the process so that *how far did it get* stays answerable. The run
+  comes back the
   day a list has to be started from a browser — CLI-only is the deferral, not an oversight.
 
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at

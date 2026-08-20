@@ -692,9 +692,25 @@ an `unknown` and never corrects one.
 **Everything that would fail for every row fails once**, before the first fetch: the file, the
 format, the generator. After that a course that fails is one line of the summary and the batch
 carries on — and **re-running the same file finishes it**, because an unchanged package is a
-reported no-op. That property is why this is a plain foreground command with no progress bar to
-watch and nothing to cancel: measured against real courses, a new course costs about **9 s** and
-one already registered about **4.6 s**, so fifty of them is roughly seven minutes of terminal.
+reported no-op.
+
+**Why this is a plain foreground command** and not a run in the shape `evaluate-study` uses.
+Progress and cancelling are not missing: a line per course goes to stderr as it happens, and
+Ctrl-C stops it with nothing to undo, since each course is its own transaction. What the resume
+property removes is the third thing a run exists for — surviving the process, so that *how far
+did it get* is still answerable afterwards. Here it is answered by running the file again.
+What a run would still add is doing any of those **from somewhere else**, which is what a
+browser would need, and that is the deferral rather than the ergonomics.
+
+Two differences from `evaluate-study`'s Ctrl-C, both from having no SIGINT handler here: it
+stops mid-course rather than after the one in flight, and no summary is printed. Neither loses
+work — but a course interrupted between its commit and its profiling stays unprofiled, and
+re-running the file will not notice, since an unchanged package emits nothing. `profile-content
+--content-id` is the repair, exactly as it is for `--all`.
+
+Measured against real courses, a new one costs about **9 s** and one already registered about
+**4.6 s**, so fifty is roughly seven minutes of terminal — short enough to sit in front of,
+which is the other half of why nothing here runs in the background.
 
 `--root` names which **declared source root** to read (below); it defaults to the repo's own
 `courses/` tree, so nothing that worked before needs it. A `--source` that is not an http(s)
