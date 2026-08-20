@@ -18,6 +18,8 @@ same datum), profiles are immutable, and paying twice for one question would be 
 import json
 import re
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import Context, copy_context
 from dataclasses import dataclass
 from typing import Any
 
@@ -440,6 +442,14 @@ _IMAGE = re.compile(r"!\[.*?\]\([^)]*\)", re.S)
 _DIAGRAM = re.compile(r"```mermaid\b.*?```", re.S | re.I)
 
 
+# One request of the fan-out: what it is called in a dropped-row note, the lessons it is shown,
+# the groups it may answer in, and its two prompts.
+_MapCall = tuple[str, list[dict[str, Any]], tuple[str, ...], str, str]
+
+# What one of them comes back with: its rows, its dropped-row notes, and what it spent.
+_MapAnswer = tuple[list["ConceptAppearance"], list[str], LlmUsage]
+
+
 @dataclass(frozen=True)
 class ConceptAppearance:
     """One concept, met in one lesson, in one of the five groups, quoted verbatim."""
@@ -556,7 +566,7 @@ def concept_map(profile: ProfileData) -> tuple[ConceptMap, LlmUsage]:
                 model=CONCEPT_MAP_MODEL, calls=0, tokens_in=0, tokens_out=0, latency_ms=0
             )
 
-        calls: list[tuple[str, list[dict[str, Any]], tuple[str, ...], str, str]] = [
+        calls: list[_MapCall] = [
             (
                 "definitions",
                 lessons,
@@ -580,27 +590,58 @@ def concept_map(profile: ProfileData) -> tuple[ConceptMap, LlmUsage]:
             ),
         ]
 
-        appearances: list[ConceptAppearance] = []
-        dropped: list[str] = []
-        spend: list[LlmUsage] = []
-        for name, shown, groups, system_prompt, user_prompt in calls:
+        def ask(call: _MapCall) -> tuple[list[ConceptAppearance], list[str], LlmUsage]:
+            name, shown, groups, system_prompt, user_prompt = call
             payload, usage = request_structured_output(
                 runtime.get_client(),
                 task_id="concept_map",
                 model=CONCEPT_MAP_MODEL,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                validate=lambda answer, groups=groups: _validate_concept_map(  # type: ignore[misc]
-                    answer, len(concepts), groups
-                ),
+                validate=lambda answer: _validate_concept_map(answer, len(concepts), groups),
                 temperature=TEMPERATURE,
                 max_tokens=CONCEPT_MAP_MAX_OUTPUT_TOKENS,
                 reasoning=CONCEPT_MAP_REASONING,
             )
-            spend.append(usage)
             found, refused = _appearances_from(payload, shown, concepts, groups)
+            return found, [f"{name}: {note}" for note in refused], usage
+
+        # The calls are independent — the definitions pass and each module's usage pass share
+        # no state and are never told about each other — so they go out together. On one draft
+        # this stage was 84 % of an evaluation's wall clock at 517 seconds over seven serial
+        # calls whose slowest was 114, which is the difference between a criterion you can run
+        # over a dataset and one you cannot.
+        #
+        # No cap is set here on purpose. The transport holds one bounded semaphore per process
+        # (`platform/llm.py`), and it exists precisely so that stacked fan-outs cannot burst
+        # past `LLM_MAX_CONCURRENCY` — a second cap at this level would not compose with the
+        # batch runner's, and nobody would have decided the product of the two.
+        #
+        # Nothing about the ANSWERS changes: each call is the same question with the same
+        # corpus and the same sampling, and results are assembled BY CALL ORDER rather than by
+        # completion, so two runs of one profile differ no more than they did serially
+        # (ADR-0034: when an answer arrives is transport, which answer arrives is identity).
+        #
+        # Each worker runs inside a COPY of this context, and the copy is what makes the calls
+        # observable: the trace sink is a `ContextVar` (`platform/observability.py`), a fresh
+        # thread starts with an empty context, and without this the whole fan-out emitted
+        # nothing — an evaluation whose most expensive task left no trace, which is the one
+        # thing the calibration runbook cannot work without. One copy per call rather than one
+        # shared: a `Context` cannot be entered from two threads at once.
+        def ask_in_context(carried: tuple[Context, _MapCall]) -> _MapAnswer:
+            context, call = carried
+            return context.run(ask, call)
+
+        with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+            answered = list(pool.map(ask_in_context, [(copy_context(), call) for call in calls]))
+
+        appearances: list[ConceptAppearance] = []
+        dropped: list[str] = []
+        spend: list[LlmUsage] = []
+        for found, refused, usage in answered:
             appearances.extend(found)
-            dropped.extend(f"{name}: {note}" for note in refused)
+            dropped.extend(refused)
+            spend.append(usage)
 
         found_map = ConceptMap(
             appearances=tuple(appearances),

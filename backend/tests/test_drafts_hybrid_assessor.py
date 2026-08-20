@@ -22,6 +22,7 @@ business, never the suite's — no test touches the network.
 import copy
 import dataclasses
 import json
+import re
 import threading
 from typing import Any
 from uuid import uuid4
@@ -52,6 +53,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid.structured_ou
 )
 from app.modules.evaluation.infrastructure.assessors.errors import AssessorExecutionError
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+from app.platform import observability
 from app.platform.db import SessionLocal
 from app.platform.llm import (
     LlmCompletion,
@@ -88,13 +90,22 @@ class FakeLlmClient:
     otherwise by the task tag in the user prompt (how the v2 extraction tasks are fed).
 
     Queues hold raw response TEXTS so a test can feed one bad answer and then a good one —
-    the feedback-retry loop runs for real against them."""
+    the feedback-retry loop runs for real against them.
+
+    The concept map is fed a DICT instead, keyed `definitions` and by module id, because its
+    calls go out concurrently (v13): a FIFO queue would hand whichever request won the race
+    whichever answer happened to be first, and the test would pass or fail by scheduling. The
+    key is read off the prompt, so each call gets the answer written for it however the threads
+    interleave. `calls` is appended under a lock for the same reason — the count is an
+    assertion in several tests.
+    """
 
     def __init__(
         self,
         outcomes: list[str] | None = None,
         objectives: list[str] | None = None,
         trajectory: list[str] | None = None,
+        concept_map: dict[str, str] | None = None,
         **by_task: list[str],
     ) -> None:
         self._queues = {
@@ -103,7 +114,20 @@ class FakeLlmClient:
             "<plan>": list(trajectory or []),
         }
         self._by_task = {task_id: list(answers) for task_id, answers in by_task.items()}
+        self._concept_map = dict(concept_map or {})
+        self._lock = threading.Lock()
         self.calls: list[dict] = []
+
+    @staticmethod
+    def _concept_map_key(prompt_text: str) -> str:
+        """Which of the two passes this is, and for which module — read off the prompt the
+        way a reader would: the definitions pass shows the whole course, a usage pass shows
+        one module and names its lessons."""
+        if "<course>" in prompt_text:
+            return "definitions"
+        shown = re.findall(r"===== LESSON (\d+)\.", prompt_text)
+        assert shown, "a usage call must show at least one lesson"
+        return shown[0]
 
     def complete(
         self,
@@ -116,24 +140,33 @@ class FakeLlmClient:
         extra_body=None,
         task_id=None,
     ):
-        self.calls.append(
-            {
-                "model": model,
-                "messages": list(messages),
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "response_format": response_format,
-                "extra_body": extra_body,
-                "task_id": task_id,
-            }
-        )
-        if task_id in self._by_task:
-            queue = self._by_task[task_id]
-            assert queue, f"fake transport has no answer left for task {task_id!r}"
-            return LlmCompletion(
-                text=queue.pop(0), model=model, tokens_in=100, tokens_out=40, latency_ms=7
+        with self._lock:
+            self.calls.append(
+                {
+                    "model": model,
+                    "messages": list(messages),
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "response_format": response_format,
+                    "extra_body": extra_body,
+                    "task_id": task_id,
+                }
             )
         prompt_text = "\n".join(m["content"] for m in messages)
+        if task_id == "concept_map" and self._concept_map:
+            key = self._concept_map_key(prompt_text)
+            assert key in self._concept_map, f"fake transport has no answer for {key!r}"
+            return LlmCompletion(
+                text=self._concept_map[key], model=model, tokens_in=100, tokens_out=40, latency_ms=7
+            )
+        if task_id in self._by_task:
+            with self._lock:
+                queue = self._by_task[task_id]
+                assert queue, f"fake transport has no answer left for task {task_id!r}"
+                answer = queue.pop(0)
+            return LlmCompletion(
+                text=answer, model=model, tokens_in=100, tokens_out=40, latency_ms=7
+            )
         for tag, queue in self._queues.items():
             if tag in prompt_text:
                 assert queue, f"fake transport has no answer left for {tag}"
@@ -542,29 +575,32 @@ def continuity_answers(
     lesson_ids: tuple[str, ...],
     defines: dict[str, str],
     usage: dict[str, tuple[tuple[str, str, str], ...]],
-) -> list[str]:
-    """The whole queue: `defines` maps a concept (named by its owning lesson) to the lesson
-    that states it; `usage` maps a module to (lesson, concept owner, group) triples."""
+) -> dict[str, str]:
+    """One answer per call, keyed the way the fake routes them: `defines` maps a concept
+    (named by its owning lesson) to the lesson that states it; `usage` maps a module to
+    (lesson, concept owner, group) triples."""
     index_of = {lid: index for index, lid in enumerate(lesson_ids)}
     modules = sorted({lid.split(".")[0] for lid in lesson_ids})
-    queue = [
-        concept_map_json(
+    answers = {
+        "definitions": concept_map_json(
             *(
                 (index_of[owner], "defines", [(stated_in, continuity_quote(stated_in))])
                 for owner, stated_in in defines.items()
             )
         )
-    ]
-    queue.extend(
-        concept_map_json(
-            *(
-                (index_of[owner], group, [(lesson_id, continuity_quote(lesson_id))])
-                for lesson_id, owner, group in usage.get(module, ())
+    }
+    answers.update(
+        {
+            module: concept_map_json(
+                *(
+                    (index_of[owner], group, [(lesson_id, continuity_quote(lesson_id))])
+                    for lesson_id, owner, group in usage.get(module, ())
+                )
             )
-        )
-        for module in modules
+            for module in modules
+        }
     )
-    return queue
+    return answers
 
 
 def run_continuity(criterion_id: str, data: ProfileData):
@@ -631,7 +667,7 @@ def test_saying_again_what_the_module_taught_is_not_building_on_it(fake_llm):
     )
     # 01.1 states 01.0's concept a second time. 01.0 states it first, so 01.0 is the
     # introduction and 01.1 is the course saying again what it had already said.
-    answers[0] = concept_map_json(
+    answers["definitions"] = concept_map_json(
         *((index, "defines", [(lid, continuity_quote(lid))]) for index, lid in enumerate(lessons)),
         (1, "defines", [("01.1", continuity_quote("01.1"))]),
     )
@@ -698,7 +734,7 @@ def test_the_introduction_is_the_earliest_lesson_that_states_a_concept(fake_llm)
         usage={"01": (("01.1", "01.0", "uses_as_known"), ("01.2", "01.0", "develops"))},
     )
     # 01.2 states 01.0's concept as well; `min(position)` still puts the introduction at 01.0.
-    answers[0] = concept_map_json(
+    answers["definitions"] = concept_map_json(
         *((index, "defines", [(lid, continuity_quote(lid))]) for index, lid in enumerate(lessons)),
         (1, "defines", [("01.2", continuity_quote("01.2"))]),
     )
@@ -769,7 +805,7 @@ def test_a_usage_call_may_not_name_a_lesson_it_was_not_shown(fake_llm):
         usage={"01": (("01.1", "01.0", "uses_as_known"),)},
     )
     # The module 02 call answers about a lesson of module 01.
-    answers[-1] = concept_map_json(
+    answers["02"] = concept_map_json(
         (1, "uses_as_known", [("01.1", continuity_quote("01.1"))]),
     )
     fake_llm(concept_map=answers)
@@ -801,6 +837,81 @@ def test_the_continuity_pair_share_one_concept_map(fake_llm):
 
     assert within.passed and across.passed
     assert len(client.calls) == 4  # definitions + three modules, asked once for both
+
+
+def test_the_map_calls_go_out_together(monkeypatch):
+    """The fan-out is not an optimization detail, it is what makes this task affordable: over
+    one real draft the map was 84 % of an evaluation's wall clock, seven serial calls totalling
+    517 seconds where the slowest single one took 114.
+
+    Pinned with a barrier rather than a stopwatch. Every call waits for all of them to arrive,
+    so a serial implementation cannot get past the first — no timing threshold to tune, and no
+    flake on a slow machine.
+    """
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    inner = FakeLlmClient(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={"01": (("01.1", "01.0", "uses_as_known"),)},
+        )
+    )
+    barrier = threading.Barrier(4, timeout=20)  # the definitions pass plus three modules
+
+    class Barriered:
+        def complete(self, **kwargs):
+            if kwargs.get("task_id") == "concept_map":
+                barrier.wait()
+            return inner.complete(**kwargs)
+
+    monkeypatch.setattr(runtime, "get_client", lambda: Barriered())
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert not verdict.passed  # only one of the two interior lessons builds; the verdict is
+    assert len(inner.calls) == 4  # incidental here — what is pinned is that all four ran at once
+
+
+def test_the_fan_out_is_observable(monkeypatch):
+    """A call made on a worker thread still reaches the caller's sink.
+
+    The trace sink is a `ContextVar`, and a fresh thread starts with an empty context, so the
+    first fan-out emitted nothing at all: the evaluation's most expensive task left no record
+    of what it asked or what came back. That is the one thing the calibration runbook cannot
+    work without, and it failed silently — the run looked fine and the trace was simply short.
+    """
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    inner = FakeLlmClient(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={"01": (("01.1", "01.0", "uses_as_known"),)},
+        )
+    )
+
+    class Emitting:
+        """The fake, doing the one thing the real transport does besides answering."""
+
+        def complete(self, **kwargs):
+            completion = inner.complete(**kwargs)
+            observability.emit(
+                observability.LlmCall(
+                    task_id=kwargs.get("task_id"),
+                    attempt=1,
+                    model_requested=kwargs["model"],
+                    messages=(),
+                    latency_ms=1,
+                )
+            )
+            return completion
+
+    monkeypatch.setattr(runtime, "get_client", lambda: Emitting())
+    recorded, sink = observability.recording()
+
+    with observability.collecting(sink):
+        run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert sum(1 for call in recorded if call.task_id == "concept_map") == 4
 
 
 def test_a_course_with_no_declared_concept_is_not_asked_about(fake_llm):
@@ -2151,26 +2262,26 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
             ("04.1", whole_page, "uses_as_known"),
         ),
     }
-    concept_map_queue = [
-        concept_map_json(
+    concept_map_answers = {
+        "definitions": concept_map_json(
             *(
                 (concept_index[name], "defines", [(lesson_id, fixture_prose(fixture, lesson_id))])
                 for name, lesson_id in introduces.items()
             )
         ),
-        *(
-            concept_map_json(
+        **{
+            module: concept_map_json(
                 *(
                     (concept_index[name], group, [(lesson_id, fixture_prose(fixture, lesson_id))])
                     for lesson_id, name, group in works_with[module]
                 )
             )
             for module in sorted(works_with)
-        ),
-    ]
+        },
+    }
 
     client = fake_llm(
-        concept_map=concept_map_queue,
+        concept_map=concept_map_answers,
         outcomes=[outcomes_json((grounded, "build", True))],
         # v9 requires `lesson_concept_coverage`, which the fixture carries, so the trajectory
         # task is reached now — answered non-decreasing so the criterion passes.
