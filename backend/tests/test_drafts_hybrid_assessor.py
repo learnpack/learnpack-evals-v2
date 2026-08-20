@@ -248,12 +248,36 @@ def outcomes_profile() -> ProfileData:
 # --- coverage vs the shipped instrument ------------------------------------------------
 
 
-def test_coverage_is_a_disjoint_union_over_the_shipped_instrument():
-    declared = {raw["id"] for raw in _V7_SPEC["criteria"]}
-    assert PACKAGE.coverage.declared == declared
+def test_coverage_decides_every_criterion_of_the_shipped_instrument():
+    """Every criterion of the version this artifact is written against is decided, and nothing
+    is decided twice (ADR-0018).
+
+    A SUPERSET rather than an equality, and v9 is why. Until then every revision of this
+    lineage had only ever added ids or reworded conditions, so "declares exactly the shipped
+    instrument's criteria" and "declares every criterion of every version" were the same set.
+    v9 RETIRES `cr-later-lessons-apply-earlier-concepts`, replacing it with two, so the
+    artifact must go on deciding an id no current version declares — otherwise it stops being
+    able to ratify v2 through v8, which are the versions the measured studies pin.
+    """
+    shipped = {raw["id"] for raw in _V7_SPEC["criteria"]}
+    assert shipped <= PACKAGE.coverage.declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
     assert PACKAGE.instrument_id == _V7_SPEC["instrument_id"]
     assert len(PACKAGE.coverage.executes) == 19
+
+
+def test_coverage_declares_nothing_no_version_of_the_lineage_asks_for():
+    """The other half of the superset: an id decided here must be an id some version declares.
+
+    Without it, `declared` could accumulate typos and retired ids forever and the test above
+    would never notice.
+    """
+    lineage = set()
+    for spec_file in INSTRUMENTS_DIR.glob("course-drafts-qa-v*.yaml"):
+        spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        lineage |= {raw["id"] for raw in spec["criteria"]}
+    orphans = PACKAGE.coverage.declared - lineage
+    assert not orphans, f"decided by the artifact but declared by no version: {sorted(orphans)}"
 
 
 def test_coverage_also_decides_every_criterion_of_the_lineages_other_versions():
@@ -1815,7 +1839,11 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         "cr-assessment-matches-the-declared-verification",
         "cr-assessment-retrieves-earlier-taught-material",
     }
-    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains)
+    # The abstains restricted to what THIS instrument version declares. Since v9 the artifact
+    # decides ids v2 never had, and an outcome is only derived for a criterion the pinned
+    # version carries.
+    declared_here = {outcome.criterion_id for outcome in outcomes}
+    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains) & declared_here
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
     assert all(not o.derived and o.quote for o in outcomes if o.outcome == "pass")
 
