@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-19._
+_Last updated: 2026-08-20._
 
 ## Where we are
 
@@ -270,6 +270,8 @@ that with the wide bar, and the executor adds the deterministic anchor: which ap
 concept is its INTRODUCTION is `min(position)`, computed in code and never asked. The map is
 asked in two passes — definitions over the whole course, usage module by module — which costs
 `1 + one call per module` and takes an evaluation from ~15 calls to 22 on the drafts measured.
+It pins its own model, effort and output budget, all three declared in `SOURCE_CONFIG`: the
+flash model the rest of the package uses does not hold this output contract.
 Those calls **go out together**, which is what makes the criterion runnable over a dataset
 rather than merely demonstrable: serially the map was 84 % of an evaluation's wall clock — 517
 seconds against 97 for everything else — and the same draft now finishes in 321 seconds instead
@@ -306,8 +308,27 @@ per-call throughput dips when more is in flight (96–125 tokens per second agai
 starts, so two criteria sharing a task no longer both find it missing and both pay — and
 `LLM_MAX_CONCURRENCY` moved to **16**, since a course's peak is now its map alongside the judged
 criteria and the single-call tasks.
-It pins its own model, effort and output budget, all three declared in `SOURCE_CONFIG`: the
-flash model the rest of the package uses does not hold this output contract.
+
+**The last lever on the map was measured and rejected, and that is where the work on speed
+stops.** What sets the floor now is one call generating some thirteen thousand tokens, most of
+them reasoning, so the obvious move was to ask the six USAGE passes — three quarters of the
+map's output tokens — for less of it. Four runs over the two calibrated drafts say no, in two
+ways that look nothing alike. The **same model at medium** got every verdict right and spent
+the safety margin: the draft two readers call cumulative went from 8 of 9 to exactly 6 of 9
+against a bar of 6, on a quantity known to move (54 and 59 usage rows at identical settings), so
+one lesson fewer flips a course that should pass. A **cheaper flash model at medium** broke it
+outright — that draft's across-modules verdict went 5/5 to 3/5, both drafts came back with the
+same pair, and the criterion stopped telling them apart; it also spent MORE output tokens than
+the strong model at medium for a third of the rows. So neither shipped: both passes stay at
+`high` and `drafts-hybrid` stays at **13**. The durable half of that is in
+`docs/RUNBOOK-calibrating.md` — test a cheaper reading on the draft that should PASS and read
+the distance to the bar, because checking that the bad draft still fails is the check a recall
+collapse survives for the wrong reason.
+
+**So what is left for a population is throughput, not latency.** An evaluation is 149 s and its
+floor is a single model's single answer; `evaluate-study --concurrency` runs courses at a time
+against the transport's one ceiling, and how far that scales is what a first real batch measures
+rather than guesses.
 
 **Measured against the draft the readers read**, and it is the strongest agreement this
 lineage has: on the SOLID draft of `learnpack-generator-a154586`, both criteria return exactly
