@@ -325,10 +325,17 @@ the strong model at medium for a third of the rows. So neither shipped: both pas
 the distance to the bar, because checking that the bad draft still fails is the check a recall
 collapse survives for the wrong reason.
 
-**So what is left for a population is throughput, not latency.** An evaluation is 149 s and its
-floor is a single model's single answer; `evaluate-study --concurrency` runs courses at a time
-against the transport's one ceiling, and how far that scales is what a first real batch measures
-rather than guesses.
+**So what is left for a population is throughput, not latency, and a first real batch says how
+much.** An evaluation is 149 s and its floor is a single model's single answer, so what scales
+is `evaluate-study`, which runs courses at a time against the transport's one ceiling. Six
+courses at the defaults — four at a time, sixteen requests in flight — took **304 s against
+963 s of course time, a 3.2× on four workers**, with 142 calls, no retry, no 429 and nothing cut
+at the budget. **The queueing that was expected did not happen**: four courses peak at a
+theoretical 64 requests against a ceiling of 16, but their peaks do not coincide, and the map's
+calls generated at 97–139 tokens per second — the same band a single course produces alone. So
+the effective figure to plan a generation with is about **50 s per course**, and the knob with
+room left is `BATCH_MAX_COURSES` rather than the ceiling: the requests are not saturated, and
+what bounds the workers is the database pool at roughly seven.
 
 **Measured against the draft the readers read**, and it is the strongest agreement this
 lineage has: on the SOLID draft of `learnpack-generator-a154586`, both criteria return exactly
