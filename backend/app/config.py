@@ -126,11 +126,35 @@ class Settings(BaseSettings):
     # for far more than the account allows in the first place. Access, not identity, on the
     # same reasoning as the timeout: it changes when an answer arrives, never which one.
     # It lives at the transport because that is the only place that sees every call however
-    # many levels of fan-out sit above it — a batch over courses today, a fan-out over
-    # lessons inside each one tomorrow, whose product no per-level cap could bound.
-    # Above ~7 the database pool becomes the next limit (5 + 10 overflow, two sessions per
-    # worker), so raising this past that means raising the pool too.
-    llm_max_concurrency: int = 4
+    # many levels of fan-out sit above it — a batch over courses, and inside each one an
+    # assessor task that asks several questions at once, whose product no per-level cap
+    # could bound.
+    #
+    # The number comes from OUR demand, because the endpoint declares none: OpenRouter
+    # publishes rate limits (requests per minute and per day) only for the `:free` model
+    # variants, states no concurrency cap for paid ones, and governs capacity per account —
+    # so more keys buy nothing and there is no figure to read off the API.
+    #
+    # Our demand is one evaluation's widest fan-out. `drafts-hybrid` asks its concept map as
+    # one call plus one per module, which is seven on the drafts measured, and eight covers
+    # that with room. It is measured rather than guessed: at a ceiling of seven all seven
+    # calls generated at 106-134 tokens per second with no 429 and no retry, where at four
+    # the three that waited for a slot recorded 46-71 — that gap was this queue, not the
+    # provider. A ceiling below the fan-out does not save anything; it just moves the wait
+    # here and hides it inside the latency of the calls that queued.
+    #
+    # A BATCH multiplies that: `courses in flight x (1 + modules)`. Raise this for one, watch
+    # for 429s, and remember the transport backs off on `Retry-After` — overshooting costs
+    # retries, not correctness. How many courses run at a time is `batch_max_courses`, which
+    # is a different question and has a different limit.
+    llm_max_concurrency: int = 8
+    # How many COURSES a batch evaluates at a time (`evaluate-study`, the console's batch).
+    # Separate from the ceiling above since the concept map's fan-out made them independent:
+    # one course now asks for several calls at once, so "courses in flight" and "requests in
+    # flight" stopped being the same number and one cannot serve as the other's default.
+    # What bounds this one is the database, not the endpoint: each worker uses up to two
+    # sessions against a pool of 5 + 10 overflow, so past ~7 the pool has to be raised too.
+    batch_max_courses: int = 4
 
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":
