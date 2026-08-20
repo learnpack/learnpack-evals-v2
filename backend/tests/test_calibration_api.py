@@ -70,7 +70,9 @@ def test_assessor_packages_list_the_registry_without_its_internals(admin):
     assert hybrid["instrument_id"] == "course-drafts-qa"
     assert hybrid["display_name"] == "drafts-hybrid v12"
     assert hybrid["uses_llm"] is True
-    assert len(hybrid["executes"]) == 19 and len(hybrid["abstains"]) == 10
+    # 12 abstains, not 10, since course-drafts-qa v9 split one criterion into two and the
+    # artifact must go on deciding the retired id so it can still ratify v2 through v8.
+    assert len(hybrid["executes"]) == 19 and len(hybrid["abstains"]) == 12
     # Abstention reasons are data the page shows; executors and source_config are not.
     assert all(isinstance(reason, str) and reason for reason in hybrid["abstains"].values())
     assert set(hybrid) == {

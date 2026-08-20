@@ -1,4 +1,50 @@
-# course-drafts-qa v7 — DRAFT for team review.
+# course-drafts-qa v9 — DRAFT for team review.
+#
+# CHANGED IN v9 — one claim becomes two, and the criterion under it becomes two. Nothing else
+# in this file moves: every other id, claim, criterion and data requirement is verbatim v8.
+#
+# `cl-course-revisits-what-it-taught` asked whether a course revisits its earlier content, and
+# a draft answers that question twice with different answers. Four independent readers were
+# each asked, unprompted, whether one draft builds on itself; each answered "partially", and
+# each split the same way — cumulative inside a module, rhetorical between modules. A single
+# conjunctive claim can only report the conjunction of those two, which is the least
+# informative thing either of them says.
+#
+# The mechanical reason is what settles it. A module's opening lesson has no earlier lesson
+# WITHIN its module to build on, so it can only build across modules; a single ratio over all
+# core lessons averages two populations whose denominators mean different things. Measured on
+# one draft, the failing lessons were precisely the module openers.
+#
+# `cr-assessment-retrieves-earlier-taught-material` moves to the across-modules claim without
+# a word changed: its pass condition already said "outside their own module", so it was
+# already evidencing one half of the old claim and not the other.
+#
+# The two new criteria widen what counts as working with earlier material, and the widening is
+# measured rather than preferred. v8 asked for a use "rather than a restatement"; over one
+# draft two readers found that act in 23 and 29 places while six model runs found it in 0 to
+# 9. A criterion resting on that distinction measures who is reading. Developing a concept,
+# operating with it, or setting a task on it all count; naming it does not, and neither does
+# saying again what it is — that last one is a course starting over, not building.
+#
+# COVERAGE MOVES: this lineage gains one criterion (two replace one). Fitness computed against
+# v8 and against v9 is not comparable (ADR-0023 §7), and an assessor ratified against v8 needs
+# an explicit ratification against v9 (ADR-0019).
+#
+# ------------------------------------------------------------------------------------------
+# course-drafts-qa v8 — DRAFT for team review.
+#
+# CHANGED IN v8 — the generator changed what `files/lesson_plan.json` declares per lesson:
+# `concept_covered: str` became `concepts_covered: list[str]` (plus an unrelated new
+# `lesson_focus` field this lineage does not consume — no criterion asks for it, so it is not
+# minted). `lesson_concepts` named exactly one concept per lesson; ADR-0020 makes one id one
+# shape, so the reshaped datum is a NEW id, `lesson_concept_coverage`, rather than a
+# redeclared `lesson_concepts` — the same move v7 made for `declared_objectives` and
+# `assessment_offerings` beside their narrower siblings. The one criterion that required the
+# old id, `cr-cognitive-demand-rises-across-the-course`, now requires the new one; its pass
+# condition never assumed a single concept, only the old field's shape did. No packages in
+# the old shape are measured going forward, so nothing here bridges the two, and
+# `lesson_concepts` stays exactly what v2/v5/v6/v7 declared it to be — untouched, for the
+# packages already measured against it.
 #
 # CHANGED IN v7 — one data requirement minted, three criteria re-pointed at it and one claim
 # widened, all for the same reason: the assessment this argument judges was being read through
@@ -110,7 +156,7 @@
 # Authored as ASSISTANCE (see assisted_by): per design 12 invariant 5, nothing produced by
 # assistance reaches Published without a human act — review this file like code, edit
 # freely, and publish with
-# `python -m app.cli publish-instrument --id course-drafts-qa-v7 --email <admin>`
+# `python -m app.cli publish-instrument --id course-drafts-qa-v8 --email <admin>`
 # only when the team owns every word.
 #
 # INHERITED VERBATIM from learnpack-course-qa v1, through v1 of this lineage: 14 of the 20
@@ -149,7 +195,9 @@
 # than independent observations. They would pass always and cover nothing.
 #
 # `data_requirements` DECLARES ONLY WHAT THIS LINEAGE MINTS (ADR-0014): `declared_objectives`,
-# `lesson_concepts` and now `assessment_offerings`. Everything else these criteria require is
+# `assessment_offerings` and now `lesson_concept_coverage` (v8 — the reshaped successor of
+# `lesson_concepts`, which stays declared in v2/v5/v6/v7 for the packages measured against
+# it). Everything else these criteria require is
 # already in the global namespace and is not redeclared. Two of the three stand alongside an
 # older id on purpose, for the same reason each time — a narrower datum and a wider one are
 # consumed by different criteria and must not be one id: `learning_objectives` is the
@@ -165,9 +213,9 @@
 # fitness (ADR-0023), which is honest, not a zero.
 
 instrument_id: course-drafts-qa
-version: v7
-revision_reason: "proposed exercises are what a draft offers to assess with: the assessment surface it declares now carries them, marked as proposed"
-name: "Course Drafts QA v7"
+version: v9
+revision_reason: "the revisiting claim splits: within a module and across modules are different findings"
+name: "Course Drafts QA v8"
 purpose: >
   Internal QA of the drafts an AI course generator emits, before a teacher processes them
   into a deliverable course: whether the draft declares what it is for, states observable
@@ -211,18 +259,23 @@ data_requirements:
         # adapter says "I looked and there was nothing", never by omitting the key.
         verifiableBy: { type: string, nullable: true }
     grounded_in: ["Biggs"]
-  - id: lesson_concepts
+  - id: lesson_concept_coverage
     definition: >
-      The concept each lesson declares it covers, as a list keyed by lesson identifier. The
-      concept a lesson names is the format's own summary of what that lesson teaches, so a
+      The concepts each lesson declares it covers, as a list keyed by lesson identifier. The
+      concepts a lesson names are the format's own summary of what that lesson teaches, so a
       trajectory of concepts in delivery order is evidence about the course's progression
-      that needs neither the lesson bodies nor any inference over them.
+      that needs neither the lesson bodies nor any inference over them. A lesson may name
+      several. A new id rather than a reshaped `lesson_concepts` (ADR-0020: one id, one
+      shape) — v7's `lesson_concepts` named exactly one concept per lesson, a shape earlier
+      packages actually had; this format names a set, and the two do not merge into one
+      declaration.
     value_domain:
       type: record_list
       fields:
         lessonId: { type: string }
-        # Null for a lesson the format lists without naming a concept for it.
-        concept: { type: string, nullable: true }
+        # Empty for a lesson the format lists without naming a concept for it — the format's
+        # own "declares none", not an adapter guess.
+        concepts: { type: string_list }
     grounded_in: ["Learning Progressions"]
   - id: assessment_offerings
     definition: >
@@ -429,18 +482,52 @@ claims:
         The brief requested a fragment of a larger course (a single module), where the
         course-level arc conventions do not apply — check the brief.
 
-  - id: cl-course-revisits-what-it-taught
-    statement: "The course revisits its earlier content instead of juxtaposing it."
+  # v9 splits what was one claim, `cl-course-revisits-what-it-taught`, in two. The two facets
+  # below are separate findings about a draft and a single conjunctive claim could only report
+  # their conjunction, which is the least informative thing either of them says. Four
+  # independent readers of one draft, asked whether it builds on itself, each answered
+  # "partially" unprompted and each split the same way: cumulative inside a module, rhetorical
+  # between them. A claim that cannot carry that answer is the wrong shape for the question.
+  #
+  # There is a mechanical reason as well, and it is what settles it. The lesson that opens a
+  # module has no earlier lesson WITHIN its module to build on — it can only build across
+  # modules. A single ratio over all core lessons therefore averages two populations whose
+  # denominators mean different things, and a draft that is perfect inside its modules and
+  # empty between them lands in the middle, indistinguishable from one that is mediocre
+  # everywhere.
+  #
+  # Both claims keep the quality and the warrant of the claim they replace, which ADR-0026
+  # permits: a claim asserts about exactly one quality, and nothing says a quality carries only
+  # one claim. Coverage under this lineage therefore changes, so fitness values computed
+  # against v8 and against v9 are not comparable (ADR-0023 §7).
+  - id: cl-modules-build-within-themselves
+    statement: "Within a module, later lessons put the module's earlier material to work."
     qualities: [coherence-reinforcement]
     warrants: ["Schmidt"]
     sufficiency: { rule: conjunctive }
-    # This claim covers ONE facet of its quality — that earlier content is revisited. The
-    # other facet the quality names, terminological consistency, yielded no actionable
-    # criterion and is deliberately left without one; a second claim may take it up later.
+    alternative_explanations:
+      - >
+        A module of a single lesson has no interior to build across; its absence of internal
+        reuse is a shape decision, not incoherence.
+      - >
+        A module deliberately built as parallel siblings — four independent techniques of one
+        family — reuses nothing internally by design.
+
+  - id: cl-course-builds-across-modules
+    statement: "Later modules put the material of earlier modules to work."
+    qualities: [coherence-reinforcement]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    # This claim covers ONE facet of its quality — that earlier content is revisited across
+    # modules. The other facet the quality names, terminological consistency, yielded no
+    # actionable criterion and is deliberately left without one.
     alternative_explanations:
       - >
         The course covers genuinely independent topics under one umbrella (a survey), where
         revisiting would be artificial — a scope decision, not incoherence.
+      - >
+        A course whose modules are deliberately independent entry points, each usable without
+        the others, has no cross-module debt to pay.
 
   - id: cl-course-modular
     statement: "The course develops its content in focused, well-formed modules."
@@ -844,20 +931,51 @@ criteria:
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
 
-  # --- evidencing cl-course-revisits-what-it-taught -------------------------------------
-  - id: cr-later-lessons-apply-earlier-concepts
-    statement: "Later lessons put earlier concepts to work in new contexts."
+  # --- evidencing cl-modules-build-within-themselves ------------------------------------
+  #
+  # This criterion and the next replace v8's `cr-later-lessons-apply-earlier-concepts`, which
+  # asked one question over both. What each of them counts as WORKING WITH a concept is
+  # written out below and is deliberately wider than v8's "uses it rather than restates it".
+  # The narrower reading was measured and does not survive: over one draft, readers found the
+  # working-with act in 23 and 29 places while six model runs found it in 0 to 9, so a
+  # criterion resting on that distinction alone measures the reader, not the course. The wider
+  # reading — developing a concept, working with it, or setting a task on it — lands inside
+  # the band two independent readers produced in every run. What stays excluded is the bare
+  # backward reference, which names earlier material without doing anything with it.
+  - id: cr-lessons-build-within-their-module
+    statement: "Within a module, later lessons work with what the module already taught."
     pass_condition: >
-      Every core lesson after the first thematic module applies at least one concept taught
-      earlier in the course to a new context — an example, an exercise or an explanation
-      that uses it rather than restates it. A backward reference alone ("as we saw in 01.2")
-      does NOT satisfy this: that is an explicit link, judged elsewhere. Fail = lessons that
-      stand as topical silos.
+      A lesson WORKS WITH a concept when it develops that concept (says more about it than
+      what it is), operates with it as something the learner already has, or sets a task that
+      checks it. Merely naming it does not count, and neither does saying again what it is.
+      Pass = at least two thirds of the lessons that follow the first lesson of their own
+      module work with a concept that an earlier lesson OF THAT SAME MODULE introduced, and
+      no two consecutive such lessons both fail to. Fail = either part. Modules of a single
+      lesson contribute no lesson to this count.
     failure_modes:
-      - "Each lesson is self-contained: the course is a list of topics, not a build-up."
-      - "Earlier material is mentioned but never used again."
-    claims: [cl-course-revisits-what-it-taught]
-    requires: [lesson_bodies, lesson_inventory]
+      - "A module's lessons sit side by side: the second does not touch what the first taught."
+      - "The later lesson re-teaches the earlier one's material instead of working with it."
+      - "A stretch of consecutive lessons inside one module that build on nothing before them."
+    claims: [cl-modules-build-within-themselves]
+    requires: [lesson_bodies, lesson_inventory, lesson_concept_coverage]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-course-builds-across-modules ---------------------------------------
+  - id: cr-modules-build-on-earlier-modules
+    statement: "Later modules work with what earlier modules taught."
+    pass_condition: >
+      Working with a concept means what it means in the criterion above: developing it,
+      operating with it as already known, or setting a task that checks it — never merely
+      naming it, and never saying again what it is. Pass = at least two thirds of the modules
+      after the first thematic one contain a lesson that works with a concept introduced in an
+      EARLIER module. Fail = fewer, which is a course whose modules are parallel rather than
+      sequential.
+    failure_modes:
+      - "Each module restarts: a fresh domain, a fresh example, nothing carried forward."
+      - "Earlier modules are referred back to but their material is never put to work again."
+    claims: [cl-course-builds-across-modules]
+    requires: [lesson_bodies, lesson_inventory, lesson_concept_coverage]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]
 
@@ -873,7 +991,7 @@ criteria:
     failure_modes:
       - "The assessment tests only the most recent module: no retrieval across the course."
       - "Tasks paraphrase a single lesson rather than integrating several."
-    claims: [cl-course-revisits-what-it-taught]
+    claims: [cl-course-builds-across-modules]
     requires: [assessment_offerings, lesson_inventory]
     on_missing_evidence: no_evidence # a course with no assessment cannot evidence this
     eligible_sources: [human, automated]
@@ -986,7 +1104,7 @@ criteria:
   - id: cr-cognitive-demand-rises-across-the-course
     statement: "The concepts the lessons cover grow in sophistication in delivery order."
     pass_condition: >
-      Read the lessons in declared order — their titles, their delivery type and the concept
+      Read the lessons in declared order — their titles, their delivery type and the concepts
       each declares it covers — and classify the sophistication of the reasoning each
       demands. Pass = the trajectory is non-decreasing overall, allowing local dips where a
       lesson consolidates before the next step. Fail = the course peaks early and then works
@@ -1001,6 +1119,6 @@ criteria:
       - "The hardest concept arrives in the second module and nothing after it goes further."
       - "Every lesson covers a sibling concept at the same level — a list rather than a progression."
     claims: [cl-lessons-grow-in-demand]
-    requires: [lesson_inventory, lesson_concepts]
+    requires: [lesson_inventory, lesson_concept_coverage]
     on_missing_evidence: no_evidence
     eligible_sources: [human, automated]

@@ -63,10 +63,10 @@ from tests.conftest import INSTRUMENTS_DIR
 
 PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "12")]
 
-_V7_SPEC = yaml.safe_load(
-    (INSTRUMENTS_DIR / "course-drafts-qa-v7.yaml").read_text(encoding="utf-8")
+_SHIPPED_SPEC = yaml.safe_load(
+    (INSTRUMENTS_DIR / "course-drafts-qa-v9.yaml").read_text(encoding="utf-8")
 )
-_V7_CRITERIA = {
+_SHIPPED_CRITERIA = {
     raw["id"]: CriterionSpec(
         criterion_id=raw["id"],
         pass_condition=raw["pass_condition"],
@@ -76,7 +76,7 @@ _V7_CRITERIA = {
         on_missing_evidence=raw.get("on_missing_evidence", "no_evidence"),
         condition=raw.get("condition"),
     )
-    for raw in _V7_SPEC["criteria"]
+    for raw in _SHIPPED_SPEC["criteria"]
 }
 
 
@@ -248,12 +248,36 @@ def outcomes_profile() -> ProfileData:
 # --- coverage vs the shipped instrument ------------------------------------------------
 
 
-def test_coverage_is_a_disjoint_union_over_the_shipped_instrument():
-    declared = {raw["id"] for raw in _V7_SPEC["criteria"]}
-    assert PACKAGE.coverage.declared == declared
+def test_coverage_decides_every_criterion_of_the_shipped_instrument():
+    """Every criterion of the version this artifact is written against is decided, and nothing
+    is decided twice (ADR-0018).
+
+    A SUPERSET rather than an equality, and v9 is why. Until then every revision of this
+    lineage had only ever added ids or reworded conditions, so "declares exactly the shipped
+    instrument's criteria" and "declares every criterion of every version" were the same set.
+    v9 RETIRES `cr-later-lessons-apply-earlier-concepts`, replacing it with two, so the
+    artifact must go on deciding an id no current version declares — otherwise it stops being
+    able to ratify v2 through v8, which are the versions the measured studies pin.
+    """
+    shipped = {raw["id"] for raw in _SHIPPED_SPEC["criteria"]}
+    assert shipped <= PACKAGE.coverage.declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
-    assert PACKAGE.instrument_id == _V7_SPEC["instrument_id"]
+    assert PACKAGE.instrument_id == _SHIPPED_SPEC["instrument_id"]
     assert len(PACKAGE.coverage.executes) == 19
+
+
+def test_coverage_declares_nothing_no_version_of_the_lineage_asks_for():
+    """The other half of the superset: an id decided here must be an id some version declares.
+
+    Without it, `declared` could accumulate typos and retired ids forever and the test above
+    would never notice.
+    """
+    lineage = set()
+    for spec_file in INSTRUMENTS_DIR.glob("course-drafts-qa-v*.yaml"):
+        spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        lineage |= {raw["id"] for raw in spec["criteria"]}
+    orphans = PACKAGE.coverage.declared - lineage
+    assert not orphans, f"decided by the artifact but declared by no version: {sorted(orphans)}"
 
 
 def test_coverage_also_decides_every_criterion_of_the_lineages_other_versions():
@@ -282,7 +306,7 @@ def test_every_executed_failure_index_exists_in_the_real_instrument():
     }
     for criterion_id in PACKAGE.coverage.executes:
         needed = 2 if criterion_id in two_mode else 1
-        assert len(_V7_CRITERIA[criterion_id].failure_modes) >= needed
+        assert len(_SHIPPED_CRITERIA[criterion_id].failure_modes) >= needed
 
 
 def test_source_config_declares_the_semantic_identity():
@@ -327,7 +351,7 @@ def test_source_config_declares_the_semantic_identity():
 
 
 def test_objectives_observable_verbs(fake_llm):
-    spec = _V7_CRITERIA["cr-objectives-observable-verbs"]
+    spec = _SHIPPED_CRITERIA["cr-objectives-observable-verbs"]
     run = PACKAGE.executors["cr-objectives-observable-verbs"]
     data = profile(learning_objectives=["build an API", "understand HTTP deeply"])
 
@@ -354,7 +378,7 @@ def test_objectives_observable_verbs(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_falls_back(fake_llm):
-    spec = _V7_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _SHIPPED_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
     data = profile(learning_objectives=["analyze systems", "recall terms", "apply patterns"])
 
@@ -368,7 +392,7 @@ def test_objectives_non_decreasing_demand_falls_back(fake_llm):
 
 
 def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
-    spec = _V7_CRITERIA["cr-objectives-non-decreasing-demand"]
+    spec = _SHIPPED_CRITERIA["cr-objectives-non-decreasing-demand"]
     run = PACKAGE.executors["cr-objectives-non-decreasing-demand"]
 
     flat_texts = [f"understand topic {n}" for n in range(4)]
@@ -386,7 +410,7 @@ def test_objectives_non_decreasing_demand_flat_and_short_sequences(fake_llm):
 
 
 def test_outcomes_present(fake_llm):
-    spec = _V7_CRITERIA["cr-outcomes-present"]
+    spec = _SHIPPED_CRITERIA["cr-outcomes-present"]
     run = PACKAGE.executors["cr-outcomes-present"]
 
     fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
@@ -404,7 +428,7 @@ def test_outcomes_present(fake_llm):
 
 
 def test_outcomes_observable_verbs(fake_llm):
-    spec = _V7_CRITERIA["cr-outcomes-observable-verbs"]
+    spec = _SHIPPED_CRITERIA["cr-outcomes-observable-verbs"]
     run = PACKAGE.executors["cr-outcomes-observable-verbs"]
 
     internal = "you will be able to build a complete web page"
@@ -419,7 +443,7 @@ def test_outcomes_observable_verbs(fake_llm):
 
 
 def test_cognitive_demand_trajectory_rules(fake_llm):
-    spec = _V7_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _SHIPPED_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
 
     inventory = [lesson(f"0{n}.0", n) for n in range(7)]  # 00.0 .. 06.0; core = 5 lessons
@@ -448,7 +472,7 @@ def test_cognitive_demand_trajectory_rules(fake_llm):
 
 
 def test_a_short_course_has_no_trajectory_to_judge(fake_llm):
-    spec = _V7_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
+    spec = _SHIPPED_CRITERIA["cr-cognitive-demand-rises-across-the-course"]
     run = PACKAGE.executors["cr-cognitive-demand-rises-across-the-course"]
     client = fake_llm()  # no canned answers: any call would fail the test
 
@@ -467,9 +491,11 @@ def test_paired_criteria_share_one_extraction(fake_llm):
     client = fake_llm(outcomes=[outcomes_json((GROUNDED_OUTCOME, "build", True))])
     data = outcomes_profile()
 
-    present = PACKAGE.executors["cr-outcomes-present"](_V7_CRITERIA["cr-outcomes-present"], data)
+    present = PACKAGE.executors["cr-outcomes-present"](
+        _SHIPPED_CRITERIA["cr-outcomes-present"], data
+    )
     verbs = PACKAGE.executors["cr-outcomes-observable-verbs"](
-        _V7_CRITERIA["cr-outcomes-observable-verbs"], data
+        _SHIPPED_CRITERIA["cr-outcomes-observable-verbs"], data
     )
 
     assert present.passed and verbs.passed
@@ -490,7 +516,7 @@ def test_two_evaluations_of_one_profile_each_ask_for_themselves(fake_llm):
         ]
     )
     data = outcomes_profile()
-    spec = _V7_CRITERIA["cr-outcomes-present"]
+    spec = _SHIPPED_CRITERIA["cr-outcomes-present"]
 
     for _ in range(2):
         with drafts_hybrid.cache_scope():
@@ -510,7 +536,7 @@ def test_concurrent_evaluations_do_not_read_each_others_answers(fake_llm):
         ]
     )
     data = outcomes_profile()
-    spec = _V7_CRITERIA["cr-outcomes-present"]
+    spec = _SHIPPED_CRITERIA["cr-outcomes-present"]
     passed: list[bool] = []
     barrier = threading.Barrier(2)
 
@@ -664,7 +690,7 @@ def judged_profile() -> ProfileData:
 
 
 def run_judged(criterion_id: str, data: ProfileData):
-    return PACKAGE.executors[criterion_id](_V7_CRITERIA[criterion_id], data)
+    return PACKAGE.executors[criterion_id](_SHIPPED_CRITERIA[criterion_id], data)
 
 
 def test_the_judge_answers_with_reason_before_verdict():
@@ -689,7 +715,7 @@ def test_a_judged_criterion_carries_the_model_verdict_and_its_own_quote(fake_llm
 def test_the_judge_is_asked_the_instrument_s_own_words(fake_llm):
     """The normative text is never retyped into the assessor: it travels from the spec."""
     client = fake_llm(closing_integrates=[verdict_json(GROUNDED_CLOSING)] * 2)
-    spec = _V7_CRITERIA["cr-closing-lesson-integrates"]
+    spec = _SHIPPED_CRITERIA["cr-closing-lesson-integrates"]
 
     run_judged("cr-closing-lesson-integrates", judged_profile())
 
@@ -706,7 +732,7 @@ def test_a_judged_fail_names_one_of_the_criterion_s_declared_failure_modes(fake_
         ]
         * 2
     )
-    spec = _V7_CRITERIA["cr-closing-lesson-projects-forward"]
+    spec = _SHIPPED_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
 
@@ -1128,7 +1154,7 @@ def test_a_losing_majority_carries_the_failing_side_s_mode(fake_llm):
             verdict_json("styled it and published it", verdict=False, failure_mode=1),
         ]
     )
-    spec = _V7_CRITERIA["cr-closing-lesson-projects-forward"]
+    spec = _SHIPPED_CRITERIA["cr-closing-lesson-projects-forward"]
 
     result = run_judged("cr-closing-lesson-projects-forward", judged_profile())
 
@@ -1492,7 +1518,7 @@ def test_one_unsatisfied_objective_fails_the_criterion(fake_llm):
 
     assert not result.passed
     # the failing objective's mode, not the first declared one
-    assert result.failure_mode == _V7_CRITERIA[VERIFICATION].failure_modes[1]
+    assert result.failure_mode == _SHIPPED_CRITERIA[VERIFICATION].failure_modes[1]
     # and the quote is the task it cited, fetched from the profile
     assert result.quote == "Which tag opens a document?"
     metrics = {m.metric_id: m.value for m in result.metrics}
@@ -1623,7 +1649,7 @@ def test_assessment_that_only_tests_its_own_module_fails(fake_llm):
     assert not result.passed
     assert (
         result.failure_mode
-        == _V7_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
+        == _SHIPPED_CRITERIA["cr-assessment-retrieves-earlier-taught-material"].failure_modes[0]
     )
 
 
@@ -1718,17 +1744,17 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v7",
-        instrument_id=_V7_SPEC["instrument_id"],
+        instrument_version_id="course-drafts-qa-v9",
+        instrument_id=_SHIPPED_SPEC["instrument_id"],
         status="published",
-        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _V7_SPEC["claims"]),
-        criteria=tuple(_V7_CRITERIA[raw["id"]] for raw in _V7_SPEC["criteria"]),
+        claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _SHIPPED_SPEC["claims"]),
+        criteria=tuple(_SHIPPED_CRITERIA[raw["id"]] for raw in _SHIPPED_SPEC["criteria"]),
         bindings=tuple(
             BindingSpec(
                 package_format=raw["package_format"],
                 task_variables=raw.get("task_variables", {}),
             )
-            for raw in _V7_SPEC["bindings"]
+            for raw in _SHIPPED_SPEC["bindings"]
         ),
     )
 
@@ -1739,10 +1765,12 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     (they no longer derive `not_assessed`, which is this artifact's reason to exist), the
     structural results match `drafts-structural`'s pinned run, and the memoization holds.
 
-    `cr-cognitive-demand-rises-across-the-course` derives `not_applicable` here: the fixture
-    carries the new-shape `lesson_concept_coverage` (v8), which v7 — the instrument this test
-    is pinned to — does not require. That is ADR-0017's case (b), unmet demand for this
-    format, not a defect; the assessor is not yet ratified against v8."""
+    Pinned to v9 since the old versions were deleted, which changes one outcome:
+    `cr-cognitive-demand-rises-across-the-course` used to derive `not_applicable` because v7
+    did not require `lesson_concept_coverage`. v8 and v9 do, the fixture carries it, so the
+    criterion now EXECUTES and the trajectory task is asked for. The two criteria v9 splits
+    out of `cr-later-lessons-apply-earlier-concepts` are abstained, so they land in
+    `not_assessed` with the rest."""
     fixture = _fixture_profile()
     opening_body, _ = tasks.opening_lesson_body(fixture)
     closing_body, _ = judgments.closing_lesson_body(fixture)
@@ -1752,8 +1780,20 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     objective_ids = [str(o["id"]) for o in fixture.entries["declared_objectives"].value]
     offerings = list(fixture.entries["assessment_offerings"].value)
 
+    # The trajectory task is asked about the CORE lessons only — the frame ones are excluded
+    # because they bound the arc rather than advance it.
+    core_ids = [str(lesson["lessonId"]) for lesson in tasks.ordered_inventory(fixture)[1:-1]]
     client = fake_llm(
         outcomes=[outcomes_json((grounded, "build", True))],
+        # v9 requires `lesson_concept_coverage`, which the fixture carries, so the trajectory
+        # task is reached now — answered non-decreasing so the criterion passes.
+        # Non-decreasing, so the criterion passes: a flat trajectory is what the rule
+        # refuses once a course has enough core lessons to show growth.
+        trajectory=[
+            trajectory_json(
+                {lesson_id: min(2 + index, 5) for index, lesson_id in enumerate(core_ids)}
+            )
+        ],
         objectives=[
             objectives_json(
                 *[("understand", True), ("apply", True), ("create", True)][:objective_count]
@@ -1784,18 +1824,17 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         _instrument_spec(), fixture, PACKAGE.coverage, dict(PACKAGE.executors)
     )
 
-    assert len(outcomes) == 29
+    assert len(outcomes) == 30
     by_outcome: dict[str, set[str]] = {}
     for outcome in outcomes:
         by_outcome.setdefault(outcome.outcome, set()).add(outcome.criterion_id)
 
-    assert by_outcome["not_applicable"] == {
-        "cr-prerequisites-declared",
-        "cr-cognitive-demand-rises-across-the-course",
-    }
+    assert by_outcome["not_applicable"] == {"cr-prerequisites-declared"}
     assert by_outcome["pass"] == {
         # the structural six, exactly as drafts-structural's pinned run
         "cr-audience-declared",
+        # reached now that v9 requires the concept coverage the fixture carries
+        "cr-cognitive-demand-rises-across-the-course",
         "cr-course-has-development",
         "cr-course-opens-with-general-intro",
         "cr-module-structure-well-formed",
@@ -1815,18 +1854,25 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         "cr-assessment-matches-the-declared-verification",
         "cr-assessment-retrieves-earlier-taught-material",
     }
-    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains)
+    # The abstains restricted to what THIS instrument version declares. Since v9 the artifact
+    # decides ids v2 never had, and an outcome is only derived for a criterion the pinned
+    # version carries.
+    declared_here = {outcome.criterion_id for outcome in outcomes}
+    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains) & declared_here
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
     assert all(not o.derived and o.quote for o in outcomes if o.outcome == "pass")
 
-    # Eleven criteria, fourteen calls: five judged criteria are voted on twice each, while
-    # two share the outcomes extraction and two share the assessment mapping.
-    assert len(client.calls) == 14
+    # Twelve criteria, fifteen calls: five judged criteria are voted on twice each, two share
+    # the outcomes extraction and two share the assessment mapping, and the trajectory task is
+    # asked once — it joined the executed set when this test moved from v7 to v9.
+    assert len(client.calls) == 15
 
     metric_values = {m.metric_id: m.value for m in metrics}
     assert metric_values["stated_outcomes_count"] == 1
     assert len(metric_values["objective_bloom_levels"]) == objective_count
-    assert "concept_sophistication_levels" not in metric_values
+    # Present since this test moved to v9: the trajectory criterion executes now, and its
+    # metric is the classification the executor decided on.
+    assert len(metric_values["concept_sophistication_levels"]) == len(core_ids)
     assert metric_values["objectives_unmeasured"] == []
     assert metric_values["assessment_reaches_back_to"] == ["00.0", "01.0"]
     for task_id in ("outcomes_extraction", "objectives_classification"):
@@ -1862,7 +1908,7 @@ def patched_hybrid_package(unique, monkeypatch):
 
 
 def hybrid_copy_spec(unique: str) -> dict:
-    spec = copy.deepcopy(_V7_SPEC)
+    spec = copy.deepcopy(_SHIPPED_SPEC)
     spec["instrument_id"] = f"qa-hybrid-{unique}"
     return spec
 

@@ -74,6 +74,16 @@ ABSTENTIONS = {
     "cr-closing-lesson-projects-forward": (
         "requires semantic judgment of whether the closing projects the learner forward"
     ),
+    # v9 replaces `cr-later-lessons-apply-earlier-concepts` with these two. The artifact
+    # decides all three: the retired id so it can still ratify v8, the new pair so it can
+    # ratify v9 (ADR-0019).
+    "cr-lessons-build-within-their-module": (
+        "requires semantic reading of every lesson body against the concepts of its module"
+    ),
+    "cr-modules-build-on-earlier-modules": (
+        "requires semantic reading of every lesson body against the concepts of every "
+        "earlier module"
+    ),
     "cr-later-lessons-apply-earlier-concepts": (
         "requires semantic judgment of whether an earlier concept is applied in a new context"
     ),

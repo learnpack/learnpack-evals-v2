@@ -74,7 +74,7 @@ def workbench(cleanup, requires_db, local_auth):
 def test_the_manifest_id_is_the_one_the_importer_mints():
     """Anti-drift, and the reason the manifest lists FILES rather than version ids: the id is
     read off the same two fields the importer builds it from, so there is no second place to
-    write `course-drafts-qa-v6` and get it wrong."""
+    write `course-drafts-qa-v9` and get it wrong."""
     for relative in MANIFEST["instruments"]:
         spec_file = WORKBENCH_MANIFEST.parent / relative
         lineage, version_id = _instrument_identity(spec_file)
@@ -176,8 +176,8 @@ def test_two_versions_of_one_lineage_are_refused_before_anything_is_written(
         yaml.safe_dump(
             {
                 "instruments": [
-                    str(instruments / "course-drafts-qa-v5.yaml"),
-                    str(instruments / "course-drafts-qa-v6.yaml"),
+                    str(instruments / "course-drafts-qa-v8.yaml"),
+                    str(instruments / "course-drafts-qa-v9.yaml"),
                 ]
             }
         ),

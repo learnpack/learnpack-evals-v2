@@ -2833,7 +2833,7 @@ def _ensure_local_assessor(session: Session, email: str, display_name: str, role
 
 def _instrument_identity(spec_file: Path) -> tuple[str, str]:
     """The lineage and the version id an authored YAML will have once imported. Read off the
-    file rather than declared in the manifest: two places to write `course-drafts-qa-v6` is
+    file rather than declared in the manifest: two places to write `course-drafts-qa-v9` is
     one place to get it wrong, and the importer mints the id from exactly these two fields."""
     spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
     return spec["instrument_id"], f"{spec['instrument_id']}-{spec['version']}"

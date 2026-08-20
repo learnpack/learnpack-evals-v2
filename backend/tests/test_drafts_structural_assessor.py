@@ -96,21 +96,40 @@ WELL_FORMED = [
 # --- coverage vs the shipped instrument ----------------------------------------------
 
 
-def test_coverage_is_a_disjoint_union_over_the_drafts_instrument():
-    declared = {raw["id"] for raw in _REAL_SPEC["criteria"]}
-    assert PACKAGE.coverage.declared == declared
+def test_coverage_decides_the_shipped_instrument_and_nothing_stray():
+    """Every criterion of the version this artifact targets is decided, nothing is decided
+    twice, and nothing is decided that no version of the lineage declares.
+
+    A superset of the shipped version rather than an equality with it, since v9 retires an id
+    v8 still declares and the artifact has to keep deciding both."""
+    shipped = {raw["id"] for raw in _REAL_SPEC["criteria"]}
+    assert shipped <= PACKAGE.coverage.declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
     assert PACKAGE.instrument_id == _REAL_SPEC["instrument_id"]
 
+    lineage: set[str] = set()
+    for spec_file in INSTRUMENTS_DIR.glob("course-drafts-qa-v*.yaml"):
+        spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        lineage |= {raw["id"] for raw in spec["criteria"]}
+    assert not PACKAGE.coverage.declared - lineage
 
-def test_coverage_also_decides_every_criterion_of_v1():
-    """Ratification demands coverage ⊇ the target version's criteria (ADR-0019), so the
-    superset over v2 is what lets this one artifact ratify both published versions."""
-    v1_spec = yaml.safe_load(
-        (INSTRUMENTS_DIR / "course-drafts-qa-v1.yaml").read_text(encoding="utf-8")
-    )
-    v1_ids = {raw["id"] for raw in v1_spec["criteria"]}
-    assert v1_ids < PACKAGE.coverage.declared
+
+def test_coverage_decides_every_criterion_of_every_version_of_the_lineage():
+    """Ratification demands coverage ⊇ the target version's criteria (ADR-0019), and the
+    artifact has to satisfy that for every version anyone might ratify it against.
+
+    Read off disk rather than from a list of version numbers: versions are deleted when
+    nothing reads them any more, and a hardcoded list turns that into a failing test about a
+    file instead of a claim about coverage. A SUPERSET of each version rather than an equality
+    with any one of them, because v9 retires an id v8 still declares — no single version's
+    criteria equal what this artifact must decide.
+    """
+    versions = sorted(INSTRUMENTS_DIR.glob("course-drafts-qa-v*.yaml"))
+    assert versions, "the lineage should have at least one version on disk"
+    for spec_file in versions:
+        spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        undecided = {raw["id"] for raw in spec["criteria"]} - PACKAGE.coverage.declared
+        assert not undecided, f"{spec_file.name}: {', '.join(sorted(undecided))}"
 
 
 def test_every_executed_failure_index_exists_in_the_real_instrument():
@@ -239,7 +258,7 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v2",
+        instrument_version_id="course-drafts-qa-v8",
         instrument_id=_REAL_SPEC["instrument_id"],
         status="published",
         claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _REAL_SPEC["claims"]),
@@ -259,9 +278,9 @@ def test_the_package_against_the_frozen_v2_fixture():
     about the real draft the corpus holds. `cr-prerequisites-declared` never reaches its
     executor — LearnpackV2 declares no `prerequisites` capability, and unmet demand
     derives `not_applicable` before execution (derivation case (b)). Same case for
-    `cr-cognitive-demand-rises-across-the-course`: the fixture carries the new-shape
-    `lesson_concept_coverage` (v8), which v7 — the instrument this test is pinned to — does
-    not require."""
+    `cr-cognitive-demand-rises-across-the-course` is a different case now: pinned to v8, the
+    instrument DOES require the new-shape `lesson_concept_coverage` the fixture carries, so
+    the criterion reaches the coverage gate and this artifact abstains from it."""
     outcomes, metrics = derive_and_execute(
         _instrument_spec(), _fixture_profile(), PACKAGE.coverage, dict(PACKAGE.executors)
     )
@@ -271,10 +290,7 @@ def test_the_package_against_the_frozen_v2_fixture():
     for outcome in outcomes:
         by_outcome.setdefault(outcome.outcome, set()).add(outcome.criterion_id)
 
-    assert by_outcome["not_applicable"] == {
-        "cr-prerequisites-declared",
-        "cr-cognitive-demand-rises-across-the-course",
-    }
+    assert by_outcome["not_applicable"] == {"cr-prerequisites-declared"}
     assert by_outcome["pass"] == {
         "cr-audience-declared",
         "cr-course-has-development",
@@ -283,11 +299,13 @@ def test_the_package_against_the_frozen_v2_fixture():
         "cr-no-lesson-spikes-in-lexical-load",
         "cr-objectives-min-count",
     }
-    # `cr-cognitive-demand-rises-across-the-course` abstains too, but never reaches that
-    # gate here — capability (b) derives it `not_applicable` first.
-    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains) - {
-        "cr-cognitive-demand-rises-across-the-course"
-    }
+    # Since this test moved from v7 to v8, `cr-cognitive-demand-rises-across-the-course` does
+    # reach the coverage gate and lands in `not_assessed` with the rest of the abstentions.
+    # The abstains restricted to what THIS version declares: the artifact also decides
+    # ids v9 introduced and one v9 retired, and an outcome exists only for a criterion
+    # the pinned version carries.
+    declared_here = {outcome.criterion_id for outcome in outcomes}
+    assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains) & declared_here
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
 
     executed = {o.criterion_id: o for o in outcomes if o.outcome == "pass"}
@@ -349,14 +367,13 @@ def drafts_copy_spec(unique: str, version: str) -> dict:
 def test_the_real_coverage_ratifies_both_published_versions(
     cleanup, unique, namespace, admin, patched_drafts_package
 ):
-    """PR G's reason to exist, through the real act: a new lineage can ratify nothing
-    until an assessor artifact declares itself against it (runbook step 5). The v2
-    coverage also decides v1's subset, and v1's criteria are inherited verbatim, so the
-    second ratification needs no --confirm (the mechanical diff finds nothing changed)."""
+    """PR G's reason to exist, through the real act: a new lineage can ratify nothing until an
+    assessor artifact declares itself against it (runbook step 5). One artifact ratifies both
+    versions on disk because its coverage is a superset of each."""
     admin_id, email = admin
 
-    v2_id = publish_instrument(cleanup, drafts_copy_spec(unique, "v2"), admin_id)
-    assert run_ratify_assessor(patched_drafts_package.name, "1", v2_id, email, []) == 0
+    v8_id = publish_instrument(cleanup, drafts_copy_spec(unique, "v8"), admin_id)
+    assert run_ratify_assessor(patched_drafts_package.name, "1", v8_id, email, []) == 0
     track_automated(cleanup, patched_drafts_package.name)
 
     with SessionLocal() as session:
@@ -364,5 +381,5 @@ def test_the_real_coverage_ratifies_both_published_versions(
     assert row is not None
     assert row.source_config == patched_drafts_package.source_config
 
-    v1_id = publish_instrument(cleanup, drafts_copy_spec(unique, "v1"), admin_id)
-    assert run_ratify_assessor(patched_drafts_package.name, "1", v1_id, email, []) == 0
+    v9_id = publish_instrument(cleanup, drafts_copy_spec(unique, "v9"), admin_id)
+    assert run_ratify_assessor(patched_drafts_package.name, "1", v9_id, email, []) == 0

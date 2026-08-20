@@ -341,8 +341,22 @@ ABSTENTIONS = {
         "requires semantic identification of new instructional material and of what "
         "motivates it, per lesson"
     ),
+    # v8 and earlier ask this as one criterion; v9 splits it in two, and the abstention for
+    # all three stays for the same reason. The concept map itself is no longer the obstacle —
+    # a calibration dump builds one and two independent readers agree with it about where each
+    # concept is stated — but what a lesson DOES with a concept is not measured well enough
+    # yet to hang a verdict on: over one draft, readers found the working-with act in 23 and
+    # 29 places and six model runs found it in 0 to 9.
     "cr-later-lessons-apply-earlier-concepts": (
         "requires a concept map extracted from every lesson body"
+    ),
+    "cr-lessons-build-within-their-module": (
+        "requires a concept map extracted from every lesson body, and a measure of what a "
+        "lesson does with a concept that is stable enough to decide a verdict"
+    ),
+    "cr-modules-build-on-earlier-modules": (
+        "requires a concept map extracted from every lesson body, and a measure of what a "
+        "lesson does with a concept that is stable enough to decide a verdict"
     ),
     "cr-adjacent-pair-has-a-bridge": (
         "requires semantic judgment of whether a lesson pair states its relation, per pair"

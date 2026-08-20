@@ -143,8 +143,9 @@ as its own command (and `task seed:demo`) because the human MVP's two courses an
 not an operator's data; **`task db:reset`** destroys the volume and rebuilds the whole thing,
 the volume rather than a list of tables because a wipe that enumerates is a wipe that forgets
 the table added last week. Two instrument drafts nothing reads — `course-drafts-qa` v3 and v4 —
-were deleted with it; v1, v2 and v5 stay because the suite reads them, and the assessor's
-coverage test now globs the lineage instead of naming versions.
+were deleted with it, and v1, v2, v5, v6 and v7 followed when v9 landed (see below) — the
+lineage on disk is v8 and v9, and the assessor coverage tests glob it instead of naming
+versions.
 
 **And one command now takes a generation from the folder to the score.** Measuring what the
 generator just wrote was `register-package --all` → `declare-study` → `update-study` →
@@ -209,6 +210,68 @@ versions, and `measure` refuses to guess between them — pass `--instrument-ver
 or start from `task db:reset`, which is wanted anyway whenever the adapter version also moved:
 every content of that format needs `accept-extraction` and a re-profile before anything reads
 the new id.
+
+**And a second calibration dump asks the same corpus by concept rather than by lesson.**
+`dump-concept-map --content-id <uuid> [--shape whole|per_module|two_phase]` reports, per
+concept, the lessons that state it, develop it, use it as known, check it, or merely name it —
+with a verbatim quote each. Two properties are what it is for. **The plan's own
+concept-to-lesson assignment is never shown to the model**: it gets bare names, works out from
+the text where each is stated, and the assignment is joined back on afterwards, so a `defines`
+row the plan does not declare is the plan and the prose disagreeing about where a concept is
+taught. And **every group is a local act** — `defines` asks only whether a lesson says what a
+concept is, never which lesson introduces it; `min(position)` decides that here, so a concept
+stated by two lessons is a finding (the course stating again what it already stated) rather
+than a contradiction to resolve in a prompt. A lesson may sit in more than one group for one
+concept, which was measured: forcing one slot collapses `develops` to almost nothing.
+`dump-concept-touches` stays for the one thing this does not produce — the geometry of a
+single touch, how far back it reaches and where in the lesson it sits, which is what tells you
+whether a pairwise or windowed criterion could catch what a course actually has. Neither is
+identity (ADR-0034): no executor imports them, `SOURCE_CONFIG` names neither, their prompts
+stay out of the fingerprinted templates, and tests pin that in both directions.
+
+**The calibration material moved out of `backend/README.md` into
+`docs/RUNBOOK-calibrating.md`.** Reading a trace, what repeats tell you and the two dumps are
+one job with one audience — someone deciding what an instrument should ask — and the repo
+already had the shape for that in `RUNBOOK-measuring.md`. The backend README keeps a pointer;
+`docs/README.md` gained a runbooks section naming both, which it had been missing for the
+measuring one too.
+
+**`course-drafts-qa` v9 splits the revisiting claim in two, and it is a draft.**
+`cl-course-revisits-what-it-taught` asked whether a course revisits its earlier content, and a
+draft answers that twice with different answers: four independent readers of one draft, each
+asked unprompted whether it builds on itself, each answered *"partially"* and each split the
+same way — cumulative inside a module, rhetorical between them. The mechanical half is what
+settles it: a module's opening lesson has no earlier lesson WITHIN its module to build on, so
+one ratio over all core lessons averages two populations whose denominators mean different
+things, and the lessons that failed on the draft measured were precisely the module openers.
+So `cl-modules-build-within-themselves` and `cl-course-builds-across-modules` replace it, both
+keeping the quality and warrant of the claim they replace (ADR-0026 constrains a claim to one
+quality, not a quality to one claim). `cr-assessment-retrieves-earlier-taught-material` moves
+to the across-modules claim **without a word changed** — its pass condition already said
+"outside their own module" — and `cr-later-lessons-apply-earlier-concepts` becomes
+`cr-lessons-build-within-their-module` and `cr-modules-build-on-earlier-modules`. Both are
+**abstained** by `drafts-hybrid` and by `drafts-structural`, with the reason stated: the
+concept map is no longer the obstacle, but what a lesson DOES with a concept is not measured
+stably enough to decide a verdict — over one draft, two readers found the working-with act in
+23 and 29 places while six model runs found it in 0 to 9. The two new criteria therefore widen
+what counts: developing a concept, operating with it, or setting a task on it. Naming it does
+not count, and neither does saying again what it is, which is a course starting over.
+**Publishing is still a human act:** `workbench.yaml` names v8, so a fresh database still
+publishes v8 until someone changes that line.
+
+**v9 is the first revision of this lineage to RETIRE a criterion id, and that changed an
+invariant.** Until now revisions only added ids or reworded conditions, so "an assessor
+declares exactly the shipped instrument's criteria" and "an assessor declares every criterion
+of every version" were the same set, and both assessor packages asserted the first. With an id
+retired they diverge, and the artifact has to keep deciding the retired one or it stops being
+able to ratify v8. Coverage is therefore a **superset** of each version, with a second test
+closing the other side — an id decided by an artifact that no version of the lineage declares
+is refused, so `declared` cannot silently accumulate retired ids and typos. **v1, v2, v5, v6
+and v7 were deleted** in the same change: every study measured so far is development-phase and
+disposable, and keeping five versions alive to preserve ratifiability for studies nobody will
+read is the tail wagging the dog. v8 stays as the state before this work. One cost is real and
+unfixable: ADR-0046 cites `course-drafts-qa-v7.yaml` by path, ADRs are immutable, and that
+reference now dangles.
 
 **And the field verification has not been run.** Two questions, both answerable with the three
 drafts already on hand: whether `cr-every-objective-has-an-assessment-item` stops failing where
