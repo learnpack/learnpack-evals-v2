@@ -446,6 +446,9 @@ def test_a_registered_local_course_is_auto_profiled(
         def fetch(self, locator: str) -> bytes:
             return self._inner.fetch(locator.removeprefix(base))
 
+        def fetch_all(self, locators):
+            return {locator: self.fetch(locator) for locator in locators}
+
     monkeypatch.setattr(profiling_policies, "HttpPackageFetcher", MountFetcher)
     slug = f"dev-profiled-{unique}"
     put_v1_course(runs_root, "batch", slug)

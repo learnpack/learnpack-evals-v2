@@ -367,3 +367,41 @@ def test_every_extracted_value_matches_the_declared_value_domain(adapter, fetche
         for problem in check_value(e.value, domains[e.data_requirement_id], e.data_requirement_id)
     ]
     assert problems == []
+
+
+# ------------------------------------------------------------------ how it reads
+
+
+class WaveRecordingFetcher:
+    """Records each GROUP asked for, not only each locator. Whether the adapter said its
+    reads are independent shows up in the SHAPE of the asks, which a flat list cannot."""
+
+    def __init__(self) -> None:
+        self._inner = FilesystemPackageFetcher(FIXTURES)
+        self.waves: list[list[str]] = []
+        self.one_by_one: list[str] = []
+
+    def fetch(self, locator: str) -> bytes:
+        self.one_by_one.append(locator)
+        return self._inner.fetch(locator)
+
+    def fetch_all(self, locators):
+        self.waves.append(list(locators))
+        return {locator: self._inner.fetch(locator) for locator in locators}
+
+
+def test_the_lesson_bodies_are_asked_for_in_one_wave(adapter):
+    """No lesson body is read to find another, so they are asked for together — while the
+    two manifests stay single reads, because each one answers its own question. What that
+    costs is the fetcher's business; all the adapter does is say they are independent."""
+    package = fixture_package("object-representation-in-python")
+    fetcher = WaveRecordingFetcher()
+
+    adapter.extract(package, fetcher)
+
+    assert fetcher.waves == [[a.locator for a in package.artifacts if a.kind == "lesson_content"]]
+    # And nothing else was read at all: the exercise files are not lesson content, whatever
+    # a criterion might one day want from them.
+    assert sorted(fetcher.one_by_one) == sorted(
+        a.locator for a in package.artifacts if a.kind in ("manifest", "package_manifest")
+    )

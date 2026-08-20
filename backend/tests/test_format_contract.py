@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from app.modules.content_profiling.application.dtos import ArtifactDTO, PackageDTO
+from app.modules.content_profiling.application.profile_content import _ReadOnce
 from app.modules.content_profiling.domain.profile import ContentProfile, ExtractionError
 from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
 from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
@@ -301,8 +302,36 @@ def test_an_unreadable_package_fails_extraction_whole(extraction):
         def fetch(self, locator: str) -> bytes:
             raise ExtractionError(f"unreachable: {locator}")
 
+        def fetch_all(self, locators):
+            # A group read is unreachable the same way a single one is: the first locator
+            # that fails, fails the extraction.
+            return {locator: self.fetch(locator) for locator in locators}
+
     with pytest.raises(ExtractionError):
         adapter.extract(package, UnreachableFetcher())
+
+
+def test_an_extraction_reads_each_artifact_once(extraction):
+    """A contract of the PAIR, not of the adapter alone. An adapter is free to ask for the
+    same artifact from two entry builders — that independence is why each one can cite what
+    it reads without consulting the others — and `_ReadOnce`, which `ProfileContent` wraps
+    every fetcher in, is what keeps that from costing two downloads."""
+    adapter, package, fetcher = extraction
+
+    asked: list[str] = []
+
+    class RecordingFetcher:
+        def fetch(self, locator: str) -> bytes:
+            asked.append(locator)
+            return fetcher.fetch(locator)
+
+        def fetch_all(self, locators):
+            asked.extend(locators)
+            return fetcher.fetch_all(locators)
+
+    adapter.extract(package, _ReadOnce(RecordingFetcher()))
+
+    assert sorted(asked) == sorted(set(asked))
 
 
 # ------------------------------------------------------------------ registration (DB)

@@ -2063,10 +2063,18 @@ the data in the package).
   sixteen (6.4 s at four, 3.2 s at sixteen, 3.1 s at twenty-four, no failure at any of them):
   what is left by then is the three manifests that cannot fan out, since each names the next.
   The default stays at eight because that is one origin and the setting applies to all of them.
-  **Only the discovery half reads this way, and it is now the smaller half**: profiling
-  re-reads the package an artifact at a time inside the same registration — **9.9 s against
-  4.4 s on that course** — which makes it the next thing to fix, ahead of the retry budget that
-  would tell a tired origin from a real 404.
+  **And then the other half followed, which the first measurement is what identified**:
+  profiling re-reads the package inside the same registration and was the bigger of the two at
+  9.4 s, so its group reads — the lesson bodies, and V2's stats files — now go out together as
+  well, **9.4 s → 2.3 s**, with the extraction returning byte-identical entries. It also reads
+  each artifact **once**: counting what V2 actually fetched turned up 30 downloads for 26
+  distinct files (`lesson_plan.json` three times, `user_intent` and `course_value` twice), which
+  is not an adapter bug — its entry builders are independent on purpose, each citing what it
+  reads without consulting the others — so `ProfileContent` wraps the fetcher for the length of
+  one extraction rather than coupling them. Scoped by construction: the next extraction gets a
+  new instance, and reading each artifact once is now a **format contract**, checked for every
+  registered format. **A whole registration is about 8 s against the ~31 s it started at.**
+  What is left is the retry budget that would tell a tired origin from a real 404.
 
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
   wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,

@@ -356,12 +356,15 @@ class LearnpackV2Adapter:
         self, package: PackageDTO, fetcher: PackageFetcherPort
     ) -> dict[str, str]:
         """Which file holds each lesson id — the one thing only the stats declare. The plan
-        lists ids and never names a file."""
+        lists ids and never names a file.
+
+        Asked for together: no stats file is read to find another."""
+        locators = [a.locator for a in package.artifacts if a.kind == KIND_LESSON_STATS]
+        raw = fetcher.fetch_all(locators)
+
         slugs: dict[str, str] = {}
-        for artifact in package.artifacts:
-            if artifact.kind != KIND_LESSON_STATS:
-                continue
-            stats = self._json_object(artifact, fetcher)
+        for locator in locators:
+            stats = self._as_json_object(raw[locator], locator)
             lesson_id, slug = stats.get("lesson_id"), stats.get("lesson_slug")
             if isinstance(lesson_id, str) and isinstance(slug, str):
                 slugs[lesson_id] = slug
@@ -406,13 +409,10 @@ class LearnpackV2Adapter:
     # --- lesson bodies and the items observed in them -----------------------------------
 
     def _lesson_texts(self, package: PackageDTO, fetcher: PackageFetcherPort) -> dict[str, str]:
-        return {
-            _file_stem(artifact.locator): _decode_text(
-                fetcher.fetch(artifact.locator), artifact.locator
-            )
-            for artifact in package.artifacts
-            if artifact.kind == KIND_LESSON_CONTENT
-        }
+        """Asked for together: a lesson body is never read to find another one."""
+        locators = [a.locator for a in package.artifacts if a.kind == KIND_LESSON_CONTENT]
+        raw = fetcher.fetch_all(locators)
+        return {_file_stem(locator): _decode_text(raw[locator], locator) for locator in locators}
 
     def _lesson_bodies(
         self, texts_by_slug: dict[str, str], inventory: ProfileEntry
@@ -661,7 +661,13 @@ class LearnpackV2Adapter:
 
     @staticmethod
     def _json_object(artifact: ArtifactDTO, fetcher: PackageFetcherPort) -> dict[str, Any]:
-        parsed = _parse_json(fetcher.fetch(artifact.locator), artifact.locator)
+        return LearnpackV2Adapter._as_json_object(fetcher.fetch(artifact.locator), artifact.locator)
+
+    @staticmethod
+    def _as_json_object(raw: bytes, locator: str) -> dict[str, Any]:
+        """The same reading, for bytes that are already in hand — which is what a group asked
+        for together leaves behind."""
+        parsed = _parse_json(raw, locator)
         if not isinstance(parsed, dict):
-            raise ExtractionError(f"artifact '{artifact.locator}' is not a JSON object")
+            raise ExtractionError(f"artifact '{locator}' is not a JSON object")
         return parsed

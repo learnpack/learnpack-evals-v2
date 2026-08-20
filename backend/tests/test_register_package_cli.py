@@ -58,6 +58,9 @@ def mount_fetcher(courses_tree, monkeypatch):
         def fetch(self, locator: str) -> bytes:
             return self._inner.fetch(locator.removeprefix(base))
 
+        def fetch_all(self, locators):
+            return {locator: self.fetch(locator) for locator in locators}
+
     monkeypatch.setattr(profiling_policies, "HttpPackageFetcher", MountFetcher)
 
 

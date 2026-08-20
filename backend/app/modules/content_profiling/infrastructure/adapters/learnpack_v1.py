@@ -368,16 +368,21 @@ class LearnpackV1Adapter:
     def _lesson_texts(self, package: PackageDTO, fetcher: PackageFetcherPort) -> dict[str, str]:
         """Raw lesson-content text by slug — fetched once, feeds bodies, activities and
         assessment items. Artifacts that do not sit under `exercises/<slug>/` are not
-        lesson content whatever their kind says, and are not fetched at all."""
-        texts: dict[str, str] = {}
+        lesson content whatever their kind says, and are not fetched at all.
+
+        Asked for together: a lesson body is never read to find another one."""
+        slug_by_locator: dict[str, str] = {}
         for artifact in package.artifacts:
             if artifact.kind != KIND_LESSON_CONTENT:
                 continue
             slug = _lesson_slug(artifact.locator)
-            if slug is None:
-                continue
-            texts[slug] = _decode_text(fetcher.fetch(artifact.locator), artifact.locator)
-        return texts
+            if slug is not None:
+                slug_by_locator[artifact.locator] = slug
+
+        raw = fetcher.fetch_all(list(slug_by_locator))
+        return {
+            slug: _decode_text(raw[locator], locator) for locator, slug in slug_by_locator.items()
+        }
 
     def _lesson_bodies(
         self, texts_by_slug: dict[str, str], inventory: ProfileEntry

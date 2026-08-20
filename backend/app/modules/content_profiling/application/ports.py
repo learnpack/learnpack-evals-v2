@@ -6,7 +6,7 @@ testable with frozen fixtures — the investment of this context goes to fixture
 model.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -15,9 +15,18 @@ from app.modules.content_profiling.domain.profile import ContentProfile, Profile
 
 
 class PackageFetcherPort(Protocol):
-    """Resolve an artifact locator to its bytes (HTTP in production, filesystem in tests)."""
+    """Resolve an artifact locator to its bytes (HTTP in production, filesystem in tests).
+
+    `fetch_all` is how an adapter says a group of reads is independent of each other — the
+    lesson bodies, say, which it selects by kind and never opens to find one another. It says
+    nothing about how they are produced: over http they go out together, off a filesystem they
+    are still a loop, because a local read has nothing to wait for. Same arrangement as the
+    registry's `PackageRoot` on the discovery side.
+    """
 
     def fetch(self, locator: str) -> bytes: ...
+
+    def fetch_all(self, locators: Sequence[str]) -> Mapping[str, bytes]: ...
 
 
 class ExtractionAdapterPort(Protocol):

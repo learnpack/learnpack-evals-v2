@@ -9,7 +9,7 @@ never re-profiles existing coordinates, so replaying `ContentVersionRegistered` 
 re-emit anything (ADR-0003).
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -41,6 +41,39 @@ class ProfileAlreadyExists(Exception):
 @dataclass(frozen=True)
 class ProfileContentCommand:
     content_id: UUID
+
+
+class _ReadOnce:
+    """A fetcher that answers a locator it has already answered from memory.
+
+    An adapter's entry builders are deliberately independent: each reads and cites the
+    artifact it cites, without asking what another one read. That is why V2 downloaded
+    `lesson_plan.json` three times — the design was right and the bill was not. Rather than
+    couple the builders to each other, the fetcher stops the repetition.
+
+    It wraps the injected fetcher for the length of ONE extraction, which is the only window
+    in which "the same artifact" is a safe thing to say: a package's bytes are what they were
+    when discovery hashed them, and the next extraction gets a new instance. Scoped by
+    construction, so there is no composition root to remember and no caller that can share it
+    by accident.
+    """
+
+    def __init__(self, fetcher: PackageFetcherPort) -> None:
+        self._fetcher = fetcher
+        self._read: dict[str, bytes] = {}
+
+    def fetch(self, locator: str) -> bytes:
+        if locator not in self._read:
+            self._read[locator] = self._fetcher.fetch(locator)
+        return self._read[locator]
+
+    def fetch_all(self, locators: Sequence[str]) -> Mapping[str, bytes]:
+        """Only what is not in hand goes to the wrapped fetcher — as one group, so a wave
+        that is half remembered does not become a walk over the rest."""
+        missing = [locator for locator in locators if locator not in self._read]
+        if missing:
+            self._read.update(self._fetcher.fetch_all(missing))
+        return {locator: self._read[locator] for locator in locators}
 
 
 class ProfileContent:
@@ -84,7 +117,7 @@ class ProfileContent:
             self._profiles.delete_failed(command.content_id, adapter.adapter_version)
 
         try:
-            entries, extras = adapter.extract(package, self._fetcher)
+            entries, extras = adapter.extract(package, _ReadOnce(self._fetcher))
             profile = ContentProfile.ok(
                 id=new_id(),
                 content_id=command.content_id,
