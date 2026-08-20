@@ -502,7 +502,7 @@ persisted, the ones in flight stop at their next call, and the summary still pri
 needs undoing — an evaluation that does not reach its end writes nothing.
 
 **How much it asks for at once — two numbers, not one.** `--concurrency` is how many
-**courses** run at a time (default `BATCH_MAX_COURSES`, 4). How many **requests** may be in
+**courses** run at a time (default `BATCH_MAX_COURSES`, 6). How many **requests** may be in
 flight is `LLM_MAX_CONCURRENCY` (16) at the transport itself, whatever the callers do, so
 nested fan-outs can never multiply into a burst nobody chose.
 
@@ -514,13 +514,41 @@ Requests wanted is that times the courses in flight. A ceiling below it does not
 it only moves the wait into the transport's queue, where it is recorded as latency and reads
 like a slow model.
 
-`BATCH_MAX_COURSES` is bounded by the database rather than by the endpoint: each worker uses
-up to two sessions against a pool of 5 + 10 overflow, so past ~7 the pool has to be raised
-too. `LLM_MAX_CONCURRENCY` is bounded by what the account is served — OpenRouter states no
+`LLM_MAX_CONCURRENCY` is bounded by what the account is served — OpenRouter states no
 concurrency limit for paid models and governs capacity per account, so opening more keys buys
 nothing. If the endpoint pushes back, the transport backs off on 429 honouring `Retry-After`:
-overshooting costs retries, not correctness, and the first real batch is how the account's
-actual limit gets measured rather than guessed.
+overshooting costs retries, not correctness.
+
+**`BATCH_MAX_COURSES` is bounded by the database instead**, and that is the lever worth
+knowing how to move.
+
+```
+DB_POOL_SIZE + DB_MAX_OVERFLOW  ≥  2 × workers  +  headroom
+```
+
+Two per worker, because a worker holds its own session and the one the policy opens when the
+evaluation commits — a policy runs in its own transaction (ADR-0003). At the defaults that is
+`5 + 10 = 15`, which serves seven workers with one connection left. Six is the default rather
+than seven on purpose: a pool that runs out does not make a batch slower, it makes a checkout
+wait `pool_timeout` and then raise, and **a failure nobody named ends the whole batch** rather
+than one course.
+
+**To run bigger batches**, raise the two together — `BATCH_MAX_COURSES` and the pool, in the
+same change — and check the server's own limit before you do: the local Postgres serves 100
+connections and a managed one has its own, so a pool above it just moves the error. Then
+measure, because the point is throughput and not the setting:
+
+- **Did it help?** Compare the batch's wall clock against the sum of the per-course durations
+  the summary reports. Six courses at four at a time is 304 s against 963 s; the same six all
+  at once is 180 s against 954 s. Once the wall clock equals the slowest single course, more
+  workers buy nothing — that is the floor for that set.
+- **Did it cost anything?** Read the map's tokens per second in the run's trace. Across both
+  of those batches it stayed at 97–141, the same band one course produces alone, which is how
+  you know the requests ceiling is not what is holding the batch back. If it falls, the next
+  limit is `LLM_MAX_CONCURRENCY` or the account behind it, not the pool.
+- **What failure looks like:** courses ending with a cause nobody named, and the batch
+  stopping instead of carrying on. That is the pool, not the endpoint — a rate limit shows up
+  as retries and 429s in the trace, and the transport absorbs it.
 
 **The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with
 the identical work behind it — one use case, two doors, so they cannot answer differently.

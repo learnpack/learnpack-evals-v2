@@ -337,6 +337,18 @@ the effective figure to plan a generation with is about **50 s per course**, and
 room left is `BATCH_MAX_COURSES` rather than the ceiling: the requests are not saturated, and
 what bounds the workers is the database pool at roughly seven.
 
+**That knob was then turned, and it is now 6.** The same six courses run all at once took
+**180 s against 954 s of course time — 5.3× where four workers gave 3.2×**, again with no
+retry, no 429 and the map's calls generating at 97–141 tokens per second either way, which is
+the band one course produces on its own. So a generation plans at about **30 s per course**.
+The default stops at six rather than seven because seven is the pool's exact edge: a worker
+holds two sessions — its own and the one the policy opens on commit (ADR-0003) — so fifteen
+connections reach seven with one to spare, and **a pool that runs out does not slow a batch, it
+ends it**, since a failure nobody named stops the whole run. `DB_POOL_SIZE` and
+`DB_MAX_OVERFLOW` are settings now, at the values SQLAlchemy was already using, so raising the
+two together is a configuration change rather than a code edit; `backend/README.md` carries the
+arithmetic, what to measure to know it helped, and what the failure looks like.
+
 **Measured against the draft the readers read**, and it is the strongest agreement this
 lineage has: on the SOLID draft of `learnpack-generator-a154586`, both criteria return exactly
 what annotators K and L returned — `cl-modules-build-within-themselves` PASS (readers 5 of 6
