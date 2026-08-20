@@ -670,6 +670,73 @@ And the limit worth stating: self-agreement is not correctness. A criterion can 
 stable and stably wrong, and nothing in these runs would show it. Only a human reading the
 verdicts against the content can.
 
+### Deciding what a criterion should ask, before it exists
+
+Repeats measure a criterion that is already written. `dump-concept-touches` is for the step
+before that — when the question itself is what is in doubt, and running a criterion would
+only measure the guess inside it.
+
+```bash
+uv run python -m app.cli dump-concept-touches --content-id <uuid> [--out runs/concept-touches]
+```
+
+One call over a profiled draft, one row per place a lesson deals with a concept **another**
+lesson declares, out as a markdown table and the same rows as JSON. It reads the profile
+through the same gateway `evaluate` reads, so a quote is what a judge would have been shown;
+it persists nothing, names no instrument and answers no criterion.
+
+What each row carries, and which half of it came from where:
+
+| From the model | From the plan and the text |
+|---|---|
+| `mode` — `uses_as_known` · `re_explains` · `points_at` | `direction` — `earlier` · `later` · `own` |
+| `newness` — `new_context` · `same_as_taught` · `n_a` | `distance`, in lessons of the declared order |
+| the verbatim `quote`, and one sentence of `reason` | `zone` — `opening` · `middle` · `closing` |
+
+The split is the whole point. **Two axes rather than one** because a single "does this
+lesson apply an earlier concept?" fuses what the lesson does with how new the work is, and a
+reader who disagrees with where that line sits cannot move it without buying another run.
+Answered apart, one table supports every bar anyone might write. **`direction` and
+`distance` are computed, never asked**: where a concept is taught is a fact of
+`lesson_concept_coverage`, and an answer allowed to carry it would be free to move a concept
+in time. And **`zone` is measured against 1200 characters at each end** — the window an
+adjacent-pair task reads — so "how many backward references sit outside the opening" is
+answerable against the design that would have to catch them.
+
+The last column of the table is **empty on purpose**: `mode` and `newness` are what the
+model saw, `your call` is where the bar actually goes, and the two side by side are the only
+measurement of the distance between them that exists.
+
+Read the `## What the answer did not yield` section at the bottom before concluding anything
+from an absence. A row is dropped rather than the answer refused whenever the loss is one
+row — a quote that will not ground, a lesson nobody asked about, a duplicate — so silence in
+the table can mean either "the course does not do this" or "that touch was unusable", and
+only that section tells the two apart.
+
+**Run it more than once over the same draft, and never read a count as a measurement.** The
+section above says repeats are what tell you whether an answer means anything, and this task
+is no exception — it is the weaker case, because it has no vote and no threshold to average
+out a bad draw. Two runs of one draft at identical settings found 40 and 29 touches, agreed
+on `mode` for half the touches they shared, and cited the same passage for under a third of
+them. Some of that last figure is benign: a lesson can deal with a concept in two places and
+both citations are true, which also means a `mode` compared across two different sentences is
+not really a disagreement about the same thing. What follows for reading is the same either
+way — **take the union of the runs as the rows worth judging, and treat how often a row
+recurs as part of what you are judging.** A category that appears in one run and not the next
+is telling you the question is underspecified, which is exactly what this dump is for.
+
+**Reasoning effort is not a cost knob here.** At `medium` the task still holds its contract —
+one call, no retries, nothing dropped — and runs four to five times faster for a quarter of
+the output tokens. It also stops using `same_as_taught` almost entirely: across three drafts
+that answer fell from 49 to 14, in one direction (31 touches moved to `new_context` against 4
+the other way), and on one draft it disappeared. Since `newness` is the axis a bar gets set
+on, a cheaper run that collapses it is not cheaper at anything that matters. Keep `high`; the
+minutes are a one-off per draft, and the criteria are not.
+
+The dump is deliberately outside the assessor's identity (ADR-0034): no executor imports it,
+`SOURCE_CONFIG` does not name it, and its prompts stay out of the fingerprinted templates,
+so editing it costs nobody a ratification. Tests pin that line in both directions.
+
 ## Registering courses
 
 The canonical intake is **discovery** (ADR-0027): declare a package source and the system

@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-17._
+_Last updated: 2026-08-18._
 
 ## Where we are
 
@@ -292,6 +292,81 @@ now names it, so `task db:reset` publishes v8, accepts adapter v4 and ratifies `
 against v8 on a fresh database in one pass. On a store that already ratified `drafts-hybrid`
 against v7, ratifying it against v8 needs the confirmation the criterion's changed `requires`
 demands: `ratify-assessor ... --confirm cr-cognitive-demand-rises-across-the-course`.
+
+**The three criteria that read every lesson were built, measured, and thrown away — and what
+replaces them is a dump, not a criterion.** A branch took
+`cr-later-lessons-apply-earlier-concepts`, `cr-concepts-introduced-before-use` and
+`cr-adjacent-pair-has-a-bridge` at 19 calls per course, and the field runs read **8 of 8 and 9
+of 9 lessons passing** where a hand reading of the same drafts said 7 of 8 and 8 of 9, **zero
+violations ever** for the premature-use one, and **1 bridged pair of 10** for the third,
+against an opening that plainly states its relation. Two criteria that cannot fail and one
+that cannot pass: the machinery ran clean and discriminated nothing. The branch is not merged
+and its commits are the record.
+
+**The traces put the cause in what was asked, which is why no refactor was the answer.**
+Three defects, none of them about cost or about the representation — the closed numbered
+concept set read off `lesson_concept_coverage` was right, and 19 calls is cheap. First, **a
+backward reference is measured by nobody**: the reuse criterion excludes it in as many words
+("judged elsewhere") and sends it to the bridge criterion, which sees only adjacent pairs and
+only the ends of each, so a reference to a lesson three back has no owner. Second, **the reuse
+criterion asked for a comparison the model could not make** — work "the lesson which teaches
+it did not already do" — while the corpus was `ordered[1:-1]`, so for every concept taught in
+the opening lesson the other term of the comparison was not on screen; asked something
+unanswerable, the model answered yes. Third, **one prompt written for one criterion was read
+by two**: its whole framing looked backward and it capped touches at three "clearest", while
+the premature-use criterion needs a FORWARD use, which is rare and was never asked for — its
+zero violations are structural blindness, not a finding about the drafts.
+
+**So `dump-concept-touches` is the step before the criteria, and it decides nothing.** One
+call over a profiled draft, one row per place a lesson deals with a concept another lesson
+declares, out as a markdown table with an empty column for the reader's own call. It is wider
+than any criterion by design: every lesson is shown and marked (defect 2), concepts declared
+**later** count as much as earlier ones and the direction is computed from the plan (defect
+3), and every row carries the **zone** of its quote against the same 1200-character window an
+adjacent-pair task reads (defect 1). The semantic call is split into **two independent axes** —
+`mode` (`uses_as_known` / `re_explains` / `points_at`) and `newness` (`new_context` /
+`same_as_taught` / `n_a`) — because the single `applied` fused them, and a fused answer cannot
+be re-cut without paying for another run. What the plan and the text settle is never asked:
+direction, distance and zone are computed here. Nothing is voted on, nothing is counted, and
+no pass condition is consulted. It is **deliberately not identity (ADR-0034)**: no executor
+imports it, `SOURCE_CONFIG` does not name it, its prompts stay out of the fingerprinted
+templates, and tests pin that line in both directions — so it costs nobody a ratification.
+
+**The extraction only became usable on the second model tried, and the first three drafts say
+so.** Under the flash model the failures were all at the OUTPUT CONTRACT rather than at the
+reading — `lessonId` dropped and entries answered by position, `mode` renamed to `type`,
+quotes spliced with an ellipsis — and three drafts yielded 3, 1 and 0 touches with two runs
+dead. Under `openai/gpt-5.6-luna` at `high` reasoning effort the same three yield 40, 97 and
+77, one call each, no retry and not one row dropped for a quote that would not ground. Two of
+the fixes on the way were ours and are worth keeping whatever model runs it: the quote is
+asked for BEFORE the two classifications, because a field written after them is the field a
+model drops, and a touch reported without one costs its row rather than the run.
+
+**But the dump is a sampler, not yet an instrument, and no count out of it should be read as a
+measurement.** One draft run twice at identical settings gave **40 touches and 29**, agreement
+on `mode` for **half** the touches the two runs shared, and the same cited passage for under a
+third. Part of that is benign — a lesson can deal with a concept in two places and both
+citations are true, which also means a `mode` compared across two different sentences is not a
+disagreement about the same thing — but the size of it is not. The reading rule that follows is
+the union of repeats as the rows worth judging, with how often a row recurs treated as part of
+what is being judged. **`medium` effort is not the saving it looks like:** it holds the
+contract, runs four to five times faster for a quarter of the output tokens, and nearly stops
+using `same_as_taught` (49 answers to 14 across three drafts, 31 touches moving one way against
+4 the other, and zero on one draft) — which is the axis a bar gets set on.
+
+**What is open is the reading.** The bar itself — what `applied` means, who owns a backward
+reference, whether the premature-use question needs its own extraction — is written with the
+owner after the tables are read, not before. Until that happens the three criteria stay
+abstained and `inter-lesson-coherence` stays open, which is where they were.
+
+**Noted while measuring, not built: the generator emits its own prerequisite graph.**
+`files/concept_graph.json` carries concept → `prerequisites` → `maps_to_objective_id` and is
+present in every generated draft on hand and in the repo's own fixture; its concept names
+match `lesson_plan.json`'s `concepts_covered` exactly. That makes "does the delivery order
+respect the prerequisites the generator itself declared?" a **zero-call** check of the plan
+against itself. It is not built here: it wants a `DataRequirement` of its own, an adapter
+version and an instrument bump, and it answers a different question from the three above —
+plan against plan, rather than plan against the lesson bodies.
 
 The repo can be run **without accounts or cloud** (local mode, ADR-0008): see the quickstart in
 the root `README.md`.
@@ -1673,9 +1748,14 @@ the data in the package).
   objectives-against-lesson-bodies matrix (three criteria), the per-lesson reads
   (`cr-new-instruction-is-preceded-by-a-problem`, `cr-skill-lessons-carry-a-worked-example`),
   the per-pair bridge and the per-module topic — all take an evaluation from ~10 calls to
-  ~40–50. One of the two things to decide first is now decided: **failure isolation is
-  ADR-0037** (a task's failure costs its criteria, not the evaluation, bounded by a failure
-  budget — realized in three PRs, the first of which is merged). Second, for the
+  ~40–50. **Three of the nine have been attempted and are back on this list** — the two
+  concept-map ones and the per-pair bridge — and what that attempt settled is that the cost
+  shape was never the obstacle: answering per unit inside one call carries them for three
+  extra calls a course. What it did not settle is what they should ask, which is what
+  `dump-concept-touches` is for (above). One of the two things to decide first is now
+  decided: **failure isolation is ADR-0037** (a task's failure costs its criteria, not the
+  evaluation, bounded by a failure budget — realized in three PRs, the first of which is
+  merged). Second, for the
   objectives-against-bodies matrix specifically, whether to decompose it at all: it is a
   **completeness** task, and there is evidence that decomposing those into per-cell
   judgments *loses* to a holistic read, because the decomposition fragments the reasoning
