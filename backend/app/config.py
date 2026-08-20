@@ -183,6 +183,21 @@ class Settings(BaseSettings):
     # `backend/README.md` has the arithmetic for going higher, which means raising the pool in
     # the same breath.
     batch_max_courses: int = 6
+    # How many ARTIFACT fetches may be in flight at once — the same kind of ceiling as
+    # `llm_max_concurrency`, at the other transport. A package's declared surface is read a
+    # file at a time (73 of them on the course measured), and those reads are independent, so
+    # they go out together; this is what keeps "together" from meaning "all seventy-three".
+    #
+    # It is deliberately more conservative than the LLM's, for a reason that has nothing to do
+    # with how much either endpoint can take. There the account is ours and the transport backs
+    # off on 429 honouring `Retry-After`, so overshooting costs retries. Here the origin is
+    # somebody else's course server, this transport has no backoff at all, and a fetch that
+    # fails refuses the whole registration (ADR-0027) — so overshooting costs a package that
+    # reads as broken when what happened is that we asked too fast.
+    #
+    # Eight because it is several times faster than one and nowhere near a burst; the number to
+    # raise it to is a measurement nobody has taken against a real origin yet.
+    http_max_concurrency: int = 8
 
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":

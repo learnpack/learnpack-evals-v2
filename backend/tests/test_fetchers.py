@@ -1,10 +1,13 @@
-"""The shared transport: what it fetches, and how many times it dials to do it."""
+"""The shared transport: what it fetches, how many times it dials, and how much it asks for
+at once."""
 
+import threading
 from pathlib import Path
 
 import httpx
 import pytest
 
+from app.platform.concurrency import all_at_once
 from app.shared.infrastructure import fetchers
 from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
@@ -79,13 +82,65 @@ def test_a_second_fetcher_shares_the_same_client(monkeypatch, served):
     assert built == 1
 
 
-def test_an_injected_transport_gets_a_client_of_its_own(monkeypatch, served):
-    """A test must not inherit connections from another, nor leave any in the shared one."""
+def test_an_injected_transport_gets_a_client_and_a_gate_of_its_own(monkeypatch, served):
+    """A test must not inherit connections or slots from another, nor leave any in the
+    shared ones."""
     monkeypatch.setattr(fetchers, "_shared_client", None)
+    monkeypatch.setattr(fetchers, "_shared_slots", None)
 
     HttpFetcher(transport=served).fetch("http://example.test/ok/a.md")
 
     assert fetchers._shared_client is None
+    assert fetchers._shared_slots is None
+
+
+def test_the_gate_bounds_what_the_origin_is_asked_for_at_once():
+    """The ceiling, pinned with a barrier rather than a stopwatch (as `test_concurrency.py`
+    pins the other half): the ceiling's worth of fetches have to be able to meet inside the
+    origin, and no more than that many are ever there. A serial fetcher never trips the
+    barrier and an ungated one drives the peak past it, so both failures are real failures
+    rather than a timing threshold to tune."""
+    ceiling = 3
+    in_flight = 0
+    peak = 0
+    counted = threading.Lock()
+    met = threading.Barrier(ceiling, timeout=20)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, peak
+        with counted:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        met.wait()  # nobody is answered until a full ceiling's worth has arrived
+        with counted:
+            in_flight -= 1
+        return httpx.Response(200, content=b"artifact bytes")
+
+    fetcher = HttpFetcher(transport=httpx.MockTransport(handle), max_concurrency=ceiling)
+    locators = [f"http://example.test/ok/{index}.md" for index in range(12)]
+
+    assert list(all_at_once(fetcher.fetch, locators)) == [b"artifact bytes"] * 12
+    assert peak == ceiling
+
+
+def test_a_fetcher_that_asked_for_a_gate_does_not_share_the_processs_one():
+    """Two fetchers that each allow one request at a time still run at the same time. The
+    gate belongs to whoever asked for it, exactly like the client — a global gate of one
+    would leave this barrier waiting forever."""
+    met = threading.Barrier(2, timeout=20)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        met.wait()
+        return httpx.Response(200, content=b"artifact bytes")
+
+    fetchers_with_one_slot = [
+        HttpFetcher(transport=httpx.MockTransport(handle), max_concurrency=1) for _ in range(2)
+    ]
+    fetched = all_at_once(
+        lambda fetcher: fetcher.fetch("http://example.test/ok/a.md"), fetchers_with_one_slot
+    )
+
+    assert list(fetched) == [b"artifact bytes"] * 2
 
 
 def test_the_filesystem_fetcher_refuses_to_escape_its_base(tmp_path: Path):
