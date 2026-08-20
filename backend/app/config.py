@@ -65,6 +65,18 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = ""
+    # The connection pool, declared rather than inherited. These are SQLAlchemy's own
+    # defaults, so nothing moves by naming them — what changes is that the number becomes
+    # movable, because it bounds something real: `batch_max_courses` below is limited by this
+    # pool and by nothing else, and a lever nobody can reach is not a lever.
+    #
+    # What consumes it: a batch worker holds TWO concurrent sessions, its own and the one the
+    # policy opens when the evaluation commits (a policy runs in its own transaction,
+    # ADR-0003). So `pool_size + max_overflow` has to cover `2 x workers` with room left for
+    # whatever else the process is doing. Raising it past what the SERVER allows only moves
+    # the error: the local Postgres serves 100 connections, and a managed one has its own.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
 
     # How a request's identity is established (ADR-0008). `clerk` verifies a JWT against the
     # provider's JWKS; `local` trusts a plain header so the app runs with no accounts at all.
@@ -156,9 +168,21 @@ class Settings(BaseSettings):
     # Separate from the ceiling above since the concept map's fan-out made them independent:
     # one course now asks for several calls at once, so "courses in flight" and "requests in
     # flight" stopped being the same number and one cannot serve as the other's default.
-    # What bounds this one is the database, not the endpoint: each worker uses up to two
-    # sessions against a pool of 5 + 10 overflow, so past ~7 the pool has to be raised too.
-    batch_max_courses: int = 4
+    #
+    # What bounds this one is the DATABASE, not the endpoint. Each worker holds two concurrent
+    # sessions (see `db_pool_size`), so the workers a pool serves is `(size + overflow) / 2`
+    # minus whatever else the process needs — seven against today's fifteen, with one
+    # connection left over. Six is deliberately not that edge: a pool that runs out does not
+    # slow a batch down, it makes a checkout wait `pool_timeout` and then raise, and a failure
+    # nobody named ends the whole batch rather than one course.
+    #
+    # Six rather than four because it was measured, over one study of six courses: four at a
+    # time took 304 s against 963 s of course time, six-plus took 180 s against 954 s — 3.2x
+    # against 5.3x — with no retry, no 429, and the map's calls generating at the same 97-141
+    # tokens per second either way. The requests ceiling is not what is holding a batch back.
+    # `backend/README.md` has the arithmetic for going higher, which means raising the pool in
+    # the same breath.
+    batch_max_courses: int = 6
 
     @model_validator(mode="after")
     def _local_auth_stays_local(self) -> "Settings":

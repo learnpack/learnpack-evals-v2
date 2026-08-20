@@ -409,14 +409,39 @@ def test_the_defaults_are_sized_for_one_courses_fan_out(monkeypatch):
 
     Sixteen covers a course's widest moment now that its criteria are looked at together: the
     concept map's seven alongside the five judged criteria and the four single-call tasks.
-    Four courses is what the database pool serves at two sessions each.
+
+    Six courses is what the pool serves with room to spare — a worker holds two sessions, so
+    fifteen connections reach seven, and the last one is not taken because a pool that runs out
+    ends the whole batch rather than one course. The pool numbers are asserted with them because
+    the two are one decision: the workers are only safe against a pool this size.
     """
     get_settings.cache_clear()
-    for name in ("LLM_MAX_CONCURRENCY", "BATCH_MAX_COURSES"):
+    for name in ("LLM_MAX_CONCURRENCY", "BATCH_MAX_COURSES", "DB_POOL_SIZE", "DB_MAX_OVERFLOW"):
         monkeypatch.delenv(name, raising=False)
     try:
         settings = get_settings()
         assert settings.llm_max_concurrency == 16
-        assert settings.batch_max_courses == 4
+        assert settings.batch_max_courses == 6
+        assert settings.db_pool_size + settings.db_max_overflow == 15
+        assert 2 * settings.batch_max_courses < settings.db_pool_size + settings.db_max_overflow
     finally:
         get_settings.cache_clear()
+
+
+def test_the_pool_settings_reach_the_engine(monkeypatch):
+    """A declared pool that the engine ignores is worse than none: it reads like a lever and
+    moves nothing, so a batch sized against it would exhaust a pool nobody actually widened."""
+    from app.platform import db
+
+    monkeypatch.setenv("DB_POOL_SIZE", "9")
+    monkeypatch.setenv("DB_MAX_OVERFLOW", "21")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@localhost:5432/nowhere")
+    get_settings.cache_clear()
+    db.get_engine.cache_clear()
+    try:
+        pool = db.get_engine().pool
+        assert pool.size() == 9
+        assert pool._max_overflow == 21
+    finally:
+        get_settings.cache_clear()
+        db.get_engine.cache_clear()

@@ -21,8 +21,15 @@ def get_engine() -> Engine:
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is not set (see backend/.env.example)")
     # `pool_pre_ping` matters on Neon: it scales to zero and resumes on demand (ADR-0003),
-    # so a pooled connection can be stale.
-    return create_engine(settings.database_url, pool_pre_ping=True, future=True)
+    # so a pooled connection can be stale. The pool's size is declared rather than inherited
+    # because it bounds how many courses a batch may evaluate at once (`config.py`).
+    return create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        future=True,
+    )
 
 
 def SessionLocal() -> Session:  # noqa: N802 — reads as a sessionmaker at call sites
