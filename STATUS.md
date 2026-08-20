@@ -2041,6 +2041,27 @@ the data in the package).
   package is read twice, and the second read is the authoritative one), and a `--root` flag
   bringing the CLI onto the same roots.
 
+  **A package is no longer read one file at a time.** The enumeration a package declares IS a
+  statement that its leaves are independent — not one of them is opened to find another — so
+  the discovery says so and `PackageRoot.fetch_all` decides what that costs: a fan-out over
+  http, still a loop off a filesystem, where a thread per file would buy a scheduler and no
+  time at all. Same split as ADR-0048, in the seam this module already had, so no port was
+  injected anywhere and the four callers that build a `PackageDiscovery` are untouched. V1 is
+  one wave; V2 is three, and three is what the tree forces — the plan names the lessons, each
+  lesson's stats name its body. What did NOT move is pinned: the artifact list is built in the
+  declared order and never the order of arrival, the hash is the same package however its root
+  read it, one miss among seventy-three still refuses the registration, and a missing syllabus
+  is still a state rather than a failure. That fan-out needed a gate first, since
+  `all_at_once` caps nothing on purpose: **`HTTP_MAX_CONCURRENCY` (8)** now sits beside the
+  shared client, so it bounds every artifact fetch whoever asked for it. Lower than the LLM's
+  sixteen for a reason that is not capacity — there the account is ours and the transport backs
+  off on 429, here the origin is somebody else's course server, nothing backs off, and a fetch
+  that fails refuses the whole registration. Which is also what a wrong ceiling would look
+  like: a course that used to register and now does not, indistinguishable from a broken
+  package. **Only the discovery half reads this way** — profiling still re-reads the package an
+  artifact at a time inside the same registration, so the two halves are timed apart, and the
+  retry budget that would tell a tired origin from a real 404 is not built.
+
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
   wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,
   `import-learnpack --base-dir` — are declined in silence and stay on the manual path
