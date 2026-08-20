@@ -1,4 +1,4 @@
-"""`drafts-hybrid` v12 — the semantic and judged executors over a fake transport, the
+"""`drafts-hybrid` v13 — the semantic and judged executors over a fake transport, the
 coverage vs the real v7 YAML, the whole package against the frozen LearnpackV2 fixture,
 the three-way retry (ADR-0037 §7), and ratification.
 
@@ -61,7 +61,7 @@ from app.platform.llm import (
 )
 from tests.conftest import INSTRUMENTS_DIR
 
-PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "12")]
+PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "13")]
 
 _SHIPPED_SPEC = yaml.safe_load(
     (INSTRUMENTS_DIR / "course-drafts-qa-v9.yaml").read_text(encoding="utf-8")
@@ -234,6 +234,21 @@ def trajectory_json(levels: dict[str, int]) -> str:
     )
 
 
+def concept_map_json(*entries: tuple[int, str, list[tuple[str, str]]]) -> str:
+    """One pass's answer: (concept index, group, [(lesson id, quote)]) per entry.
+
+    Entries for one concept merge, so a test writes one line per group and the shape the model
+    is asked for — one object per concept carrying several groups — comes out of it.
+    """
+    by_concept: dict[int, dict] = {}
+    for index, group, appearances in entries:
+        entry = by_concept.setdefault(index, {"conceptIndex": index})
+        entry.setdefault(group, []).extend(
+            {"lessonId": lesson_id, "quote": quote} for lesson_id, quote in appearances
+        )
+    return json.dumps({"concepts": list(by_concept.values())})
+
+
 def outcomes_profile() -> ProfileData:
     return profile(
         lesson_inventory=[lesson("00.0", 0), lesson("01.0", 1), lesson("01.1", 2)],
@@ -263,7 +278,7 @@ def test_coverage_decides_every_criterion_of_the_shipped_instrument():
     assert shipped <= PACKAGE.coverage.declared
     assert not (PACKAGE.coverage.executes & set(PACKAGE.coverage.abstains))
     assert PACKAGE.instrument_id == _SHIPPED_SPEC["instrument_id"]
-    assert len(PACKAGE.coverage.executes) == 19
+    assert len(PACKAGE.coverage.executes) == 21
 
 
 def test_coverage_declares_nothing_no_version_of_the_lineage_asks_for():
@@ -299,13 +314,17 @@ def test_coverage_also_decides_every_criterion_of_the_lineages_other_versions():
 
 
 def test_every_executed_failure_index_exists_in_the_real_instrument():
-    """The two trajectory-shaped executors select mode 1 (flat); everything else mode 0."""
-    two_mode = {
-        "cr-objectives-non-decreasing-demand",
-        "cr-cognitive-demand-rises-across-the-course",
+    """Most executors select mode 0; these select further along the criterion's own list, so
+    the list has to be long enough. The within-module one reaches mode 2 — a stretch of
+    consecutive lessons — which is the highest index any executor here selects."""
+    modes_needed = {
+        "cr-objectives-non-decreasing-demand": 2,
+        "cr-cognitive-demand-rises-across-the-course": 2,
+        "cr-modules-build-on-earlier-modules": 2,
+        "cr-lessons-build-within-their-module": 3,
     }
     for criterion_id in PACKAGE.coverage.executes:
-        needed = 2 if criterion_id in two_mode else 1
+        needed = modes_needed.get(criterion_id, 1)
         assert len(_SHIPPED_CRITERIA[criterion_id].failure_modes) >= needed
 
 
@@ -317,6 +336,7 @@ def test_source_config_declares_the_semantic_identity():
         "outcomes_extraction",
         "objectives_classification",
         "concept_trajectory",
+        "concept_map",
         "judge",
         "assessment_mapping",
         "assessment_reach",
@@ -332,6 +352,15 @@ def test_source_config_declares_the_semantic_identity():
     # `enabled`. Saying it both ways is identity — it decides what is billed and returned.
     assert llm["reasoning"] == {"effort": "none", "enabled": False}
     assert llm["maxOutputTokens"] == 8000
+    # The one task that contradicts both of those, declared apart so the config cannot read
+    # as uniform when it is not (v13). Its effort is what the definitions pass needs — at
+    # medium it drifted to 14–15 of 18 against readers where high scored 17 of 17 — and its
+    # budget is four times the rest because a reasoning model bills its thinking against it.
+    assert llm["conceptMap"] == {
+        "reasoning": {"effort": "high"},
+        "maxOutputTokens": 32000,
+        "maxLessonsPerGroup": 6,
+    }
     # How a failing conversation is retried decides which answer finally arrives, so the
     # clean-retry allowance is identity too (ADR-0037 §7). Budget joined in v8: a
     # length-cut runaway is deterministic per PROVIDER, and a fresh conversation re-rolls
@@ -482,6 +511,308 @@ def test_a_short_course_has_no_trajectory_to_judge(fake_llm):
     )
     assert run(spec, data).passed
     assert not client.calls  # one core lesson is a point, not a trajectory — no spend
+
+
+# --- the continuity criteria: one concept map, two verdicts (v13) -----------------------
+#
+# The map's shape makes these readable without a fixture: every lesson declares exactly one
+# concept, named after itself, so concept index N is lesson N's concept and a test says "01.1
+# works with what 01.0 introduced" in those words. The queue the fake serves is ordered the way
+# the task asks: the definitions pass over the whole course, then one usage call per module in
+# identifier order.
+
+
+def continuity_quote(lesson_id: str) -> str:
+    return f"Lesson {lesson_id} works through the material in a full sentence."
+
+
+def continuity_profile(*lesson_ids: str) -> ProfileData:
+    return profile(
+        lesson_inventory=[lesson(lid, index) for index, lid in enumerate(lesson_ids)],
+        lesson_bodies=[
+            body(lid, f"# Heading {lid}\n\n{continuity_quote(lid)}\n") for lid in lesson_ids
+        ],
+        lesson_concept_coverage=[
+            {"lessonId": lid, "concepts": [f"concept of {lid}"]} for lid in lesson_ids
+        ],
+    )
+
+
+def continuity_answers(
+    lesson_ids: tuple[str, ...],
+    defines: dict[str, str],
+    usage: dict[str, tuple[tuple[str, str, str], ...]],
+) -> list[str]:
+    """The whole queue: `defines` maps a concept (named by its owning lesson) to the lesson
+    that states it; `usage` maps a module to (lesson, concept owner, group) triples."""
+    index_of = {lid: index for index, lid in enumerate(lesson_ids)}
+    modules = sorted({lid.split(".")[0] for lid in lesson_ids})
+    queue = [
+        concept_map_json(
+            *(
+                (index_of[owner], "defines", [(stated_in, continuity_quote(stated_in))])
+                for owner, stated_in in defines.items()
+            )
+        )
+    ]
+    queue.extend(
+        concept_map_json(
+            *(
+                (index_of[owner], group, [(lesson_id, continuity_quote(lesson_id))])
+                for lesson_id, owner, group in usage.get(module, ())
+            )
+        )
+        for module in modules
+    )
+    return queue
+
+
+def run_continuity(criterion_id: str, data: ProfileData):
+    return PACKAGE.executors[criterion_id](_SHIPPED_CRITERIA[criterion_id], data)
+
+
+WITHIN = "cr-lessons-build-within-their-module"
+ACROSS = "cr-modules-build-on-earlier-modules"
+
+
+def test_a_module_whose_later_lessons_work_with_its_earlier_ones_passes(fake_llm):
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    fake_llm(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={
+                "01": (("01.1", "01.0", "uses_as_known"),),
+                "02": (("02.1", "02.0", "assessed"),),
+            },
+        )
+    )
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert verdict.passed
+    # The passing quote is the course's own text, at the first place the criterion found it.
+    assert verdict.quote == continuity_quote("01.1")
+    metrics = {m.metric_id: m.value for m in verdict.metrics}
+    assert metrics["module_internal_build"] == {"of": 2, "built": 2}
+    assert metrics["concept_map_coverage"]["dropped"] == 0
+    assert metrics["llm_concept_map"]["calls"] == 4  # definitions + three modules
+
+
+def test_lessons_that_sit_side_by_side_fail(fake_llm):
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    fake_llm(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            # Each interior lesson names its module's earlier concept and does nothing with it.
+            usage={
+                "01": (("01.1", "01.0", "mentions"),),
+                "02": (("02.1", "02.0", "mentions"),),
+            },
+        )
+    )
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert not verdict.passed
+    assert verdict.failure_mode == _SHIPPED_CRITERIA[WITHIN].failure_modes[0]
+    assert verdict.quote.startswith("# Heading 01.1")  # the first lesson that failed
+
+
+def test_saying_again_what_the_module_taught_is_not_building_on_it(fake_llm):
+    """The asymmetry the vocabulary exists for: a lesson may add to a concept later, and may
+    not state again what it is. Re-defining is the course starting over."""
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    answers = continuity_answers(
+        lessons,
+        defines={lid: lid for lid in lessons},
+        usage={"02": (("02.1", "02.0", "develops"),)},
+    )
+    # 01.1 states 01.0's concept a second time. 01.0 states it first, so 01.0 is the
+    # introduction and 01.1 is the course saying again what it had already said.
+    answers[0] = concept_map_json(
+        *((index, "defines", [(lid, continuity_quote(lid))]) for index, lid in enumerate(lessons)),
+        (1, "defines", [("01.1", continuity_quote("01.1"))]),
+    )
+    fake_llm(concept_map=answers)
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert not verdict.passed
+    assert verdict.failure_mode == _SHIPPED_CRITERIA[WITHIN].failure_modes[1]
+    assert verdict.quote == continuity_quote("01.1")  # the restatement itself
+    metrics = {m.metric_id: m.value for m in verdict.metrics}
+    assert metrics["module_internal_build"] == {"of": 2, "built": 1}
+
+
+def test_two_consecutive_lessons_that_build_on_nothing_fail_a_passing_ratio(fake_llm):
+    """Both halves of the pass condition are load-bearing: four of six meets two thirds
+    exactly, and the criterion still fails because two consecutive lessons built on nothing."""
+    lessons = ("00.0", "01.0", "01.1", "01.2", "01.3", "01.4", "01.5", "01.6")
+    fake_llm(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={
+                "01": (
+                    ("01.1", "01.0", "uses_as_known"),
+                    ("01.2", "01.0", "uses_as_known"),
+                    # 01.3 and 01.4 work with nothing their module introduced.
+                    ("01.5", "01.0", "uses_as_known"),
+                    ("01.6", "01.0", "uses_as_known"),
+                ),
+            },
+        )
+    )
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    metrics = {m.metric_id: m.value for m in verdict.metrics}
+    assert metrics["module_internal_build"] == {"of": 6, "built": 4}  # exactly two thirds
+    assert not verdict.passed
+    assert verdict.failure_mode == _SHIPPED_CRITERIA[WITHIN].failure_modes[2]
+
+
+def test_modules_of_one_lesson_contribute_no_denominator(fake_llm):
+    """A module with no interior cannot fail to build across it — the criterion's own words,
+    and the alternative explanation its claim carries."""
+    lessons = ("00.0", "01.0", "02.0", "03.0")
+    fake_llm(
+        concept_map=continuity_answers(lessons, defines={lid: lid for lid in lessons}, usage={})
+    )
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert verdict.passed
+    assert {m.metric_id: m.value for m in verdict.metrics}["module_internal_build"]["of"] == 0
+
+
+def test_the_introduction_is_the_earliest_lesson_that_states_a_concept(fake_llm):
+    """The deterministic anchor: a concept two lessons state is introduced by the first, so a
+    lesson between them is building on it rather than preceding it."""
+    lessons = ("00.0", "01.0", "01.1", "01.2")
+    answers = continuity_answers(
+        lessons,
+        defines={lid: lid for lid in lessons},
+        usage={"01": (("01.1", "01.0", "uses_as_known"), ("01.2", "01.0", "develops"))},
+    )
+    # 01.2 states 01.0's concept as well; `min(position)` still puts the introduction at 01.0.
+    answers[0] = concept_map_json(
+        *((index, "defines", [(lid, continuity_quote(lid))]) for index, lid in enumerate(lessons)),
+        (1, "defines", [("01.2", continuity_quote("01.2"))]),
+    )
+    fake_llm(concept_map=answers)
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    assert verdict.passed
+    assert {m.metric_id: m.value for m in verdict.metrics}["module_internal_build"] == {
+        "of": 2,
+        "built": 2,
+    }
+
+
+def test_later_modules_that_work_with_earlier_ones_pass(fake_llm):
+    lessons = ("00.0", "01.0", "02.0", "03.0")
+    fake_llm(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={
+                "02": (("02.0", "01.0", "uses_as_known"),),
+                "03": (("03.0", "01.0", "assessed"),),
+            },
+        )
+    )
+
+    verdict = run_continuity(ACROSS, continuity_profile(*lessons))
+
+    assert verdict.passed
+    # Module 00 is the opening slot, so the population is 02 and 03 — the thematic modules
+    # after the first one.
+    assert {m.metric_id: m.value for m in verdict.metrics}["cross_module_build"] == {
+        "of": 2,
+        "built": 2,
+    }
+
+
+def test_modules_that_only_refer_back_fail_as_such(fake_llm):
+    """The second failure mode the criterion declares, and it is a different finding from a
+    course whose modules carry nothing back at all."""
+    lessons = ("00.0", "01.0", "02.0", "03.0")
+    fake_llm(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={
+                "02": (("02.0", "01.0", "mentions"),),
+                "03": (("03.0", "01.0", "mentions"),),
+            },
+        )
+    )
+
+    verdict = run_continuity(ACROSS, continuity_profile(*lessons))
+
+    assert not verdict.passed
+    assert verdict.failure_mode == _SHIPPED_CRITERIA[ACROSS].failure_modes[1]
+    assert verdict.quote == continuity_quote("02.0")
+
+
+def test_a_usage_call_may_not_name_a_lesson_it_was_not_shown(fake_llm):
+    """The fan-out's honesty guard: a module's call sees one module, so a row about another
+    module's lesson is dropped rather than trusted — and the loss is reported, not swallowed."""
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    answers = continuity_answers(
+        lessons,
+        defines={lid: lid for lid in lessons},
+        usage={"01": (("01.1", "01.0", "uses_as_known"),)},
+    )
+    # The module 02 call answers about a lesson of module 01.
+    answers[-1] = concept_map_json(
+        (1, "uses_as_known", [("01.1", continuity_quote("01.1"))]),
+    )
+    fake_llm(concept_map=answers)
+
+    verdict = run_continuity(WITHIN, continuity_profile(*lessons))
+
+    metrics = {m.metric_id: m.value for m in verdict.metrics}
+    assert metrics["concept_map_coverage"]["dropped"] == 1
+    assert metrics["module_internal_build"] == {"of": 2, "built": 1}
+
+
+def test_the_continuity_pair_share_one_concept_map(fake_llm):
+    """The reason the map is one task: two criteria, one fan-out."""
+    lessons = ("00.0", "01.0", "01.1", "02.0", "02.1")
+    client = fake_llm(
+        concept_map=continuity_answers(
+            lessons,
+            defines={lid: lid for lid in lessons},
+            usage={
+                "01": (("01.1", "01.0", "uses_as_known"),),
+                "02": (("02.1", "02.0", "uses_as_known"), ("02.0", "01.0", "uses_as_known")),
+            },
+        )
+    )
+    data = continuity_profile(*lessons)
+
+    within = run_continuity(WITHIN, data)
+    across = run_continuity(ACROSS, data)
+
+    assert within.passed and across.passed
+    assert len(client.calls) == 4  # definitions + three modules, asked once for both
+
+
+def test_a_course_with_no_declared_concept_is_not_asked_about(fake_llm):
+    client = fake_llm()  # no canned answers: any call would fail the test
+    data = profile(
+        lesson_inventory=[lesson("00.0", 0), lesson("01.0", 1), lesson("01.1", 2)],
+        lesson_bodies=[body(lid, "# Heading\n\nText.") for lid in ("00.0", "01.0", "01.1")],
+        lesson_concept_coverage=[{"lessonId": "01.0", "concepts": []}],
+    )
+
+    assert run_continuity(WITHIN, data).passed
+    assert not client.calls
 
 
 # --- one extraction, two criteria: the memoization the instrument's pairing expects -----
@@ -1742,6 +2073,17 @@ def _fixture_profile() -> ProfileData:
     )
 
 
+def fixture_prose(data: ProfileData, lesson_id: str) -> str:
+    """A plain prose line of one fixture lesson — what a well-behaved model would quote, and
+    what `grounding.locate` has to find in the body the task showed."""
+    shown = next(one for one in tasks.all_lessons(data) if one["lessonId"] == lesson_id)
+    return next(
+        line.strip()
+        for line in str(shown["body"]).splitlines()
+        if len(line.strip()) > 40 and not line.strip().startswith(("#", "-", "*", ">", "|", "`"))
+    )
+
+
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
         instrument_version_id="course-drafts-qa-v9",
@@ -1769,8 +2111,8 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     `cr-cognitive-demand-rises-across-the-course` used to derive `not_applicable` because v7
     did not require `lesson_concept_coverage`. v8 and v9 do, the fixture carries it, so the
     criterion now EXECUTES and the trajectory task is asked for. The two criteria v9 splits
-    out of `cr-later-lessons-apply-earlier-concepts` are abstained, so they land in
-    `not_assessed` with the rest."""
+    out of `cr-later-lessons-apply-earlier-concepts` execute since v13, over one concept map
+    the pair shares — six more calls, one per module plus the definitions pass."""
     fixture = _fixture_profile()
     opening_body, _ = tasks.opening_lesson_body(fixture)
     closing_body, _ = judgments.closing_lesson_body(fixture)
@@ -1783,7 +2125,52 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     # The trajectory task is asked about the CORE lessons only — the frame ones are excluded
     # because they bound the arc rather than advance it.
     core_ids = [str(lesson["lessonId"]) for lesson in tasks.ordered_inventory(fixture)[1:-1]]
+
+    # The concept map, answered the way the draft actually reads: each module opens a concept
+    # and its later lessons work with it, and each module after the first also works with
+    # something an earlier module opened. Concepts are named, not indexed by hand.
+    concept_index = {name: index for index, name in enumerate(tasks.distinct_concepts(fixture))}
+    markup, syntax = "HTML as markup language", "HTML element syntax"
+    anchors, whole_page = "Anchor elements", "Complete HTML page construction"
+    introduces = {markup: "01.0", syntax: "02.0", anchors: "03.0", whole_page: "04.0"}
+    works_with = {
+        "00": (),
+        "01": (("01.1", markup, "uses_as_known"),),
+        "02": (
+            ("02.0", markup, "uses_as_known"),
+            ("02.1", syntax, "uses_as_known"),
+            ("02.2", syntax, "assessed"),
+        ),
+        "03": (
+            ("03.0", syntax, "uses_as_known"),
+            ("03.1", anchors, "uses_as_known"),
+            ("03.2", anchors, "develops"),
+        ),
+        "04": (
+            ("04.0", anchors, "uses_as_known"),
+            ("04.1", whole_page, "uses_as_known"),
+        ),
+    }
+    concept_map_queue = [
+        concept_map_json(
+            *(
+                (concept_index[name], "defines", [(lesson_id, fixture_prose(fixture, lesson_id))])
+                for name, lesson_id in introduces.items()
+            )
+        ),
+        *(
+            concept_map_json(
+                *(
+                    (concept_index[name], group, [(lesson_id, fixture_prose(fixture, lesson_id))])
+                    for lesson_id, name, group in works_with[module]
+                )
+            )
+            for module in sorted(works_with)
+        ),
+    ]
+
     client = fake_llm(
+        concept_map=concept_map_queue,
         outcomes=[outcomes_json((grounded, "build", True))],
         # v9 requires `lesson_concept_coverage`, which the fixture carries, so the trajectory
         # task is reached now — answered non-decreasing so the criterion passes.
@@ -1853,6 +2240,9 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
         "cr-every-objective-has-an-assessment-item",
         "cr-assessment-matches-the-declared-verification",
         "cr-assessment-retrieves-earlier-taught-material",
+        # the continuity pair, executed since v13 over the map the two of them share
+        "cr-lessons-build-within-their-module",
+        "cr-modules-build-on-earlier-modules",
     }
     # The abstains restricted to what THIS instrument version declares. Since v9 the artifact
     # decides ids v2 never had, and an outcome is only derived for a criterion the pinned
@@ -1862,10 +2252,12 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
     assert all(not o.derived and o.quote for o in outcomes if o.outcome == "pass")
 
-    # Twelve criteria, fifteen calls: five judged criteria are voted on twice each, two share
-    # the outcomes extraction and two share the assessment mapping, and the trajectory task is
-    # asked once — it joined the executed set when this test moved from v7 to v9.
-    assert len(client.calls) == 15
+    # Fourteen criteria, twenty-one calls: five judged criteria are voted on twice each, two
+    # share the outcomes extraction and two share the assessment mapping, the trajectory task
+    # is asked once, and the concept map costs six — the definitions pass over the whole
+    # course plus one usage call per module — which the continuity pair shares.
+    assert len(client.calls) == 21
+    assert sum(1 for call in client.calls if call["task_id"] == "concept_map") == 6
 
     metric_values = {m.metric_id: m.value for m in metrics}
     assert metric_values["stated_outcomes_count"] == 1
@@ -1875,6 +2267,12 @@ def test_the_package_against_the_frozen_v2_fixture(fake_llm):
     assert len(metric_values["concept_sophistication_levels"]) == len(core_ids)
     assert metric_values["objectives_unmeasured"] == []
     assert metric_values["assessment_reaches_back_to"] == ["00.0", "01.0"]
+    # The continuity pair, and the map they read: every interior lesson works with what its
+    # module opened, and every module after the first works with an earlier module's concept.
+    assert metric_values["module_internal_build"] == {"of": 6, "built": 6}
+    assert metric_values["cross_module_build"] == {"of": 3, "built": 3}
+    assert metric_values["concept_map_coverage"]["dropped"] == 0
+    assert metric_values["llm_concept_map"]["calls"] == 6
     for task_id in ("outcomes_extraction", "objectives_classification"):
         spent = metric_values[f"llm_{task_id}"]
         assert spent["calls"] == 1 and spent["tokens_in"] > 0

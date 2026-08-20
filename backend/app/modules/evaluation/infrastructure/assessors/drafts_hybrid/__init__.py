@@ -1,4 +1,31 @@
-"""`drafts-hybrid` v12 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+"""`drafts-hybrid` v13 — the `course-drafts-qa` lineage's LLM-carrying assessor.
+
+v13 takes the two continuity criteria v9 split apart, and stops abstaining from them. What
+was missing was never the concept map — a calibration dump built one and two independent
+readers agreed with it about where each concept is stated — but a measure of what a lesson
+DOES with a concept that a verdict can rest on. ADR-0047 decides that: the bar is the wide
+act (developing a concept, operating with it, or setting a task on it), and the verdict rests
+on a coarse locatable fact plus a deterministic anchor, never on a fine semantic label. Over
+one draft, two readers found the narrow act in 23 and 29 places while six model runs found it
+in 0 to 9; the wide bar lands inside the readers' band in every run.
+
+**The map is one task read by both criteria**, memoized like every other, so the pair costs
+one map rather than two. It asks in two passes because that is what measured best: where each
+concept is STATED, over the whole course, and what each module DOES with it, module by
+module. Asked the other way round each half gets worse, and for the same reason both times —
+what is in view moves the model's threshold. Which appearance is the INTRODUCTION is
+`min(position)` computed in `executors.py`, never asked.
+
+**And this task does not share the package's extraction model.** The flash model does not
+hold its output contract — over three drafts it produced 3, 1 and 0 usable rows — so
+`concept_map` pins its own model, its own effort and its own output budget, all three
+declared in `SOURCE_CONFIG` because all three decide what comes back. The cost is real and
+stated: one map is 1 + one call per module, taking an evaluation from ~15 calls to ~22. What
+made that a bad bet under ADR-0034 §4 no longer holds — ADR-0037 §3 replaced the
+all-or-nothing run with a failure budget, so a map that dies costs its two criteria.
+
+`cr-later-lessons-apply-earlier-concepts` stays abstained: v9 retires it, but v8 declares it
+and coverage is a superset of the lineage.
 
 v12 makes the verification judge point instead of transcribe, and adds its verdict up in
 code. Six repeats of one draft under v11 — same course, same instrument, same assessor —
@@ -268,7 +295,7 @@ from app.modules.evaluation.infrastructure.assessors.drafts_hybrid import (
 )
 
 NAME = "drafts-hybrid"
-VERSION = "12"
+VERSION = "13"
 INSTRUMENT_ID = "course-drafts-qa"
 
 
@@ -319,6 +346,9 @@ EXECUTORS = {
     "cr-assessment-retrieves-earlier-taught-material": (
         executors.assessment_retrieves_earlier_taught_material
     ),
+    # The continuity pair (v13): one concept map, two verdicts, both decided in code.
+    "cr-lessons-build-within-their-module": executors.lessons_build_within_their_module,
+    "cr-modules-build-on-earlier-modules": executors.modules_build_on_earlier_modules,
 }
 
 ABSTENTIONS = {
@@ -341,22 +371,15 @@ ABSTENTIONS = {
         "requires semantic identification of new instructional material and of what "
         "motivates it, per lesson"
     ),
-    # v8 and earlier ask this as one criterion; v9 splits it in two, and the abstention for
-    # all three stays for the same reason. The concept map itself is no longer the obstacle —
-    # a calibration dump builds one and two independent readers agree with it about where each
-    # concept is stated — but what a lesson DOES with a concept is not measured well enough
-    # yet to hang a verdict on: over one draft, readers found the working-with act in 23 and
-    # 29 places and six model runs found it in 0 to 9.
+    # v9 retires this one and splits it into the pair v13 executes. It stays decided here
+    # because v8 still declares it and coverage is a superset of the lineage: an artifact that
+    # stopped deciding it would stop being able to ratify the versions earlier studies pin.
+    # The wording is the ORIGINAL one — asking for a use "rather than a restatement" — and it
+    # is the distinction ADR-0047 §5 rejects on measurement, so what replaced it is not a
+    # widening of this criterion but a different question.
     "cr-later-lessons-apply-earlier-concepts": (
-        "requires a concept map extracted from every lesson body"
-    ),
-    "cr-lessons-build-within-their-module": (
-        "requires a concept map extracted from every lesson body, and a measure of what a "
-        "lesson does with a concept that is stable enough to decide a verdict"
-    ),
-    "cr-modules-build-on-earlier-modules": (
-        "requires a concept map extracted from every lesson body, and a measure of what a "
-        "lesson does with a concept that is stable enough to decide a verdict"
+        "asks for a use rather than a restatement, a distinction two independent readers and "
+        "six model runs do not agree on well enough to decide a verdict"
     ),
     "cr-adjacent-pair-has-a-bridge": (
         "requires semantic judgment of whether a lesson pair states its relation, per pair"
@@ -400,6 +423,16 @@ SOURCE_CONFIG = {
         # v1 lost every run to (ADR-0034 §1 — sampling is identity).
         "maxOutputTokens": tasks.MAX_OUTPUT_TOKENS,
         "reasoning": dict(tasks.REASONING),
+        # The concept map is the one task that reasons, and it needs its own budget to do it
+        # (v13). Declared apart rather than folded into the two fields above, because those
+        # two say "no thinking, 8000 tokens" and this task's answer depends on the opposite
+        # of both — a reader of this config must not be told the package is uniform when the
+        # thing deciding two criteria is not.
+        "conceptMap": {
+            "reasoning": dict(tasks.CONCEPT_MAP_REASONING),
+            "maxOutputTokens": tasks.CONCEPT_MAP_MAX_OUTPUT_TOKENS,
+            "maxLessonsPerGroup": tasks.MAX_LESSONS_PER_GROUP,
+        },
         # How many answers a judgement is decided by. Declared because it decides what the
         # verdict IS, not merely how it travels: changing either number changes which
         # answers survive a disagreement.
@@ -425,6 +458,7 @@ SOURCE_CONFIG = {
             "outcomes_extraction": tasks.OUTCOMES_EXTRACTION_MODEL,
             "objectives_classification": tasks.OBJECTIVES_CLASSIFICATION_MODEL,
             "concept_trajectory": tasks.CONCEPT_TRAJECTORY_MODEL,
+            "concept_map": tasks.CONCEPT_MAP_MODEL,
             "judge": judgments.JUDGE_MODEL,
             "assessment_mapping": judgments.ASSESSMENT_MAPPING_MODEL,
             "assessment_reach": judgments.ASSESSMENT_REACH_MODEL,

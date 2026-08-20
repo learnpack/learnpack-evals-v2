@@ -88,6 +88,23 @@ _EXCERPT_CHARS = 300
 # constants that should be read rather than retyped.
 EARLIER_LESSONS_REACHED = 2
 
+# "at least two thirds", in both continuity criteria — again the pass condition's own number,
+# retyped for the same reason. Compared as a fraction rather than a float so the boundary case
+# is exact: two of three passes, five of eight does not.
+BUILD_RATIO_NUMERATOR = 2
+BUILD_RATIO_DENOMINATOR = 3
+
+# What counts as WORKING WITH a concept, and it is deliberately wide (ADR-0047 §4): developing
+# it, operating with it as already known, or setting a task on it. `mentions` is out — naming
+# earlier material is not building on it — and so is `defines`, which is the course saying
+# again what it already said, i.e. starting over rather than building.
+#
+# The narrower reading, "uses it rather than restates it", was implemented and measured and
+# does not survive: over one draft two independent readers found that act in 23 and 29 places
+# while six model runs found it in 0 to 9. Narrowing this tuple is not a stricter criterion,
+# it is a criterion that measures who is reading.
+WORKING_WITH_GROUPS = ("develops", "uses_as_known", "assessed")
+
 
 def _entry(profile: ProfileData, data_requirement_id: str) -> ProfileEntryData:
     return profile.entries[data_requirement_id]
@@ -680,3 +697,250 @@ def assessment_retrieves_earlier_taught_material(
         ComputedMetric("assessment_reaches_back_to", sorted(reached)),
     )
     return _result(entry, len(reached) >= EARLIER_LESSONS_REACHED, spec, 0, metrics)
+
+
+# --- the continuity criteria (v13): one concept map, two verdicts -----------------------
+#
+# Both read the same map (`tasks.concept_map`, memoized), and both decide the same way: the
+# model reported local acts with quotes, and everything about ORDER is computed here. Where a
+# concept is introduced is `min(position)` over the lessons that state it — arithmetic, never
+# asked — which is what lets a verdict rest on this at all (ADR-0047 §6).
+#
+# Note what is NOT read: the plan's own concept-to-lesson assignment. It is `defines` in the
+# prose that anchors both criteria, because a draft was measured whose `X.0` lesson does the
+# work its `X.1` lesson is planned to teach — an introduction read off the plan is wrong
+# exactly where the draft is interesting.
+
+_Lesson = tuple[str, int, str | None]
+
+
+def _map_metrics(found: tasks.ConceptMap, usage: LlmUsage) -> tuple[ComputedMetric, ...]:
+    """What the map cost, and how complete it is.
+
+    The second one travels because a verdict computed over a map that lost rows is a different
+    verdict, and a reader is entitled to tell the two apart.
+    """
+    return (
+        _usage_metric("concept_map", usage),
+        ComputedMetric(
+            "concept_map_coverage",
+            {
+                "concepts": found.concepts,
+                "lessons": found.lessons,
+                "appearances": len(found.appearances),
+                "calls": found.calls,
+                "dropped": len(found.dropped),
+            },
+        ),
+    )
+
+
+def _introduced_at(found: tasks.ConceptMap) -> dict[int, int]:
+    """The position of the lesson that introduces each concept: the earliest to state it.
+
+    The deterministic anchor. A concept several lessons state is not a contradiction but a
+    finding — the first is the introduction and every later one is the course defining again
+    what it had already defined — and which is which is decided here, by `min`.
+    """
+    first: dict[int, int] = {}
+    for row in found.appearances:
+        if row.group != tasks.DEFINES_GROUP:
+            continue
+        seen = first.get(row.concept_index)
+        if seen is None or row.lesson_position < seen:
+            first[row.concept_index] = row.lesson_position
+    return first
+
+
+def _by_lesson(
+    found: tasks.ConceptMap, groups: tuple[str, ...]
+) -> dict[str, list[tasks.ConceptAppearance]]:
+    rows: dict[str, list[tasks.ConceptAppearance]] = {}
+    for row in found.appearances:
+        if row.group in groups:
+            rows.setdefault(row.lesson_id, []).append(row)
+    return rows
+
+
+def _ordered_lessons(profile: ProfileData) -> list[_Lesson]:
+    """Every lesson as (id, position, module) in delivery order — the same order the map's
+    positions were assigned in, because both come from `tasks.ordered_inventory`."""
+    return [
+        (str(lesson["lessonId"]), position, _module(str(lesson["lessonId"])))
+        for position, lesson in enumerate(tasks.ordered_inventory(profile))
+    ]
+
+
+def _meets_ratio(hits: int, of: int) -> bool:
+    """Two thirds, as a fraction rather than a float: 2 of 3 passes, 5 of 8 does not."""
+    return hits * BUILD_RATIO_DENOMINATOR >= of * BUILD_RATIO_NUMERATOR
+
+
+def _module_order(module: str | None) -> tuple[bool, str]:
+    return (module is None, module or "")
+
+
+def _body_excerpt(profile: ProfileData, lesson_id: str) -> str:
+    """Enough of the failing lesson to verify the absence, without dumping a whole body."""
+    bodies = profile.entries["lesson_bodies"]
+    for lesson in bodies.value:
+        if str(lesson.get("lessonId")) == lesson_id:
+            return _excerpt(str(lesson.get("body") or ""))
+    return bodies.quote or ""
+
+
+def lessons_build_within_their_module(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """Within a module, later lessons work with what the module already taught.
+
+    The population is every lesson that follows the first lesson of its own module, so a module
+    of one lesson contributes nobody — it has no interior to build across. Two thirds of that
+    population must work with a concept an earlier lesson OF THAT SAME MODULE introduces, and
+    no two consecutive of them may both fail.
+
+    "Consecutive" is read within a module rather than across the whole population. Two lessons
+    in different modules are not consecutive in any sense this claim is about — it is entirely
+    about a module's interior — and the criterion's own third failure mode says as much:
+    *a stretch of consecutive lessons inside one module*.
+    """
+    entry = _entry(profile, "lesson_bodies")
+    found, usage = tasks.concept_map(profile)
+
+    lessons = _ordered_lessons(profile)
+    introduced_at = _introduced_at(found)
+    module_at = {position: module for _, position, module in lessons}
+    worked = _by_lesson(found, WORKING_WITH_GROUPS)
+    restated = _by_lesson(found, (tasks.DEFINES_GROUP,))
+
+    by_module: dict[str | None, list[_Lesson]] = {}
+    for lesson in lessons:
+        by_module.setdefault(lesson[2], []).append(lesson)
+
+    def from_its_own_module(
+        rows: dict[str, list[tasks.ConceptAppearance]], lesson: _Lesson
+    ) -> tasks.ConceptAppearance | None:
+        lesson_id, position, module = lesson
+        for row in rows.get(lesson_id, []):
+            introduction = introduced_at.get(row.concept_index)
+            if introduction is None or introduction >= position:
+                continue
+            if module_at.get(introduction) == module:
+                return row
+        return None
+
+    hits: list[tasks.ConceptAppearance] = []
+    total = 0
+    consecutive_failure = False
+    first_failure: _Lesson | None = None
+    for module in sorted(by_module, key=_module_order):
+        previous_failed = False
+        for lesson in by_module[module][1:]:
+            total += 1
+            evidence = from_its_own_module(worked, lesson)
+            if evidence is not None:
+                hits.append(evidence)
+                previous_failed = False
+                continue
+            first_failure = first_failure or lesson
+            consecutive_failure = consecutive_failure or previous_failed
+            previous_failed = True
+
+    metrics = (
+        *_map_metrics(found, usage),
+        ComputedMetric("module_internal_build", {"of": total, "built": len(hits)}),
+    )
+    # Nothing was asked of the course, so nothing failed: either no module has an interior, or
+    # there was no map to build. The second case is a plan that declares no concept at all, and
+    # a fail derived from that would be a claim about the course made from the absence of a
+    # datum (ADR-0021). An EMPTY map that was asked for is a different thing and does fail —
+    # `calls` is what tells the two apart, and `concept_map_coverage` carries it to the report.
+    if total == 0 or found.calls == 0:
+        return _result(entry, True, spec, metrics=metrics, quote=_passing_quote(entry, hits))
+    if _meets_ratio(len(hits), total) and not consecutive_failure:
+        return _result(entry, True, spec, metrics=metrics, quote=_passing_quote(entry, hits))
+
+    assert first_failure is not None  # failing either part implies at least one failure
+    restatement = from_its_own_module(restated, first_failure)
+    if consecutive_failure:
+        failure_index = 2
+    elif restatement is not None:
+        # It did touch what its module taught, and what it did was say again what it is.
+        failure_index = 1
+    else:
+        failure_index = 0
+    quote = (
+        restatement.quote
+        if failure_index == 1 and restatement is not None
+        else _body_excerpt(profile, first_failure[0])
+    )
+    return _result(entry, False, spec, failure_index, metrics, quote=quote)
+
+
+def modules_build_on_earlier_modules(spec: CriterionSpec, profile: ProfileData) -> ExecutorResult:
+    """Later modules work with what earlier modules taught.
+
+    The population is the thematic modules after the first one — module 00 is the course-level
+    opening slot this format reserves, so it is not one of them, and a course without that slot
+    counts every module. Two thirds of the population must hold a lesson working with a concept
+    an EARLIER module introduces.
+    """
+    entry = _entry(profile, "lesson_bodies")
+    found, usage = tasks.concept_map(profile)
+
+    lessons = _ordered_lessons(profile)
+    introduced_at = _introduced_at(found)
+    module_at = {position: module for _, position, module in lessons}
+    worked = _by_lesson(found, WORKING_WITH_GROUPS)
+    named = _by_lesson(found, ("mentions",))
+
+    ordered_modules: list[str | None] = []
+    members: dict[str | None, list[_Lesson]] = {}
+    for lesson in lessons:
+        if lesson[2] not in ordered_modules:
+            ordered_modules.append(lesson[2])
+        members.setdefault(lesson[2], []).append(lesson)
+    thematic = [module for module in ordered_modules if module != "00"] or ordered_modules
+
+    def reaches_back(
+        rows: dict[str, list[tasks.ConceptAppearance]], module: str | None
+    ) -> tasks.ConceptAppearance | None:
+        for lesson_id, position, _ in members.get(module, []):
+            for row in rows.get(lesson_id, []):
+                introduction = introduced_at.get(row.concept_index)
+                if introduction is None or introduction >= position:
+                    continue
+                if module_at.get(introduction) != module:
+                    return row
+        return None
+
+    candidates = thematic[1:]
+    hits = [row for module in candidates if (row := reaches_back(worked, module)) is not None]
+    metrics = (
+        *_map_metrics(found, usage),
+        ComputedMetric("cross_module_build", {"of": len(candidates), "built": len(hits)}),
+    )
+    # A course of one thematic module has nothing to build across, and a plan that declares no
+    # concept was never asked — the same two vacuous cases as the criterion above, for the same
+    # reason.
+    if not candidates or found.calls == 0:
+        return _result(entry, True, spec, metrics=metrics, quote=_passing_quote(entry, hits))
+    if _meets_ratio(len(hits), len(candidates)):
+        return _result(entry, True, spec, metrics=metrics, quote=_passing_quote(entry, hits))
+
+    failing = [module for module in candidates if reaches_back(worked, module) is None]
+    # A module that names earlier material without doing anything with it is the second failure
+    # mode the criterion declares; one that carries nothing back at all is the first.
+    referred = next(
+        (row for module in failing if (row := reaches_back(named, module)) is not None), None
+    )
+    quote = (
+        referred.quote
+        if referred is not None
+        else _body_excerpt(profile, members[failing[0]][0][0])
+    )
+    return _result(entry, False, spec, 1 if referred is not None else 0, metrics, quote=quote)
+
+
+def _passing_quote(entry: ProfileEntryData, hits: list[tasks.ConceptAppearance]) -> str:
+    """A passing verdict quotes the course rather than the profile's canonical entry: the first
+    place the criterion actually found the course building on itself."""
+    return hits[0].quote if hits else (entry.quote or "")
