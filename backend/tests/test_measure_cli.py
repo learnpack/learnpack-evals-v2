@@ -69,6 +69,9 @@ def served(monkeypatch):
                     return FilesystemFetcher(root.path).fetch(locator.removeprefix(base))
             raise FetchError(f"nothing serves '{locator}'")
 
+        def fetch_all(self, locators):
+            return {locator: self.fetch(locator) for locator in locators}
+
     from app.modules.content_profiling.infrastructure import policies as profiling_policies
 
     monkeypatch.setattr(cli, "HttpFetcher", MountFetcher)

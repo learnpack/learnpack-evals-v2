@@ -356,6 +356,9 @@ class DictFetcher:
             raise ExtractionError(f"unreachable: {locator}")
         return self._files[locator]
 
+    def fetch_all(self, locators):
+        return {locator: self.fetch(locator) for locator in locators}
+
 
 def _package(**files: bytes) -> tuple[PackageDTO, DictFetcher]:
     kinds_by_name = {
@@ -537,3 +540,49 @@ def test_a_lesson_that_names_no_concept_reports_an_empty_list():
         {"lessonId": "00.0", "concepts": []},
         {"lessonId": "01.0", "concepts": ["x"]},
     ]
+
+
+# ------------------------------------------------------------------ how it reads
+
+
+class WaveRecordingFetcher:
+    """Records each GROUP asked for, not only each locator — the shape of the asks."""
+
+    def __init__(self) -> None:
+        self._inner = FilesystemPackageFetcher(CASE.fixture_dir)
+        self.waves: list[list[str]] = []
+        self.one_by_one: list[str] = []
+
+    def fetch(self, locator: str) -> bytes:
+        self.one_by_one.append(locator)
+        return self._inner.fetch(locator)
+
+    def fetch_all(self, locators):
+        self.waves.append(list(locators))
+        return {locator: self._inner.fetch(locator) for locator in locators}
+
+
+def fixture_package() -> PackageDTO:
+    discovered = LearnpackV2Discovery().discover(FilesystemPackageRoot(CASE.fixture_dir))
+    return PackageDTO(
+        content_id=new_id(),
+        package_format=CASE.package_format,
+        artifacts=tuple(
+            ArtifactDTO(kind=a.kind, locator=a.locator, format=a.format)
+            for a in discovered.artifacts
+        ),
+    )
+
+
+def test_the_stats_and_the_bodies_are_each_asked_for_in_one_wave():
+    """Two groups, two waves, and neither could be one wave with the other: the stats are
+    what NAME the bodies. Everything else stays a single read, because each of those is a
+    different question asked of a different file."""
+    package = fixture_package()
+    fetcher = WaveRecordingFetcher()
+
+    LearnpackV2Adapter().extract(package, fetcher)
+
+    stats, bodies = fetcher.waves
+    assert stats == [a.locator for a in package.artifacts if a.kind == "lesson_stats"]
+    assert bodies == [a.locator for a in package.artifacts if a.kind == "lesson_content"]

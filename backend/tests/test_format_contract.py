@@ -301,6 +301,11 @@ def test_an_unreadable_package_fails_extraction_whole(extraction):
         def fetch(self, locator: str) -> bytes:
             raise ExtractionError(f"unreachable: {locator}")
 
+        def fetch_all(self, locators):
+            # A group read is unreachable the same way a single one is: the first locator
+            # that fails, fails the extraction.
+            return {locator: self.fetch(locator) for locator in locators}
+
     with pytest.raises(ExtractionError):
         adapter.extract(package, UnreachableFetcher())
 
