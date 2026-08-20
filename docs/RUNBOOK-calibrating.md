@@ -10,13 +10,16 @@ the instrument you no longer trust.
 
 ## What this gives you, and what it does not
 
-You get **evidence about the question**, never a verdict about a course. Three tools:
+You get **evidence about the question**, never a verdict about a course. Four tools:
 
 - a **trace** of every prompt and answer, to see what was actually asked;
 - **repeats** of one course, to separate a criterion whose threshold is unwritten from a judge
   that cannot read;
 - two **calibration dumps**, which build the raw material a criterion would consume and hand
-  it to you as a table to mark up.
+  it to you as a table to mark up;
+- **`evaluate --dry-run` over drafts you know the answer for**, which is how a change to a
+  criterion that already executes gets tested before it is shipped — and what the numbers to
+  read are is *A correct verdict is not a safe one*, below.
 
 You do **not** get a pass or a fail from any of it, and that is deliberate. Nothing here
 writes a judgment, enters a report, or reaches the fitness projection. The dumps in particular
@@ -285,6 +288,48 @@ The corollary is what to do when a dump disagrees with itself between runs. If t
 the same places and label them differently, widen what the criterion counts until the label
 stops deciding the verdict. If they report different places, that is recall, and no rewording
 fixes it.
+
+## A correct verdict is not a safe one
+
+Once a criterion executes, the obvious way to make it cheaper is to ask for less thinking, or
+to ask a cheaper model. The concept map is the case: it is one call for definitions plus one
+per module for usage, and those usage calls are six of the seven and about three quarters of
+the map's output tokens. At high effort most of those tokens are reasoning rather than answer.
+
+That saving has been measured, on two drafts and against a bar of two thirds — one draft
+independent readers call cumulative, one they call *"partially"*. Each row is the ratio the
+criterion actually computed, `built/of`, not a row count standing in for it:
+
+| usage passes asked at | good draft, within | good draft, across | borderline draft, within | borderline draft, across |
+|---|---|---|---|---|
+| the strong model, high effort | PASS 8/9 *(needs 6)* | PASS 5/5 *(needs 4)* | PASS 5/6 *(needs 4)* | FAIL 2/4 |
+| the same model, medium effort | **PASS 6/9** | PASS 5/5 | PASS 5/6 · 5/6 | FAIL 1/4 · 0/4 |
+| a cheaper flash model, medium | PASS 8/9 | **FAIL 3/5** | PASS 5/6 · **4/6** | FAIL 0/4 · 1/4 |
+
+Two different failures, and only one of them looks like a failure.
+
+**The cheaper model broke the good draft outright.** Its across-modules verdict went from 5/5
+to 3/5, so both drafts came back with the same pair of verdicts and the criterion stopped
+telling them apart — which is the only thing it is for. It was not even cheap: it spent more
+output tokens than the strong model at medium and recovered a third of the usage rows.
+
+**The same model at medium got every verdict right and spent the margin.** The good draft went
+from 8 of 9 to exactly 6 of 9 against a bar of 6. Nothing was wrong with that run; what is
+wrong is that one lesson fewer flips it, on an axis that is known to move — the same draft at
+identical settings has produced 54 and 59 usage rows. A pass with no margin on a quantity that
+varies between runs is a coin, not a verdict.
+
+**So test a cheaper reading on the draft that should PASS, and read the distance to the bar.**
+The instinct is to check that the bad draft still fails, and that is the check it survives for
+the wrong reason: recall collapse pushes everything down, which looks like agreement on the
+draft that was already failing. The damage shows up first as a shrinking margin on the good
+one. Both continuity criteria report `{of, built}` as a metric of every evaluation, so the
+margin is already in the record — no extra run buys it.
+
+None of this says medium effort is useless; it says it costs recall, and recall is what a
+margin is made of. The definitions pass is the other side of the same coin and is why it is
+never lowered: it is the deterministic anchor every one of these verdicts hangs on, and at
+medium it drifts to 14–15 of 18 against readers where high scores 17 of 17.
 
 ## When something does not work
 
