@@ -712,11 +712,19 @@ at all: three manifests read one after the next, since each one names the next. 
 different ceiling on your own origin, measure the same way and read both things — the wall
 clock, and whether any artifact started failing.
 
-**Only the discovery half is read this way, and it is now the smaller half.** Profiling
-re-reads the package afterwards, one artifact at a time, inside the same registration
-(ADR-0029): on that same course, **9.9 s against the discovery's 4.4 s**. So when timing a
-registration, time the two apart — the CLI's `created …` line closes the discovery, and what
-`register-package` prints after it is the profiling.
+**Profiling reads the same way, for the same reason.** It re-reads the package right after
+discovery, inside the same registration (ADR-0029), and its two group reads — the lesson
+bodies, and LearnpackV2's stats files — go out together as well: **9.4 s → 2.3 s** on that
+course, with the extraction returning byte-identical entries.
+
+It also reads each artifact **once**. An adapter's entry builders are independent on purpose,
+each reading and citing its own artifact without consulting the others, so the same file is
+legitimately asked for more than once — LearnpackV2's `lesson_plan.json` three times. Rather
+than couple the builders, `ProfileContent` wraps the fetcher for the length of one extraction.
+
+**So a whole registration is about 8 s of work against the ~31 s it started at**, and when
+timing one, the two halves are still worth timing apart: the CLI's `created …` line closes the
+discovery, and what `register-package` prints after it is the profiling.
 
 ### From other trees, from the CLI and from the console (ADR-0035)
 
