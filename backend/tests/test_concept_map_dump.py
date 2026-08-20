@@ -206,6 +206,39 @@ def test_the_earliest_statement_is_the_introduction_whatever_order_it_arrives_in
     assert [r.lesson_id for r in calibration.redefinitions(rows)] == ["02.0"]
 
 
+def test_two_phase_asks_the_course_for_definitions_then_each_module_for_usage(fake_llm):
+    """Each half in the shape that answers it: `defines` is asked once with the whole course in
+    view, because a module's call loosens its threshold for what counts as a statement; the
+    usage groups are asked per module, because that is where recall was collapsing. The usage
+    pass is never offered `defines` at all."""
+    client = fake_llm(
+        answer(concept(1, defines=[("01.0", DEFINES)])),
+        answer(),
+        answer(),
+        answer(concept(1, uses_as_known=[("02.0", USES)])),
+    )
+    rows, summary, _ = calibration.dump_concept_map(a_profile(), shape="two_phase")
+
+    # One definitions call plus one per module.
+    assert summary.calls == 4
+    assert sorted((r.lesson_id, r.bucket) for r in rows) == [
+        ("01.0", "defines"),
+        ("02.0", "uses_as_known"),
+    ]
+    first = " ".join(m["content"] for m in client.calls[0]["messages"])
+    later = " ".join(m["content"] for m in client.calls[3]["messages"])
+    assert "===== LESSON 00.0" in first and "===== LESSON 02.0" in first
+    assert '"defines"' in first and '"uses_as_known"' not in first
+    assert '"uses_as_known"' in later and '"defines"' not in later
+
+
+def test_an_unknown_shape_is_refused_before_anything_is_asked():
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        calibration.dump_concept_map(a_profile(), shape="sideways")
+
+
 def test_the_fan_out_asks_once_per_module_and_shows_only_that_module(fake_llm):
     """Each call sees its own lessons and the whole concept list. Nothing about the question
     changes, because every group is a local act."""
@@ -215,7 +248,7 @@ def test_the_fan_out_asks_once_per_module_and_shows_only_that_module(fake_llm):
         answer(concept(1, defines=[("01.0", DEFINES)])),
         answer(concept(1, uses_as_known=[("02.0", USES)])),
     )
-    rows, summary, usage = calibration.dump_concept_map(a_profile(), per_module=True)
+    rows, summary, usage = calibration.dump_concept_map(a_profile(), shape="per_module")
 
     # Three modules (00, 01, 02) -> three calls, and the spend is summed across them.
     assert summary.calls == 3
@@ -233,7 +266,7 @@ def test_the_fan_out_asks_once_per_module_and_shows_only_that_module(fake_llm):
 def test_the_fan_out_drops_a_lesson_the_call_was_not_shown(fake_llm):
     # Module 01's call names 02.0, a lesson it was never shown.
     fake_llm(answer(), answer(concept(1, defines=[("02.0", USES)])), answer())
-    rows, summary, _ = calibration.dump_concept_map(a_profile(), per_module=True)
+    rows, summary, _ = calibration.dump_concept_map(a_profile(), shape="per_module")
 
     assert rows == []
     assert any("'02.0'" in note for note in summary.dropped)

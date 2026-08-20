@@ -1028,7 +1028,7 @@ def run_dump_concept_touches(raw_content_id: str, out_dir: Path) -> int:
     return 0
 
 
-def run_dump_concept_map(raw_content_id: str, out_dir: Path, per_module: bool) -> int:
+def run_dump_concept_map(raw_content_id: str, out_dir: Path, shape: str) -> int:
     """Write the calibration table of where each concept is defined, used and assessed.
 
     The concept-major sibling of `dump-concept-touches`, and the same stance: no instrument
@@ -1069,7 +1069,7 @@ def run_dump_concept_map(raw_content_id: str, out_dir: Path, per_module: bool) -
         sinks.append(observability.jsonl_sink(trace))
     try:
         with observability.collecting(observability.fan_out(*sinks)):
-            rows, summary, usage = calibration.dump_concept_map(profile, per_module=per_module)
+            rows, summary, usage = calibration.dump_concept_map(profile, shape=shape)
     except AssessorExecutionError as exc:
         print(f"the extraction never produced a readable answer: {exc}", file=sys.stderr)
         if trace is not None:
@@ -3595,9 +3595,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     map_parser.add_argument("--content-id", required=True)
     map_parser.add_argument(
-        "--per-module",
-        action="store_true",
-        help="one call per module instead of one over the whole course (the fan-out)",
+        "--shape",
+        choices=calibration.SHAPES,
+        default="whole",
+        help=(
+            "whole: one call over the course · per_module: one call per module · "
+            "two_phase: definitions over the course, then usage module by module"
+        ),
     )
     map_parser.add_argument(
         "--out",
@@ -3872,7 +3876,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "dump-concept-touches":
         return run_dump_concept_touches(args.content_id, args.out)
     elif args.command == "dump-concept-map":
-        return run_dump_concept_map(args.content_id, args.out, args.per_module)
+        return run_dump_concept_map(args.content_id, args.out, args.shape)
     elif args.command == "evaluate-study":
         return run_evaluate_study(
             UUID(args.study_id), args.assessor, args.concurrency, args.re_evaluate

@@ -692,25 +692,31 @@ def as_json(rows: Sequence[ConceptTouchRow], summary: DumpSummary, usage: LlmUsa
 # required. A course cannot be asked to explain everything twice; it can be asked not to define
 # anything twice.
 GROUP_DEFINITIONS = """\
-- "defines": the lesson says WHAT THE CONCEPT IS. Report this wherever it happens and however
+- "defines": the lesson SAYS WHAT THE CONCEPT IS. Report this wherever it happens and however
   many lessons do it — you are not being asked which lesson introduces it, only which lessons
   state what it is.
-- "develops": the lesson ADDS to the concept — reasons, consequences, details, limits, a
-  fuller treatment than a bare statement of what it is. Saying the same thing again in other
-  words is NOT developing it: that is stating what it is a second time, and belongs in
-  "defines".
-- "uses_as_known": the lesson OPERATES with the concept, treating the reader as already having
-  it — an example, a walkthrough or an explanation that uses it without saying what it is.
+- "develops": the lesson SAYS MORE ABOUT the concept than what it is — why it matters, what
+  follows from it, where it stops applying, what it is not, how it compares with a neighbouring
+  concept, or an illustration offered to make the concept itself clearer. The test is that the
+  lesson is still talking ABOUT the concept. Saying again, in other words, what the concept is
+  is not developing it: that belongs in "defines".
+- "uses_as_known": the lesson DOES SOMETHING WITH the concept, treating the reader as already
+  having it — it applies it to a task, a case or a piece of work whose point is not to explain
+  the concept. The test is that the lesson has moved on from talking about the concept to using
+  it on something else.
 - "assessed": the lesson puts a task, question or exercise to the learner that checks whether
   they have the concept.
 - "mentions": the lesson names the concept without doing any of the above.
 
-Two tie-breaks, for the two places this is genuinely hard:
+Three tie-breaks, for the places this is genuinely hard:
 
-- A lesson that both states what a concept is and adds to it goes in "defines". The statement
-  is the load-bearing act; the addition rides on it.
-- A lesson that works through an example and names the concept in passing while doing so goes
-  in "uses_as_known". The work is the substance; the naming is an aside."""
+- A lesson that both states what a concept is AND says more about it belongs in BOTH "defines"
+  and "develops". That is what listing a lesson in more than one group is for. Choose between
+  them only when the lesson does one and not the other.
+- A lesson that both works with a concept and sets an exercise on it belongs in both
+  "uses_as_known" and "assessed".
+- An example goes to "develops" when it is there to make the concept clear, and to
+  "uses_as_known" when the concept is there to make the example work."""
 
 BUCKETS = ("defines", "develops", "uses_as_known", "assessed", "mentions")
 
@@ -754,8 +760,9 @@ concept:
 
 $groups
 
-A lesson appears at most once per concept. A concept no lesson deals with reports five empty
-lists — do not force every concept to be found.
+A lesson MAY appear in more than one group for the same concept when it genuinely does more
+than one thing with it; never repeat a lesson within a single group. A concept no lesson deals
+with reports five empty lists — do not force every concept to be found.
 
 $quote_rule
 
@@ -784,7 +791,9 @@ five groups — the one that best describes what that lesson does with that conc
 
 $groups
 
-A lesson appears at most once per concept. **Omit a concept these lessons do not deal with**
+A lesson MAY appear in more than one group for the same concept when it genuinely does more
+than one thing with it; never repeat a lesson within a single group. **Omit a concept these
+lessons do not deal with**
 rather than reporting it with empty lists.
 
 $quote_rule
@@ -798,6 +807,67 @@ At most $max_lessons lessons in any one group.
 $corpus
 </module>"""
 )
+
+# --- the two-phase shape -------------------------------------------------------------------
+#
+# Measured rather than chosen. Over one draft with two independent readers, the whole-course
+# call agreed with them about which lesson states a concept first on 12 of 12 and 14 of 14,
+# while the fan-out fell to 10 of 16 — not because a module's call cannot answer a local
+# question, but because without the rest of the course in view the model's threshold for
+# "this says what it is" loosens and it counts more passages as statements. The fan-out wins
+# the other way round: on the larger draft it reported 41 and 29 `uses_as_known` where the
+# whole-course call reported 27, and one whole-course run reported none at all.
+#
+# So each phase asks the question in the shape that answers it. Phase A asks only where each
+# concept is STATED, over the whole course. Phase B asks only what the lessons of one module
+# DO with each concept, module by module, and cannot answer `defines` at all — the bucket is
+# not offered to it. Nothing is told to phase B about phase A: the four usage groups are local
+# acts, and anchoring them on a definition would invite the model to reason about order, which
+# is the code's job.
+DEFINES_ONLY = """\
+- "defines": the lesson SAYS WHAT THE CONCEPT IS. Report this wherever it happens and however
+  many lessons do it — you are not being asked which lesson introduces it, only which lessons
+  state what it is. Saying again, in other words, what a concept is counts: report that lesson
+  too.
+
+Do not report a lesson that merely works with the concept, sets an exercise on it, or names it
+in passing. This pass is only about where the course says what the thing IS."""
+
+USAGE_ONLY = """\
+- "develops": the lesson SAYS MORE ABOUT the concept than what it is — why it matters, what
+  follows from it, where it stops applying, what it is not, how it compares with a neighbouring
+  concept, or an illustration offered to make the concept itself clearer. The test is that the
+  lesson is still talking ABOUT the concept.
+- "uses_as_known": the lesson DOES SOMETHING WITH the concept, treating the reader as already
+  having it — it applies it to a task, a case or a piece of work whose point is not to explain
+  the concept. The test is that the lesson has moved on from talking about the concept to using
+  it on something else.
+- "assessed": the lesson puts a task, question or exercise to the learner that checks whether
+  they have the concept.
+- "mentions": the lesson names the concept without doing any of the above.
+
+Where a lesson says what the concept IS, that is not this pass's business — another pass asks
+it. Report only what these lessons do with a concept beyond stating it.
+
+Two tie-breaks:
+
+- A lesson that both works with a concept and sets an exercise on it belongs in both
+  "uses_as_known" and "assessed".
+- An example goes to "develops" when it is there to make the concept clear, and to
+  "uses_as_known" when the concept is there to make the example work."""
+
+DEFINES_SHAPE = """\
+{"concepts": [{"conceptIndex": <the number from the list>,
+"defines": [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}"""
+
+USAGE_SHAPE = """\
+{"concepts": [{"conceptIndex": <the number from the list>,
+"develops":      [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"uses_as_known": [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"assessed":      [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"mentions":      [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}"""
+
+SHAPES = ("whole", "per_module", "two_phase")
 
 
 @dataclass(frozen=True)
@@ -892,30 +962,40 @@ def modules_of(lessons: Sequence[Mapping[str, Any]]) -> list[tuple[str, list[Map
 
 
 def _map_prompt(
-    concepts: Sequence[Mapping[str, Any]], lessons: Sequence[Mapping[str, Any]], *, per_module: bool
+    concepts: Sequence[Mapping[str, Any]],
+    lessons: Sequence[Mapping[str, Any]],
+    *,
+    template: Template,
+    groups: str = GROUP_DEFINITIONS,
+    shape: str = ANSWER_SHAPE,
 ) -> str:
-    template = CONCEPT_MAP_MODULE_USER if per_module else CONCEPT_MAP_USER
-    label = "CONCEPTS THE COURSE COVERS"
-    corpus = f"{label}:\n{bare_concept_lines(concepts)}\n\nLESSONS:\n{plain_lesson_blocks(lessons)}"
+    """One call's prompt. The groups and the answer shape are parameters because the two-phase
+    form asks for a subset of them, and a subset the model is not offered is one it cannot
+    answer in."""
+    corpus = (
+        f"CONCEPTS THE COURSE COVERS:\n{bare_concept_lines(concepts)}\n\n"
+        f"LESSONS:\n{plain_lesson_blocks(lessons)}"
+    )
     return template.substitute(
-        groups=GROUP_DEFINITIONS,
+        groups=groups,
         quote_rule=QUOTE_RULE,
-        shape=ANSWER_SHAPE,
+        shape=shape,
         max_lessons=MAX_LESSONS_PER_BUCKET,
         corpus=corpus,
     )
 
 
 def dump_concept_map(
-    profile: ProfileData, *, per_module: bool = False
+    profile: ProfileData, *, shape: str = "whole"
 ) -> tuple[list[ConceptAppearanceRow], MapSummary, LlmUsage]:
-    """The concept map, in one call over the course or one call per module.
+    """The concept map, in one of three shapes.
 
-    `per_module` fans out. Nothing about the question changes with it — which is the point:
-    every group is a local act, so a call that sees one module can answer completely about the
-    lessons in front of it, and which appearance is the introduction is decided here, over the
-    merged rows. It costs one call per module and buys each call a corpus it can hold.
+    `whole` asks everything in one call over the course. `per_module` fans out, one call per
+    module. `two_phase` asks each half in the shape that answers it: where each concept is
+    STATED over the whole course, then what each module DOES with it, module by module.
     """
+    if shape not in SHAPES:
+        raise ValueError(f"shape must be one of {SHAPES}, got {shape!r}")
     lessons = all_lessons(profile)
     concepts = distinct_concepts(profile)
     if not lessons or not concepts:
@@ -929,28 +1009,24 @@ def dump_concept_map(
         )
         return [], summary, LlmUsage(model=MODEL, calls=0, tokens_in=0, tokens_out=0, latency_ms=0)
 
-    batches = (
-        [(name, shown) for name, shown in modules_of(lessons)]
-        if per_module
-        else [("the whole course", lessons)]
-    )
+    batches = _batches(lessons, shape)
     rows: list[ConceptAppearanceRow] = []
     dropped: list[str] = []
     spend: list[LlmUsage] = []
-    for name, shown in batches:
+    for name, shown, prompt_kwargs in batches:
         payload, usage = request_structured_output(
             runtime.get_client(),
             task_id="concept_map_dump",
             model=MODEL,
             system_prompt=CONCEPT_MAP_SYSTEM,
-            user_prompt=_map_prompt(concepts, shown, per_module=per_module),
+            user_prompt=_map_prompt(concepts, shown, **prompt_kwargs),
             validate=lambda answer: validate_concept_map(answer, len(concepts)),
             temperature=TEMPERATURE,
             max_tokens=MAX_OUTPUT_TOKENS,
             reasoning=REASONING,
         )
         spend.append(usage)
-        # A module's call may only name the lessons it was shown; anything else is dropped.
+        # A batch may only name the lessons it was shown; anything else is dropped.
         batch_rows, batch_dropped = _map_rows_from(payload, shown, concepts)
         rows.extend(batch_rows)
         dropped.extend(f"{name}: {note}" for note in batch_dropped)
@@ -970,6 +1046,38 @@ def dump_concept_map(
         dropped=tuple(dropped),
     )
     return rows, summary, _sum_usage(spend)
+
+
+def _batches(
+    lessons: Sequence[Mapping[str, Any]], shape: str
+) -> list[tuple[str, Sequence[Mapping[str, Any]], dict[str, Any]]]:
+    """What each call is shown and what it is asked, for one shape."""
+    if shape == "whole":
+        return [("the whole course", lessons, {"template": CONCEPT_MAP_USER})]
+    if shape == "per_module":
+        return [
+            (f"module {name}", shown, {"template": CONCEPT_MAP_MODULE_USER})
+            for name, shown in modules_of(lessons)
+        ]
+    return [
+        (
+            "definitions over the whole course",
+            lessons,
+            {"template": CONCEPT_MAP_USER, "groups": DEFINES_ONLY, "shape": DEFINES_SHAPE},
+        ),
+        *(
+            (
+                f"module {name}, usage",
+                shown,
+                {
+                    "template": CONCEPT_MAP_MODULE_USER,
+                    "groups": USAGE_ONLY,
+                    "shape": USAGE_SHAPE,
+                },
+            )
+            for name, shown in modules_of(lessons)
+        ),
+    ]
 
 
 def _sum_usage(spend: Sequence[LlmUsage]) -> LlmUsage:
