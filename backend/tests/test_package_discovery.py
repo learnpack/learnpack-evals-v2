@@ -3,6 +3,7 @@ packages — the same investment the extraction suite rides on. No DB, no networ
 
 import json
 import shutil
+import threading
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from app.modules.evaluand_registry.infrastructure.package_discovery import (
     HttpPackageRoot,
     LearnpackV1Discovery,
 )
+from app.platform.concurrency import all_at_once
 
 FIXTURES = Path(__file__).parent / "fixtures" / "learnpack_v1"
 
@@ -139,6 +141,87 @@ def test_the_brief_intake_finds_the_discovered_syllabus():
     discovered = discover("introduction-to-generative-ai", locator_base="intro")
     rows = [{"kind": a.kind, "locator": a.locator} for a in discovered.artifacts]
     assert LearnpackV1BriefIntake().locate(rows) == "intro/.learn/initialSyllabus.json"
+
+
+# ------------------------------------------------------- the leaves are read together
+
+
+class WaveRecordingRoot:
+    """A root that remembers each GROUP it was asked for, not only each path. Asserting that
+    a discovery declared its independent reads as independent needs the shape of the asks,
+    which a flat list of paths cannot show."""
+
+    def __init__(self, course: str) -> None:
+        self._inner = FilesystemPackageRoot(FIXTURES / course)
+        self.waves: list[list[str]] = []
+        self.one_by_one: list[str] = []
+
+    def fetch(self, relative_path: str) -> bytes:
+        self.one_by_one.append(relative_path)
+        return self._inner.fetch(relative_path)
+
+    def fetch_all(self, relative_paths):
+        self.waves.append(list(relative_paths))
+        return {path: self._inner.fetch(path) for path in relative_paths}
+
+    def locator_for(self, relative_path: str) -> str:
+        return self._inner.locator_for(relative_path)
+
+    @property
+    def consumable_url(self) -> str | None:
+        return self._inner.consumable_url
+
+
+def test_the_leaves_a_package_enumerates_are_asked_for_in_one_wave():
+    """The manifests are read one at a time because each names the next; everything they
+    enumerate is then asked for at once. This is all the discovery says — whether "at once"
+    buys anything is the root's business, and the ceiling on it is the transport's."""
+    root = WaveRecordingRoot("object-representation-in-python")
+    discovered = LearnpackV1Discovery().discover(root)
+
+    leaves = [
+        a.locator
+        for a in discovered.artifacts
+        if a.kind in (package_discovery.KIND_LESSON_CONTENT, package_discovery.KIND_LESSON_FILE)
+    ]
+    assert root.waves == [leaves]
+    assert not set(root.one_by_one) & set(leaves)  # no leaf was read on its own
+
+
+def test_an_http_root_reads_a_wave_all_at_once():
+    """Pinned with a barrier rather than a stopwatch, like `tests/test_concurrency.py`: a root
+    that walked the wave one path at a time would never trip it, and there is no timing
+    threshold to tune on a slow machine. How many of these actually reach the origin at once
+    is the gate's business (`tests/test_fetchers.py`)."""
+    met = threading.Barrier(4, timeout=20)
+
+    class BarrierRoot(HttpPackageRoot):
+        def fetch(self, relative_path: str) -> bytes:
+            met.wait()  # nobody answers until the whole wave has arrived
+            return relative_path.encode()
+
+    wave = ["a.md", "b.md", "c.md", "d.md"]
+    assert BarrierRoot("https://a-course.learn-pack.com").fetch_all(wave) == {
+        path: path.encode() for path in wave
+    }
+
+
+def test_a_package_is_the_same_package_however_its_root_reads_it():
+    """The identity must not depend on which file answered first: the hash is taken over
+    paths in sorted order and the artifact list is built in the declared one, so a root that
+    fans out and a root that does not describe the same content."""
+
+    class FanOutRoot(FilesystemPackageRoot):
+        def fetch_all(self, relative_paths):
+            paths = list(relative_paths)
+            return dict(zip(paths, all_at_once(self.fetch, paths), strict=True))
+
+    course = FIXTURES / "introduction-to-generative-ai"
+    one_at_a_time = LearnpackV1Discovery().discover(FilesystemPackageRoot(course))
+    together = LearnpackV1Discovery().discover(FanOutRoot(course))
+
+    assert together.content_hash == one_at_a_time.content_hash
+    assert together.artifacts == one_at_a_time.artifacts
 
 
 def test_only_an_http_root_declares_a_consumable_url():

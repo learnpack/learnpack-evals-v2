@@ -3,7 +3,9 @@
 Mirrors the brief intake's registry (ADR-0022): one discovery per `PackageFormat`,
 registered in `DISCOVERIES_BY_FORMAT`; `PackageDiscovery` dispatches by format. Transport is
 a separate axis — a `PackageRoot` (filesystem or HTTP) is injected, so one discovery reads a
-package identically from any serving root.
+package identically from any serving root. A discovery says which paths are independent of
+each other and asks for them together; what a root does with that is the root's own business
+(`PackageRoot.fetch_all`).
 
 This module is the sole writer of the artifact `kind` vocabulary. Discovery is hard-failing
 on purpose (contrast with the brief intake's soft misses): a package whose manifests or
@@ -16,7 +18,7 @@ because it embeds its commission unconditionally.
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -27,6 +29,7 @@ from app.modules.evaluand_registry.application.ports import (
     PackageDiscoveryError,
 )
 from app.modules.evaluand_registry.infrastructure import acl_learnpack, acl_learnpack_v2
+from app.platform.concurrency import all_at_once
 from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
 # The artifact kind vocabulary (single writer: this module). The extraction adapter and the
@@ -71,9 +74,21 @@ class PackageRoot(Protocol):
     """One package's serving root: fetch by root-relative path, and mint the locator that
     gets registered for that path. Keeping both on the root is what lets locators be mount
     URLs, plain relative paths (fixtures) or prefixed paths (seeder) without discovery
-    knowing the difference."""
+    knowing the difference.
+
+    `fetch_all` is the second half of that arrangement, and it is where reading a course
+    stopped being one file at a time. A discovery knows which paths are independent — the
+    enumeration it just read declares them, and none of them is opened to find another — so it
+    asks for them together and says nothing about how. Whether "together" means anything at
+    all is the root's business, exactly like the transport it speaks: over http it is worth
+    the fan-out, off a filesystem it is not.
+
+    That split is ADR-0048's, in the layer where this module already had it.
+    """
 
     def fetch(self, relative_path: str) -> bytes: ...
+
+    def fetch_all(self, relative_paths: Sequence[str]) -> Mapping[str, bytes]: ...
 
     def locator_for(self, relative_path: str) -> str: ...
 
@@ -94,6 +109,18 @@ class HttpPackageRoot:
         except FetchError as exc:
             # A miss during discovery refuses the registration (hard-failing, ADR-0027).
             raise PackageDiscoveryError(str(exc)) from exc
+
+    def fetch_all(self, relative_paths: Sequence[str]) -> Mapping[str, bytes]:
+        """All at once — this is the whole reason the method exists.
+
+        Nothing is capped here: what bounds the requests actually in flight is the gate at the
+        transport (`HTTP_MAX_CONCURRENCY`), the only place that sees every fetch whoever asked
+        for it, so a caller may ask for a hundred leaves without having decided a hundred
+        requests. A miss still refuses the whole package: the first path that fails in the
+        order it was asked for is the one that raises, whatever finished first.
+        """
+        wanted = list(dict.fromkeys(relative_paths))
+        return dict(zip(wanted, all_at_once(self.fetch, wanted), strict=True))
 
     def locator_for(self, relative_path: str) -> str:
         return f"{self._base_url}/{relative_path}"
@@ -119,6 +146,11 @@ class FilesystemPackageRoot:
             return self._fetcher.fetch(relative_path)
         except FetchError as exc:
             raise PackageDiscoveryError(str(exc)) from exc
+
+    def fetch_all(self, relative_paths: Sequence[str]) -> Mapping[str, bytes]:
+        """One at a time, and that is the right answer here: a local read has nothing to wait
+        for, so a thread per file would buy a scheduler and no time at all."""
+        return {path: self.fetch(path) for path in relative_paths}
 
     def locator_for(self, relative_path: str) -> str:
         relative = Path(relative_path).as_posix()
@@ -222,8 +254,13 @@ class LearnpackV1Discovery:
         except PackageDiscoveryError:
             pass
 
+        # The leaves, together: the enumeration above is what declares them, and not one of
+        # them is read to find another. The artifact list is still built in the DECLARED
+        # order, never the order of arrival — what a package is cannot depend on which file
+        # answered first.
+        leaves = root.fetch_all(lesson_paths)
         for path in lesson_paths:
-            fetched[path] = root.fetch(path)
+            fetched[path] = leaves[path]
             kind = (
                 KIND_LESSON_CONTENT if path.endswith(f"/{LESSON_BODY_NAME}") else KIND_LESSON_FILE
             )
@@ -282,7 +319,7 @@ class LearnpackV2Discovery:
     lesson **ids**, not filenames; each id's `files/processing_stats/<id>.json` declares the
     `lesson_slug` that names its body under `lessons/`. So the tree is read without ever
     listing a directory, exactly like V1 and for the same reason: a `PackageRoot` fetches by
-    path and nothing more, over filesystem or HTTP alike.
+    path — one or many at a time — and nothing more, over filesystem or HTTP alike.
 
     The declared surface is the course plus the evidence of how it was generated. The run's
     `logs/` and the generator's `config/` are deliberately outside it: one is run telemetry
@@ -296,29 +333,54 @@ class LearnpackV2Discovery:
         fetched: dict[str, bytes] = {}
         artifacts: list[DiscoveredArtifact] = []
 
-        def take(path: str, kind: str) -> bytes:
-            raw = root.fetch(path)
+        def take(path: str, kind: str, raw: bytes) -> None:
             fetched[path] = raw
             artifacts.append(DiscoveredArtifact(kind=kind, locator=root.locator_for(path)))
-            return raw
 
-        manifest = _parse_json(take(V2_RUN_MANIFEST_PATH, KIND_RUN_MANIFEST), V2_RUN_MANIFEST_PATH)
+        # Three waves, and three is how many the tree's own declarations force — not a batch
+        # size anybody chose. Everything within a wave is independent; each wave exists only
+        # because the one before it NAMES what comes next.
+        head = (
+            (V2_RUN_MANIFEST_PATH, KIND_RUN_MANIFEST),
+            (V2_USER_INTENT_PATH, KIND_USER_INTENT),
+            (V2_COURSE_VALUE_PATH, KIND_COURSE_VALUE),
+            (V2_CONCEPT_GRAPH_PATH, KIND_CONCEPT_GRAPH),
+            (V2_COVERAGE_CHECK_PATH, KIND_COVERAGE_CHECK),
+            (V2_COURSE_REQUEST_PATH, KIND_COURSE_REQUEST),
+            (V2_LESSON_PLAN_PATH, KIND_LESSON_PLAN),
+        )
+        raw_head = root.fetch_all([path for path, _ in head])
+        for path, kind in head:
+            take(path, kind, raw_head[path])
+
+        manifest = _parse_json(raw_head[V2_RUN_MANIFEST_PATH], V2_RUN_MANIFEST_PATH)
         external_id = self._external_id(manifest)
         declared_generator_name, declared_generator_version = self._declared_generator(manifest)
 
-        take(V2_USER_INTENT_PATH, KIND_USER_INTENT)
-        take(V2_COURSE_VALUE_PATH, KIND_COURSE_VALUE)
-        take(V2_CONCEPT_GRAPH_PATH, KIND_CONCEPT_GRAPH)
-        take(V2_COVERAGE_CHECK_PATH, KIND_COVERAGE_CHECK)
-        take(V2_COURSE_REQUEST_PATH, KIND_COURSE_REQUEST)
+        plan = _parse_json(raw_head[V2_LESSON_PLAN_PATH], V2_LESSON_PLAN_PATH)
+        lesson_ids = self._lesson_ids(plan)
+        briefs = {lesson: f"{V2_LESSON_BRIEFS_DIR}/{lesson}.json" for lesson in lesson_ids}
+        stats = {lesson: f"{V2_LESSON_STATS_DIR}/{lesson}.json" for lesson in lesson_ids}
 
-        plan = _parse_json(take(V2_LESSON_PLAN_PATH, KIND_LESSON_PLAN), V2_LESSON_PLAN_PATH)
+        # Wave two: every lesson's brief and its stats. The stats are what NAME the bodies,
+        # and that is the only reason the bodies are not in this wave too.
+        raw_lessons = root.fetch_all(
+            [briefs[lesson] for lesson in lesson_ids] + [stats[lesson] for lesson in lesson_ids]
+        )
+        slugs = {
+            lesson: self._lesson_slug(_parse_json(raw_lessons[stats[lesson]], stats[lesson]))
+            for lesson in lesson_ids
+        }
 
-        for lesson_id in self._lesson_ids(plan):
-            take(f"{V2_LESSON_BRIEFS_DIR}/{lesson_id}.json", KIND_LESSON_BRIEF)
-            stats_path = f"{V2_LESSON_STATS_DIR}/{lesson_id}.json"
-            slug = self._lesson_slug(_parse_json(take(stats_path, KIND_LESSON_STATS), stats_path))
-            take(f"{V2_LESSONS_DIR}/{slug}.md", KIND_LESSON_CONTENT)
+        # Wave three: the bodies the stats just named.
+        bodies = {lesson: f"{V2_LESSONS_DIR}/{slugs[lesson]}.md" for lesson in lesson_ids}
+        raw_bodies = root.fetch_all([bodies[lesson] for lesson in lesson_ids])
+
+        # Declared order, lesson by lesson — never the order the answers arrived in.
+        for lesson in lesson_ids:
+            take(briefs[lesson], KIND_LESSON_BRIEF, raw_lessons[briefs[lesson]])
+            take(stats[lesson], KIND_LESSON_STATS, raw_lessons[stats[lesson]])
+            take(bodies[lesson], KIND_LESSON_CONTENT, raw_bodies[bodies[lesson]])
 
         return DiscoveredPackage(
             package_format=self.package_format,

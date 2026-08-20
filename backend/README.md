@@ -684,6 +684,40 @@ automatically but not assigned for human scoring.
 Re-importing an unchanged course is a no-op (content hash); the same declared version with
 changed content is refused. See `../courses/README.md` for the folder convention.
 
+**How much a registration asks for at once.** A package's manifests are read one at a time,
+because each one names the next; everything they then enumerate — dozens of lesson bodies and
+exercise files, 73 on the course measured — is asked for **together**, since nothing in that
+list is opened to find another. Over http that is a fan-out; off a filesystem it is still a
+loop, because a local read has nothing to wait for.
+
+`HTTP_MAX_CONCURRENCY` (8) is what bounds it, at the transport, so it holds for every artifact
+fetch whoever asked for it — a discovery reading a package and a profiling run reading another
+are the same requests to whoever is serving them. It is deliberately lower than
+`LLM_MAX_CONCURRENCY`, and not because origins are weaker: there the account is ours and the
+transport backs off on 429 honouring `Retry-After`, so overshooting costs retries. Here the
+origin is somebody else's course server, **nothing backs off**, and a fetch that fails refuses
+the whole registration (ADR-0027).
+
+That is also what failure looks like, and it is worth recognising: a course that used to
+register and now does not, with a message naming one artifact. A tired origin and a broken
+package read the same from here. The answer is to lower the ceiling, not to re-register — and
+the fix that would tell the two apart, a retry budget for transport failures as distinct from a
+404, is not built.
+
+**What it measures, on a real course** (39 artifacts on `learn-pack.com`, about half a second a
+request): reading the declared surface takes **19.6 s one file at a time and 4.4 s at the
+default ceiling of eight** — 6.4 s at four, 3.2 s at sixteen, 3.1 s at twenty-four, no failure
+at any of them. Flat past sixteen, because what is left by then is the part that cannot fan out
+at all: three manifests read one after the next, since each one names the next. To try a
+different ceiling on your own origin, measure the same way and read both things — the wall
+clock, and whether any artifact started failing.
+
+**Only the discovery half is read this way, and it is now the smaller half.** Profiling
+re-reads the package afterwards, one artifact at a time, inside the same registration
+(ADR-0029): on that same course, **9.9 s against the discovery's 4.4 s**. So when timing a
+registration, time the two apart — the CLI's `created …` line closes the discovery, and what
+`register-package` prints after it is the profiling.
+
 ### From other trees, from the CLI and from the console (ADR-0035)
 
 A tree that does not live under `courses/` is declared in the environment, because a

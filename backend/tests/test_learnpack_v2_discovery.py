@@ -120,10 +120,17 @@ class RecordingRoot:
     def __init__(self, package_dir: Path) -> None:
         self._inner = FilesystemPackageRoot(package_dir)
         self.requested: list[str] = []
+        #: What was asked for TOGETHER, group by group — the shape, not just the contents.
+        self.waves: list[list[str]] = []
 
     def fetch(self, relative_path: str) -> bytes:
         self.requested.append(relative_path)
         return self._inner.fetch(relative_path)
+
+    def fetch_all(self, relative_paths):
+        self.waves.append(list(relative_paths))
+        # Through its own `fetch`, so a wave is recorded exactly like the reads it replaced.
+        return {path: self.fetch(path) for path in relative_paths}
 
     def locator_for(self, relative_path: str) -> str:
         return self._inner.locator_for(relative_path)
@@ -142,6 +149,30 @@ def test_discovery_never_reads_the_run_log_or_the_generator_config():
 
     assert [p for p in root.requested if p.startswith(("logs/", "config/"))] == []
     assert (FIXTURE / "config" / "agents.yml").exists()  # present, and still ignored
+
+
+def test_the_tree_is_read_in_three_waves_and_three_is_what_it_declares():
+    """Three because the tree forces three, not because anybody picked a batch size: the run
+    manifest and the plan come first, the plan names the lessons, and each lesson's stats name
+    its body. Everything inside a wave is independent, and saying so is the discovery's whole
+    contribution — what it costs is the root's business."""
+    root = RecordingRoot(FIXTURE)
+    discovered = LearnpackV2Discovery().discover(root)
+    lessons = len(locators(discovered, "lesson_content"))
+
+    head, per_lesson, bodies = root.waves
+    assert head == [
+        "traces/run_metadata.json",
+        "files/user_intent.json",
+        "files/course_value.json",
+        "files/concept_graph.json",
+        "files/coverage_check.json",
+        "files/course_request.json",
+        "files/lesson_plan.json",
+    ]
+    assert len(per_lesson) == 2 * lessons  # every brief and every stats file, in one ask
+    assert len(bodies) == lessons
+    assert root.requested == [path for wave in root.waves for path in wave]  # nothing else
 
 
 def test_every_fetched_file_is_registered_as_an_artifact():
