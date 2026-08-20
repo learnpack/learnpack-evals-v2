@@ -458,32 +458,6 @@ def test_the_command_cannot_be_built_without_a_declaration():
 # ------------------------------------------------------------ register by source (ADR-0027)
 
 
-@pytest.fixture
-def course_server(tmp_path):
-    """A live copy of the frozen bare course, served over real http on an ephemeral port —
-    the endpoint's discovery, hashing and consumable_url all ride the actual transport.
-    The files stay writable, so a test can mutate the course between registrations."""
-    import functools
-    import http.server
-    import pathlib
-    import shutil
-    import threading
-
-    fixtures = pathlib.Path(__file__).parent / "fixtures" / "learnpack_v1"
-    course_dir = tmp_path / "bare-course"
-    shutil.copytree(fixtures / "bare-course", course_dir)
-
-    class QuietHandler(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, *args):  # keep 404 probes out of the test output
-            pass
-
-    handler = functools.partial(QuietHandler, directory=str(tmp_path))
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}", course_dir
-    server.shutdown()
-
-
 def source_payload(base_url: str, **overrides) -> dict:
     return {
         "package_format": "LearnpackV1",

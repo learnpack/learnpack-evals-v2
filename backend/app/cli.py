@@ -14,6 +14,7 @@ into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md
 """
 
 import argparse
+import csv
 import json
 import logging
 import re
@@ -105,6 +106,7 @@ from app.modules.evaluand_registry.infrastructure.acl_learnpack import (
 )
 from app.modules.evaluand_registry.infrastructure.brief_intake import PackageBriefIntake
 from app.modules.evaluand_registry.infrastructure.package_discovery import (
+    DISCOVERIES_BY_FORMAT,
     FilesystemPackageRoot,
     HttpPackageRoot,
     PackageDiscovery,
@@ -2078,6 +2080,192 @@ def run_register_package_all(courses_dir: Path, package_format: str, edit_proven
     return 1 if result.conflicts or result.invalid else 0
 
 
+def _dispatch_register_from_csv(args: argparse.Namespace) -> int:
+    """`--from-csv`'s own argument rules, which argparse cannot express.
+
+    What it refuses is what could not mean anything: another source kind alongside it, a
+    deployment URL (one URL cannot declare a deployment for many courses — `--all`'s reason),
+    and the two ways of naming a generator used at once or not at all. Silence is never a
+    declaration (ADR-0024), so exactly one of them has to be there.
+    """
+    if args.source or args.all:
+        print(
+            "--from-csv names the courses to register; --source and --all are the other "
+            "two ways of naming them",
+            file=sys.stderr,
+        )
+        return 1
+    if args.consumable_url:
+        print(
+            "--consumable-url declares ONE deployed course (ADR-0028); a list cannot share "
+            "one. An http(s) source declares its own",
+            file=sys.stderr,
+        )
+        return 1
+
+    by_name = bool(args.generator_name or args.generator_version)
+    if by_name and args.generator is not None:
+        print("declare the generator once: --generator, or --generator-name", file=sys.stderr)
+        return 1
+    if by_name and not (args.generator_name and args.generator_version):
+        print("--generator-name and --generator-version go together", file=sys.stderr)
+        return 1
+    if not by_name and args.generator is None:
+        print(
+            "--from-csv needs --generator <uuid|unknown>, or --generator-name with "
+            "--generator-version (ADR-0024: silence is not a declaration)",
+            file=sys.stderr,
+        )
+        return 1
+    if args.register_new_version and not by_name:
+        print("--register-new-version applies to --generator-version", file=sys.stderr)
+        return 1
+
+    return run_register_package_from_csv(
+        args.source_list,
+        args.package_format,
+        args.generator,
+        args.generator_name,
+        args.generator_version,
+        args.register_new_version,
+        args.edit_provenance,
+        args.version,
+    )
+
+
+class _UnusableSourceList(Exception):
+    """The file names no courses this command could register."""
+
+
+def _read_source_list(path: Path) -> list[str]:
+    """The course URLs a file names: the FIRST column of each row, and nothing else.
+
+    Forgiving about everything that is not the URL, because what arrives is a spreadsheet
+    somebody exported — a header row, the course name and a note in the columns beside it, a
+    blank line at the end, a `#` where someone parked a course they decided not to measure.
+    None of that changes which courses are meant, so none of it is an error.
+
+    What is refused is what would register the wrong thing: an entry that is not an http(s)
+    URL — a local directory is `--source` and `--all`'s business, the same line the API takes
+    — and a file that names no course at all. A non-URL is tolerated in exactly one place,
+    the first row, because that is where a spreadsheet writes its header; anywhere else it is
+    a row somebody meant to register.
+    """
+    try:
+        # `utf-8-sig`: Excel writes a BOM, and a BOM glued to the first URL is a fetch that
+        # fails for a reason nobody could read off the error.
+        rows = csv.reader(path.read_text(encoding="utf-8-sig").splitlines())
+        entries = [row[0].strip() for row in rows if row and row[0].strip()]
+    except OSError as exc:
+        raise _UnusableSourceList(f"could not read '{path.as_posix()}': {exc}") from exc
+
+    urls: list[str] = []
+    for index, entry in enumerate(e for e in entries if not e.startswith("#")):
+        if entry.startswith(("http://", "https://")):
+            urls.append(entry)
+        elif index != 0:
+            raise _UnusableSourceList(
+                f"'{entry}' is not an http(s) URL — a local course is registered with "
+                "--source or --all"
+            )
+
+    unique = list(dict.fromkeys(urls))
+    if not unique:
+        raise _UnusableSourceList(f"'{path.as_posix()}' names no course URLs")
+    if len(unique) != len(urls):
+        print(f"  {len(urls) - len(unique)} duplicate URL(s) ignored", file=sys.stderr)
+    return unique
+
+
+def _declared_generator_version(
+    generator: str | None,
+    generator_name: str | None,
+    generator_version: str | None,
+    register_new_version: bool,
+) -> UUID | None:
+    """The one generator version a whole batch declares (ADR-0024), by id or by name.
+
+    Two ways to say it, the either/or `register-generator-version` already offers. By name is
+    the friendly one, and it is the only one that can register a version that does not exist
+    yet — and only when asked, since here a typo would not mint one phantom version but
+    attribute a whole list of courses to it.
+    """
+    if generator is not None:
+        if generator == "unknown":
+            return None
+        declared = UUID(generator)
+        with SessionLocal() as session:
+            if SqlAlchemyGeneratorVersionRepository(session).get_by_id(declared) is None:
+                raise UnknownGeneratorVersion(f"generator version {declared} is not registered")
+        return declared
+
+    assert generator_name is not None and generator_version is not None  # argparse pairs them
+    with SessionLocal() as session:
+        # Resolves, never mints: a lineage's name is typed once and never again (ADR-0031).
+        lineage = SqlAlchemyGeneratorRepository(session).find_by_name_key(
+            normalized_name(generator_name)
+        )
+        if lineage is None:
+            raise UnknownGeneratorVersion(
+                f"no generator named {generator_name!r} — register it first with register-generator"
+            )
+        return _generator_version_id(
+            session, lineage, generator_version, register_new=register_new_version
+        )
+
+
+def run_register_package_from_csv(
+    csv_file: Path,
+    package_format: str,
+    generator: str | None,
+    generator_name: str | None,
+    generator_version: str | None,
+    register_new_version: bool,
+    edit_provenance: str,
+    version: str,
+) -> int:
+    """Register every course a file names — one format and one generator for all of them.
+
+    Everything that would fail identically for every row fails ONCE, before the first course
+    is fetched: an unreadable file, an unsupported format, a generator nobody registered.
+    Learning on course nineteen what course one already knew costs eighteen courses' worth of
+    reading (the reasoning of ADR-0040 §4, at the other intake).
+
+    After that, a course that fails is one row of the summary and the batch carries on — and
+    re-running the same file finishes it, since an unchanged package is a reported no-op
+    (ADR-0027). That property is why this is a plain foreground command and not a run.
+    """
+    if package_format not in DISCOVERIES_BY_FORMAT:
+        print(f"no discovery is registered for format '{package_format}'", file=sys.stderr)
+        return 1
+    try:
+        urls = _read_source_list(csv_file)
+        generator_version_id = _declared_generator_version(
+            generator, generator_name, generator_version, register_new_version
+        )
+    except (_UnusableSourceList, UnknownGeneratorVersion) as exc:
+        print(str(exc), file=sys.stderr)
+        print("nothing was registered", file=sys.stderr)
+        return 1
+
+    print(f"registering {len(urls)} courses from {csv_file.as_posix()}", file=sys.stderr)
+    result = _register_sources(
+        [
+            BatchSource(
+                label=url,
+                source_locator=url,
+                root_factory=HttpPackageRoot,
+                generator_version_id=generator_version_id,
+            )
+            for url in urls
+        ],
+        package_format,
+        edit_provenance,
+        version,
+    )
+    return 1 if result.conflicts or result.invalid else 0
+
+
 # --------------------------------------------------------------------------- studies
 # The manual loop (13-code §3.6): declare → pin → compose → open → publish → show-report,
 # with `show-preview` readable at any point along it — publishing is irreversible, and
@@ -3437,10 +3625,39 @@ def main(argv: list[str] | None = None) -> int:
         help="package base URL, or a course directory — absolute, or relative to --root",
     )
     register_parser.add_argument(
+        "--from-csv",
+        dest="source_list",
+        type=Path,
+        default=None,
+        help="a file naming one course URL per row (first column); one format and one "
+        "generator for all of them",
+    )
+    register_parser.add_argument(
         "--generator",
         type=_generator_declaration,
         default=None,
         help="the generator version id for this course, or the literal 'unknown' (ADR-0024)",
+    )
+    register_parser.add_argument(
+        "--generator-name",
+        dest="generator_name",
+        default=None,
+        help="with --from-csv: the generator lineage these courses came from, instead of "
+        "--generator. Resolved, never created (ADR-0031)",
+    )
+    register_parser.add_argument(
+        "--generator-version",
+        dest="generator_version",
+        default=None,
+        help="with --generator-name: the version of it. Not --version, which is the "
+        "CONTENT's version",
+    )
+    register_parser.add_argument(
+        "--register-new-version",
+        dest="register_new_version",
+        action="store_true",
+        help="register --generator-version if it does not exist yet. Takes no value: the "
+        "version is always the one you typed, never one derived here",
     )
     register_parser.add_argument(
         "--format",
@@ -3852,6 +4069,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return run_import_learnpack(args.file, args.base_dir)
     elif args.command == "register-package":
+        if args.source_list is not None:
+            return _dispatch_register_from_csv(args)
+        if args.generator_name or args.generator_version or args.register_new_version:
+            print(
+                "--generator-name/--generator-version/--register-new-version declare one "
+                "generator for a whole list; a single course takes --generator <uuid|unknown>",
+                file=sys.stderr,
+            )
+            return 1
         if args.all:
             if (
                 args.source

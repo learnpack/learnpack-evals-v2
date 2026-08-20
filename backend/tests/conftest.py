@@ -491,3 +491,31 @@ def register_assessor(session, cleanup, as_user):
         return assessor_id
 
     return _register
+
+
+@pytest.fixture
+def course_server(tmp_path):
+    """A live copy of the frozen bare course, served over real http on an ephemeral port —
+    so discovery, hashing and `consumable_url` all ride the actual transport, which is
+    what the http intake paths are about. The files stay writable, so a test can mutate
+    the course between registrations, and the served root is `tmp_path`, so a test can
+    put more courses beside it."""
+    import functools
+    import http.server
+    import pathlib
+    import shutil
+    import threading
+
+    fixtures = pathlib.Path(__file__).parent / "fixtures" / "learnpack_v1"
+    course_dir = tmp_path / "bare-course"
+    shutil.copytree(fixtures / "bare-course", course_dir)
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *args):  # keep 404 probes out of the test output
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", course_dir
+    server.shutdown()
