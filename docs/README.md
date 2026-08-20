@@ -66,7 +66,10 @@ an outcome (`execution_error`, the failure budget, the three-way retry) · `0038
 that may serve a model are assessor identity · `0039` the brief groups the fitness projection;
 it is not a grain of it · `0040` a batch is a run · `0041` the frozen report is the record, not
 the reading surface · `0042` a judgment names its author, and a study's result is a triple ·
-`0043` choosing is not pinning, and publishing is signing off.
+`0043` choosing is not pinning, and publishing is signing off · `0044` a study's recipe declares
+which generator versions it measures · `0045` the local setup replays decided acts · `0046` what
+a draft proposes to assess with is evidence of alignment · `0047` two answers about one quality
+are two claims, and the bar for building is wide.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
