@@ -20,7 +20,7 @@ import re
 import signal
 import sys
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1705,21 +1705,24 @@ def _declared_by_folder(session: Session, folder_name: str) -> tuple[Generator, 
     return max(candidates, key=lambda pair: len(pair[0].name))
 
 
-def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
-    """Resolve a generator folder to the `GeneratorVersion` its courses declare (ADR-0024).
+def _generator_version_id(
+    session: Session, generator: Generator, version: str, *, register_new: bool
+) -> UUID:
+    """The id of `version` under `generator`, registering it when it is new.
 
-    `unknown` declares none. Everything else names a lineage, which must already be
-    registered, and a version — which is **registered here if it is new**. That asymmetry is
-    the decision, not an oversight: a lineage's name is typed once and never again, so a near
-    miss mints a second lineage nobody notices (ADR-0031 guards it with `--distinct-from`),
-    while a version is a fact about a run that changes with every commit of the generator
-    being measured. Demanding a second command for each one would put a manual act inside the
-    loop this intake exists to automate.
+    The asymmetry with the lineage is the decision, not an oversight: a lineage's name is
+    typed once and never again, so a near miss mints a second lineage nobody notices
+    (ADR-0031 guards it with `--distinct-from`), while a version is a fact about a run that
+    changes with every commit of the generator being measured. Demanding a second command for
+    each one would put a manual act inside the loop this intake exists to automate.
+
+    Whether a new version may be minted at all is the caller's, because it depends on who
+    wrote the string. A generator names its own output folder, so `--all` reads a
+    machine-written version and takes it. A batch declares one for every course it registers,
+    so a typo there would attribute the whole list to a phantom version — and content is never
+    retired (ADR-0033), while `attribute-generator` only fills an `unknown` and never corrects
+    one. That caller asks for it explicitly or is refused.
     """
-    if folder_name == "unknown":
-        return None
-
-    generator, version = _declared_by_folder(session, folder_name)
     versions = SqlAlchemyGeneratorVersionRepository(session)
     match = next(
         (v for v in versions.list_all() if (v.generator_id, v.version) == (generator.id, version)),
@@ -1727,18 +1730,37 @@ def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
     )
     if match is not None:
         return match.id
+    if not register_new:
+        raise UnknownGeneratorVersion(
+            f"{generator.name} {version} is not registered. If that is the build these "
+            "courses came from, add --register-new-version; if it is a typo, fix it"
+        )
 
     uow = UnitOfWork(session)
     registered = RegisterGeneratorVersion(
         SqlAlchemyGeneratorRepository(session), versions, uow.events, uow
     )(RegisterGeneratorVersionCommand(generator_id=generator.id, version=version))
-    # Printed, never silent: registering a version is an act, and a typo in a folder name is
-    # how an individual nobody meant to measure enters the registry.
+    # Printed, never silent: registering a version is an act, and a typo is how an individual
+    # nobody meant to measure enters the registry.
     print(
         f"  registered generator version {generator.name} {version} ({registered.id})",
         file=sys.stderr,
     )
     return registered.id
+
+
+def _generator_for_folder(session: Session, folder_name: str) -> UUID | None:
+    """Resolve a generator folder to the `GeneratorVersion` its courses declare (ADR-0024).
+
+    `unknown` declares none. Everything else names a lineage, which must already be
+    registered, and a version — which is registered here if it is new, since the folder name
+    is written by the generator itself.
+    """
+    if folder_name == "unknown":
+        return None
+
+    generator, version = _declared_by_folder(session, folder_name)
+    return _generator_version_id(session, generator, version, register_new=True)
 
 
 def _register_package(
@@ -1908,11 +1930,22 @@ def run_register_package(
 
 
 @dataclass(frozen=True)
-class TreeRegistration:
-    """What registering a tree of generator folders did. `content_ids` carries the courses
-    that ended up registered — created now or unchanged from before — because a caller
-    composing a study out of them cares which packages are in the store, not which ones this
-    run happened to write."""
+class BatchSource:
+    """One course a batch is about to register: what labels it on screen, the locator that
+    names it, the root its bytes come from, and the generator version it declares."""
+
+    label: str
+    source_locator: str
+    root_factory: Callable[[str], PackageRoot]
+    generator_version_id: UUID | None
+
+
+@dataclass(frozen=True)
+class BatchRegistration:
+    """What registering a batch of courses did. `content_ids` carries the courses that ended
+    up registered — created now or unchanged from before — because a caller composing a study
+    out of them cares which packages are in the store, not which ones this run happened to
+    write."""
 
     created: int
     unchanged: int
@@ -1922,9 +1955,55 @@ class TreeRegistration:
     content_ids: list[UUID]
 
 
+def _register_sources(
+    sources: Sequence[BatchSource], package_format: str, edit_provenance: str, version: str
+) -> BatchRegistration:
+    """The loop every batch runs, whatever named its courses — a tree of folders or a list of
+    URLs. Batch is a loop over the same use case, not another path (ADR-0027).
+
+    A course that fails is one row of the summary and the batch carries on: nothing that goes
+    wrong at this point is true of the others, and what would be was refused before the first
+    one was fetched.
+    """
+    created_ids: list[UUID] = []
+    content_ids: list[UUID] = []
+    created = unchanged = conflicts = invalid = 0
+    for source in sources:
+        try:
+            status, detail, content_id = _register_package(
+                source.source_locator,
+                source.root_factory,
+                source.generator_version_id,
+                package_format,
+                edit_provenance,
+                version,
+            )
+        except (DuplicateContent, DeclaredGeneratorConflict) as exc:
+            conflicts += 1
+            print(f"  CONFLICT  {source.label}: {exc}", file=sys.stderr)
+            continue
+        except (PackageDiscoveryError, InvalidContent, UnknownGeneratorVersion) as exc:
+            invalid += 1
+            print(f"  INVALID  {source.label}: {exc}", file=sys.stderr)
+            continue
+        created += status == "created"
+        unchanged += status == "unchanged"
+        content_ids.append(content_id)
+        if status == "created":
+            created_ids.append(content_id)
+        print(f"  {status}  {detail}", file=sys.stderr)
+
+    print(
+        f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid",
+        file=sys.stderr,
+    )
+    _report_profiling(created_ids)
+    return BatchRegistration(created, unchanged, conflicts, invalid, created_ids, content_ids)
+
+
 def _register_tree(
     root_dir: Path, package_format: str, edit_provenance: str, folder: str | None = None
-) -> TreeRegistration | None:
+) -> BatchRegistration | None:
     """Register every `<generator-folder>/<course>/` under `root_dir`, or under one folder of
     it. `None` means nothing was written: the tree was refused whole.
 
@@ -1953,7 +2032,7 @@ def _register_tree(
     ]
     if not course_dirs:
         print(f"no courses found under {root_dir.as_posix()}", file=sys.stderr)
-        return TreeRegistration(0, 0, 0, 0, [], [])
+        return BatchRegistration(0, 0, 0, 0, [], [])
 
     # A tree-wide declaration deserves a tree-wide check (the ADR-0024 pattern): every
     # generator folder resolves before anything registers, so a typo is one clean abort.
@@ -1974,42 +2053,20 @@ def _register_tree(
     if not _mount_preflight(_course_root(course_dirs[0][1]), course_dirs[0][1]):
         return None
 
-    created_ids: list[UUID] = []
-    content_ids: list[UUID] = []
-    created = unchanged = conflicts = invalid = 0
-    for parent, course_dir in course_dirs:
-        label = f"{parent.name}/{course_dir.name}"
-        try:
-            root = _course_root(course_dir)
-            status, detail, content_id = _register_package(
-                str(course_dir),
-                _fixed_root(root),
-                generators_by_folder[parent.name],
-                package_format,
-                edit_provenance,
-                DEFAULT_VERSION,
+    return _register_sources(
+        [
+            BatchSource(
+                label=f"{parent.name}/{course_dir.name}",
+                source_locator=str(course_dir),
+                root_factory=_fixed_root(_course_root(course_dir)),
+                generator_version_id=generators_by_folder[parent.name],
             )
-        except (DuplicateContent, DeclaredGeneratorConflict) as exc:
-            conflicts += 1
-            print(f"  CONFLICT  {label}: {exc}", file=sys.stderr)
-            continue
-        except (PackageDiscoveryError, InvalidContent, UnknownGeneratorVersion) as exc:
-            invalid += 1
-            print(f"  INVALID  {label}: {exc}", file=sys.stderr)
-            continue
-        created += status == "created"
-        unchanged += status == "unchanged"
-        content_ids.append(content_id)
-        if status == "created":
-            created_ids.append(content_id)
-        print(f"  {status}  {detail}", file=sys.stderr)
-
-    print(
-        f"\n{created} created, {unchanged} unchanged, {conflicts} conflicts, {invalid} invalid",
-        file=sys.stderr,
+            for parent, course_dir in course_dirs
+        ],
+        package_format,
+        edit_provenance,
+        DEFAULT_VERSION,
     )
-    _report_profiling(created_ids)
-    return TreeRegistration(created, unchanged, conflicts, invalid, created_ids, content_ids)
 
 
 def run_register_package_all(courses_dir: Path, package_format: str, edit_provenance: str) -> int:
