@@ -650,12 +650,67 @@ uv run python -m app.cli register-package --all
 
 # every course of another declared tree (see "From other trees" below)
 uv run python -m app.cli register-package --all --root generated --format LearnpackV2
+
+# every course a file names, by URL (batch)
+uv run python -m app.cli register-package --from-csv ./courses.csv \
+  --generator-name learnpack-generator --generator-version 2.4.0 [--register-new-version]
 ```
 
 `--format` names the source's `PackageFormat` and **defaults to `LearnpackV1`**, so a package
 in any other format needs it spelled out — discovery would otherwise read it with the wrong
 adapter and refuse it. `--all` takes one `--format` for the whole tree, so a tree holding more
 than one format is registered one format per run.
+
+### A generation, from a list of URLs (`--from-csv`)
+
+Three ways of naming what to register, one act underneath: `--source` is one course, `--all` a
+tree of folders, `--from-csv` a **list**. The list declares one format and one generator for all
+of it — the rule `--all` already follows — so a file mixing two of either is two runs.
+
+**The file is read forgivingly**, because what arrives is a spreadsheet somebody exported: the
+**first column** of each row and nothing else, skipping a header row, blank lines, rows parked
+behind a `#`, and duplicates. The columns beside the URL are ignored. What is refused is an
+entry that is not `http(s)` — that is a course this path would register wrong, and a local one
+belongs to `--source` or `--all`.
+
+**The generator is declared once, by id or by name:**
+
+```bash
+--generator <uuid|unknown>                       # as a single registration declares it
+--generator-name <lineage> --generator-version <version>   # the friendlier pair
+```
+
+The **lineage is resolved, never created** (ADR-0031: its name is typed once and never again).
+The **version may be created**, since it changes with every commit of the generator being
+measured — but only with `--register-new-version`, which takes no value: the version is always
+the one you typed. Without it, an unregistered version stops the run before a single course is
+fetched. That is the difference from `--all`, where the version is read off a folder the
+generator itself named: here a typo would not mint one stray version, it would attribute the
+whole list to it, and content is never retired (ADR-0033) while `attribute-generator` only fills
+an `unknown` and never corrects one.
+
+**Everything that would fail for every row fails once**, before the first fetch: the file, the
+format, the generator. After that a course that fails is one line of the summary and the batch
+carries on — and **re-running the same file finishes it**, because an unchanged package is a
+reported no-op.
+
+**Why this is a plain foreground command** and not a run in the shape `evaluate-study` uses.
+Progress and cancelling are not missing: a line per course goes to stderr as it happens, and
+Ctrl-C stops it with nothing to undo, since each course is its own transaction. What the resume
+property removes is the third thing a run exists for — surviving the process, so that *how far
+did it get* is still answerable afterwards. Here it is answered by running the file again.
+What a run would still add is doing any of those **from somewhere else**, which is what a
+browser would need, and that is the deferral rather than the ergonomics.
+
+Two differences from `evaluate-study`'s Ctrl-C, both from having no SIGINT handler here: it
+stops mid-course rather than after the one in flight, and no summary is printed. Neither loses
+work — but a course interrupted between its commit and its profiling stays unprofiled, and
+re-running the file will not notice, since an unchanged package emits nothing. `profile-content
+--content-id` is the repair, exactly as it is for `--all`.
+
+Measured against real courses, a new one costs about **9 s** and one already registered about
+**4.6 s**, so fifty is roughly seven minutes of terminal — short enough to sit in front of,
+which is the other half of why nothing here runs in the background.
 
 `--root` names which **declared source root** to read (below); it defaults to the repo's own
 `courses/` tree, so nothing that worked before needs it. A `--source` that is not an http(s)

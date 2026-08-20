@@ -352,3 +352,204 @@ def test_the_preflight_probes_a_file_the_course_actually_has(tmp_path, monkeypat
         f"{get_settings().local_packages_base_url.rstrip('/')}"
         "/gen@2.0.0/a-run/traces/run_metadata.json"
     ]
+
+
+# ------------------------------------------------------ a list of URLs (--from-csv)
+# The other batch: a tree names its courses by folder, a file names them by URL, and the
+# loop underneath is the same one. Served over real http, because that is the whole point
+# of this path — a local directory is refused here on purpose.
+
+
+@pytest.fixture
+def served_courses(course_server, unique):
+    """Three copies of the frozen course, each under its own slug, beside the one the
+    fixture already serves."""
+    base_url, course_dir = course_server
+    slugs = [f"csv-course-{unique}-{index}" for index in range(3)]
+    for slug in slugs:
+        put_course(course_dir.parent, "", slug)
+    return base_url, slugs
+
+
+def source_list(tmp_path: Path, *lines: str) -> Path:
+    path = tmp_path / "courses.csv"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def from_csv(path: Path, *args: str) -> int:
+    return main(["register-package", "--from-csv", str(path), *args])
+
+
+def test_a_list_of_urls_registers_every_course(served_courses, tmp_path, cleanup, session):
+    base_url, slugs = served_courses
+    csv_file = source_list(tmp_path, *[f"{base_url}/{slug}" for slug in slugs])
+
+    assert from_csv(csv_file, "--generator", "unknown") == 0
+
+    for slug in slugs:
+        assert track(cleanup, session, slug), f"{slug} was not registered"
+        # An http source IS the deployed course, so it declares its own (ADR-0028).
+        assert consumable_url_of(session, slug) == f"{base_url}/{slug}"
+
+
+def test_rerunning_the_same_file_is_a_noop(served_courses, tmp_path, cleanup, session, capsys):
+    """The property that buys the decision not to build a run with progress and
+    cancellation: a batch that dies halfway is finished by running it again."""
+    base_url, slugs = served_courses
+    csv_file = source_list(tmp_path, *[f"{base_url}/{slug}" for slug in slugs])
+    assert from_csv(csv_file, "--generator", "unknown") == 0
+    for slug in slugs:
+        track(cleanup, session, slug)
+    capsys.readouterr()
+
+    assert from_csv(csv_file, "--generator", "unknown") == 0
+
+    assert "0 created, 3 unchanged" in capsys.readouterr().err
+
+
+def test_a_course_that_cannot_be_read_is_one_row_not_the_batch(
+    served_courses, tmp_path, cleanup, session, capsys
+):
+    base_url, slugs = served_courses
+    csv_file = source_list(
+        tmp_path, f"{base_url}/{slugs[0]}", f"{base_url}/no-such-course", f"{base_url}/{slugs[1]}"
+    )
+
+    assert from_csv(csv_file, "--generator", "unknown") == 1  # the batch reports the failure
+
+    assert track(cleanup, session, slugs[0])  # ...and registered everything else
+    assert track(cleanup, session, slugs[1])
+    assert "INVALID" in capsys.readouterr().err
+
+
+def test_the_declared_generator_reaches_every_course(
+    served_courses, tmp_path, cleanup, session, generator
+):
+    base_url, slugs = served_courses
+    csv_file = source_list(tmp_path, *[f"{base_url}/{slug}" for slug in slugs])
+
+    assert (
+        from_csv(
+            csv_file,
+            "--generator-name",
+            generator.name,
+            "--generator-version",
+            generator.version,
+        )
+        == 0
+    )
+
+    for slug in slugs:
+        track(cleanup, session, slug)
+        assert generator_of(session, slug) == generator.id
+
+
+def test_an_unregistered_lineage_refuses_before_anything_is_fetched(
+    served_courses, tmp_path, session, capsys
+):
+    """ADR-0031: a lineage's name is typed once and never again, so this one is resolved and
+    never minted — and learning it on course nineteen would cost eighteen readings."""
+    base_url, slugs = served_courses
+    csv_file = source_list(tmp_path, *[f"{base_url}/{slug}" for slug in slugs])
+
+    assert (
+        from_csv(csv_file, "--generator-name", "nobody-registered-this", "--generator-version", "1")
+        == 1
+    )
+
+    assert "nothing was registered" in capsys.readouterr().err
+    assert track({"contents": []}, session, slugs[0]) is None
+
+
+def test_a_new_version_is_refused_until_it_is_asked_for(
+    served_courses, tmp_path, cleanup, session, generator, capsys
+):
+    """A typo in one flag would attribute the whole list to a phantom version, and content is
+    never retired (ADR-0033). So the mint is an act, not a default."""
+    base_url, slugs = served_courses
+    csv_file = source_list(tmp_path, f"{base_url}/{slugs[0]}")
+
+    refused = from_csv(csv_file, "--generator-name", generator.name, "--generator-version", "9.9.9")
+
+    assert refused == 1
+    assert "--register-new-version" in capsys.readouterr().err
+    assert track({"contents": []}, session, slugs[0]) is None
+
+    assert (
+        from_csv(
+            csv_file,
+            "--generator-name",
+            generator.name,
+            "--generator-version",
+            "9.9.9",
+            "--register-new-version",
+        )
+        == 0
+    )
+    minted = session.execute(
+        text(
+            "SELECT id FROM generator_versions WHERE version = '9.9.9' AND generator_id = "
+            "(SELECT generator_id FROM generator_versions WHERE id = :known)"
+        ),
+        {"known": generator.id},
+    ).scalar()
+    cleanup["generators"].append(minted)
+    assert track(cleanup, session, slugs[0])
+    assert generator_of(session, slugs[0]) == minted
+
+
+def test_the_file_tolerates_what_a_spreadsheet_writes(served_courses, tmp_path, cleanup, session):
+    """A header, a blank line, a parked course, the name and a note in the columns beside the
+    URL, and the same course twice. None of it changes which courses were meant."""
+    base_url, slugs = served_courses
+    csv_file = source_list(
+        tmp_path,
+        "url,course,notes",
+        f"{base_url}/{slugs[0]},First course,looks fine",
+        "",
+        f"# {base_url}/{slugs[2]}",
+        f"{base_url}/{slugs[1]}",
+        f"{base_url}/{slugs[0]}",
+    )
+
+    assert from_csv(csv_file, "--generator", "unknown") == 0
+
+    assert track(cleanup, session, slugs[0])
+    assert track(cleanup, session, slugs[1])
+    assert track({"contents": []}, session, slugs[2]) is None  # the commented row
+
+
+@pytest.mark.parametrize(
+    ("lines", "message"),
+    [
+        # A non-URL is a header only in the first row; further down it is a course somebody
+        # meant to register, and a local one is another command's business.
+        (["https://a-course.learn-pack.com", "C:/courses/a-course"], "--source or --all"),
+        (["# nothing but a comment"], "names no course URLs"),
+        (["url", "course-name-but-no-url"], "--source or --all"),
+    ],
+)
+def test_a_file_that_names_nothing_registrable_is_refused(tmp_path, capsys, lines, message):
+    assert from_csv(source_list(tmp_path, *lines), "--generator", "unknown") == 1
+    assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ([], "silence is not a declaration"),
+        (["--generator", "unknown", "--all"], "other two ways of naming them"),
+        (["--generator", "unknown", "--consumable-url", "https://x.test"], "ADR-0028"),
+        (["--generator", "unknown", "--generator-name", "x"], "declare the generator once"),
+        (["--generator-name", "x"], "go together"),
+        (["--generator", "unknown", "--register-new-version"], "--generator-version"),
+    ],
+)
+def test_the_flag_combinations_that_cannot_mean_anything_are_refused(
+    tmp_path, capsys, args, message
+):
+    csv_file = source_list(tmp_path, "https://a-course.learn-pack.com")
+
+    assert from_csv(csv_file, *args) == 1
+    assert message in capsys.readouterr().err
