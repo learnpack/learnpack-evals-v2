@@ -59,8 +59,10 @@ class StartBatchRequest(BaseModel):
     # Courses already evaluated by this assessor under this version are skipped unless this
     # says otherwise — which is what makes re-running the way to resume (ADR-0040 §6).
     re_evaluate: bool = False
-    # How many courses at a time. How many REQUESTS may be in flight is the transport's
-    # ceiling whatever this says, so raising it cannot burst past `LLM_MAX_CONCURRENCY`.
+    # How many courses at a time, defaulting to `BATCH_MAX_COURSES`. How many REQUESTS may
+    # be in flight is the transport's ceiling whatever this says, so raising it cannot burst
+    # past `LLM_MAX_CONCURRENCY` — a course asks for several calls at once, so the two
+    # numbers are not the same one.
     concurrency: int | None = None
 
 
@@ -239,7 +241,7 @@ def read_study_evaluations(
         evaluated_by_assessor=sorted(
             per_assessor, key=lambda a: (-a.evaluated, str(a.assessor_id))
         ),
-        default_concurrency=get_settings().llm_max_concurrency,
+        default_concurrency=get_settings().batch_max_courses,
         runs=[BatchRunResponse.from_view(run.view()) for run in batch_runs.for_study(study_id)],
     )
 
@@ -283,7 +285,7 @@ def start_study_evaluation(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"unknown assessor {request.assessor_name}:{request.assessor_version}",
             )
-    workers = request.concurrency or get_settings().llm_max_concurrency
+    workers = request.concurrency or get_settings().batch_max_courses
 
     try:
         run = batch_runs.start(

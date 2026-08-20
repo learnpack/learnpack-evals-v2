@@ -501,13 +501,24 @@ interrupted at course twelve of twenty is continued by running the same command 
 persisted, the ones in flight stop at their next call, and the summary still prints. Nothing
 needs undoing — an evaluation that does not reach its end writes nothing.
 
-**How much it asks for at once.** `--concurrency` is how many **courses** run at a time
-(default `LLM_MAX_CONCURRENCY`). How many **requests** may be in flight is bounded by
-`LLM_MAX_CONCURRENCY` at the transport itself, whatever the callers do, so nested fan-outs
-can never multiply into a burst nobody chose. Default 4; raising it past ~7 also needs the
-database pool raised, since each worker uses up to two sessions. If the endpoint pushes
-back, the transport already backs off on 429 honouring `Retry-After` — the first real batch
-is how the account's actual limit gets measured, rather than guessed.
+**How much it asks for at once — two numbers, not one.** `--concurrency` is how many
+**courses** run at a time (default `BATCH_MAX_COURSES`, 4). How many **requests** may be in
+flight is `LLM_MAX_CONCURRENCY` (8) at the transport itself, whatever the callers do, so
+nested fan-outs can never multiply into a burst nobody chose.
+
+They are configured apart because one course is no longer one request: `drafts-hybrid` asks
+its concept map as one call plus one per module. So size them from what you are running —
+requests wanted is `courses in flight x (1 + modules)` — and remember that a ceiling below
+that does not save anything, it only moves the wait into the transport's queue, where it is
+recorded as latency and reads like a slow model.
+
+`BATCH_MAX_COURSES` is bounded by the database rather than by the endpoint: each worker uses
+up to two sessions against a pool of 5 + 10 overflow, so past ~7 the pool has to be raised
+too. `LLM_MAX_CONCURRENCY` is bounded by what the account is served — OpenRouter states no
+concurrency limit for paid models and governs capacity per account, so opening more keys buys
+nothing. If the endpoint pushes back, the transport backs off on 429 honouring `Retry-After`:
+overshooting costs retries, not correctness, and the first real batch is how the account's
+actual limit gets measured rather than guessed.
 
 **The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with
 the identical work behind it — one use case, two doors, so they cannot answer differently.

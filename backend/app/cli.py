@@ -2383,7 +2383,7 @@ def _evaluate_batch(
     may have more to say in the same JSON document. Ctrl-C cancels — the same token the
     console uses — and the summary still comes back, because half a batch is a result too.
     """
-    workers = concurrency if concurrency is not None else get_settings().llm_max_concurrency
+    workers = concurrency if concurrency is not None else get_settings().batch_max_courses
     try:
         run = batch_runs.prepare(
             study_id=study_id, package=package, workers=workers, re_evaluate=re_evaluate
@@ -3625,8 +3625,9 @@ def main(argv: list[str] | None = None) -> int:
         "--concurrency",
         type=int,
         default=None,
-        help="how many courses to evaluate at a time (default: LLM_MAX_CONCURRENCY). How "
-        "many REQUESTS may be in flight is the transport's ceiling either way",
+        help="how many courses to evaluate at a time (default: BATCH_MAX_COURSES). How "
+        "many REQUESTS may be in flight is LLM_MAX_CONCURRENCY, at the transport, whatever "
+        "this says — one course asks for several at once",
     )
     evaluate_study_parser.add_argument(
         "--re-evaluate",

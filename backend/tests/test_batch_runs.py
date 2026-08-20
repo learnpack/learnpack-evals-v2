@@ -12,6 +12,8 @@ from uuid import uuid4
 
 import pytest
 
+from app import cli
+from app.config import get_settings
 from app.modules.evaluation.application.evaluate_content import ProfileNotAvailable
 from app.modules.evaluation.domain.model import Coverage, InvalidAutomatedEvaluation
 from app.modules.evaluation.infrastructure.assessors import AssessorPackage
@@ -370,3 +372,50 @@ def test_a_studys_runs_come_back_newest_first(monkeypatch):
     runs.start(a_run([course("c")]))  # another study's
 
     assert [r.run_id for r in runs.for_study(study)] == [second.run_id, first.run_id]
+
+
+# ------------------------------------------------- courses in flight vs requests in flight
+
+
+def test_a_course_is_several_requests_so_the_two_ceilings_are_separate(monkeypatch):
+    """The batch's default worker count follows `BATCH_MAX_COURSES`, never the transport's
+    ceiling.
+
+    They were one setting while one course meant one request at a time. The concept map ended
+    that: it asks one call plus one per module, so a ceiling sized for requests would set the
+    number of DATABASE-holding course workers, and a worker count sized for the database would
+    throttle a single course's fan-out. Re-deriving either from the other is the regression
+    this pins.
+    """
+    monkeypatch.setenv("LLM_MAX_CONCURRENCY", "24")
+    monkeypatch.setenv("BATCH_MAX_COURSES", "3")
+    get_settings.cache_clear()
+    captured: dict[str, object] = {}
+
+    def refuse(**kwargs):
+        captured.update(kwargs)
+        raise cli.batch_runs.BatchRefused("nothing to run", kind="empty")
+
+    monkeypatch.setattr(cli.batch_runs, "prepare", refuse)
+    try:
+        assert cli._evaluate_batch(uuid4(), None, None, False) is None
+        assert captured["workers"] == 3
+    finally:
+        get_settings.cache_clear()
+
+
+def test_the_defaults_are_sized_for_one_courses_fan_out(monkeypatch):
+    """Both numbers are decisions, so both are asserted rather than left to drift.
+
+    Eight covers a course whose concept map is one call plus one per module, measured at seven
+    on the drafts on hand; four courses is what the database pool serves at two sessions each.
+    """
+    get_settings.cache_clear()
+    for name in ("LLM_MAX_CONCURRENCY", "BATCH_MAX_COURSES"):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        settings = get_settings()
+        assert settings.llm_max_concurrency == 8
+        assert settings.batch_max_courses == 4
+    finally:
+        get_settings.cache_clear()

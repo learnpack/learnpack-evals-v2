@@ -276,6 +276,19 @@ seconds against 97 for everything else — and the same draft now finishes in 32
 of 614, returning the identical map. Two things had to be fixed for that to be honest as well as
 fast: the trace sink is a `ContextVar`, so the first fan-out emitted nothing at all and the most
 expensive task left no record, and the JSONL sink now serializes its writes.
+
+**And the transport's ceiling was still sized for a world without fan-out**, so three of the
+seven calls sat in our own queue — which `latency_ms` counts as latency, because the clock
+starts before the slot is asked for, so the wait read like a slow model. It was not: at a
+ceiling of seven all seven calls generated at 106–134 tokens per second, where at four the
+three that queued recorded 46–71 and nothing else changed. `LLM_MAX_CONCURRENCY` is now **8**
+— one course's map is one call plus one per module, seven on the drafts measured — and the map
+stage went 204 s → 114 s, the evaluation 321 s → 283 s. The number comes from our own demand
+because the endpoint declares none: OpenRouter publishes rate limits only for `:free` variants
+and governs capacity per account. **How many COURSES a batch runs at once is now its own
+setting** (`BATCH_MAX_COURSES`, 4): it used to default to the transport's ceiling, which stopped
+making sense when one course became several requests — one is bounded by the database pool, the
+other by what the account is served.
 It pins its own model, effort and output budget, all three declared in `SOURCE_CONFIG`: the
 flash model the rest of the package uses does not hold this output contract.
 

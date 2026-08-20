@@ -22,6 +22,7 @@ from test_automated_evaluation_flow import (  # noqa: F401 — fixtures resolved
 from test_studies_api import declare, register_brief, register_content
 
 from app.cli import run_ratify_assessor
+from app.config import get_settings
 from app.modules.evaluation.infrastructure.assessors import AUTOMATED_ASSESSORS
 from app.platform import batch_runs as module
 
@@ -252,7 +253,9 @@ def test_progress_is_read_from_what_was_persisted_not_from_the_run(
     assert (before["courses"], before["evaluated"]) == (2, 0)
     assert before["evaluated_by_assessor"] == []
     assert before["runs"] == []
-    assert before["default_concurrency"] >= 1
+    # Courses at a time, not requests at a time — the console offers the number a batch would
+    # actually use, and since the concept map's fan-out those are two different settings.
+    assert before["default_concurrency"] == get_settings().batch_max_courses
 
     monkeypatch.setattr(module, "_run_use_case", lambda run, course: uuid4())
     run_id = admin.post(

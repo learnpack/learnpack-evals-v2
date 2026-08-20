@@ -19,10 +19,11 @@ studies never command Evaluation: the study is read here, not asked to do anythi
 Three things bound the cost, and each answers a different way of losing money:
 
 - **How many calls are in flight** is not decided here at all. The workers only decide how
-  many courses are open at once; the ceiling on requests lives in the transport
-  (`LLM_MAX_CONCURRENCY`), which is the only place that sees every call however many levels
-  of fan-out sit above it. When criteria that fan out over lessons arrive, they will nest
-  inside this loop and the ceiling will still hold, unchanged.
+  many courses are open at once (`BATCH_MAX_COURSES`, bounded by the database pool); the
+  ceiling on requests lives in the transport (`LLM_MAX_CONCURRENCY`), which is the only place
+  that sees every call however many levels of fan-out sit above it. That nesting is no longer
+  hypothetical — the concept map asks one call per module inside each course — which is why
+  the two numbers are configured apart: one course is several requests.
 - **What is already done is not redone.** By default a course this assessor already
   evaluated under this instrument version is skipped, so a batch that died halfway is
   resumed by running it again.
