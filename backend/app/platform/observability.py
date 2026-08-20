@@ -19,6 +19,7 @@ change which answer arrives.
 
 import json
 import logging
+import threading
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -158,10 +159,18 @@ def jsonl_sink(path: Path) -> Sink:
 
     Reopened per record on purpose: a run that dies mid-way is exactly the one whose
     trace has to be readable, and there is no volume here worth buffering for.
+
+    Serialized, because a caller may fan out: a task that asks several questions at once
+    hands this sink several records at once, and a record here runs to tens of kilobytes —
+    far past what one buffered write keeps whole. Two interleaved records are not a slower
+    trace, they are an unreadable one, and this file is the only evidence a calibration run
+    leaves behind.
     """
+    lock = threading.Lock()
 
     def write(call: LlmCall) -> None:
-        with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(call.as_record(), ensure_ascii=False) + "\n")
+        line = json.dumps(call.as_record(), ensure_ascii=False) + "\n"
+        with lock, path.open("a", encoding="utf-8") as stream:
+            stream.write(line)
 
     return write

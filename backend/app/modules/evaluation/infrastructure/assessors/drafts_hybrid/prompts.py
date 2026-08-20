@@ -315,6 +315,138 @@ $corpus
 </reach>"""
 )
 
+# --- the concept map (v13): two passes, each asking in the shape that answers it --------
+#
+# Both passes extract LOCAL, OBSERVABLE ACTS and nothing else. Which appearance of a concept
+# is its INTRODUCTION is arithmetic over what comes back — `min(position)` in `executors.py` —
+# and is never asked here. That division is the whole reason these prompts can be trusted with
+# a verdict: calibration measured a model to be dependable about where the text does something
+# with a concept and undependable about which fine category the doing falls into.
+#
+# The split into two passes is measured rather than tidy. Asked over the whole course, a model
+# agrees with independent readers about where a concept is STATED on 12 of 12 and 14 of 14,
+# while the same question asked module by module falls to 10 of 16 — without the rest of the
+# course in view its threshold for "this says what it is" loosens. Asked the other way round,
+# the fan-out reports the usage acts a whole-course call misses entirely (41 and 29 against 27,
+# and one whole-course run reported none at all). So the first pass asks only about definitions
+# over the whole course, and the second asks only about usage, one module at a time.
+#
+# Nothing is told to the second pass about the first. The four usage groups are local acts, and
+# anchoring them on a definition would invite the model to reason about order, which is the
+# code's job.
+#
+# Neither pass is shown which lesson the generator's plan assigns each concept to. That
+# assignment is joined back on afterwards, so what comes back is about the prose rather than
+# about the generator's own bookkeeping — which matters here, because a draft's `X.0` lesson
+# was found doing the work its `X.1` lesson is planned to teach.
+
+CONCEPT_DEFINITIONS_SYSTEM = """\
+You locate where a course states what its concepts are. Answer with a single JSON object and
+nothing else — no prose, no markdown fences. Every quote must be copied
+character-for-character from the lesson it comes from."""
+
+CONCEPT_DEFINITIONS_USER = Template(
+    """\
+Between <course> tags below is a numbered list of the concepts a course covers, followed by
+every lesson of that course. A lesson block starts at a line of the form
+"===== LESSON <id>: <title> =====" and runs until the next block.
+
+You are NOT told which lesson teaches which concept. Working that out from the text is the
+task.
+
+For EACH concept in the list, report the lessons that SAY WHAT THE CONCEPT IS. Report this
+wherever it happens and however many lessons do it — you are not being asked which lesson
+introduces the concept, only which lessons state what it is. A lesson that says again, in
+other words, what the concept is counts: report that lesson too.
+
+Do not report a lesson that merely works with the concept, sets an exercise on it, or names it
+in passing. This pass is only about where the course says what the thing IS.
+
+For every lesson you report, quote verbatim the passage of THAT lesson which shows it. Copy it
+exactly as the lesson writes it, as one continuous passage — never join separate places
+together. A lesson you cannot quote is one not to report.
+
+This is an extraction task, not a judgement: report where the text states each concept.
+Nothing here asks whether the course is good, and no answer of yours decides anything about
+it.
+
+Answer with this JSON shape, one entry per concept, all of them, in this field order:
+{"concepts": [{"conceptIndex": <the number from the list>,
+"defines": [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}
+
+At most $max_lessons lessons for any one concept. A concept no lesson states reports an empty
+list — do not force every concept to be found.
+
+<course>
+$corpus
+</course>"""
+)
+
+CONCEPT_USAGE_SYSTEM = """\
+You analyse what the lessons of one course module do with the concepts the course covers.
+Answer with a single JSON object and nothing else — no prose, no markdown fences. Every quote
+must be copied character-for-character from the lesson it comes from."""
+
+CONCEPT_USAGE_USER = Template(
+    """\
+Between <module> tags below is a numbered list of the concepts a WHOLE course covers, followed
+by the lessons of ONE MODULE of that course. A lesson block starts at a line of the form
+"===== LESSON <id>: <title> =====" and runs until the next block.
+
+The other modules are not shown, and you do not need them. Report only what the lessons in
+front of you do, and never name a lesson that is not shown here. Whether some other lesson of
+the course also deals with a concept is not your question.
+
+Report the concepts these lessons deal with, sorting each lesson into the group that best
+describes what it does with that concept:
+
+- "develops": the lesson SAYS MORE ABOUT the concept than what it is — why it matters, what
+  follows from it, where it stops applying, what it is not, how it compares with a neighbouring
+  concept, or an illustration offered to make the concept itself clearer. The test is that the
+  lesson is still talking ABOUT the concept.
+- "uses_as_known": the lesson DOES SOMETHING WITH the concept, treating the reader as already
+  having it — it applies it to a task, a case or a piece of work whose point is not to explain
+  the concept. The test is that the lesson has moved on from talking about the concept to using
+  it on something else.
+- "assessed": the lesson puts a task, question or exercise to the learner that checks whether
+  they have the concept.
+- "mentions": the lesson names the concept without doing any of the above.
+
+Where a lesson says what a concept IS, that is not this pass's business — another pass asks it.
+Report only what these lessons do with a concept beyond stating it.
+
+Two tie-breaks, for the places this is genuinely hard:
+
+- A lesson that both works with a concept and sets an exercise on it belongs in both
+  "uses_as_known" and "assessed".
+- An illustration goes to "develops" when it is there to make the concept clear, and to
+  "uses_as_known" when the concept is there to make the illustration work.
+
+A lesson MAY appear in more than one group for the same concept when it genuinely does more
+than one thing with it; never repeat a lesson within a single group. Omit a concept these
+lessons do not deal with rather than reporting it with empty lists.
+
+For every lesson you report, quote verbatim the passage of THAT lesson which shows it. Copy it
+exactly as the lesson writes it, as one continuous passage — never join separate places
+together. A lesson you cannot quote is one not to report.
+
+This is an extraction task, not a judgement: report what these lessons do. Nothing here asks
+whether the course is good, and no answer of yours decides anything about it.
+
+Answer with this JSON shape, one entry per concept you report, in this field order:
+{"concepts": [{"conceptIndex": <the number from the list>,
+"develops":      [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"uses_as_known": [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"assessed":      [{"lessonId": "<id>", "quote": "<verbatim>"}],
+"mentions":      [{"lessonId": "<id>", "quote": "<verbatim>"}]}]}
+
+At most $max_lessons lessons in any one group.
+
+<module>
+$corpus
+</module>"""
+)
+
 # --- the identity fingerprint -----------------------------------------------------------
 
 _ALL_TEMPLATES: dict[str, str] = {
@@ -332,6 +464,10 @@ _ALL_TEMPLATES: dict[str, str] = {
     "assessment_mapping_user": ASSESSMENT_MAPPING_USER.template,
     "assessment_reach_system": ASSESSMENT_REACH_SYSTEM,
     "assessment_reach_user": ASSESSMENT_REACH_USER.template,
+    "concept_definitions_system": CONCEPT_DEFINITIONS_SYSTEM,
+    "concept_definitions_user": CONCEPT_DEFINITIONS_USER.template,
+    "concept_usage_system": CONCEPT_USAGE_SYSTEM,
+    "concept_usage_user": CONCEPT_USAGE_USER.template,
 }
 
 
