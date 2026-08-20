@@ -270,6 +270,12 @@ that with the wide bar, and the executor adds the deterministic anchor: which ap
 concept is its INTRODUCTION is `min(position)`, computed in code and never asked. The map is
 asked in two passes — definitions over the whole course, usage module by module — which costs
 `1 + one call per module` and takes an evaluation from ~15 calls to 22 on the drafts measured.
+Those calls **go out together**, which is what makes the criterion runnable over a dataset
+rather than merely demonstrable: serially the map was 84 % of an evaluation's wall clock — 517
+seconds against 97 for everything else — and the same draft now finishes in 321 seconds instead
+of 614, returning the identical map. Two things had to be fixed for that to be honest as well as
+fast: the trace sink is a `ContextVar`, so the first fan-out emitted nothing at all and the most
+expensive task left no record, and the JSONL sink now serializes its writes.
 It pins its own model, effort and output budget, all three declared in `SOURCE_CONFIG`: the
 flash model the rest of the package uses does not hold this output contract.
 
