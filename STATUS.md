@@ -356,10 +356,12 @@ for `assessment_offerings` beside `lesson_assessment_items`. `lesson_concepts` s
 what it was, for the packages already measured against it. **The LearnpackV2 adapter is v4**;
 the one criterion that read the old id, `cr-cognitive-demand-rises-across-the-course`, now reads
 the new one, in a **draft** `course-drafts-qa-v8` that changes nothing else. `workbench.yaml`
-now names it, so `task db:reset` publishes v8, accepts adapter v4 and ratifies `drafts-hybrid`
-against v8 on a fresh database in one pass. On a store that already ratified `drafts-hybrid`
-against v7, ratifying it against v8 needs the confirmation the criterion's changed `requires`
-demands: `ratify-assessor ... --confirm cr-cognitive-demand-rises-across-the-course`.
+named it while it was the current version, so a fresh database published v8, accepted adapter
+v4 and ratified `drafts-hybrid` against v8 in one pass. On a store that had already ratified
+`drafts-hybrid` against v7, ratifying it against v8 needed the confirmation the criterion's
+changed `requires` demands:
+`ratify-assessor ... --confirm cr-cognitive-demand-rises-across-the-course`. The manifest now
+names v9 (above).
 
 **The three criteria that read every lesson were built, measured, and thrown away — and what
 replaces them is a dump, not a criterion.** A branch took
