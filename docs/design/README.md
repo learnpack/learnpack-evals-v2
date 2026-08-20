@@ -39,4 +39,4 @@ Decisions with alternatives: `../adr/0009` … `0015`. Inputs: `research/qa-eval
 | `06-organise.md` | Organise | placeholder (still true in spirit) |
 | `07-define.md` | Define | closed — superseded by 12 (self-contained) |
 | `08-code.md` | Code (MVP plan) | closed — implemented; the slice 2 plan will be its own doc |
-| `research/` | Dated external inputs | `deterministic-evaluation-landscape.md` (Jul) · `qa-evals-landscape.md` (Aug) |
+| `research/` | Dated external inputs and field runs | `deterministic-evaluation-landscape.md` (Jul) · `qa-evals-landscape.md` (Aug) · `concept-continuity-field-runs.md` (Aug — the evidence behind ADR-0047) |

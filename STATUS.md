@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-18._
+_Last updated: 2026-08-19._
 
 ## Where we are
 
@@ -236,7 +236,7 @@ already had the shape for that in `RUNBOOK-measuring.md`. The backend README kee
 `docs/README.md` gained a runbooks section naming both, which it had been missing for the
 measuring one too.
 
-**`course-drafts-qa` v9 splits the revisiting claim in two, and it is a draft.**
+**`course-drafts-qa` v9 splits the revisiting claim in two (ADR-0047), and it is a draft.**
 `cl-course-revisits-what-it-taught` asked whether a course revisits its earlier content, and a
 draft answers that twice with different answers: four independent readers of one draft, each
 asked unprompted whether it builds on itself, each answered *"partially"* and each split the
@@ -257,7 +257,10 @@ stably enough to decide a verdict — over one draft, two readers found the work
 what counts: developing a concept, operating with it, or setting a task on it. Naming it does
 not count, and neither does saying again what it is, which is a course starting over.
 **Publishing is still a human act:** `workbench.yaml` names v8, so a fresh database still
-publishes v8 until someone changes that line.
+publishes v8 until someone changes that line. **ADR-0047 records the decision** — why two
+answers about one quality are two claims, why the bar is wide, and what it does not settle —
+and the field runs it rests on are frozen in
+`docs/design/research/concept-continuity-field-runs.md`.
 
 **v9 is the first revision of this lineage to RETIRE a criterion id, and that changed an
 invariant.** Until now revisions only added ids or reworded conditions, so "an assessor
