@@ -262,7 +262,27 @@ ratified against it — the two new criteria are on the abstained side of the de
 ratification needs no confirmation. **ADR-0047 records the decision** — why two answers about
 one quality are two claims, why the bar is wide, and what it does not settle — and the field
 runs it rests on are frozen in `docs/design/research/concept-continuity-field-runs.md`.
-**Nobody executes the two new criteria yet**; that is the next artifact, not this one.
+**`drafts-hybrid` v13 executes the two new criteria, over one concept map the pair shares.**
+The abstention named two obstacles and only one was still there: the map itself is fine — two
+independent readers agree with it about where each concept is stated — and what was missing was
+a measure of what a lesson DOES with a concept that a verdict can rest on. ADR-0047 settles
+that with the wide bar, and the executor adds the deterministic anchor: which appearance of a
+concept is its INTRODUCTION is `min(position)`, computed in code and never asked. The map is
+asked in two passes — definitions over the whole course, usage module by module — which costs
+`1 + one call per module` and takes an evaluation from ~15 calls to 22 on the drafts measured.
+It pins its own model, effort and output budget, all three declared in `SOURCE_CONFIG`: the
+flash model the rest of the package uses does not hold this output contract.
+
+**Measured against the draft the readers read**, and it is the strongest agreement this
+lineage has: on the SOLID draft of `learnpack-generator-a154586`, both criteria return exactly
+what annotators K and L returned — `cl-modules-build-within-themselves` PASS (readers 5 of 6
+and 5 of 6) and `cl-course-builds-across-modules` FAIL (readers 1 of 4 and 2 of 4). That is the
+"partially" both readers wrote in prose, split into the two findings the claim used to average.
+The seven map calls were all answered on the first attempt — no schema retry, no budget cut —
+and reported 109 rows against the readers' 117 and 103. The same split shows on a later
+generation of the same course and on a prompt-engineering draft, which the readers never saw.
+`cr-later-lessons-apply-earlier-concepts` stays abstained: v9 retires it, v8 declares it, and
+coverage is a superset of the lineage.
 
 **v9 is the first revision of this lineage to RETIRE a criterion id, and that changed an
 invariant.** Until now revisions only added ids or reworded conditions, so "an assessor
