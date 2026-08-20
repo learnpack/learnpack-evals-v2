@@ -23,11 +23,11 @@
 # calibrate the new version with `evaluate --dry-run`, and then change the line here: this
 # file is the answer to "which version does this workbench measure with?".
 #
-# Earlier versions of a lineage stay on disk (they are what a bump is cloned from, and three
-# of them are inputs to the test suite) and are simply not listed.
+# Earlier versions of a lineage stay on disk (they are what a bump is cloned from, and the
+# coverage tests read every one of them) and are simply not listed.
 instruments:
   - instruments/learnpack-course-qa-v1.yaml
-  - instruments/course-drafts-qa-v8.yaml
+  - instruments/course-drafts-qa-v9.yaml
 
 # Package formats whose CURRENT extraction adapter is accepted (ADR-0012). Accepting is what
 # arms automatic profiling on registration (ADR-0029), so without it every course registers

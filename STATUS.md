@@ -236,7 +236,8 @@ already had the shape for that in `RUNBOOK-measuring.md`. The backend README kee
 `docs/README.md` gained a runbooks section naming both, which it had been missing for the
 measuring one too.
 
-**`course-drafts-qa` v9 splits the revisiting claim in two (ADR-0047), and it is a draft.**
+**`course-drafts-qa` v9 splits the revisiting claim in two (ADR-0047), and it is the version
+the workbench publishes.**
 `cl-course-revisits-what-it-taught` asked whether a course revisits its earlier content, and a
 draft answers that twice with different answers: four independent readers of one draft, each
 asked unprompted whether it builds on itself, each answered *"partially"* and each split the
@@ -256,11 +257,12 @@ stably enough to decide a verdict — over one draft, two readers found the work
 23 and 29 places while six model runs found it in 0 to 9. The two new criteria therefore widen
 what counts: developing a concept, operating with it, or setting a task on it. Naming it does
 not count, and neither does saying again what it is, which is a course starting over.
-**Publishing is still a human act:** `workbench.yaml` names v8, so a fresh database still
-publishes v8 until someone changes that line. **ADR-0047 records the decision** — why two
-answers about one quality are two claims, why the bar is wide, and what it does not settle —
-and the field runs it rests on are frozen in
-`docs/design/research/concept-continuity-field-runs.md`.
+`workbench.yaml` now names v9, so a fresh database publishes it and both assessor packages are
+ratified against it — the two new criteria are on the abstained side of the delta, so the
+ratification needs no confirmation. **ADR-0047 records the decision** — why two answers about
+one quality are two claims, why the bar is wide, and what it does not settle — and the field
+runs it rests on are frozen in `docs/design/research/concept-continuity-field-runs.md`.
+**Nobody executes the two new criteria yet**; that is the next artifact, not this one.
 
 **v9 is the first revision of this lineage to RETIRE a criterion id, and that changed an
 invariant.** Until now revisions only added ids or reworded conditions, so "an assessor

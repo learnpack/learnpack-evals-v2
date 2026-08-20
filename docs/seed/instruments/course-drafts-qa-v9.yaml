@@ -156,7 +156,7 @@
 # Authored as ASSISTANCE (see assisted_by): per design 12 invariant 5, nothing produced by
 # assistance reaches Published without a human act — review this file like code, edit
 # freely, and publish with
-# `python -m app.cli publish-instrument --id course-drafts-qa-v8 --email <admin>`
+# `python -m app.cli publish-instrument --id course-drafts-qa-v9 --email <admin>`
 # only when the team owns every word.
 #
 # INHERITED VERBATIM from learnpack-course-qa v1, through v1 of this lineage: 14 of the 20
@@ -215,7 +215,7 @@
 instrument_id: course-drafts-qa
 version: v9
 revision_reason: "the revisiting claim splits: within a module and across modules are different findings"
-name: "Course Drafts QA v8"
+name: "Course Drafts QA v9"
 purpose: >
   Internal QA of the drafts an AI course generator emits, before a teacher processes them
   into a deliverable course: whether the draft declares what it is for, states observable

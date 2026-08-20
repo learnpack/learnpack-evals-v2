@@ -258,7 +258,7 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v8",
+        instrument_version_id="course-drafts-qa-v9",
         instrument_id=_REAL_SPEC["instrument_id"],
         status="published",
         claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _REAL_SPEC["claims"]),
@@ -278,14 +278,14 @@ def test_the_package_against_the_frozen_v2_fixture():
     about the real draft the corpus holds. `cr-prerequisites-declared` never reaches its
     executor — LearnpackV2 declares no `prerequisites` capability, and unmet demand
     derives `not_applicable` before execution (derivation case (b)). Same case for
-    `cr-cognitive-demand-rises-across-the-course` is a different case now: pinned to v8, the
+    `cr-cognitive-demand-rises-across-the-course` is a different case now: pinned to v9, the
     instrument DOES require the new-shape `lesson_concept_coverage` the fixture carries, so
     the criterion reaches the coverage gate and this artifact abstains from it."""
     outcomes, metrics = derive_and_execute(
         _instrument_spec(), _fixture_profile(), PACKAGE.coverage, dict(PACKAGE.executors)
     )
 
-    assert len(outcomes) == 29
+    assert len(outcomes) == 30
     by_outcome: dict[str, set[str]] = {}
     for outcome in outcomes:
         by_outcome.setdefault(outcome.outcome, set()).add(outcome.criterion_id)
@@ -299,11 +299,10 @@ def test_the_package_against_the_frozen_v2_fixture():
         "cr-no-lesson-spikes-in-lexical-load",
         "cr-objectives-min-count",
     }
-    # Since this test moved from v7 to v8, `cr-cognitive-demand-rises-across-the-course` does
-    # reach the coverage gate and lands in `not_assessed` with the rest of the abstentions.
-    # The abstains restricted to what THIS version declares: the artifact also decides
-    # ids v9 introduced and one v9 retired, and an outcome exists only for a criterion
-    # the pinned version carries.
+    # `cr-cognitive-demand-rises-across-the-course` reaches the coverage gate and lands in
+    # `not_assessed` with the rest of the abstentions. The abstains restricted to what THIS
+    # version declares: the artifact also decides the id v9 retired, and an outcome exists
+    # only for a criterion the pinned version carries.
     declared_here = {outcome.criterion_id for outcome in outcomes}
     assert by_outcome["not_assessed"] == set(PACKAGE.coverage.abstains) & declared_here
     assert "fail" not in by_outcome and "no_evidence" not in by_outcome
