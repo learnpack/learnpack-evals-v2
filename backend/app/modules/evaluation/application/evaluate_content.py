@@ -19,7 +19,11 @@ from app.modules.evaluation.application.ports import (
 )
 from app.modules.evaluation.domain import events
 from app.modules.evaluation.domain.automated import AutomatedEvaluation
-from app.modules.evaluation.domain.derivation import Executor, derive_and_execute
+from app.modules.evaluation.domain.derivation import (
+    Executor,
+    RunIndependently,
+    derive_and_execute,
+)
 from app.modules.evaluation.domain.model import Coverage
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 from app.shared.domain.ids import new_id
@@ -54,6 +58,7 @@ class EvaluateContent:
         ratifications: RatificationRepositoryPort,
         coverage: Coverage,
         executors: dict[str, Executor],
+        run_criteria: RunIndependently,
         publisher: EventPublisherPort,
         uow: UnitOfWorkPort,
     ) -> None:
@@ -63,6 +68,10 @@ class EvaluateContent:
         self._ratifications = ratifications
         self._coverage = coverage
         self._executors = executors
+        # Declared by every caller, never defaulted: whether an evaluation's criteria are
+        # looked at one at a time or together is a property of the run, and a default here
+        # would decide it for whoever forgot to say (ADR-0048).
+        self._run_criteria = run_criteria
         self._publisher = publisher
         self._uow = uow
 
@@ -88,7 +97,9 @@ class EvaluateContent:
                 f"content {command.content_id} has no ok profile — profile it first"
             )
 
-        outcomes, metrics = derive_and_execute(instrument, profile, self._coverage, self._executors)
+        outcomes, metrics = derive_and_execute(
+            instrument, profile, self._coverage, self._executors, self._run_criteria
+        )
         evaluation = AutomatedEvaluation.complete(
             evaluation_id=new_id(),
             assessor_id=command.assessor_id,

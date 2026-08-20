@@ -69,7 +69,8 @@ the reading surface · `0042` a judgment names its author, and a study's result 
 `0043` choosing is not pinning, and publishing is signing off · `0044` a study's recipe declares
 which generator versions it measures · `0045` the local setup replays decided acts · `0046` what
 a draft proposes to assess with is evidence of alignment · `0047` two answers about one quality
-are two claims, and the bar for building is wide.
+are two claims, and the bar for building is wide · `0048` the derivation declares what is
+independent; the mechanism is injected.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:

@@ -407,15 +407,16 @@ def test_a_course_is_several_requests_so_the_two_ceilings_are_separate(monkeypat
 def test_the_defaults_are_sized_for_one_courses_fan_out(monkeypatch):
     """Both numbers are decisions, so both are asserted rather than left to drift.
 
-    Eight covers a course whose concept map is one call plus one per module, measured at seven
-    on the drafts on hand; four courses is what the database pool serves at two sessions each.
+    Sixteen covers a course's widest moment now that its criteria are looked at together: the
+    concept map's seven alongside the five judged criteria and the four single-call tasks.
+    Four courses is what the database pool serves at two sessions each.
     """
     get_settings.cache_clear()
     for name in ("LLM_MAX_CONCURRENCY", "BATCH_MAX_COURSES"):
         monkeypatch.delenv(name, raising=False)
     try:
         settings = get_settings()
-        assert settings.llm_max_concurrency == 8
+        assert settings.llm_max_concurrency == 16
         assert settings.batch_max_courses == 4
     finally:
         get_settings.cache_clear()

@@ -135,19 +135,23 @@ class Settings(BaseSettings):
     # variants, states no concurrency cap for paid ones, and governs capacity per account —
     # so more keys buy nothing and there is no figure to read off the API.
     #
-    # Our demand is one evaluation's widest fan-out. `drafts-hybrid` asks its concept map as
-    # one call plus one per module, which is seven on the drafts measured, and eight covers
-    # that with room. It is measured rather than guessed: at a ceiling of seven all seven
-    # calls generated at 106-134 tokens per second with no 429 and no retry, where at four
-    # the three that waited for a slot recorded 46-71 — that gap was this queue, not the
-    # provider. A ceiling below the fan-out does not save anything; it just moves the wait
-    # here and hides it inside the latency of the calls that queued.
+    # Our demand is one evaluation's widest moment, and ADR-0048 widened it: the derivation
+    # now looks at every judgeable criterion together, so a course's peak is its concept map
+    # (one call plus one per module, seven on the drafts measured) alongside the criteria a
+    # model judges (five, one vote at a time) and the single-call tasks (four) — sixteen.
     #
-    # A BATCH multiplies that: `courses in flight x (1 + modules)`. Raise this for one, watch
-    # for 429s, and remember the transport backs off on `Retry-After` — overshooting costs
-    # retries, not correctness. How many courses run at a time is `batch_max_courses`, which
-    # is a different question and has a different limit.
-    llm_max_concurrency: int = 8
+    # A ceiling below that does not save anything; it moves the wait into this queue, where
+    # it is recorded as latency and reads like a slow model. That is measured, not feared:
+    # at a ceiling of seven all seven map calls generated at 106-134 tokens per second with
+    # no 429 and no retry, where at four the three that waited for a slot recorded 46-71.
+    #
+    # What is NOT measured is whether the account is served sixteen at once, because only a
+    # real run can say. The transport backs off on 429 honouring `Retry-After`, so being
+    # wrong here costs retries rather than correctness.
+    #
+    # A BATCH multiplies it again by the courses in flight. How many those are is
+    # `batch_max_courses`, a different question with a different limit.
+    llm_max_concurrency: int = 16
     # How many COURSES a batch evaluates at a time (`evaluate-study`, the console's batch).
     # Separate from the ceiling above since the concept map's fan-out made them independent:
     # one course now asks for several calls at once, so "courses in flight" and "requests in

@@ -503,14 +503,16 @@ needs undoing — an evaluation that does not reach its end writes nothing.
 
 **How much it asks for at once — two numbers, not one.** `--concurrency` is how many
 **courses** run at a time (default `BATCH_MAX_COURSES`, 4). How many **requests** may be in
-flight is `LLM_MAX_CONCURRENCY` (8) at the transport itself, whatever the callers do, so
+flight is `LLM_MAX_CONCURRENCY` (16) at the transport itself, whatever the callers do, so
 nested fan-outs can never multiply into a burst nobody chose.
 
-They are configured apart because one course is no longer one request: `drafts-hybrid` asks
-its concept map as one call plus one per module. So size them from what you are running —
-requests wanted is `courses in flight x (1 + modules)` — and remember that a ceiling below
-that does not save anything, it only moves the wait into the transport's queue, where it is
-recorded as latency and reads like a slow model.
+They are configured apart because one course is no longer one request. An evaluation looks at
+every judgeable criterion at once (ADR-0048), and `drafts-hybrid` asks its concept map as one
+call plus one per module inside that — so one course peaks at roughly
+`(1 + modules) + judged criteria + single-call tasks`, which is sixteen on the drafts measured.
+Requests wanted is that times the courses in flight. A ceiling below it does not save anything:
+it only moves the wait into the transport's queue, where it is recorded as latency and reads
+like a slow model.
 
 `BATCH_MAX_COURSES` is bounded by the database rather than by the endpoint: each worker uses
 up to two sessions against a pool of 5 + 10 overflow, so past ~7 the pool has to be raised

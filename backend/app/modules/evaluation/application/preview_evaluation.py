@@ -15,7 +15,11 @@ from app.modules.evaluation.application.evaluate_content import (
     ProfileNotAvailable,
 )
 from app.modules.evaluation.application.ports import InstrumentGatewayPort, ProfileGatewayPort
-from app.modules.evaluation.domain.derivation import Executor, derive_and_execute
+from app.modules.evaluation.domain.derivation import (
+    Executor,
+    RunIndependently,
+    derive_and_execute,
+)
 from app.modules.evaluation.domain.judgment import JudgmentDraft, derive_judgment
 from app.modules.evaluation.domain.model import (
     ComputedMetric,
@@ -47,11 +51,16 @@ class PreviewEvaluation:
         profiles: ProfileGatewayPort,
         coverage: Coverage,
         executors: dict[str, Executor],
+        run_criteria: RunIndependently,
     ) -> None:
         self._instruments = instruments
         self._profiles = profiles
         self._coverage = coverage
         self._executors = executors
+        # Declared by every caller, never defaulted: whether an evaluation's criteria are
+        # looked at one at a time or together is a property of the run, and a default here
+        # would decide it for whoever forgot to say (ADR-0048).
+        self._run_criteria = run_criteria
 
     def __call__(self, command: PreviewEvaluationCommand) -> Preview:
         instrument = self._instruments.get_instrument(command.instrument_version_id)
@@ -65,7 +74,11 @@ class PreviewEvaluation:
                 f"content {command.content_id} has no ok profile — profile it first"
             )
         outcomes, metrics = derive_and_execute(
-            instrument, profile, self._preview_coverage(instrument), self._executors
+            instrument,
+            profile,
+            self._preview_coverage(instrument),
+            self._executors,
+            self._run_criteria,
         )
         return Preview(
             instrument=instrument,

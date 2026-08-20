@@ -78,6 +78,7 @@ from app.modules.evaluation_studies.infrastructure.repository import SqlAlchemyS
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform import cancellation, observability
 from app.platform.cancellation import CancellationToken, Cancelled, cancel_scope
+from app.platform.concurrency import all_at_once
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 
@@ -631,6 +632,10 @@ def _run_use_case(run: BatchRun, course: ContentInfo) -> UUID:
                     )
                 ),
             ),
+            # Nested inside this module's own pool over courses, and bounded by neither: the
+            # transport's semaphore is what decides how many requests the product of the two
+            # actually releases (ADR-0048 §7).
+            run_criteria=all_at_once,
             publisher=uow.events,
             uow=uow,
         )
