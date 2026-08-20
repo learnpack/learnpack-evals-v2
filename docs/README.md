@@ -38,6 +38,11 @@ to do with a note when its task ends — are in `../CLAUDE.md`, section **Docume
 - `MEASUREMENT.md` — where a `ComputedMetric` is computed, what each one means, and the evidence
   behind every threshold — including the measures that were tried and rejected.
 
+**Runbooks (one job each, self-contained)**
+- `RUNBOOK-measuring.md` — you have a folder of courses a generator wrote and you want a score.
+- `RUNBOOK-calibrating.md` — a criterion is not measuring what you meant, or does not exist
+  yet, and you want to find out what it should ask.
+
 **Decisions (`adr/`, immutable)**
 `0001` open content metadata *(superseded by 0017)* · `0002` campaigns/assignments/quorum ·
 `0003` Postgres + events · `0004` Clerk · `0005` Evaluation identity + content versioning ·

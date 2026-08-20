@@ -211,6 +211,31 @@ or start from `task db:reset`, which is wanted anyway whenever the adapter versi
 every content of that format needs `accept-extraction` and a re-profile before anything reads
 the new id.
 
+**And a second calibration dump asks the same corpus by concept rather than by lesson.**
+`dump-concept-map --content-id <uuid> [--shape whole|per_module|two_phase]` reports, per
+concept, the lessons that state it, develop it, use it as known, check it, or merely name it —
+with a verbatim quote each. Two properties are what it is for. **The plan's own
+concept-to-lesson assignment is never shown to the model**: it gets bare names, works out from
+the text where each is stated, and the assignment is joined back on afterwards, so a `defines`
+row the plan does not declare is the plan and the prose disagreeing about where a concept is
+taught. And **every group is a local act** — `defines` asks only whether a lesson says what a
+concept is, never which lesson introduces it; `min(position)` decides that here, so a concept
+stated by two lessons is a finding (the course stating again what it already stated) rather
+than a contradiction to resolve in a prompt. A lesson may sit in more than one group for one
+concept, which was measured: forcing one slot collapses `develops` to almost nothing.
+`dump-concept-touches` stays for the one thing this does not produce — the geometry of a
+single touch, how far back it reaches and where in the lesson it sits, which is what tells you
+whether a pairwise or windowed criterion could catch what a course actually has. Neither is
+identity (ADR-0034): no executor imports them, `SOURCE_CONFIG` names neither, their prompts
+stay out of the fingerprinted templates, and tests pin that in both directions.
+
+**The calibration material moved out of `backend/README.md` into
+`docs/RUNBOOK-calibrating.md`.** Reading a trace, what repeats tell you and the two dumps are
+one job with one audience — someone deciding what an instrument should ask — and the repo
+already had the shape for that in `RUNBOOK-measuring.md`. The backend README keeps a pointer;
+`docs/README.md` gained a runbooks section naming both, which it had been missing for the
+measuring one too.
+
 **`course-drafts-qa` v9 splits the revisiting claim in two, and it is a draft.**
 `cl-course-revisits-what-it-taught` asked whether a course revisits its earlier content, and a
 draft answers that twice with different answers: four independent readers of one draft, each
