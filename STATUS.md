@@ -2096,8 +2096,13 @@ the data in the package).
   per course a terminal prints and the Ctrl-C it answers to, with nothing to undo because each
   course is its own transaction. What **re-running the file** removes is the third thing a run
   exists for — outliving the process so that *how far did it get* stays answerable. The run
-  comes back the
-  day a list has to be started from a browser — CLI-only is the deferral, not an oversight.
+  comes back the day a list has to be started from a browser — CLI-only is the deferral, not an
+  oversight. **Two things about it are already settled, so they do not have to be rediscovered
+  then:** its worker pool would COPY the caller's context, unlike the batch's, which
+  deliberately does not (`platform/concurrency.py` contrasts the two — there is no memoized
+  answer to isolate here, and there is a cancellation token to carry); and it wants the mirror
+  of `BatchRunRegistry._refuse_overlap` for a different reason, since two runs over one URL race
+  on the unique index instead of resolving into the no-op they would be in sequence.
 
 - **Auto-profiling reaches http(s) roots only (ADR-0029).** The policy's fetcher is fixed at
   wiring time, so packages rooted on a filesystem — the seeder's frozen fixtures,
@@ -2107,10 +2112,12 @@ the data in the package).
   touch: a readable package permanently marked broken by the one path that could not read it.
   **Deferred, doors open:** resolving the fetcher from the **package root** (the ADR-0027 §1
   shape) — that is the recorded exit condition, at which point the guard is *deleted*, not
-  generalized; and a **`--no-profile` escape hatch** for bulk registration, whose absence is a
-  real cost — `register-package --all` now pays roughly one fetch per lesson per created
-  course, sequentially, inside each registration's post-commit dispatch, so a large tree takes
-  minutes with no way to opt out. Also noted: `import-learnpack` **without** `--base-dir`
+  generalized; and a **`--no-profile` escape hatch** for bulk registration, **which stopped
+  being a real cost**: it was written when each created course paid one fetch per lesson
+  *sequentially* inside its post-commit dispatch, so a large tree took minutes with no way to
+  opt out. Those fetches go out together now and profiling a course is ~2.3 s against 9.4 s,
+  which is inside the noise of registering it at all — the hatch stays deferred because nobody
+  is paying for its absence any more, not because nobody got to it. Also noted: `import-learnpack` **without** `--base-dir`
   starts auto-profiling where it did not before (its locators are URLs); benign, but a
   behaviour change. And a second, smaller door: `EventDispatcher.subscribe` appends without
   dedup, so a process that wires twice runs every handler twice — harmless under ADR-0003's
