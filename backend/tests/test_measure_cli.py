@@ -35,7 +35,7 @@ V2_RUN_VERSION = json.loads(
     (V2_FIXTURES / V2_RUN / "traces" / "run_metadata.json").read_text(encoding="utf-8")
 )["system_version"]
 INSTRUMENTS = Path(__file__).resolve().parents[2] / "docs" / "seed" / "instruments"
-DRAFTS_SPEC = INSTRUMENTS / "course-drafts-qa-v6.yaml"
+DRAFTS_SPEC = INSTRUMENTS / "course-drafts-qa-v8.yaml"
 COURSE_SPEC = INSTRUMENTS / "learnpack-course-qa-v1.yaml"
 
 
