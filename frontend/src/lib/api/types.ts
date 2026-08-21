@@ -206,6 +206,10 @@ export interface InvitationResponse {
   /** The assessor it produced — set exactly when `status === "accepted"`. */
   accepted_by: Uuid | null;
   created_at: string | null;
+  /** Only the acts that deliver answer these — inviting and re-sending. A listing leaves
+   *  them null: whether an email got out days ago is not a fact the row carries. */
+  delivered?: boolean | null;
+  delivery_error?: string | null;
 }
 
 export interface InviteAssessorRequest {

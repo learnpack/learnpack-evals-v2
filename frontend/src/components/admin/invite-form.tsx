@@ -42,9 +42,18 @@ export function InviteForm({ onDone }: { onDone: () => void }) {
       },
       {
         onSuccess: (invitation) => {
-          toast.success(`${invitation.email} is invited.`, {
-            description: "They become an assessor the first time they sign in.",
-          });
+          // The invitation stands either way; what can fail is delivery, and the remedy is
+          // different enough to deserve a different message.
+          if (invitation.delivered === false) {
+            toast.warning(`${invitation.email} is invited, but nothing was sent.`, {
+              description: `${invitation.delivery_error ?? "Delivery failed."} Re-send it, or invite them in Clerk by hand.`,
+              duration: 12000,
+            });
+          } else {
+            toast.success(`${invitation.email} is invited.`, {
+              description: "They become an assessor the first time they sign in.",
+            });
+          }
           onDone();
         },
         onError: (err) => {
@@ -108,13 +117,6 @@ export function InviteForm({ onDone }: { onDone: () => void }) {
           What this SME brings, as the roster knows it. Nothing else writes it.
         </p>
       </div>
-
-      {/* Named, not hidden: until the provider adapter lands, inviting here and inviting in
-          the provider are two acts, and finding that out at the door is worse. */}
-      <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-        This does not invite them in Clerk. They still need an invitation there to be able to
-        sign in at all.
-      </p>
 
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" variant="outline" onClick={onDone} disabled={invite.isPending}>

@@ -150,6 +150,47 @@ def test_a_second_login_does_not_redeem_anything(invite, as_user, cleanup, admin
     assert me["role"] == "evaluator"
 
 
+# ------------------------------------------------------------------- when delivery fails
+
+
+def test_a_failed_delivery_does_not_undo_the_invitation(admin, cleanup, unique, monkeypatch):
+    """The roster's record of who was asked in is true whether or not an email went out. The
+    remedy is a re-send, so the invitation has to still be there to re-send (ADR-0049 §8)."""
+    from app.modules.identity.application.ports import InvitationDeliveryFailed
+    from app.modules.identity.infrastructure import router as identity_router
+
+    class Broken:
+        def dispatch(self, invitation):
+            raise InvitationDeliveryFailed("Clerk refused the invitation (422): already a user")
+
+    # Patched on the router, not on the dispatchers module: the router imported the factory
+    # by name, so that binding is the one the handler calls.
+    monkeypatch.setattr(identity_router, "get_invitation_dispatcher", lambda: Broken())
+
+    response = admin.post("/admin/invitations", json={"email": f"undelivered-{unique}@example.com"})
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    cleanup["invitations"].append(body["invitation_id"])
+    # It exists and is pending...
+    assert body["status"] == "pending"
+    assert _invitation(admin, body["invitation_id"])["status"] == "pending"
+    # ...and the answer says nobody was told, in Clerk's own words.
+    assert body["delivered"] is False
+    assert "already a user" in body["delivery_error"]
+
+
+def test_a_delivered_invitation_says_so(invite):
+    """Local mode delivers nothing and reports success: there is no provider to fail."""
+    assert invite()["delivered"] is True
+
+
+def test_a_listing_claims_nothing_about_delivery(invite, admin):
+    """Whether an email got out days ago is not a fact the row carries."""
+    created = invite()
+    assert _invitation(admin, created["invitation_id"])["delivered"] is None
+
+
 # ------------------------------------------------------------------------ the refusals
 
 

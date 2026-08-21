@@ -7,6 +7,7 @@ evaluator (ADR-0049), and it creates no account — the `assessors` row still ap
 address's first login.
 """
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -32,6 +33,7 @@ from app.modules.identity.application.invitations import (
     AssessorAlreadyRegistered,
     InvitationAlreadyPending,
     InvitationNotFound,
+    InvitationSent,
     InviteAssessor,
     InviteAssessorCommand,
     ResendInvitation,
@@ -43,7 +45,7 @@ from app.modules.identity.application.set_expertise import (
 )
 from app.modules.identity.domain.assessor import Role
 from app.modules.identity.domain.invitation import InvalidInvitation, InvalidInvitationTransition
-from app.modules.identity.infrastructure.dispatchers import LoggingInvitationDispatcher
+from app.modules.identity.infrastructure.dispatchers import get_invitation_dispatcher
 from app.modules.identity.infrastructure.invitation_repository import (
     SqlAlchemyInvitationRepository,
 )
@@ -95,6 +97,10 @@ class InvitationResponse(BaseModel):
     expires_at: datetime | None = None
     accepted_by: UUID | None = None
     created_at: datetime | None = None
+    # Only the two acts that deliver answer these; a listing leaves them null, because
+    # whether an email got out days ago is not a fact this row carries (ADR-0049 §8).
+    delivered: bool | None = None
+    delivery_error: str | None = None
 
 
 class ChangeRoleRequest(BaseModel):
@@ -126,6 +132,12 @@ class InviteAssessorRequest(BaseModel):
 
 def _to_response(invitation: InvitationDTO) -> InvitationResponse:
     return InvitationResponse(**vars(invitation))
+
+
+def _sent_response(sent: InvitationSent) -> InvitationResponse:
+    return _to_response(sent.invitation).model_copy(
+        update={"delivered": sent.delivered, "delivery_error": sent.delivery_error}
+    )
 
 
 def _assessor_response(a: AssessorDTO) -> AssessorResponse:
@@ -313,10 +325,10 @@ def invite_assessor(
         assessors=SqlAlchemyAssessorRepository(uow.session),
         publisher=uow.events,
         uow=uow,
-        dispatcher=LoggingInvitationDispatcher(),
+        dispatcher=get_invitation_dispatcher(),
     )
     try:
-        invitation = use_case(
+        sent = use_case(
             InviteAssessorCommand(
                 email=str(request.email),
                 role=role,
@@ -339,7 +351,7 @@ def invite_assessor(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    return _to_response(invitation)
+    return _sent_response(sent)
 
 
 @admin_router.post("/invitations/{invitation_id}/resend", response_model=InvitationResponse)
@@ -350,9 +362,9 @@ def resend_invitation(invitation_id: UUID, admin: AdminAssessor, uow: Uow) -> In
         invitations=SqlAlchemyInvitationRepository(uow.session),
         publisher=uow.events,
         uow=uow,
-        dispatcher=LoggingInvitationDispatcher(),
+        dispatcher=get_invitation_dispatcher(),
     )
-    return _to_response(_act(use_case, invitation_id))
+    return _sent_response(_act(use_case, invitation_id))
 
 
 @admin_router.post("/invitations/{invitation_id}/revoke", response_model=InvitationResponse)
@@ -363,8 +375,10 @@ def revoke_invitation(invitation_id: UUID, admin: AdminAssessor, uow: Uow) -> In
     return _to_response(_act(use_case, invitation_id))
 
 
-def _act(use_case, invitation_id: UUID) -> InvitationDTO:  # noqa: ANN001 — two use cases
-    """The two refusals both acts share: it does not exist, or it is no longer pending."""
+def _act[T](use_case: Callable[[UUID], T], invitation_id: UUID) -> T:
+    """The two refusals every act on one invitation shares: it does not exist, or it is no
+    longer pending. Generic in what the act returns — re-sending reports delivery, revoking
+    has nothing to deliver."""
     try:
         return use_case(invitation_id)
     except InvitationNotFound as exc:

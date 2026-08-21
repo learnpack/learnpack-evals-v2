@@ -6,6 +6,7 @@ outbox row commits atomically with the state change (ADR-0003). The dispatcher i
 this surface must not tell.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -13,6 +14,7 @@ from uuid import UUID
 from app.modules.identity.application.dtos import InvitationDTO
 from app.modules.identity.application.ports import (
     AssessorRepositoryPort,
+    InvitationDeliveryFailed,
     InvitationDispatcherPort,
     InvitationRepositoryPort,
 )
@@ -26,6 +28,8 @@ from app.modules.identity.domain.invitation import (
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
 from app.shared.domain.ids import new_id
 
+logger = logging.getLogger(__name__)
+
 
 class InvitationNotFound(Exception): ...
 
@@ -37,6 +41,21 @@ class AssessorAlreadyRegistered(Exception):
 class InvitationAlreadyPending(Exception):
     """An invitation for that address is already waiting; re-send it instead of stacking
     a second one, which would make two roles compete for the same first login."""
+
+
+@dataclass(frozen=True)
+class InvitationSent:
+    """What an act that delivers returns: the invitation, and whether it got out.
+
+    Two separate facts, and they can disagree. The invitation is committed before delivery
+    is attempted, so a provider that is down or that refuses the address leaves a perfectly
+    valid pending row nobody was told about — which looks exactly like one somebody is
+    ignoring unless the answer says otherwise.
+    """
+
+    invitation: InvitationDTO
+    delivered: bool
+    delivery_error: str | None = None
 
 
 def to_dto(invitation: Invitation, now: datetime | None = None) -> InvitationDTO:
@@ -85,7 +104,7 @@ class InviteAssessor:
         self._uow = uow
         self._dispatcher = dispatcher
 
-    def __call__(self, command: InviteAssessorCommand) -> InvitationDTO:
+    def __call__(self, command: InviteAssessorCommand) -> InvitationSent:
         email = normalize_email(command.email)
 
         if self._assessors.get_by_email(email) is not None:
@@ -108,8 +127,7 @@ class InviteAssessor:
         self._publisher.publish(events.assessor_invited(invitation))
         self._uow.commit()
 
-        self._dispatcher.dispatch(invitation)
-        return to_dto(invitation)
+        return _deliver(self._dispatcher, invitation)
 
 
 class ResendInvitation:
@@ -130,7 +148,7 @@ class ResendInvitation:
 
     def __call__(
         self, invitation_id: UUID, validity: timedelta = DEFAULT_VALIDITY
-    ) -> InvitationDTO:
+    ) -> InvitationSent:
         invitation = self._invitations.get(invitation_id)
         if invitation is None:
             raise InvitationNotFound(str(invitation_id))
@@ -140,8 +158,7 @@ class ResendInvitation:
         self._publisher.publish(events.invitation_resent(invitation))
         self._uow.commit()
 
-        self._dispatcher.dispatch(invitation)
-        return to_dto(invitation)
+        return _deliver(self._dispatcher, invitation)
 
 
 class RevokeInvitation:
@@ -168,3 +185,18 @@ class RevokeInvitation:
         self._publisher.publish(events.invitation_revoked(invitation))
         self._uow.commit()
         return to_dto(invitation)
+
+
+def _deliver(dispatcher: InvitationDispatcherPort, invitation: Invitation) -> InvitationSent:
+    """Attempt delivery after the commit, and never let its failure undo the act.
+
+    The roster's record of who was asked in is true whether or not an email went out. What a
+    failure changes is what the admin has to do next — re-send, or invite that person in the
+    provider by hand — so it is reported rather than raised.
+    """
+    try:
+        dispatcher.dispatch(invitation)
+    except InvitationDeliveryFailed as exc:
+        logger.warning("invitation for %s was not delivered: %s", invitation.email, exc)
+        return InvitationSent(to_dto(invitation), delivered=False, delivery_error=str(exc))
+    return InvitationSent(to_dto(invitation), delivered=True)
