@@ -71,6 +71,9 @@ class AssessorResponse(BaseModel):
     # `active` or `deactivated` (ADR-0051). Published because a picker that silently drops
     # somebody reads as a bug; the caller decides how to show them.
     status: str = "active"
+    # What the invitation declared and the redemption wrote (ADR-0049). Null for an
+    # automated assessor, and for anybody who joined before invitations existed.
+    expertise: str | None = None
     automated: AutomatedIdentityResponse | None = None
 
 
@@ -123,6 +126,7 @@ def _assessor_response(a: AssessorDTO) -> AssessorResponse:
         display_name=a.display_name,
         kind=a.kind,
         status=a.status,
+        expertise=a.expertise,
         automated=(
             AutomatedIdentityResponse(
                 name=a.automated.name,

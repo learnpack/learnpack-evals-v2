@@ -69,8 +69,9 @@ def test_the_first_login_carries_the_role_and_the_expertise_that_were_declared(
     assert me["role"] == "admin"
     listed = next(a for a in admin.get("/admin/assessors").json() if a["email"] == created["email"])
     assert listed["role"] == "admin"
-    # Nothing wrote `expertise` before invitations existed; this is the path that does.
-    assert _expertise_of(admin, created["email"]) == "Instructional design"
+    # Nothing wrote `expertise` before invitations existed, and nothing read it back until
+    # the roster published it. Asserted through the endpoint, so both halves are covered.
+    assert listed["expertise"] == "Instructional design"
 
 
 def test_redeeming_marks_the_invitation_accepted_and_names_the_assessor(
@@ -230,14 +231,3 @@ def _expire(session, invitation_id: str) -> None:
         {"id": invitation_id},
     )
     session.commit()
-
-
-def _expertise_of(admin, email: str) -> str | None:
-    """Read straight from the store: the roster endpoint does not publish the profile, and
-    what this asserts is that the redemption *wrote* it."""
-    from app.platform.db import SessionLocal
-
-    with SessionLocal() as session:
-        return session.execute(
-            text("SELECT expertise FROM assessors WHERE lower(email) = lower(:e)"), {"e": email}
-        ).scalar_one()

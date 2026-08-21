@@ -182,6 +182,9 @@ export interface AssessorResponse {
   /** Whether they still take part (ADR-0051). A deactivated assessor keeps every judgment
    *  they produced, is offered no new work and cannot sign in. */
   status: "active" | "deactivated";
+  /** What this SME brings, written when their invitation was redeemed (ADR-0049). Null for
+   *  automated assessors and for anybody who joined before invitations existed. */
+  expertise: string | null;
   /** Present exactly when `kind === "automated"`. */
   automated: AutomatedIdentity | null;
 }
