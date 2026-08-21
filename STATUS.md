@@ -140,6 +140,18 @@ the row carries. A `clerk` process with no secret key falls back to logging with
 rather than failing every invitation. **No ADR: ADR-0049 §8 named this adapter as the thing
 that was missing; this is it.**
 
+**And a crossed auth mode now says so.** The two halves of ADR-0008's seam are configured
+separately — `AUTH_MODE` in the backend's environment, `NEXT_PUBLIC_AUTH_MODE` in the
+frontend's — so they can disagree, and when they do **every** request is a 401. The message
+was `missing bearer token`, which sends a reader looking for an expired session; nothing is
+wrong with the session, the two sides are not the same app. The evidence was in the request
+all along: a caller built for the other mode sends the other mode's credential. So the
+mismatch is named — which mode this API runs in, which credential arrived, both files to
+change, and that neither value is re-read while running. A request carrying nothing at all
+still gets the ordinary "missing credential", because saying "check your auth modes" there
+would be a guess. The root `README.md` gains the six-line version of the same thing: the rule
+was documented once, half of it, in `frontend/README.md`.
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
@@ -1719,7 +1731,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1199 tests, 1 skipped** against local Postgres (~73 s). Requires
+- **Backend suite green: 1203 tests, 1 skipped** against local Postgres (~76 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
