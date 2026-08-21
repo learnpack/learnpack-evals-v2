@@ -16,27 +16,39 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
+import { InviteForm } from "@/components/admin/invite-form";
 import { ApiError } from "@/lib/api/client";
-import { useAssessorPackages, useAssessors, useRatifyAssessor } from "@/lib/api/hooks";
+import {
+  useAssessorPackages,
+  useAssessors,
+  useInvitations,
+  useRatifyAssessor,
+  useResendInvitation,
+  useRevokeInvitation,
+} from "@/lib/api/hooks";
 import type {
   AssessorPackageResponse,
   AssessorResponse,
+  InvitationResponse,
   LineageVersion,
   RatificationDelta,
 } from "@/lib/api/types";
 
 /**
  * Who can judge — the two kinds of assessor, which are structurally different and not two
- * rows of one list (ADR-0016): a human arrives with a credential and is assigned work; an
- * automated assessor is a versioned artifact declared in code, and it judges nothing until
- * a person ratifies it against a published instrument version (ADR-0019).
+ * rows of one list (ADR-0016): a human is invited, arrives with a credential and is assigned
+ * work; an automated assessor is a versioned artifact declared in code, and it judges
+ * nothing until a person ratifies it against a published instrument version (ADR-0019).
  *
- * Automated is the default view because it is the one with an act on it. The humans are
- * here to be looked up, not acted on: the acts that concern them live in campaigns.
+ * Each kind has exactly one act, and each list is ordered by it. Automated: ratify the
+ * packages that are waiting — which is why those rows come from the package registry rather
+ * than from the assessors table, so a package nobody ever ratified has no row at all and is
+ * precisely the one somebody has to do something about. Human: invite (ADR-0049), which
+ * creates no account — the assessor appears at that address's first sign-in, carrying the
+ * role and the expertise the invitation declared.
  *
- * The automated rows come from the package registry rather than from the assessors table,
- * and that is the point: a package that has never been ratified has no row at all, and it
- * is precisely the one somebody has to do something about.
+ * Automated stays the default view because ratification is the more frequent act; inviting
+ * happens a handful of times per project.
  */
 
 type Group = "automated" | "humans" | "both";
@@ -65,7 +77,9 @@ export default function AssessorsPage() {
           becomes able to persist judgments only once it is{" "}
           <span className="font-medium text-foreground">ratified</span> against a published
           instrument version — a human act, taken here or with{" "}
-          <code>app.cli ratify-assessor</code>.
+          <code>app.cli ratify-assessor</code>. A human evaluator is{" "}
+          <span className="font-medium text-foreground">invited</span>, and becomes an
+          assessor at their first sign-in.
         </p>
       </div>
 
@@ -373,53 +387,194 @@ function RatifyDialog({
 
 // ---------------------------------------------------------------------------- humans
 
+/**
+ * The roster, in two tables that are one story: who is here, and who we are waiting for.
+ *
+ * The pending list comes first on purpose. It is the only part of this page with an act on
+ * it, and an invitation that has been sitting there for a week is the thing somebody has to
+ * do something about — the registered assessors are read, not acted on.
+ */
 function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
   const humans = assessors.filter((a) => a.kind === "human");
+  const [inviting, setInviting] = useState(false);
+  const invitations = useInvitations();
+  const pending = (invitations.data ?? []).filter((i) => i.status === "pending");
 
   return (
-    <section>
-      <h2 className="mb-3 text-lg font-semibold tracking-tight">Humans</h2>
-      {humans.length === 0 ? (
-        <EmptyState
-          title="No human assessors yet"
-          hint="They appear the first time they sign in (invite-only)."
-        />
-      ) : (
-        <Card>
-          <CardContent className="pt-6">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {humans.map((assessor) => (
-                  <TableRow key={assessor.assessor_id}>
-                    <TableCell className="font-medium">
-                      {assessor.display_name ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {assessor.email ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={assessor.role === "admin" ? "default" : "secondary"}>
-                        {assessor.role}
-                      </Badge>
-                    </TableCell>
+    <section className="space-y-8">
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold tracking-tight">Waiting to sign in</h2>
+          <Button size="sm" onClick={() => setInviting(true)}>
+            Invite evaluator
+          </Button>
+        </div>
+        {invitations.isLoading ? (
+          <LoadingState />
+        ) : invitations.error ? (
+          <ErrorState message={(invitations.error as Error).message} />
+        ) : pending.length === 0 ? (
+          <EmptyState
+            title="Nobody is pending"
+            hint="Inviting somebody records the role and the expertise they arrive with; the assessor appears at their first sign-in."
+          />
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Invited</TableHead>
+                    <TableHead />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-      <p className="mt-3 text-sm text-muted-foreground">
-        Roles are changed with <code>app.cli set-role</code>, never from a screen: a login
-        must not be able to escalate a privilege.
-      </p>
+                </TableHeader>
+                <TableBody>
+                  {pending.map((invitation) => (
+                    <PendingRow key={invitation.invitation_id} invitation={invitation} />
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-lg font-semibold tracking-tight">Registered</h2>
+        {humans.length === 0 ? (
+          <EmptyState
+            title="No human assessors yet"
+            hint="They become one the first time they sign in, carrying whatever the invitation declared."
+          />
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {humans.map((assessor) => (
+                    <TableRow key={assessor.assessor_id}>
+                      <TableCell className="font-medium">
+                        {assessor.display_name ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {assessor.email ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={assessor.role === "admin" ? "default" : "secondary"}>
+                          {assessor.role}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+        <p className="mt-3 text-sm text-muted-foreground">
+          The role of someone who already signed in is changed with{" "}
+          <code>app.cli set-role</code>: an invitation only ever reaches an assessor that does
+          not exist yet, so that a login can never escalate a privilege.
+        </p>
+      </div>
+
+      <Dialog
+        open={inviting}
+        onClose={() => setInviting(false)}
+        title="Invite an evaluator"
+        description="This registers the act, not an account: the assessor appears at their first sign-in, already carrying the role and expertise below."
+      >
+        <InviteForm onDone={() => setInviting(false)} />
+      </Dialog>
     </section>
+  );
+}
+
+function PendingRow({ invitation }: { invitation: InvitationResponse }) {
+  const resend = useResendInvitation();
+  const revoke = useRevokeInvitation();
+  const busy = resend.isPending || revoke.isPending;
+
+  function act(
+    mutation: typeof resend,
+    id: string,
+    done: string,
+    failed: string,
+  ) {
+    mutation.mutate(id, {
+      onSuccess: () => toast.success(done),
+      onError: (err) => toast.error(failed, { description: (err as ApiError).message }),
+    });
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">
+        {invitation.email}
+        {invitation.expertise ? (
+          <span className="block text-xs font-normal text-muted-foreground">
+            {invitation.expertise}
+          </span>
+        ) : null}
+      </TableCell>
+      <TableCell>
+        <Badge variant={invitation.role === "admin" ? "default" : "secondary"}>
+          {invitation.role}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {invitation.created_at ? new Date(invitation.created_at).toLocaleDateString() : "—"}
+        {/* `expired` is derived from the window, not a state somebody wrote: a row can read
+            `pending` and be past its date, and that is exactly what has to be visible. */}
+        {invitation.expired ? (
+          <Badge variant="warning" className="ml-2">
+            expired
+          </Badge>
+        ) : null}
+      </TableCell>
+      <TableCell className="text-right">
+        <span className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              act(
+                resend,
+                invitation.invitation_id,
+                "The window is open again.",
+                "Could not re-send.",
+              )
+            }
+          >
+            Re-send
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              act(
+                revoke,
+                invitation.invitation_id,
+                "Invitation revoked; the address is free again.",
+                "Could not revoke.",
+              )
+            }
+          >
+            Revoke
+          </Button>
+        </span>
+      </TableCell>
+    </TableRow>
   );
 }

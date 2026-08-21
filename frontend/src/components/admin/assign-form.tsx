@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -96,7 +97,11 @@ export function AssignForm({
         </Select>
         {evaluators.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No evaluators yet — invite them in Clerk; they appear here after their first sign-in.
+            No evaluators yet — invite them from{" "}
+            <Link href="/admin/assessors" className="underline">
+              Assessors
+            </Link>
+            ; they appear here after their first sign-in.
           </p>
         ) : null}
       </div>

@@ -183,6 +183,32 @@ export interface AssessorResponse {
   automated: AutomatedIdentity | null;
 }
 
+/** The act that registers a human evaluator (ADR-0049). It is not an account: the assessor
+ *  appears at this address's first login, already carrying `role` and `expertise`. */
+export interface InvitationResponse {
+  invitation_id: Uuid;
+  email: string;
+  role: string;
+  status: "pending" | "accepted" | "revoked";
+  /** Derived from `expires_at`, never stored: a pending row whose window closed must not
+   *  read as merely pending. */
+  expired: boolean;
+  display_name: string | null;
+  expertise: string | null;
+  invited_by: Uuid | null;
+  expires_at: string | null;
+  /** The assessor it produced — set exactly when `status === "accepted"`. */
+  accepted_by: Uuid | null;
+  created_at: string | null;
+}
+
+export interface InviteAssessorRequest {
+  email: string;
+  role: string;
+  display_name?: string | null;
+  expertise?: string | null;
+}
+
 export interface AssignmentResponse {
   assignment_id: Uuid;
   campaign_id: Uuid;
@@ -838,6 +864,9 @@ export interface DevIdentity {
   email: string;
   display_name: string | null;
   role: string; // "admin" | "evaluator"
+  /** Invited and never signed in (ADR-0049): not a person here yet. Signing in as one is
+   *  what redeems the invitation, which is how the whole flow is walked locally. */
+  pending: boolean;
 }
 
 // --- Local source intake (`/dev/local-courses`, ADR-0035) --------------------

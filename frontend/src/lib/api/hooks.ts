@@ -34,6 +34,8 @@ import type {
   GeneratorVersionResponse,
   GoldenStatus,
   InstrumentResponse,
+  InvitationResponse,
+  InviteAssessorRequest,
   Me,
   OpenCampaignRequest,
   UpdateStudyDraftRequest,
@@ -98,6 +100,7 @@ export const queryKeys = {
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
   assessors: ["admin", "assessors"] as const,
+  invitations: ["admin", "invitations"] as const,
   assessorPackages: ["admin", "assessor-packages"] as const,
   previewRun: (id: Uuid | string) => ["admin", "evaluations", "preview", id] as const,
   previewRunTrace: (id: Uuid | string) =>
@@ -471,6 +474,47 @@ export function useAssessors() {
     queryFn: () => api<AssessorResponse[]>("/admin/assessors"),
   });
 }
+
+/** Who the roster is expecting, and what happened to everyone it expected before
+ *  (ADR-0049). Every state, newest first: an accepted row is the record of a registration
+ *  that worked, and a revoked one of a decision somebody took. */
+export function useInvitations() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.invitations,
+    queryFn: () => api<InvitationResponse[]>("/admin/invitations"),
+  });
+}
+
+/** The act that registers a human evaluator. It creates no account — the assessor appears
+ *  at that address's first login — so the assessor list is deliberately NOT invalidated
+ *  here: nothing about it changed. */
+export function useInviteAssessor() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (body: InviteAssessorRequest) =>
+      api<InvitationResponse>("/admin/invitations", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invitations }),
+  });
+}
+
+/** Re-send (a fresh window) and revoke. Both act on one pending invitation and refuse with
+ *  a 409 once it is no longer pending, which is a fact to report, not a retry. */
+function useInvitationAct(act: "resend" | "revoke") {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: (invitationId: Uuid) =>
+      api<InvitationResponse>(`/admin/invitations/${invitationId}/${act}`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invitations }),
+  });
+}
+
+export const useResendInvitation = () => useInvitationAct("resend");
+export const useRevokeInvitation = () => useInvitationAct("revoke");
 
 /** The in-code registry of automated assessor packages (ADR-0016), as data — with what
  *  each of them has ratified, which is what makes it evaluable at all (ADR-0019). */
