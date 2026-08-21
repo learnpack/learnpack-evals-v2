@@ -224,7 +224,10 @@
 - **Assessor** — the *concrete, identifiable, versioned instance* of an
   `EvaluationSource` that actually produces results (the "who/what exactly", vs. the
   "what class" of the type). It is the **key of provenance and of calibration**.
-  - `human` → a concrete SME (with an expertise profile). *(In the MVP, the evaluating user IS
+  - `human` → a concrete SME with an **expertise profile**: what they bring, as the roster
+    knows it. Declared when they are invited (ADR-0049) and correctable afterwards — it is a
+    description read when deciding who evaluates what, never a grant, so it carries none of
+    the guardrails a role or a status does. *(In the MVP, the evaluating user IS
     a human `Assessor`.)*
   - `automated` → a `SourceConfiguration` `{name, version, instrumentId, coverage, config}`
     (+ the per-version ratifications, which live apart — ADR-0019).
@@ -360,7 +363,7 @@
   `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudySignedOff` /
   `StudiesCompared` · human path: `AssessorInvited`/`InvitationResent`/`InvitationRevoked`/
   `InvitationAccepted` · `AssessorRoleChanged` ·
-  `AssessorDeactivated`/`AssessorReactivated`, `AssignmentCreated`/`AssignmentCancelled`,
+  `AssessorExpertiseChanged` · `AssessorDeactivated`/`AssessorReactivated`, `AssignmentCreated`/`AssignmentCancelled`,
   `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` · `SourceCalibrated`
   `[future]`. Killed by Define: `EvaluationRunStarted` (DP28) · `MetricComputed` as an event
   (DP19: it is a row, not an event) · `RubricPublished` → `InstrumentVersionPublished`.

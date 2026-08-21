@@ -104,8 +104,23 @@ a writer; it got one and had none on the other side — `AssessorDTO` did not ca
 roster endpoint did not publish it, and the console showed it only while the invitation was
 still pending, so it vanished the moment the person signed in. It is published now and shown
 in two places: under the name in the roster, and **in the assign picker's option label**,
-which is the act it exists for — deciding who should read this course. Nothing is editable
-yet: what an invitation declared is what the assessor carries.
+which is the act it exists for — deciding who should read this course.
+
+**And it can be corrected.** Invitation time is the only moment anybody knows the profile, and
+also the only moment it is guaranteed true: people change what they work on, and everybody who
+signed in before invitations existed carries nothing. `PATCH /admin/assessors/{id}/expertise`
+edits it, from the profile line itself in the roster — that line *is* the control now, and
+reads *Add expertise* when there is none. **It carries none of the roster guardrails, on
+purpose**: a role and a deactivation decide what somebody may do, so both refuse the changes
+nothing could undo (ADR-0050, ADR-0051); a profile decides nothing, so you may correct your own
+and a deactivated assessor's alike. Blank clears it — an empty box and an unfilled one say the
+same thing. Still an event (`AssessorExpertiseChanged`), because somebody typed it and later
+somebody may want to know who. **No ADR: nothing decided ever said the profile is write-once.**
+
+**And long profiles are handled where the space is fixed.** A native `<option>` carries no
+width and no styling of its own, so a long profile pushed the evaluator's name out of view.
+The label now shortens it at a word boundary with an ellipsis, and the **whole** profile of
+whoever is selected is shown under the control, where it has room.
 
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
@@ -1686,7 +1701,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1172 tests, 1 skipped** against local Postgres (~76 s). Requires
+- **Backend suite green: 1186 tests, 1 skipped** against local Postgres (~74 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -1900,9 +1915,6 @@ the data in the package).
   one.** The backend cannot detect a misconfigured template, only the login it affects, so it
   logs a warning naming the remedy each time it declines to redeem. An invitation left pending
   for days with the person already signed in is the symptom to look for.
-- **An expertise profile cannot be edited after the fact.** What the invitation declared is
-  what the assessor carries; somebody whose focus changes, or who joined before invitations
-  existed, has no path to fix it.
 - **No invitation reaches an assessor that already exists**, by design — so somebody who
   signed in before being invited keeps the default role until an admin grants them another
   one from the console.

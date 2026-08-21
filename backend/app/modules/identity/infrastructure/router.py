@@ -37,6 +37,10 @@ from app.modules.identity.application.invitations import (
     ResendInvitation,
     RevokeInvitation,
 )
+from app.modules.identity.application.set_expertise import (
+    SetAssessorExpertise,
+    SetAssessorExpertiseCommand,
+)
 from app.modules.identity.domain.assessor import Role
 from app.modules.identity.domain.invitation import InvalidInvitation, InvalidInvitationTransition
 from app.modules.identity.infrastructure.dispatchers import LoggingInvitationDispatcher
@@ -99,6 +103,12 @@ class ChangeRoleRequest(BaseModel):
 
 class SetActiveRequest(BaseModel):
     active: bool
+
+
+class SetExpertiseRequest(BaseModel):
+    # Nullable and blank-tolerant: clearing a profile is a correction like any other, and the
+    # aggregate treats an empty box and an unfilled one as the same thing.
+    expertise: str | None = None
 
 
 class InviteAssessorRequest(BaseModel):
@@ -236,6 +246,40 @@ def set_assessor_active(
             status_code=status.HTTP_409_CONFLICT,
             detail="an automated assessor is withdrawn by ceasing to declare it in code, "
             "not from here",
+        ) from exc
+    return _assessor_response(assessor)
+
+
+@admin_router.patch("/assessors/{assessor_id}/expertise", response_model=AssessorResponse)
+def set_assessor_expertise(
+    assessor_id: UUID, request: SetExpertiseRequest, admin: AdminAssessor, uow: Uow
+) -> AssessorResponse:
+    """Correct the expertise profile an invitation declared (ADR-0049).
+
+    Its own endpoint rather than a second field on the role one: granting a role decides what
+    somebody may do and carries the two refusals that go with that, while this decides
+    nothing. Blank clears it.
+    """
+    use_case = SetAssessorExpertise(
+        assessors=SqlAlchemyAssessorRepository(uow.session), publisher=uow.events, uow=uow
+    )
+    try:
+        assessor = use_case(
+            SetAssessorExpertiseCommand(
+                assessor_id=assessor_id,
+                expertise=request.expertise,
+                changed_by=admin.assessor_id,
+            )
+        )
+    except AssessorNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="assessor not found"
+        ) from exc
+    except NotAHumanAssessor as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="an automated assessor has no expertise profile - what it can judge is "
+            "its declared coverage (ADR-0018)",
         ) from exc
     return _assessor_response(assessor)
 
