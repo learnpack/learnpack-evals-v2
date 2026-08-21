@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     # Derived from the issuer when left empty (see `jwks_url`).
     clerk_jwks_url: str = ""
     clerk_secret_key: str = ""
+    # Where Clerk's invitation link lands. Derived from the first allowed origin when empty,
+    # the way `clerk_jwks_url` is derived from the issuer — one env var fewer to forget, and
+    # the frontend origin is already declared for CORS.
+    clerk_invitation_redirect_url: str = ""
 
     # Comma-separated. Kept as a plain string because pydantic-settings would otherwise
     # expect JSON for a list field.
@@ -254,6 +258,15 @@ class Settings(BaseSettings):
         if self.clerk_jwks_url:
             return self.clerk_jwks_url
         return f"{self.clerk_issuer.rstrip('/')}/.well-known/jwks.json"
+
+    @property
+    def invitation_redirect_url(self) -> str:
+        """The page Clerk sends an invited person to. Our own sign-in, not Clerk's hosted
+        one: the app is the thing they were invited to."""
+        if self.clerk_invitation_redirect_url:
+            return self.clerk_invitation_redirect_url
+        origins = self.cors_origins
+        return f"{origins[0].rstrip('/')}/sign-in" if origins else ""
 
     @property
     def cors_origins(self) -> list[str]:

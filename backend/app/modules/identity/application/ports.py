@@ -62,13 +62,23 @@ class InvitationRepositoryPort(Protocol):
     def update(self, invitation: Invitation) -> None: ...
 
 
+class InvitationDeliveryFailed(Exception):
+    """The invitation exists here and did not reach the identity provider.
+
+    Never a reason to undo the invitation: the roster's record of who was asked in is true
+    whether or not an email went out, and re-sending is the remedy. It is a reason to say so
+    — a pending row nobody was told about looks exactly like one somebody is ignoring.
+    """
+
+
 class InvitationDispatcherPort(Protocol):
     """How an invitation reaches the person it names.
 
-    Deliberately a port with a do-nothing adapter for now: creating the invitation in the
-    identity provider is the provider's business, and putting that call inside the use case
-    would make the act untestable without a network and unrepeatable without an account. The
-    admin still invites in Clerk by hand until the adapter that does it lands.
+    A port because creating the invitation in the identity provider is the provider's
+    business: putting that call inside the use case would make the act untestable without a
+    network and unrepeatable without an account.
     """
 
-    def dispatch(self, invitation: Invitation) -> None: ...
+    def dispatch(self, invitation: Invitation) -> None:
+        """Deliver it, or raise `InvitationDeliveryFailed` naming why."""
+        ...

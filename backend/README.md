@@ -225,9 +225,56 @@ uv run python -m app.cli list-invitations
 An invitation is redeemable for seven days, at most one is pending per address, and re-sending
 reopens a window that closed. Revoking one frees the address to be invited again.
 
-> ⚠️ **Two acts, for now.** Inviting here does not invite anybody in Clerk — that adapter does
-> not exist yet, so the person still needs a Clerk invitation to get through the door. The
-> console says so and the backend logs it on every invitation.
+Under `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` set, this **also creates the Clerk
+invitation**, so it is one act: the person gets Clerk's email and can sign in to an
+invite-only instance. Set `CLERK_INVITATION_REDIRECT_URL` if the link should land somewhere
+other than `<first ALLOWED_ORIGINS entry>/sign-in`.
+
+Under `AUTH_MODE=local`, or with no secret key, nothing is delivered and the log says so —
+the invitation still stands and is redeemed at that address's first sign-in.
+
+> ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
+> already a Clerk user, and that rule cannot be bypassed. The invitation is created here
+> either way and the answer says `delivered: false` with Clerk's own sentence; the remedies
+> are **Re-send**, or inviting that person in Clerk by hand.
+
+### Running Clerk against your own machine
+
+Clerk's **development** instance is built for `localhost`, so the real login flow — and the
+real invitation flow — can be exercised without deploying anything. Nothing in the code
+prevents it: the only guard is the reverse one (`AUTH_MODE=local` refuses a remote database
+and `ENVIRONMENT=production`).
+
+`backend/.env`:
+
+```bash
+AUTH_MODE=clerk
+CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
+CLERK_SECRET_KEY=sk_test_...
+# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
+```
+
+`frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_AUTH_MODE=clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
+```
+
+Then create the **JWT template** in the Clerk dashboard, with the three claims above
+(`email`, `name`, `email_verified`) — before signing in for the first time.
+
+What changes when you do this:
+
+- The user picker is gone; you sign in through Clerk, as a real person.
+- `GET /dev/identities` and the rest of the dev-only surface answer **404**, by design.
+- `seed-demo` refuses to run: it only works in local mode.
+- Inviting from the console really creates a Clerk invitation and really sends an email.
+
+The two modes share one database, and a local assessor's credential is stored as
+`('local', <email>)` while a Clerk one is `('clerk', <sub>)`, so they cannot collide — the
+same person signing in both ways is two assessors, which is what you want on a dev box.
 
 ### Preparing an environment — **order matters**
 

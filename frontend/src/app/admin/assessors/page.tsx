@@ -769,7 +769,15 @@ function PendingRow({ invitation }: { invitation: InvitationResponse }) {
     failed: string,
   ) {
     mutation.mutate(id, {
-      onSuccess: () => toast.success(done),
+      onSuccess: (invitation) =>
+        // Re-sending is the remedy for a delivery that failed, so it is the one act where
+        // saying "done" without checking would be actively misleading.
+        invitation.delivered === false
+          ? toast.warning("The window is open again, but nothing was sent.", {
+              description: invitation.delivery_error ?? "Delivery failed.",
+              duration: 12000,
+            })
+          : toast.success(done),
       onError: (err) => toast.error(failed, { description: (err as ApiError).message }),
     });
   }

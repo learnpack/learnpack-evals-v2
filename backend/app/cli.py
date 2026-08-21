@@ -247,7 +247,7 @@ from app.modules.identity.application.register_automated_assessor import (
 )
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
 from app.modules.identity.domain.invitation import InvalidInvitation
-from app.modules.identity.infrastructure.dispatchers import LoggingInvitationDispatcher
+from app.modules.identity.infrastructure.dispatchers import get_invitation_dispatcher
 from app.modules.identity.infrastructure.invitation_repository import (
     SqlAlchemyInvitationRepository,
 )
@@ -489,10 +489,10 @@ def run_invite_assessor(
             assessors=SqlAlchemyAssessorRepository(session),
             publisher=uow.events,
             uow=uow,
-            dispatcher=LoggingInvitationDispatcher(),
+            dispatcher=get_invitation_dispatcher(),
         )
         try:
-            invitation = use_case(
+            sent = use_case(
                 InviteAssessorCommand(
                     email=email,
                     role=Role(role),
@@ -518,9 +518,14 @@ def run_invite_assessor(
             print(str(exc), file=sys.stderr)
             return 1
 
+    invitation = sent.invitation
     expires = invitation.expires_at.date().isoformat() if invitation.expires_at else "never"
     print(f"invited {invitation.email} as {invitation.role}; redeemable until {expires}")
-    print("they still have to be invited in the identity provider - that act is not ours yet")
+    if not sent.delivered:
+        # The invitation stands; what failed is delivery, and the remedy is a re-send or an
+        # invitation created by hand in the provider.
+        print(f"NOT delivered: {sent.delivery_error}", file=sys.stderr)
+        return 1
     return 0
 
 

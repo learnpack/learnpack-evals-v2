@@ -122,6 +122,24 @@ width and no styling of its own, so a long profile pushed the evaluator's name o
 The label now shortens it at a word boundary with an ellipsis, and the **whole** profile of
 whoever is selected is shown under the control, where it has room.
 
+**And inviting is one act again.** ADR-0049 left delivery as a port with a logging adapter,
+which meant an admin invited here *and* in Clerk. `ClerkInvitationDispatcher` closes it:
+under `AUTH_MODE=clerk` with a secret key set, inviting creates the Clerk invitation too, so
+the person gets the email and can sign in to an invite-only instance. The adapter is chosen
+by **auth mode** — the seam ADR-0008 already draws — so a local box still delivers nothing
+and says so, and the whole flow keeps running with no accounts and no cloud. Two details are
+decisions rather than defaults: `ignore_existing` is **on**, because Clerk refuses a second
+invitation for an address that already has one and re-sending is exactly that case; and
+`expires_in_days` is derived from our own window, because Clerk's default is 30 days against
+our 7 and two expiry dates for one invitation is a support question waiting to happen.
+**Delivery can fail without the invitation failing** — an address that is already a Clerk
+user is refused and cannot be bypassed — so the act commits first and then reports:
+`delivered` and `delivery_error` carry Clerk's own sentence on the two endpoints that
+deliver, and are null on a listing, because whether an email got out days ago is not a fact
+the row carries. A `clerk` process with no secret key falls back to logging with a warning
+rather than failing every invitation. **No ADR: ADR-0049 §8 named this adapter as the thing
+that was missing; this is it.**
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
@@ -1701,7 +1719,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1186 tests, 1 skipped** against local Postgres (~74 s). Requires
+- **Backend suite green: 1199 tests, 1 skipped** against local Postgres (~73 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -1907,10 +1925,10 @@ the data in the package).
 
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
-- **Inviting is still two acts.** An invitation registered here does not create one in Clerk,
-  so the person also needs a Clerk invitation to get through the door. `InvitationDispatcherPort`
-  is where the adapter goes and `clerk_secret_key` is already in `Settings`, unused. The
-  console and the log name the second act rather than hiding it (ADR-0049 §8).
+- **Clerk refuses an address that is already a Clerk user**, and that rule cannot be
+  bypassed — so somebody invited in Clerk by hand before this existed gets `delivered: false`
+  when invited from the console. The invitation still stands; the remedies are Re-send or
+  doing it in Clerk.
 - **A JWT template without `email_verified` grants the default role instead of the invited
   one.** The backend cannot detect a misconfigured template, only the login it affects, so it
   logs a warning naming the remedy each time it declines to redeem. An invitation left pending
