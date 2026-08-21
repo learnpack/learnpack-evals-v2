@@ -73,7 +73,13 @@ class SqlAlchemyInvitationRepository:
         )
 
     def add(self, invitation: Invitation) -> None:
-        self._session.execute(
+        """Fills `created_at` back from the store.
+
+        The column has a server default and the list is ordered by it, so the row's own
+        clock is the one that decides sequence. Reading it back means the response to the
+        act carries the same timestamp the list will show, instead of a null that the first
+        refetch quietly replaces."""
+        stamped = self._session.execute(
             text(
                 """
                 INSERT INTO assessor_invitations
@@ -82,10 +88,12 @@ class SqlAlchemyInvitationRepository:
                 VALUES
                     (:id, :email, :role, :display_name, :expertise, :invited_by, :status,
                      :expires_at, :accepted_by)
+                RETURNING created_at, updated_at
                 """
             ),
             self._as_params(invitation),
-        )
+        ).one()
+        invitation.created_at, invitation.updated_at = stamped
 
     def update(self, invitation: Invitation) -> None:
         self._session.execute(

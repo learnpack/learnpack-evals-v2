@@ -52,6 +52,9 @@ def test_inviting_creates_no_account(invite, admin):
 
     assert created["status"] == "pending"
     assert created["expired"] is False
+    # The response carries the same timestamp the list will show, not a null the first
+    # refetch quietly replaces.
+    assert created["created_at"] is not None
     emails = [a["email"] for a in admin.get("/admin/assessors").json()]
     assert created["email"] not in emails
 
