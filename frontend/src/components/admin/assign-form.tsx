@@ -11,6 +11,25 @@ import { useAssessors, useAssignContent, useContents } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 import type { CampaignResponse } from "@/lib/api/types";
 
+/**
+ * How much of an expertise profile fits beside a name in a native `<option>`.
+ *
+ * The control has a fixed width and its options carry no styling of their own, so a long
+ * profile either pushes the name out of view or gets cut by the browser mid-word with no
+ * sign that anything is missing. Cutting it here at least ends in an ellipsis, and the full
+ * text is shown under the control once somebody is selected.
+ */
+const EXPERTISE_IN_OPTION = 48;
+
+function shorten(text: string): string {
+  const clean = text.trim();
+  if (clean.length <= EXPERTISE_IN_OPTION) return clean;
+  // Break on a space when there is one nearby, so the cut does not land mid-word.
+  const cut = clean.slice(0, EXPERTISE_IN_OPTION);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > EXPERTISE_IN_OPTION - 12 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 export function AssignForm({
   campaign,
   onDone,
@@ -36,6 +55,10 @@ export function AssignForm({
 
   const [contentId, setContentId] = useState("");
   const [assessorId, setAssessorId] = useState("");
+  const selected = useMemo(
+    () => evaluators.find((a) => a.assessor_id === assessorId),
+    [evaluators, assessorId],
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,15 +116,22 @@ export function AssignForm({
         <Select value={assessorId} onChange={(e) => setAssessorId(e.target.value)}>
           <option value="">Select an evaluator…</option>
           {/* The expertise profile rides in the label because this is the act it exists for:
-              deciding who should read *this* course. A native <option> takes no markup, so
-              it is appended rather than laid out. */}
+              deciding who should read *this* course. A native <option> takes no markup and
+              no width of its own, so it is appended and shortened; the whole profile of
+              whoever ends up selected is shown under the control, where it has room. */}
           {evaluators.map((a) => (
             <option key={a.assessor_id} value={a.assessor_id}>
               {a.display_name ?? a.email ?? a.assessor_id.slice(0, 8)}
-              {a.expertise ? ` — ${a.expertise}` : ""}
+              {a.expertise ? ` — ${shorten(a.expertise)}` : ""}
             </option>
           ))}
         </Select>
+        {selected?.expertise ? (
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Expertise:</span>{" "}
+            {selected.expertise}
+          </p>
+        ) : null}
         {evaluators.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             No evaluators yet — invite them from{" "}

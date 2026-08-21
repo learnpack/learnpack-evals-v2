@@ -73,6 +73,25 @@ def _lifecycle_event(event_type: str, assessor: Assessor, changed_by: UUID) -> D
     )
 
 
+def assessor_expertise_changed(assessor: Assessor, changed_by: UUID) -> DomainEvent:
+    """Somebody restated what this SME brings.
+
+    The new value is carried and the old one is not: unlike a role, an expertise profile is
+    a description rather than a grant, so what an audit asks is "who says this, and since
+    when" — and the previous sentence is in the previous event.
+    """
+    return DomainEvent(
+        event_type="AssessorExpertiseChanged",
+        aggregate_type=ASSESSOR_AGGREGATE,
+        aggregate_id=str(assessor.id),
+        payload={
+            "assessorId": str(assessor.id),
+            "expertise": assessor.expertise,
+            "changedBy": str(changed_by),
+        },
+    )
+
+
 def assessor_deactivated(assessor: Assessor, changed_by: UUID) -> DomainEvent:
     """They stop taking part (ADR-0051). Nothing they produced is affected — this says the
     roster changed, not that the record did."""

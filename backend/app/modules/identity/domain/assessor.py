@@ -118,6 +118,22 @@ class Assessor:
         """They are back. Idempotent, and it restores nothing: nothing was taken away."""
         self.status = Status.ACTIVE
 
+    def set_expertise(self, expertise: str | None) -> bool:
+        """Correct the expertise profile. True if anything changed.
+
+        Declared when the invitation was written (ADR-0049), which is the only moment anybody
+        knows it — and the only moment it was ever true. People change what they work on, and
+        everybody who joined before invitations existed carries nothing at all.
+
+        Blank is the same as absent: an empty box and a box nobody filled say the same thing,
+        and storing `""` would make one of them sort and render differently for no reason.
+        """
+        cleaned = (expertise or "").strip() or None
+        if cleaned == self.expertise:
+            return False
+        self.expertise = cleaned
+        return True
+
     def assign_role(self, role: Role | str) -> None:
         """Change the role. An admin act, never the login flow (ADR-0050)."""
         try:

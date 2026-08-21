@@ -497,6 +497,22 @@ export function useChangeAssessorRole() {
   });
 }
 
+/** Correcting the expertise profile an invitation declared (ADR-0049). Not a grant, so it
+ *  carries none of the guardrails a role change does — including on your own row. */
+export function useSetAssessorExpertise() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: ({ assessorId, expertise }: { assessorId: Uuid; expertise: string | null }) =>
+      api<AssessorResponse>(`/admin/assessors/${assessorId}/expertise`, {
+        method: "PATCH",
+        body: { expertise },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.assessors }),
+  });
+}
+
 /** Withdrawing somebody from the roster, or bringing them back (ADR-0051). Not a delete:
  *  what they produced is untouched, and what stops is the future. */
 export function useSetAssessorActive() {

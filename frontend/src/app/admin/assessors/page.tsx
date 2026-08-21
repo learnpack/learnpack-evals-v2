@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import {
   Table,
@@ -29,6 +30,7 @@ import {
   useResendInvitation,
   useRevokeInvitation,
   useSetAssessorActive,
+  useSetAssessorExpertise,
 } from "@/lib/api/hooks";
 import type {
   AssessorPackageResponse,
@@ -512,10 +514,28 @@ function RegisteredRow({
 }) {
   const [pending, setPending] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
   const change = useChangeAssessorRole();
   const setActive = useSetAssessorActive();
+  const setExpertise = useSetAssessorExpertise();
   const active = assessor.status === "active";
   const who = assessor.display_name ?? assessor.email ?? "They";
+
+  function saveExpertise() {
+    setExpertise.mutate(
+      // Blank clears it: the backend treats an empty box and an unfilled one as the same.
+      { assessorId: assessor.assessor_id, expertise: draft.trim() || null },
+      {
+        onSuccess: (updated) => {
+          setEditing(false);
+          toast.success(updated.expertise ? "Expertise updated." : "Expertise cleared.");
+        },
+        onError: (err) =>
+          toast.error("Could not save that.", { description: (err as ApiError).message }),
+      },
+    );
+  }
 
   function setActiveTo(next: boolean) {
     setActive.mutate(
@@ -569,12 +589,19 @@ function RegisteredRow({
             </Badge>
           )}
           {/* Under the name, where a pending invitation shows it too: the profile is read
-              to decide who gets which course, so it belongs next to the person. */}
-          {assessor.expertise ? (
-            <span className="block text-xs font-normal text-muted-foreground">
-              {assessor.expertise}
-            </span>
-          ) : null}
+              to decide who gets which course, so it belongs next to the person — and so
+              does the control that corrects it. Unlike the role, this is editable on your
+              own row: saying what you work on grants you nothing. */}
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(assessor.expertise ?? "");
+              setEditing(true);
+            }}
+            className="mt-0.5 block max-w-xs break-words text-left text-xs font-normal text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+          >
+            {assessor.expertise ?? "Add expertise"}
+          </button>
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {assessor.email ?? "—"}
@@ -662,6 +689,44 @@ function RegisteredRow({
             {pending === "admin" ? "Grant admin" : "Make evaluator"}
           </Button>
         </div>
+      </Dialog>
+
+      <Dialog
+        open={editing}
+        onClose={() => setEditing(false)}
+        title={`Expertise of ${who}`}
+        description="What this SME brings, as the roster knows it. It is read when deciding who should evaluate which course."
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveExpertise();
+          }}
+          className="space-y-4"
+        >
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Instructional design · Python · K-12 maths"
+            autoFocus
+          />
+          <p className="text-xs text-muted-foreground">
+            Leave it empty to clear it. Recorded with your name against it.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditing(false)}
+              disabled={setExpertise.isPending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={setExpertise.isPending}>
+              {setExpertise.isPending ? <Spinner /> : null} Save
+            </Button>
+          </div>
+        </form>
       </Dialog>
 
       <Dialog open={leaving} onClose={() => setLeaving(false)} title={`Deactivate ${who}?`}>
