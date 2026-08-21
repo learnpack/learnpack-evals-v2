@@ -126,7 +126,9 @@ What keeps this from leaking into a real environment:
   either**. Two checks because each covers the other's blind spot: `ENVIRONMENT` is a label
   nobody guarantees, while the database host is a fact about where the data lives.
 - In `clerk` mode the `X-Dev-User` header **is not read**: it is another adapter, not a
-  fallback for a missing token.
+  fallback for a missing token. It *is* looked at to explain a 401, though: a request that
+  carries the other mode's credential gets a message naming the mismatch and both files to
+  fix, because "missing bearer token" sends a reader looking for an expired session.
 - `seed-demo` and `seed-workbench` abort unless the mode is `local`. For the second the stake
   is larger than stray rows: it replays acts that are human ones by decision, and outside a
   dev box the person who publishes an instrument is a person (ADR-0045 §2).

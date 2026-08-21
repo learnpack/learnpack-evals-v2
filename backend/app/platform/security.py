@@ -20,7 +20,7 @@ from app.modules.identity.infrastructure.invitation_repository import (
     SqlAlchemyInvitationRepository,
 )
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
-from app.platform.auth_local import claims_from_header
+from app.platform.auth_local import DEV_USER_HEADER, claims_from_header
 from app.platform.clerk import ClerkTokenVerifier, InvalidToken, get_verifier
 from app.platform.uow import UnitOfWork, get_uow
 
@@ -44,13 +44,13 @@ def get_verified_claims(
         except InvalidToken as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=str(exc),
+                detail=_crossed_modes(request, expected="local") or str(exc),
             ) from exc
 
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="missing bearer token",
+            detail=_crossed_modes(request, expected="clerk") or "missing bearer token",
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
@@ -61,6 +61,46 @@ def get_verified_claims(
             detail=str(exc),
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+
+# The two halves of ADR-0008's seam are configured separately — `AUTH_MODE` in the backend's
+# environment, `NEXT_PUBLIC_AUTH_MODE` in the frontend's — so they can disagree, and when they
+# do EVERY request fails 401. "missing bearer token" then sends a reader looking for an
+# expired session; nothing is wrong with the session, the two sides are not the same app.
+#
+# The evidence is in the request: a caller built for the other mode sends the other mode's
+# credential. So the mismatch is named instead of being reported as an absence.
+_MISMATCH = {
+    # (mode this API runs in) -> (what a caller in the OTHER mode sends, and the sentence)
+    "local": (
+        "authorization",
+        "this API runs with AUTH_MODE=local and reads the "
+        f"{DEV_USER_HEADER} header, but the request carries a bearer token",
+    ),
+    "clerk": (
+        DEV_USER_HEADER.lower(),
+        f"this API runs with AUTH_MODE=clerk and expects a bearer token, but the request "
+        f"carries {DEV_USER_HEADER}",
+    ),
+}
+
+_REMEDY = (
+    "The frontend and the backend are configured for different auth modes. Set AUTH_MODE in "
+    "backend/.env and NEXT_PUBLIC_AUTH_MODE in frontend/.env.local to the same mode, then "
+    "restart both - neither value is re-read while running."
+)
+
+
+def _crossed_modes(request: Request, expected: str) -> str | None:
+    """The sentence for a request that was built for the other mode, or None.
+
+    ASCII only: this text also reaches a terminal through the CLI and curl, and a Windows
+    console (cp1252) raises on anything else.
+    """
+    header, complaint = _MISMATCH[expected]
+    if request.headers.get(header):
+        return f"{complaint}. {_REMEDY}"
+    return None
 
 
 def get_current_assessor(

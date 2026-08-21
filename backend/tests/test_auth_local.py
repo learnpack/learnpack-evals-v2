@@ -83,6 +83,48 @@ def test_the_dev_header_does_nothing_in_clerk_mode(client, clerk_auth):
     assert response.status_code == 401
 
 
+def test_a_backend_in_local_mode_names_a_frontend_built_for_clerk(client, local_auth):
+    """The two halves of the seam are configured separately, so they can disagree — and then
+    every request is a 401 that reads like an expired session. The evidence is in the
+    request: a caller built for the other mode sends the other mode's credential."""
+    response = client.get("/me", headers={"Authorization": "Bearer whatever"})
+
+    assert response.status_code == 401
+    detail = response.json()["detail"]
+    assert "AUTH_MODE=local" in detail
+    assert "bearer token" in detail
+    # It names both files, because the fix is on one side and the reader is on the other.
+    assert "backend/.env" in detail and "frontend/.env.local" in detail
+    assert "restart" in detail
+
+
+def test_a_backend_in_clerk_mode_names_a_frontend_built_for_local(client, clerk_auth):
+    response = client.get("/me", headers={DEV_USER_HEADER: "someone@local.dev"})
+
+    assert response.status_code == 401
+    detail = response.json()["detail"]
+    assert "AUTH_MODE=clerk" in detail
+    assert DEV_USER_HEADER in detail
+    assert "backend/.env" in detail and "frontend/.env.local" in detail
+
+
+def test_a_plain_missing_credential_is_still_reported_as_one(client, local_auth):
+    """Only a crossed configuration gets the long sentence. A request with nothing at all is
+    an ordinary unauthenticated one, and saying "check your auth modes" would be a guess."""
+    detail = client.get("/me").json()["detail"]
+
+    assert DEV_USER_HEADER in detail
+    assert "frontend/.env.local" not in detail
+
+
+def test_the_mismatch_sentence_is_ascii(client, clerk_auth):
+    """It reaches a terminal through curl and the CLI, and a Windows console (cp1252) raises
+    on anything else."""
+    detail = client.get("/me", headers={DEV_USER_HEADER: "someone@local.dev"}).json()["detail"]
+
+    detail.encode("ascii")
+
+
 def test_dev_identities_endpoint_only_exists_in_local_mode(client, local_auth, monkeypatch):
     assert client.get("/dev/identities").status_code == 200
 

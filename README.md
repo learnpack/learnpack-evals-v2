@@ -79,6 +79,27 @@ npm run dev
 Sign in at `/sign-in` as `admin@local.dev`, which is the identity the setup creates and
 attributes its acts to.
 
+### The two auth modes
+
+The same checkout runs either way — the switch is **two variables, one per side**, and they
+have to say the same thing:
+
+| | no accounts, no cloud | the real provider |
+|---|---|---|
+| `backend/.env` | `AUTH_MODE=local` | `AUTH_MODE=clerk` |
+| `frontend/.env.local` | `NEXT_PUBLIC_AUTH_MODE=local` | `NEXT_PUBLIC_AUTH_MODE=clerk` |
+
+Clerk works against `localhost` too — its development instance is built for it — so the real
+login and invitation flows can be exercised without deploying anything. What that needs
+(keys, JWT template, what stops working) is in `backend/README.md`, *Running Clerk against
+your own machine*.
+
+Two things to know:
+
+- **Restart after changing them.** Neither side re-reads its value while running.
+- **If they disagree, every request is a 401** — and the API says so in as many words,
+  naming both files. It is not an expired session.
+
 The **human evaluation** flow needs raters, which the setup does not install — they belong to
 that flow, not to measuring a generator. `task seed:demo` adds them, with two frozen courses and
 an open campaign to work on:

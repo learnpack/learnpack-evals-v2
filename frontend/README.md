@@ -33,7 +33,8 @@ Clerk: `/sign-in` shows the list of local users and you pick one. Switch users f
 header menu — it reloads the page on purpose, so the previous user's query cache does not
 survive on screen.
 
-The backend must be running with the matching `AUTH_MODE=local`: the list comes from
+The backend must be running with the matching `AUTH_MODE=local` — if the two disagree every
+request is a 401 whose message says so. The list comes from
 `GET /dev/identities`, which only exists in that mode, and calls identify themselves with
 the `X-Dev-User` header instead of `Authorization: Bearer`.
 
