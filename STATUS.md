@@ -87,6 +87,18 @@ done, deliberately:** deactivating does not cancel open assignments — that is 
 orchestration act with its own aggregate, and reaching into it from an identity act would
 cross the boundary the wrong way.
 
+**And the credential stopped naming its vendor.** `assessors.clerk_user_id` put Clerk inside
+the pure domain, and it had already stopped being true: ADR-0008 added a second adapter, so
+local mode was storing `local|<email>` in a column called `clerk_`. Migration 0024 splits it
+into `(auth_provider, auth_subject)`, unique together — which is what the `local|` prefix was
+standing in for, so the prefix goes and a local subject is now just the address.
+`get_by_clerk_user_id` becomes `get_by_credential(provider, subject)`, `ClerkIdentity` becomes
+`ExternalIdentity`, and `security.py` fills the provider from `AUTH_MODE`. **No ADR: nothing
+was decided.** ADR-0004 and ADR-0008 stand exactly as written; this makes the second adapter
+they already introduced honest in the schema. The backfill states what each row was —
+`local|`-prefixed came from the local adapter, everything else from Clerk — rather than
+guessing, because both adapters wrote through the one lookup and there was no third source.
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),

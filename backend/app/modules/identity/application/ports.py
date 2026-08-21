@@ -8,7 +8,10 @@ from app.modules.identity.domain.invitation import Invitation
 
 
 class AssessorRepositoryPort(Protocol):
-    def get_by_clerk_user_id(self, clerk_user_id: str) -> Assessor | None: ...
+    def get_by_credential(self, provider: str, subject: str) -> Assessor | None:
+        """The pair an adapter authenticated somebody with — Clerk's `sub`, or the local
+        header's (ADR-0004, ADR-0008). Which provider is the adapter's business."""
+        ...
 
     def get_by_id(self, assessor_id: UUID) -> Assessor | None: ...
 

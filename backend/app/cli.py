@@ -3146,7 +3146,8 @@ def _ensure_local_assessor(session: Session, email: str, display_name: str, role
             id=new_id(),
             # Must match what auth_local derives from `X-Dev-User`, or the sign-in would
             # create a second assessor for the same person.
-            clerk_user_id=f"local|{email.lower()}",
+            auth_provider="local",
+            auth_subject=email.lower(),
             email=email,
             display_name=display_name,
             role=role,
@@ -3293,7 +3294,7 @@ def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
 DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v1"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 
-# (email, display name, role). `clerk_user_id` mirrors what auth_local builds from the header,
+# (email, display name, role). The credential mirrors what auth_local builds from the header,
 # and the display names are exactly what `display_name_for` derives from these emails — so
 # signing in refreshes the profile to the same value instead of silently renaming people.
 DEMO_ASSESSORS: list[tuple[str, str, Role]] = [
@@ -3560,10 +3561,9 @@ def _reset_demo(session: Session) -> None:
         # never seeded. Leaving one behind strands its stored `source_config`, and the next
         # ratification refuses with "the artifact changed without a version bump"
         # (ADR-0016): a correct guard, firing on a database the operator was told had been
-        # reset. They carry no clerk_user_id, so the human predicate below never reaches
-        # them.
+        # reset. They carry no credential, so the human predicate below never reaches them.
         "DELETE FROM assessors WHERE kind = 'automated'",
-        "DELETE FROM assessors WHERE clerk_user_id LIKE 'local|%'",
+        "DELETE FROM assessors WHERE auth_provider = 'local'",
     ):
         session.execute(text(statement))
     session.commit()

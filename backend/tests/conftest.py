@@ -469,20 +469,20 @@ def as_user(requires_db, cleanup):
     app.dependency_overrides[get_verified_claims] = _override
 
     def _client(
-        clerk_user_id: str,
+        subject: str,
         email: str | None = None,
         name: str | None = None,
         email_verified: bool = True,
     ):
         # Verified by default: that is what a real session carries, and the unverified case
         # is a deliberate scenario a test opts into (ADR-0049).
-        identities[clerk_user_id] = {
-            "sub": clerk_user_id,
+        identities[subject] = {
+            "sub": subject,
             "email": email,
             "name": name,
             "email_verified": email_verified,
         }
-        return TestClient(app, headers={"X-Test-Identity": clerk_user_id})
+        return TestClient(app, headers={"X-Test-Identity": subject})
 
     yield _client
     app.dependency_overrides.clear()
@@ -506,8 +506,8 @@ def promote(session):
 def register_assessor(session, cleanup, as_user):
     """Sign a user in once (creating the Assessor) and return their id."""
 
-    def _register(clerk_user_id: str, email: str, name: str = "Test User"):
-        client = as_user(clerk_user_id, email, name)
+    def _register(subject: str, email: str, name: str = "Test User"):
+        client = as_user(subject, email, name)
         response = client.get("/me")
         assert response.status_code == 200, response.text
         assessor_id = response.json()["assessor_id"]

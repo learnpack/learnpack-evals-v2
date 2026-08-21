@@ -8,18 +8,18 @@ from uuid import UUID
 
 import pytest
 
-from app.modules.identity.application.resolve_assessor import ClerkIdentity, ResolveAssessor
+from app.modules.identity.application.resolve_assessor import ExternalIdentity, ResolveAssessor
 from app.modules.identity.domain.assessor import Assessor, Role
 from app.shared.domain.ids import new_id
 
 
 class FakeAssessorRepository:
     def __init__(self, existing: list[Assessor] | None = None) -> None:
-        self.assessors = {a.clerk_user_id: a for a in (existing or [])}
+        self.assessors = {a.auth_subject: a for a in (existing or [])}
         self.updated: list[Assessor] = []
 
-    def get_by_clerk_user_id(self, clerk_user_id: str) -> Assessor | None:
-        return self.assessors.get(clerk_user_id)
+    def get_by_credential(self, provider: str, subject: str) -> Assessor | None:
+        return self.assessors.get(subject)
 
     def get_by_id(self, assessor_id: UUID) -> Assessor | None:
         return next((a for a in self.assessors.values() if a.id == assessor_id), None)
@@ -31,7 +31,7 @@ class FakeAssessorRepository:
         return [a for a in self.assessors.values() if a.id in assessor_ids]
 
     def add(self, assessor: Assessor) -> None:
-        self.assessors[assessor.clerk_user_id] = assessor
+        self.assessors[assessor.auth_subject] = assessor
 
     def update(self, assessor: Assessor) -> None:
         self.updated.append(assessor)
@@ -75,8 +75,9 @@ def resolve(repository, *, allowlist=(), invitations=None, **claims):
         bootstrap_admins=allowlist,
     )
     return use_case(
-        ClerkIdentity(
-            clerk_user_id=claims.get("clerk_user_id", "user_1"),
+        ExternalIdentity(
+            provider="clerk",
+            subject=claims.get("subject", "user_1"),
             email=claims.get("email"),
             display_name=claims.get("name", "Someone"),
             email_verified=claims.get("email_verified", True),
@@ -85,7 +86,14 @@ def resolve(repository, *, allowlist=(), invitations=None, **claims):
 
 
 def existing(email: str, role: Role) -> Assessor:
-    return Assessor(id=new_id(), clerk_user_id="user_1", email=email, display_name="Ada", role=role)
+    return Assessor(
+        id=new_id(),
+        auth_provider="clerk",
+        auth_subject="user_1",
+        email=email,
+        display_name="Ada",
+        role=role,
+    )
 
 
 def test_a_listed_email_is_created_as_admin():

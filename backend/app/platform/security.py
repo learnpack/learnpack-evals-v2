@@ -15,7 +15,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import get_settings
 from app.modules.identity.application.dtos import AssessorDTO
-from app.modules.identity.application.resolve_assessor import ClerkIdentity, ResolveAssessor
+from app.modules.identity.application.resolve_assessor import ExternalIdentity, ResolveAssessor
 from app.modules.identity.infrastructure.invitation_repository import (
     SqlAlchemyInvitationRepository,
 )
@@ -75,8 +75,11 @@ def get_current_assessor(
     it reads as unverified, which refuses to redeem rather than trusting an address nobody
     vouched for.
     """
-    identity = ClerkIdentity(
-        clerk_user_id=claims["sub"],
+    identity = ExternalIdentity(
+        # Which adapter answered is what the credential's provider means: the same `sub`
+        # from two providers is two people (ADR-0004, ADR-0008).
+        provider=get_settings().auth_mode,
+        subject=claims["sub"],
         email=claims.get("email"),
         display_name=claims.get("name"),
         email_verified=bool(claims.get("email_verified")),

@@ -178,7 +178,7 @@ def _human(role: str):
     from app.modules.identity.domain.assessor import Assessor
     from app.shared.domain.ids import new_id
 
-    return Assessor(id=new_id(), clerk_user_id=f"user_{new_id()}", role=role)
+    return Assessor(id=new_id(), auth_provider="clerk", auth_subject=f"user_{new_id()}", role=role)
 
 
 def test_the_last_admin_cannot_be_demoted():
@@ -265,7 +265,8 @@ def _register_automated(session, cleanup, unique: str) -> str:
 
     assessor = Assessor(
         id=new_id(),
-        clerk_user_id=None,
+        auth_provider=None,
+        auth_subject=None,
         display_name=f"bot-{unique}",
         kind=Kind.AUTOMATED,
         source_config={

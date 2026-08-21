@@ -2,10 +2,15 @@
 
 An `Assessor` is the concrete, identifiable instance that actually produces evaluation
 results — the key of provenance and calibration (GLOSSARY.md, Source axis). Two kinds with
-a real structural difference (ADR-0016): `human` enters via Clerk/assignments (the
-evaluating user *is* an Assessor); `automated` is a versioned software artifact identified
-by (name, version) inside `source_config` — it owes itself to an instrument lineage and
-declares its coverage per criterion (ADR-0019); it has no external credential.
+a real structural difference (ADR-0016): `human` arrives with an external credential and is
+assigned work (the evaluating user *is* an Assessor); `automated` is a versioned software
+artifact identified by (name, version) inside `source_config` — it owes itself to an
+instrument lineage and declares its coverage per criterion (ADR-0019); it has no external
+credential.
+
+The credential is `(auth_provider, auth_subject)`, never a column named after one vendor:
+which provider authenticated somebody is an adapter's business (ADR-0004, ADR-0008), and the
+pair is what stays unique when there is more than one of them.
 """
 
 from dataclasses import dataclass, field
@@ -42,11 +47,16 @@ class InvalidAssessor(Exception):
 
 @dataclass
 class Assessor:
-    """Aggregate root. Identity is `id`; the external credential (`clerk_user_id`) exists
-    only for humans; automated assessors carry their identity in `source_config`."""
+    """Aggregate root. Identity is `id`; the external credential exists only for humans;
+    automated assessors carry their identity in `source_config`."""
 
     id: UUID
-    clerk_user_id: str | None = None
+    # The external credential, as `(provider, subject)`. Which provider authenticated
+    # somebody is the adapter's business (ADR-0004 for Clerk, ADR-0008 for local), so the
+    # pure domain names the shape and not the vendor — and the pair is what stays unique
+    # when there is more than one of them.
+    auth_provider: str | None = None
+    auth_subject: str | None = None
     email: str | None = None
     display_name: str | None = None
     role: Role = Role.EVALUATOR
@@ -73,10 +83,12 @@ class Assessor:
             except ValueError as exc:
                 raise InvalidAssessor(f"unknown status: {self.status!r}") from exc
         if self.kind is Kind.HUMAN:
-            if not self.clerk_user_id or not self.clerk_user_id.strip():
-                raise InvalidAssessor("clerk_user_id is required for a human assessor")
+            if not (self.auth_provider or "").strip() or not (self.auth_subject or "").strip():
+                raise InvalidAssessor(
+                    "a human assessor requires an external credential (auth_provider, auth_subject)"
+                )
         else:
-            if self.clerk_user_id is not None:
+            if self.auth_provider is not None or self.auth_subject is not None:
                 raise InvalidAssessor("an automated assessor has no external credential")
             config = self.source_config or {}
             for key in ("name", "version", "instrumentId"):

@@ -1,7 +1,7 @@
 # DATA_MODEL — logical Postgres schema
 
 Logical model of the tables the system persists today. Source of truth for shape:
-Alembic migrations under `backend/alembic/versions/` (head = `0021`). Names follow
+Alembic migrations under `backend/alembic/versions/` (head = `0024`). Names follow
 `GLOSSARY.md`. Module boundaries follow `ARCHITECTURE.md`: intra-module foreign keys
 are real; many cross-module identifiers are **app-validated references** (no DB FK),
 shown below as dashed links.
@@ -31,7 +31,7 @@ erDiagram
 
 | Module | Tables |
 |---|---|
-| identity | `assessors` |
+| identity | `assessors`, `assessor_invitations` |
 | evaluand_registry | `contents`, `content_package_artifacts`, `generators`, `generator_versions`, `generation_briefs` |
 | evaluation_design | `pedagogical_frameworks`, `pedagogical_dimensions`, `qualities`, `data_requirements`, `instrument_versions`, `instrument_claims`, `instrument_criteria`, `instrument_bindings`, `rubric_versions`, `criteria` |
 | content_profiling | `content_profiles`, `profile_entries`, `profile_extras`, `extraction_acceptances` |
@@ -47,22 +47,47 @@ Reporting owns no tables: it aggregates through query ports (ADR-0006).
 
 ```mermaid
 erDiagram
+    assessors ||--o{ assessor_invitations : "invited_by / accepted_by"
     assessors {
         uuid id PK
-        text clerk_user_id UK "null when automated"
+        text auth_provider "clerk | local; null when automated"
+        text auth_subject "the provider's subject; null when automated"
         text email
         text display_name
         text role "admin | evaluator"
         text expertise
         text kind "human | automated"
+        text status "active | deactivated"
         jsonb source_config "automated identity"
         timestamptz created_at
     }
+    assessor_invitations {
+        uuid id PK
+        text email "unique among pending"
+        text role "granted at redemption"
+        text display_name
+        text expertise
+        uuid invited_by FK
+        text status "pending | accepted | revoked"
+        timestamptz expires_at
+        uuid accepted_by FK "set iff accepted"
+        timestamptz created_at
+        timestamptz updated_at
+    }
 ```
 
-- Human: `clerk_user_id` required, `source_config` null.
-- Automated: `source_config` required (`name`, `version`, target instrument, …),
-  `clerk_user_id` null; partial unique on `(source_config->>'name', source_config->>'version')`.
+- Human: `(auth_provider, auth_subject)` required and unique together — the credential names
+  its provider's subject, never a vendor's column (ADR-0004, ADR-0008). `source_config` null.
+- Automated: `source_config` required (`name`, `version`, target instrument, …), no
+  credential; partial unique on `(source_config->>'name', source_config->>'version')`.
+- `status` is the lifecycle (ADR-0051): `deactivated` withdraws the future — no new work and
+  a 403 at the door — and deletes nothing, because an `Assessor` is the key of provenance.
+- **`assessor_invitations` is how a human assessor is registered** (ADR-0049). It holds no
+  credential and grants nothing: the `assessors` row still appears at that address's first
+  login, taking `role` and `expertise` from the invitation it redeems. Partial unique index
+  on `lower(email) where status = 'pending'` — at most one pending invitation per address,
+  and accepting or revoking frees it again. **There is no `expired` value**: expiry is
+  derived from `expires_at` whenever it is read.
 
 ## 3. evaluand_registry
 

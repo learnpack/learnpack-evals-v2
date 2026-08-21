@@ -60,7 +60,6 @@ class RegisterAutomatedAssessor:
 
         assessor = Assessor(
             id=new_id(),
-            clerk_user_id=None,
             display_name=command.display_name,
             kind=Kind.AUTOMATED,
             source_config=command.source_config,
