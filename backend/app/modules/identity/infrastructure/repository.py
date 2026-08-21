@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.modules.identity.domain.assessor import Assessor
 
-_COLUMNS = "id, clerk_user_id, email, display_name, role, expertise, kind, status, source_config"
+_COLUMNS = (
+    "id, auth_provider, auth_subject, email, display_name, role, expertise, kind, "
+    "status, source_config"
+)
 
 
 class SqlAlchemyAssessorRepository:
@@ -29,8 +32,8 @@ class SqlAlchemyAssessorRepository:
             return None
         return self._hydrate(row)
 
-    def get_by_clerk_user_id(self, clerk_user_id: str) -> Assessor | None:
-        return self._one("clerk_user_id = :v", {"v": clerk_user_id})
+    def get_by_credential(self, provider: str, subject: str) -> Assessor | None:
+        return self._one("auth_provider = :p AND auth_subject = :s", {"p": provider, "s": subject})
 
     def get_by_id(self, assessor_id: UUID) -> Assessor | None:
         return self._one("id = :v", {"v": assessor_id})
@@ -83,7 +86,8 @@ class SqlAlchemyAssessorRepository:
     def _hydrate(row) -> Assessor:  # noqa: ANN001 — SQLAlchemy row mapping
         return Assessor(
             id=row["id"],
-            clerk_user_id=row["clerk_user_id"],
+            auth_provider=row["auth_provider"],
+            auth_subject=row["auth_subject"],
             email=row["email"],
             display_name=row["display_name"],
             role=row["role"],
@@ -98,11 +102,11 @@ class SqlAlchemyAssessorRepository:
             text(
                 """
                 INSERT INTO assessors
-                    (id, clerk_user_id, email, display_name, role, expertise, kind, status,
-                     source_config)
+                    (id, auth_provider, auth_subject, email, display_name, role, expertise,
+                     kind, status, source_config)
                 VALUES
-                    (:id, :clerk_user_id, :email, :display_name, :role, :expertise, :kind,
-                     :status, cast(:source_config as jsonb))
+                    (:id, :auth_provider, :auth_subject, :email, :display_name, :role,
+                     :expertise, :kind, :status, cast(:source_config as jsonb))
                 """
             ),
             self._as_params(assessor),
@@ -128,7 +132,8 @@ class SqlAlchemyAssessorRepository:
     def _as_params(assessor: Assessor) -> dict:
         return {
             "id": assessor.id,
-            "clerk_user_id": assessor.clerk_user_id,
+            "auth_provider": assessor.auth_provider,
+            "auth_subject": assessor.auth_subject,
             "email": assessor.email,
             "display_name": assessor.display_name,
             "role": str(assessor.role),

@@ -27,7 +27,7 @@ def test_repeated_login_is_idempotent(as_user, cleanup, session, unique):
 
     assert first["assessor_id"] == second["assessor_id"]
     count = session.execute(
-        text("SELECT count(*) FROM assessors WHERE clerk_user_id = :c"), {"c": clerk_id}
+        text("SELECT count(*) FROM assessors WHERE auth_subject = :c"), {"c": clerk_id}
     ).scalar_one()
     assert count == 1
 
@@ -89,7 +89,8 @@ def test_automated_assessor_round_trips_through_the_repository(cleanup, session,
     name = f"structural-{unique}"
     assessor = Assessor(
         id=new_id(),
-        clerk_user_id=None,
+        auth_provider=None,
+        auth_subject=None,
         display_name=f"{name} v1",
         kind=Kind.AUTOMATED,
         source_config={
@@ -107,6 +108,6 @@ def test_automated_assessor_round_trips_through_the_repository(cleanup, session,
     assert found is not None
     assert found.id == assessor.id
     assert found.kind is Kind.AUTOMATED
-    assert found.clerk_user_id is None
+    assert found.auth_provider is None
     assert found.source_config["coverage"]["executes"] == ["cr-a"]
     assert repository.get_automated(name, "2") is None

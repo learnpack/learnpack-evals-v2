@@ -99,12 +99,14 @@ def test_reset_demo_clears_local_identities_and_spares_the_rest(requires_db, cle
         repository = SqlAlchemyAssessorRepository(session)
         local_user = Assessor(
             id=new_id(),
-            clerk_user_id=f"local|stale-{unique}@local.test",
+            auth_provider="local",
+            auth_subject=f"stale-{unique}@local.test",
             email=f"stale-{unique}@local.test",
         )
         clerk_user = Assessor(
             id=new_id(),
-            clerk_user_id=f"user_{unique}",
+            auth_provider="clerk",
+            auth_subject=f"user_{unique}",
             email=f"real-{unique}@example.com",
         )
         repository.add(local_user)
@@ -114,8 +116,8 @@ def test_reset_demo_clears_local_identities_and_spares_the_rest(requires_db, cle
 
         _reset_demo(session)
 
-        assert repository.get_by_clerk_user_id(local_user.clerk_user_id) is None
-        assert repository.get_by_clerk_user_id(clerk_user.clerk_user_id) is not None
+        assert repository.get_by_credential("local", local_user.auth_subject) is None
+        assert repository.get_by_credential("clerk", clerk_user.auth_subject) is not None
 
 
 def test_reset_demo_clears_the_automated_assessor_registration(requires_db, cleanup, unique):

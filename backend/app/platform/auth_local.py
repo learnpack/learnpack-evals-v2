@@ -29,8 +29,9 @@ def display_name_for(email: str) -> str:
 def claims_from_header(request: Request) -> dict[str, str | bool | None]:
     """Build the same claim shape Clerk returns, from `X-Dev-User: <email>`.
 
-    `sub` is namespaced (`local|<email>`) so a local assessor can never collide with a real
-    Clerk user id if the same database is ever reused.
+    `sub` is the address itself. It used to be namespaced (`local|<email>`) because both
+    adapters shared one unique column; the credential is now `(provider, subject)`, so the
+    pair keeps them apart and the prefix has nothing left to do.
 
     `email_verified` is true because in this mode the header **is** the identity: there is
     no weaker statement to make about the address than the one that already got you in, and
@@ -42,7 +43,7 @@ def claims_from_header(request: Request) -> dict[str, str | bool | None]:
         raise InvalidToken(f"missing {DEV_USER_HEADER} header (AUTH_MODE=local)")
 
     return {
-        "sub": f"local|{email.lower()}",
+        "sub": email.lower(),
         "email": email,
         "name": display_name_for(email),
         "email_verified": True,

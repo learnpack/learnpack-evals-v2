@@ -7,13 +7,16 @@ from app.shared.domain.ids import new_id
 
 
 def make_assessor(**overrides) -> Assessor:
-    return Assessor(**({"id": new_id(), "clerk_user_id": "user_abc"} | overrides))
+    return Assessor(
+        **({"id": new_id(), "auth_provider": "clerk", "auth_subject": "user_abc"} | overrides)
+    )
 
 
 def make_automated(**overrides) -> Assessor:
     base = {
         "id": new_id(),
-        "clerk_user_id": None,
+        "auth_provider": None,
+        "auth_subject": None,
         "kind": "automated",
         "source_config": {
             "name": "structural",
@@ -29,9 +32,9 @@ def test_defaults_to_evaluator():
     assert not make_assessor().is_admin
 
 
-def test_clerk_user_id_is_required():
+def test_a_credential_is_required():
     with pytest.raises(InvalidAssessor):
-        make_assessor(clerk_user_id="  ")
+        make_assessor(auth_subject="  ")
 
 
 def test_role_accepts_the_raw_string_from_the_database():
@@ -69,12 +72,13 @@ def test_update_profile_ignores_missing_claims():
 def test_automated_assessor_has_config_identity_and_no_credential():
     assessor = make_automated()
     assert assessor.kind is Kind.AUTOMATED
-    assert assessor.clerk_user_id is None
+    assert assessor.auth_provider is None
+    assert assessor.auth_subject is None
 
 
 def test_automated_assessor_rejects_a_clerk_credential():
     with pytest.raises(InvalidAssessor, match="no external credential"):
-        make_automated(clerk_user_id="user_abc")
+        make_automated(auth_provider="clerk", auth_subject="user_abc")
 
 
 @pytest.mark.parametrize("missing", ["name", "version", "instrumentId"])

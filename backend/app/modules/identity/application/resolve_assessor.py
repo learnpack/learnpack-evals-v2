@@ -1,4 +1,4 @@
-"""Resolve a verified Clerk identity into our own `Assessor` (ADR-0004).
+"""Resolve a verified external identity into our own `Assessor` (ADR-0004, ADR-0008).
 
 Entry point of every authenticated request: on first login the assessor is created; later
 logins only refresh the profile. The role is deliberately never touched here — promotion is
@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class ClerkIdentity:
-    """The claims we care about, already verified by the Clerk adapter.
+class ExternalIdentity:
+    """The claims we care about, already verified by whichever auth adapter ran.
 
     `email_verified` is the provider's statement that this session's owner controls that
     address — not our own. It gates redemption and nothing else, because matching an
@@ -39,7 +39,8 @@ class ClerkIdentity:
     (the *false identifier* anti-pattern; it has produced real CVEs).
     """
 
-    clerk_user_id: str
+    provider: str
+    subject: str
     email: str | None = None
     display_name: str | None = None
     email_verified: bool = False
@@ -61,14 +62,15 @@ class ResolveAssessor:
         # Provisioning allowlist, NOT an authorisation source — see `_initial_role`.
         self._bootstrap_admins = frozenset(e.strip().lower() for e in bootstrap_admins if e)
 
-    def __call__(self, identity: ClerkIdentity) -> AssessorDTO:
-        assessor = self._assessors.get_by_clerk_user_id(identity.clerk_user_id)
+    def __call__(self, identity: ExternalIdentity) -> AssessorDTO:
+        assessor = self._assessors.get_by_credential(identity.provider, identity.subject)
 
         if assessor is None:
             invitation = self._redeemable_invitation(identity)
             assessor = Assessor(
                 id=new_id(),
-                clerk_user_id=identity.clerk_user_id,
+                auth_provider=identity.provider,
+                auth_subject=identity.subject,
                 email=identity.email,
                 # The provider's name if it sent one, otherwise the one the admin typed when
                 # inviting: the roster knew who it was expecting.
@@ -99,7 +101,7 @@ class ResolveAssessor:
         # is what the door reads to refuse a deactivated account (ADR-0051).
         return to_dto(assessor)
 
-    def _redeemable_invitation(self, identity: ClerkIdentity) -> Invitation | None:
+    def _redeemable_invitation(self, identity: ExternalIdentity) -> Invitation | None:
         """The invitation this brand-new assessor is answering, if there is one.
 
         Requires a **verified** address. When the claim is missing the provider's JWT
@@ -126,7 +128,7 @@ class ResolveAssessor:
 
         return invitation if invitation.is_redeemable() else None
 
-    def _granted_role(self, identity: ClerkIdentity, invitation: Invitation | None) -> Role:
+    def _granted_role(self, identity: ExternalIdentity, invitation: Invitation | None) -> Role:
         """The role a brand-new assessor is created with.
 
         An invitation wins over the allowlist: it is a deliberate act, taken per person and
