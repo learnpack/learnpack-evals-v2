@@ -2075,7 +2075,25 @@ the data in the package).
   one extraction rather than coupling them. Scoped by construction: the next extraction gets a
   new instance, and reading each artifact once is now a **format contract**, checked for every
   registered format. **A whole registration is about 8 s against the ~31 s it started at.**
-  What is left is the retry budget that would tell a tired origin from a real 404.
+  **And a tired origin is no longer a broken package.** The fetcher had no retries at all, so
+  a dropped connection and a package missing an artifact were the same event — tolerable while
+  courses were registered one at a time, not once a file of 34 URLs is some two thousand
+  requests against somebody else's server. It now runs the policy `llm.py` settled for the
+  other transport: back off on connection errors, timeouts and `429/5xx`, honour `Retry-After`,
+  jitter so a fanned-out wave does not stampede. Two things are this transport's own. **A miss
+  is answered at once and never waited on** — a package saying it carries no syllabus is a 404
+  read on every registration (ADR-0022), and making it wait would tax every package that is
+  fine; measured against a real origin, an absence costs one request and ~0.5 s. Worth knowing
+  when reading that rule: `learn-pack.com` answers **403** for a missing artifact rather than
+  404, which is why the retryable statuses are named as a list instead of excepting 404. And
+  **the budget is three attempts, not the LLM's four**, because the unit that pays is different
+  — there one call is one answer worth waiting for, here one course is dozens of fetches. A
+  failure that spent the budget says `(after 3 attempts)`, which is what tells the two causes
+  apart in the summary. **Deferred:** a **streak guard** in `_register_sources`, the mirror of
+  `TRANSPORT_FAILURE_STREAK` (ADR-0040 §3), for an origin that hangs rather than refuses — the
+  timeout dominates there (10 s per attempt), so a whole file would work through it course by
+  course. Not built: it needs the registry's exceptions to say which KIND of failure they
+  carry, and nobody has met that origin yet.
 
   **And that speed is what made a generation a single command rather than a run.**
   `register-package --from-csv <file>` registers every course a file names — one format and

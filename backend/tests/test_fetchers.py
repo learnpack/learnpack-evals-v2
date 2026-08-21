@@ -151,3 +151,123 @@ def test_the_filesystem_fetcher_refuses_to_escape_its_base(tmp_path: Path):
     assert fetcher.fetch("inside.md") == b"here"
     with pytest.raises(FetchError):
         fetcher.fetch("../outside.md")
+
+
+# --------------------------------------------------- an origin's bad moments (retries)
+# Everything here runs against `httpx.MockTransport` with an injected sleep — no network,
+# no real waiting — which is the shape `tests/test_llm_client.py` uses for the same policy
+# at the other transport.
+
+
+def fetcher_with(handler, **kwargs):
+    sleeps: list[float] = []
+    return (
+        HttpFetcher(transport=httpx.MockTransport(handler), sleep=sleeps.append, **kwargs),
+        sleeps,
+    )
+
+
+def answering(*responses):
+    """One handler that answers each call with the next response in turn."""
+    remaining = iter(responses)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        answer = next(remaining)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    return handle
+
+
+def test_a_server_error_is_the_origins_weather_not_its_answer():
+    fetcher, sleeps = fetcher_with(
+        answering(httpx.Response(503), httpx.Response(200, content=b"artifact bytes"))
+    )
+
+    assert fetcher.fetch("http://example.test/ok/lesson.md") == b"artifact bytes"
+    assert len(sleeps) == 1
+
+
+def test_a_dropped_connection_is_transient_too():
+    fetcher, sleeps = fetcher_with(
+        answering(httpx.ConnectError("connection reset"), httpx.Response(200, content=b"bytes"))
+    )
+
+    assert fetcher.fetch("http://example.test/ok/lesson.md") == b"bytes"
+    assert len(sleeps) == 1
+
+
+def test_a_miss_is_answered_at_once_and_never_waited_on():
+    """The one that matters most on this transport. A 404 is not a failure to reach the
+    origin, it is the package saying it carries no such artifact — a syllabus, most often,
+    whose absence is a recorded state read on EVERY registration (ADR-0022). Retrying it
+    would tax every package that is fine."""
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(404)
+
+    fetcher, sleeps = fetcher_with(handle)
+
+    with pytest.raises(FetchError):
+        fetcher.fetch("http://example.test/.learn/initialSyllabus.json")
+
+    assert len(seen) == 1 and not sleeps
+
+
+def test_an_origin_that_stays_down_exhausts_the_budget_and_names_the_locator():
+    fetcher, sleeps = fetcher_with(lambda request: httpx.Response(503))
+
+    with pytest.raises(FetchError) as refused:
+        fetcher.fetch("http://example.test/ok/lesson.md")
+
+    assert "could not fetch artifact 'http://example.test/ok/lesson.md'" in str(refused.value)
+    # No sleep after the final attempt: the caller gets the error, not a pointless wait.
+    assert len(sleeps) == fetchers.MAX_FETCH_ATTEMPTS - 1
+
+
+def test_a_rate_limited_origin_is_waited_on_as_long_as_it_asked():
+    fetcher, sleeps = fetcher_with(
+        answering(
+            httpx.Response(429, headers={"Retry-After": "3"}),
+            httpx.Response(200, content=b"bytes"),
+        )
+    )
+
+    assert fetcher.fetch("http://example.test/ok/lesson.md") == b"bytes"
+    assert len(sleeps) == 1 and sleeps[0] >= 3.0
+
+
+def test_the_gate_is_not_held_while_waiting():
+    """A slot held through a backoff would be an idle slot: the gate bounds what the ORIGIN
+    is asked to do at once, and a caller that is sleeping is asking for nothing.
+
+    Pinned by making the wait itself the observation. With room for exactly one request, the
+    backoff starts a second fetch and waits for it: it can only finish if the first one gave
+    its slot back, so a slot held through a backoff deadlocks here instead of passing slowly.
+    """
+    attempts = 0
+    served: list[bytes] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        if request.url.path.endswith("first.md"):
+            attempts += 1
+            if attempts == 1:
+                return httpx.Response(503)  # into a backoff, which should free the slot
+        return httpx.Response(200, content=b"bytes")
+
+    def waiting(delay: float) -> None:
+        other = threading.Thread(
+            target=lambda: served.append(fetcher.fetch("http://example.test/ok/other.md"))
+        )
+        other.start()
+        other.join(timeout=20)
+        assert served, "the slot was still held while the fetch waited to retry"
+
+    fetcher = HttpFetcher(transport=httpx.MockTransport(handle), sleep=waiting, max_concurrency=1)
+
+    assert fetcher.fetch("http://example.test/ok/first.md") == b"bytes"
+    assert served == [b"bytes"]

@@ -750,14 +750,22 @@ fetch whoever asked for it — a discovery reading a package and a profiling run
 are the same requests to whoever is serving them. It is deliberately lower than
 `LLM_MAX_CONCURRENCY`, and not because origins are weaker: there the account is ours and the
 transport backs off on 429 honouring `Retry-After`, so overshooting costs retries. Here the
-origin is somebody else's course server, **nothing backs off**, and a fetch that fails refuses
-the whole registration (ADR-0027).
+origin is somebody else's course server, and a fetch that runs out of attempts refuses the
+whole registration (ADR-0027).
 
-That is also what failure looks like, and it is worth recognising: a course that used to
-register and now does not, with a message naming one artifact. A tired origin and a broken
-package read the same from here. The answer is to lower the ceiling, not to re-register — and
-the fix that would tell the two apart, a retry budget for transport failures as distinct from a
-404, is not built.
+**It does back off**, on the same policy: a connection error, a timeout or a `429/5xx` is the
+origin's weather, so it is retried up to three attempts with a jittered backoff that honours
+`Retry-After`. Every other 4xx is a fact about what was asked for, and re-asking cannot change
+it — so it is answered at once and never waited on. That case is not an edge: a package saying
+it carries no syllabus is a **404 read on every registration** (ADR-0022), and making it wait
+would tax every package that is fine. Note that origins differ in how they say it —
+`learn-pack.com` answers **403** for a missing artifact, not 404 — which is why the rule is
+"retry the retryable list", not "retry everything except 404".
+
+**What failure looks like now**: a course that used to register and now does not, with a
+message naming one artifact and `(after 3 attempts)`. That suffix is the tell — with it, the
+origin refused three times and the ceiling may be too high for it; without it, the origin
+answered, and the package really is missing that artifact.
 
 **What it measures, on a real course** (39 artifacts on `learn-pack.com`, about half a second a
 request): reading the declared surface takes **19.6 s one file at a time and 4.4 s at the

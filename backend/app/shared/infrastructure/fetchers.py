@@ -11,16 +11,41 @@ gives for its own (ADR-0040 §1, ADR-0048 §7): the transport is the only place 
 call however many levels of fan-out sit above it, and a cap per level would leave nobody
 having decided their product. Callers may therefore ask for a whole package at once without
 knowing how many requests that releases.
+
+And it is where an origin's bad moments are survived, on the policy `llm.py` already settled
+for the other transport: back off on the failures that are the endpoint's weather rather than
+its answer, honour `Retry-After`, jitter so parallel callers do not stampede. The difference
+this transport forces is that **a miss is a legitimate answer here** — a package without a
+syllabus registers with an absent brief (ADR-0022), and that is read on every registration —
+so a 404 is returned at once and never retried.
 """
 
+import logging
+import random
 import threading
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# 3 attempts ~ two backoffs. One below the LLM transport's, because the unit that pays is
+# different: there one call is one answer worth waiting for, here one COURSE is dozens of
+# fetches, so a budget multiplies by the artifacts of a package and then by the courses of a
+# batch. Two backoffs still absorb a burst; what they do not absorb is an origin that is gone,
+# and a dead one fails a course on its very first fetch, before any fan-out.
+MAX_FETCH_ATTEMPTS = 3
+BACKOFF_BASE_SECONDS = 1.0
+BACKOFF_CAP_SECONDS = 10.0
+# The endpoint's weather, not its answer. Every other 4xx is a fact about what was asked for,
+# and re-asking cannot change it — least of all a 404, which is how a package says it carries
+# no syllabus.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 class FetchError(Exception):
@@ -77,9 +102,9 @@ class HttpFetcher:
 
     The gate is the opposite: it belongs to the process, not to the fetcher, because callers
     build one of these per use case and what has to be bounded is what the ORIGIN is being
-    asked to do. It is set lower than the LLM transport's for reasons that are not about
-    capacity (`config.py`): nothing here backs off on a 429, and a fetch that fails refuses a
-    whole registration.
+    asked to do. It is set lower than the LLM transport's for a reason that is not about
+    capacity (`config.py`): the account is not ours, and a fetch that runs out of attempts
+    refuses a whole registration.
     """
 
     def __init__(
@@ -87,8 +112,10 @@ class HttpFetcher:
         timeout_seconds: float = 10.0,
         transport: httpx.BaseTransport | None = None,
         max_concurrency: int | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._timeout = timeout_seconds
+        self._sleep = sleep
         # Either argument makes this fetcher private — its own client AND its own gate. A test
         # must not inherit connections or slots from another, nor leave any behind in the
         # shared ones, and a ceiling that silently applied to everybody would be worse than
@@ -108,13 +135,52 @@ class HttpFetcher:
 
     def fetch(self, locator: str) -> bytes:
         client = self._own if self._own is not None else _client()
-        with self._slot():
+        cause = ""
+        for attempt in range(1, MAX_FETCH_ATTEMPTS + 1):
+            retry_after = None
             try:
-                response = client.get(locator, timeout=self._timeout)
-                response.raise_for_status()
+                # One attempt per slot, never the whole loop: a caller that is sleeping is
+                # asking the origin for nothing, and a slot held through a backoff is an idle
+                # slot (the reasoning `llm.py::_slot` states for the other transport).
+                with self._slot():
+                    response = client.get(locator, timeout=self._timeout)
             except httpx.HTTPError as exc:
-                raise FetchError(f"could not fetch artifact '{locator}': {exc}") from exc
-            return response.content
+                cause = f"{type(exc).__name__}: {exc}"
+            else:
+                if response.status_code not in RETRYABLE_STATUS:
+                    if response.status_code >= 400:
+                        # Including — especially — a 404: on this transport that is how a
+                        # package says it does not carry an artifact, read on every
+                        # registration. Waiting on it would tax the packages that are fine.
+                        raise FetchError(
+                            f"could not fetch artifact '{locator}': HTTP {response.status_code}"
+                        )
+                    return response.content
+                cause = f"HTTP {response.status_code}"
+                retry_after = response.headers.get("Retry-After")
+            self._backoff(attempt, retry_after=retry_after, locator=locator, cause=cause)
+        raise FetchError(
+            f"could not fetch artifact '{locator}': {cause} (after {MAX_FETCH_ATTEMPTS} attempts)"
+        )
+
+    def _backoff(self, attempt: int, retry_after: str | None, locator: str, cause: str) -> None:
+        if attempt >= MAX_FETCH_ATTEMPTS:
+            return  # the loop falls through to FetchError; no pointless final sleep
+        delay = min(BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)))
+        delay *= 0.5 + random.random() / 2  # jitter, so a fanned-out wave does not stampede
+        if retry_after is not None:
+            try:
+                delay = max(delay, float(retry_after))
+            except ValueError:
+                pass  # an HTTP-date Retry-After: the backoff schedule is a fine substitute
+        logger.warning(
+            "fetch attempt %d of '%s' failed (%s); retrying in %.1fs",
+            attempt,
+            locator,
+            cause,
+            delay,
+        )
+        self._sleep(delay)
 
 
 class FilesystemFetcher:
