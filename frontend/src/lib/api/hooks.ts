@@ -497,6 +497,25 @@ export function useChangeAssessorRole() {
   });
 }
 
+/** Withdrawing somebody from the roster, or bringing them back (ADR-0051). Not a delete:
+ *  what they produced is untouched, and what stops is the future. */
+export function useSetAssessorActive() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: ({ assessorId, active }: { assessorId: Uuid; active: boolean }) =>
+      api<AssessorResponse>(`/admin/assessors/${assessorId}/active`, {
+        method: "POST",
+        body: { active },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.assessors });
+      qc.invalidateQueries({ queryKey: queryKeys.me });
+    },
+  });
+}
+
 /** Who the roster is expecting, and what happened to everyone it expected before
  *  (ADR-0049). Every state, newest first: an accepted row is the record of a registration
  *  that worked, and a revoked one of a decision somebody took. */

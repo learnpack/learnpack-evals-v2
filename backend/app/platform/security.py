@@ -89,7 +89,18 @@ def get_current_assessor(
         # Bootstrap allowlist: only ever applied when creating a new assessor.
         bootstrap_admins=get_settings().bootstrap_admin_emails,
     )
-    return resolve(identity)
+    assessor = resolve(identity)
+
+    # Offboarding is a state, not a deletion (ADR-0051) — and a state that only removed
+    # somebody from pickers would be cosmetic: their credential would still open every
+    # door. Refused here, at the one place a request becomes an identity, so no handler can
+    # be the one that forgot.
+    if not assessor.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="this account is deactivated",
+        )
+    return assessor
 
 
 def require_admin(

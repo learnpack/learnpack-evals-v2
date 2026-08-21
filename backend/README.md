@@ -200,6 +200,16 @@ uv run python -m app.cli set-role --email you@yourcompany.com --role admin
 It enforces neither guardrail. That is the point of a break-glass tool, and the reason not to
 reach for it when a screen would do.
 
+### When somebody leaves (ADR-0051)
+
+Deactivate them from `/admin/assessors`. Nothing is deleted — their evaluations and the
+reports naming them are what happened, and an `Assessor` is the key of provenance — but they
+are offered no new work and **every request they make answers 403**. It is reversible from
+the same row. The same two refusals apply: not yourself, and not the last active admin.
+
+Deactivating does **not** cancel their open assignments; that lives in campaigns and stays a
+manual step.
+
 ### Registering the evaluators after the first admin (ADR-0049)
 
 Inviting somebody creates **no account**: it records the address, the role and the expertise

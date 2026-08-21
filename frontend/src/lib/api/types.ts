@@ -179,6 +179,9 @@ export interface AssessorResponse {
   display_name: string | null;
   /** The Source axis: the two kinds are structurally different (ADR-0016). */
   kind: "human" | "automated";
+  /** Whether they still take part (ADR-0051). A deactivated assessor keeps every judgment
+   *  they produced, is offered no new work and cannot sign in. */
+  status: "active" | "deactivated";
   /** Present exactly when `kind === "automated"`. */
   automated: AutomatedIdentity | null;
 }

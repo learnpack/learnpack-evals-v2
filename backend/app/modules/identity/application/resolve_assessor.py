@@ -19,6 +19,7 @@ from app.modules.identity.application.ports import (
     AssessorRepositoryPort,
     InvitationRepositoryPort,
 )
+from app.modules.identity.application.queries import to_dto
 from app.modules.identity.domain import events
 from app.modules.identity.domain.assessor import Assessor, Role
 from app.modules.identity.domain.invitation import Invitation
@@ -93,15 +94,10 @@ class ResolveAssessor:
             self._assessors.update(assessor)
             self._uow.commit()
 
-        return AssessorDTO(
-            assessor_id=assessor.id,
-            role=str(assessor.role),
-            email=assessor.email,
-            display_name=assessor.display_name,
-            # Always `human` on this path — an automated assessor has no credential to
-            # arrive with (ADR-0016) — but stated rather than defaulted.
-            kind=str(assessor.kind),
-        )
+        # Through the one mapper, not rebuilt here. A hand-written copy is a list of fields
+        # somebody has to remember to extend, and the field it forgot was `status` — which
+        # is what the door reads to refuse a deactivated account (ADR-0051).
+        return to_dto(assessor)
 
     def _redeemable_invitation(self, identity: ClerkIdentity) -> Invitation | None:
         """The invitation this brand-new assessor is answering, if there is one.

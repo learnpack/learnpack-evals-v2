@@ -14,14 +14,12 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.modules.identity.application.dtos import AssessorDTO
+from app.modules.identity.application.errors import AssessorNotFound, NotAHumanAssessor
 from app.modules.identity.application.ports import AssessorRepositoryPort
 from app.modules.identity.application.queries import to_dto
 from app.modules.identity.domain import events
 from app.modules.identity.domain.assessor import Kind, Role
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
-
-
-class AssessorNotFound(Exception): ...
 
 
 class CannotChangeOwnRole(Exception):
@@ -31,11 +29,6 @@ class CannotChangeOwnRole(Exception):
 
 class CannotDemoteLastAdmin(Exception):
     """There would be nobody left who can grant it back, and no screen that could."""
-
-
-class NotAHumanAssessor(Exception):
-    """An automated assessor has no role to grant: what it may do is decided by
-    ratification against an instrument version (ADR-0019), not by a roster."""
 
 
 @dataclass(frozen=True)

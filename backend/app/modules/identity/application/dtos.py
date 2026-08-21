@@ -33,12 +33,19 @@ class AssessorDTO:
     # The Source axis (GLOSSARY): `human` or `automated`. Two kinds with a real structural
     # difference (ADR-0016), which a consumer listing them has to be able to tell apart.
     kind: str = "human"
+    # Whether they still take part (ADR-0051). A deactivated assessor keeps every judgment
+    # they produced and is offered no new work.
+    status: str = "active"
     # Present exactly when `kind == "automated"`.
     automated: AutomatedIdentity | None = None
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == "active"
 
 
 @dataclass(frozen=True)
