@@ -28,3 +28,7 @@ export const UserMenu = impl.UserMenu;
 
 /** The `/sign-in` body: Clerk's form, or the list of seeded local users. */
 export const SignInScreen = impl.SignInScreen;
+
+/** The `/accept-invitation` body. An invited person is a NEW user, so under Clerk this is
+ *  `<SignUp/>`: the sign-in form cannot complete an invitation ticket. */
+export const AcceptInvitationScreen = impl.AcceptInvitationScreen;

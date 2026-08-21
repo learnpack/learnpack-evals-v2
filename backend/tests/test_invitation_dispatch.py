@@ -58,7 +58,7 @@ def clerk(monkeypatch):
 
 def test_it_asks_clerk_to_invite_that_address(clerk):
     sent = clerk()
-    ClerkInvitationDispatcher("sk_test_x", "http://localhost:3000/sign-in").dispatch(
+    ClerkInvitationDispatcher("sk_test_x", "http://localhost:3000/accept-invitation").dispatch(
         make_invitation(email="ada@example.com")
     )
 
@@ -68,7 +68,7 @@ def test_it_asks_clerk_to_invite_that_address(clerk):
     assert request.headers["authorization"] == "Bearer sk_test_x"
     assert body["email_address"] == "ada@example.com"
     assert body["notify"] is True
-    assert body["redirect_url"] == "http://localhost:3000/sign-in"
+    assert body["redirect_url"] == "http://localhost:3000/accept-invitation"
 
 
 def test_it_ignores_an_existing_clerk_invitation(clerk):
@@ -181,3 +181,27 @@ def _as_mode(monkeypatch, auth_mode: str, secret_key: str) -> None:
 
 def _as_clerk(monkeypatch, secret_key: str) -> None:
     _as_mode(monkeypatch, auth_mode="clerk", secret_key=secret_key)
+
+
+def test_the_link_lands_on_a_page_that_can_sign_somebody_up():
+    """Not `/sign-in`. An invited person has no account yet, so Clerk hands the ticket over
+    as a sign-up and the sign-in form cannot complete it — it renders and spins for ever."""
+    from app.config import get_settings
+
+    derived = (
+        get_settings()
+        .model_copy(update={"allowed_origins": "http://localhost:3000"})
+        .invitation_redirect_url
+    )
+
+    assert derived == "http://localhost:3000/accept-invitation"
+
+
+def test_an_explicit_redirect_url_wins_over_the_derived_one():
+    from app.config import get_settings
+
+    settings = get_settings().model_copy(
+        update={"clerk_invitation_redirect_url": "https://evals.example.com/welcome"}
+    )
+
+    assert settings.invitation_redirect_url == "https://evals.example.com/welcome"

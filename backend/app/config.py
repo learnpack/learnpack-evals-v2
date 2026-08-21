@@ -261,12 +261,18 @@ class Settings(BaseSettings):
 
     @property
     def invitation_redirect_url(self) -> str:
-        """The page Clerk sends an invited person to. Our own sign-in, not Clerk's hosted
-        one: the app is the thing they were invited to."""
+        """The page Clerk sends an invited person to. Our own, not Clerk's hosted one: the
+        app is the thing they were invited to.
+
+        **Not `/sign-in`.** Somebody accepting an invitation has no account yet, so Clerk
+        hands the ticket over as a sign-up (`__clerk_status=sign_up`) and the sign-in form
+        cannot complete it — it renders and spins for ever. `/accept-invitation` is the route
+        that answers with a sign-up.
+        """
         if self.clerk_invitation_redirect_url:
             return self.clerk_invitation_redirect_url
         origins = self.cors_origins
-        return f"{origins[0].rstrip('/')}/sign-in" if origins else ""
+        return f"{origins[0].rstrip('/')}/accept-invitation" if origins else ""
 
     @property
     def cors_origins(self) -> list[str]:

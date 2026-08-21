@@ -7,8 +7,10 @@ import {
 } from "next/server";
 import { DEV_USER_COOKIE, IS_LOCAL_AUTH } from "@/lib/auth/mode";
 
-// Everything except the sign-in page (and Clerk's own callback routes) requires a session.
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)"]);
+// Everything except the two doors requires a session. `/accept-invitation` is the second
+// one: whoever arrives there has no account yet, which is the whole point (ADR-0049).
+const PUBLIC_PATHS = ["/sign-in", "/accept-invitation"];
+const isPublicRoute = createRouteMatcher(PUBLIC_PATHS.map((path) => `${path}(.*)`));
 
 // Built lazily: calling clerkMiddleware() at module scope would run Clerk's setup in local
 // mode, where there are no keys at all (ADR-0008).
@@ -26,7 +28,8 @@ function protectWithClerk(request: NextRequest, event: NextFetchEvent) {
 /** Local mode: "signed in" means the identity cookie is set (see lib/auth/local.tsx). */
 function protectLocally(request: NextRequest) {
   const signedIn = Boolean(request.cookies.get(DEV_USER_COOKIE)?.value);
-  if (!signedIn && !request.nextUrl.pathname.startsWith("/sign-in")) {
+  const isPublic = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+  if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
   return NextResponse.next();
