@@ -287,7 +287,8 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
     """Collect rows created by a test and remove them afterwards.
 
     Deletion follows the FK order: evaluations/completions → assignments → campaigns →
-    profiles → contents → generators/briefs → generator lineages → assessors. Outbox rows are
+    profiles → contents → generators/briefs → generator lineages → invitations → assessors.
+    Outbox rows are
     keyed by the aggregate id that produced them. `acceptances` holds (package_format,
     adapter_version) tuples — an acceptance is global, so any test that creates one MUST
     register it here or every later content registration in the session would get auto-profiled.
@@ -299,6 +300,7 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
     created: dict[str, list] = {
         "contents": [],
         "assessors": [],
+        "invitations": [],
         "campaigns": [],
         "generators": [],
         "generator_lineages": [],
@@ -415,6 +417,16 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
                 ),
                 {"f": package_format, "v": adapter_version},
             )
+        # Before the assessors: an invitation references the admin who sent it and the
+        # assessor it produced, and its outbox rows are keyed by its own id.
+        for invitation_id in created["invitations"]:
+            s.execute(
+                text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(invitation_id)}
+            )
+            s.execute(
+                text("DELETE FROM assessor_invitations WHERE id = :id"), {"id": invitation_id}
+            )
+
         for assessor_id in created["assessors"]:
             # Ratifications usually cascade with the tracked instrument versions above;
             # this covers the assessor-as-ratifier side (ratified_by has no cascade).
@@ -456,8 +468,20 @@ def as_user(requires_db, cleanup):
 
     app.dependency_overrides[get_verified_claims] = _override
 
-    def _client(clerk_user_id: str, email: str | None = None, name: str | None = None):
-        identities[clerk_user_id] = {"sub": clerk_user_id, "email": email, "name": name}
+    def _client(
+        clerk_user_id: str,
+        email: str | None = None,
+        name: str | None = None,
+        email_verified: bool = True,
+    ):
+        # Verified by default: that is what a real session carries, and the unverified case
+        # is a deliberate scenario a test opts into (ADR-0049).
+        identities[clerk_user_id] = {
+            "sub": clerk_user_id,
+            "email": email,
+            "name": name,
+            "email_verified": email_verified,
+        }
         return TestClient(app, headers={"X-Test-Identity": clerk_user_id})
 
     yield _client

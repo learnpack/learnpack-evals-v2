@@ -131,7 +131,9 @@ What keeps this from leaking into a real environment:
   is larger than stray rows: it replays acts that are human ones by decision, and outside a
   dev box the person who publishes an instrument is a person (ADR-0045 §2).
 - `GET /dev/identities` — the list feeding the frontend's user picker — 404s outside local
-  mode.
+  mode. It also offers the addresses that have been **invited and never signed in**, marked
+  `pending`: signing in as one is what redeems the invitation, so the whole registration flow
+  can be walked through with no accounts and no cloud (ADR-0049).
 
 ## Clerk (ADR-0004)
 
@@ -139,11 +141,21 @@ Clerk's default session token **carries neither email nor name**. Create a **JWT
 in the Clerk dashboard with these claims:
 
 ```json
-{ "email": "{{user.primary_email_address}}", "name": "{{user.full_name}}" }
+{
+  "email": "{{user.primary_email_address}}",
+  "name": "{{user.full_name}}",
+  "email_verified": "{{user.primary_email_address_verified}}"
+}
 ```
 
 The backend tolerates their absence (the profile stays `NULL`), but without them you cannot
 identify the SMEs or use `set-role`.
+
+`email_verified` gates one thing: **redeeming an invitation** (ADR-0049). Without it every
+invitation stays pending while people sign in and get the default role — so the backend logs
+a warning naming this template each time it declines to redeem one. Matching an invitation on
+an address the provider never vouched for is a known account-takeover shape, which is why the
+claim is required rather than assumed.
 
 **Create the template before anyone signs in.** The `email` claim also decides the first
 admin's initial role, and that decision is taken **exactly once** — see the order in
@@ -170,11 +182,33 @@ ADMIN_EMAILS=you@yourcompany.com,other@yourcompany.com
 This is safe **because access is invite-only**: nobody can register with an admin's email
 without the invitation. If you ever disable invite-only, revisit ADR-0007.
 
+The allowlist is the default for whoever arrives **uninvited**. Everybody after the first
+admin is registered by inviting them, which is where the role is decided per person.
+
 To change the role of someone who already exists, the only path is:
 
 ```bash
 uv run python -m app.cli set-role --email you@yourcompany.com --role admin
 ```
+
+### Registering the evaluators after the first admin (ADR-0049)
+
+Inviting somebody creates **no account**: it records the address, the role and the expertise
+profile, and the `assessors` row still appears at that address's first login, already
+carrying them. Done from `/admin/assessors` in the console, or here:
+
+```bash
+uv run python -m app.cli invite-assessor --email ada@yourcompany.com \
+    --role evaluator --name "Ada Lovelace" --expertise "Instructional design"
+uv run python -m app.cli list-invitations
+```
+
+An invitation is redeemable for seven days, at most one is pending per address, and re-sending
+reopens a window that closed. Revoking one frees the address to be invited again.
+
+> ⚠️ **Two acts, for now.** Inviting here does not invite anybody in Clerk — that adapter does
+> not exist yet, so the person still needs a Clerk invitation to get through the door. The
+> console says so and the backend logs it on every invitation.
 
 ### Preparing an environment — **order matters**
 
@@ -191,7 +225,8 @@ anyone signs in.
 2. **Clerk:** create the **JWT template** with the `email` claim (above) and invite both
    accounts. **Nobody signs in yet.**
 3. **Only now:** the admin signs in. Verify with `GET /me` that it says `"role": "admin"`.
-4. The evaluator signs in → stays `evaluator`.
+4. The admin invites the evaluators from `/admin/assessors` (and, until that adapter exists,
+   in Clerk too). They sign in → their role and expertise come from the invitation.
 5. Register the generator and its courses (see [Registering courses](#registering-courses))
    and open the campaign from the admin UI.
 

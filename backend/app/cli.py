@@ -1,4 +1,5 @@
 """Admin CLI: `python -m app.cli seed | seed-workbench | measure | set-role |
+invite-assessor | list-invitations |
 import-learnpack | register-package |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate |
@@ -232,12 +233,24 @@ from app.modules.evaluation_studies.infrastructure.repository import (
     SqlAlchemyStudyReportRepository,
     SqlAlchemyStudyRepository,
 )
+from app.modules.identity.application.invitations import (
+    AssessorAlreadyRegistered,
+    InvitationAlreadyPending,
+    InviteAssessor,
+    InviteAssessorCommand,
+)
+from app.modules.identity.application.queries import list_invitations
 from app.modules.identity.application.register_automated_assessor import (
     AutomatedAssessorDrifted,
     RegisterAutomatedAssessor,
     RegisterAutomatedAssessorCommand,
 )
 from app.modules.identity.domain.assessor import Assessor, InvalidAssessor, Role
+from app.modules.identity.domain.invitation import InvalidInvitation
+from app.modules.identity.infrastructure.dispatchers import LoggingInvitationDispatcher
+from app.modules.identity.infrastructure.invitation_repository import (
+    SqlAlchemyInvitationRepository,
+)
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.orchestration.application.commands import (
     AssignContent,
@@ -456,6 +469,76 @@ def run_set_role(email: str, role: str) -> int:
         session.commit()
 
     print(f"{email} is now {role}")
+    return 0
+
+
+def run_invite_assessor(
+    email: str, role: str, display_name: str | None = None, expertise: str | None = None
+) -> int:
+    """Register a human evaluator by inviting them (ADR-0049).
+
+    Creates no account: the `assessors` row still appears at that address's first login,
+    already carrying the role and the expertise profile declared here. The console does the
+    same thing; this exists so a roster can be seeded from a script, and so the first
+    evaluators can be invited before anybody has a browser open.
+    """
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        use_case = InviteAssessor(
+            invitations=SqlAlchemyInvitationRepository(session),
+            assessors=SqlAlchemyAssessorRepository(session),
+            publisher=uow.events,
+            uow=uow,
+            dispatcher=LoggingInvitationDispatcher(),
+        )
+        try:
+            invitation = use_case(
+                InviteAssessorCommand(
+                    email=email,
+                    role=Role(role),
+                    display_name=display_name,
+                    expertise=expertise,
+                )
+            )
+        # The refusals carry the address, not a sentence: the caller knows which act it
+        # attempted, and only the caller can name the remedy for it.
+        except AssessorAlreadyRegistered as exc:
+            print(
+                f"{exc} has already signed in - change their role with set-role instead",
+                file=sys.stderr,
+            )
+            return 1
+        except InvitationAlreadyPending as exc:
+            print(
+                f"{exc} already has a pending invitation - see list-invitations",
+                file=sys.stderr,
+            )
+            return 1
+        except InvalidInvitation as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    expires = invitation.expires_at.date().isoformat() if invitation.expires_at else "never"
+    print(f"invited {invitation.email} as {invitation.role}; redeemable until {expires}")
+    print("they still have to be invited in the identity provider - that act is not ours yet")
+    return 0
+
+
+def run_list_invitations() -> int:
+    """Who the roster is expecting, and what happened to everyone it expected before."""
+    with SessionLocal() as session:
+        invitations = list_invitations(SqlAlchemyInvitationRepository(session))
+
+    if not invitations:
+        print("no invitations")
+        return 0
+
+    for invitation in invitations:
+        # `expired` is derived, so it can disagree with a status that still reads `pending`
+        # — which is the whole reason to print both.
+        pending = invitation.status == "pending"
+        state = "expired" if invitation.expired and pending else invitation.status
+        print(f"{invitation.email:<40} {invitation.role:<10} {state}")
     return 0
 
 
@@ -3605,6 +3688,20 @@ def main(argv: list[str] | None = None) -> int:
     role_parser.add_argument("--email", required=True)
     role_parser.add_argument("--role", required=True, choices=[r.value for r in Role])
 
+    invite_parser = subparsers.add_parser(
+        "invite-assessor", help="register a human evaluator by inviting them (ADR-0049)"
+    )
+    invite_parser.add_argument("--email", required=True)
+    invite_parser.add_argument(
+        "--role", default=Role.EVALUATOR.value, choices=[r.value for r in Role]
+    )
+    invite_parser.add_argument("--name", dest="display_name", default=None)
+    invite_parser.add_argument(
+        "--expertise", default=None, help="the expertise profile this SME brings"
+    )
+
+    subparsers.add_parser("list-invitations", help="who the roster is expecting, and what happened")
+
     import_parser = subparsers.add_parser(
         "import-learnpack", help="bulk register courses from a canonical JSON list"
     )
@@ -4063,6 +4160,10 @@ def main(argv: list[str] | None = None) -> int:
         run_seed(args.file)
     elif args.command == "set-role":
         return run_set_role(args.email, args.role)
+    elif args.command == "invite-assessor":
+        return run_invite_assessor(args.email, args.role, args.display_name, args.expertise)
+    elif args.command == "list-invitations":
+        return run_list_invitations()
     elif args.command == "import-learnpack":
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)

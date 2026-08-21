@@ -16,6 +16,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.config import get_settings
 from app.modules.identity.application.dtos import AssessorDTO
 from app.modules.identity.application.resolve_assessor import ClerkIdentity, ResolveAssessor
+from app.modules.identity.infrastructure.invitation_repository import (
+    SqlAlchemyInvitationRepository,
+)
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.auth_local import claims_from_header
 from app.platform.clerk import ClerkTokenVerifier, InvalidToken, get_verifier
@@ -67,15 +70,21 @@ def get_current_assessor(
     """Resolve the verified Clerk identity into our `Assessor`, creating it on first login.
 
     `email` and `name` require a JWT template in Clerk; both are optional so a missing
-    template degrades the profile instead of blocking the login.
+    template degrades the profile instead of blocking the login. `email_verified` belongs to
+    the same template and gates one thing only — redeeming an invitation (ADR-0049); absent,
+    it reads as unverified, which refuses to redeem rather than trusting an address nobody
+    vouched for.
     """
     identity = ClerkIdentity(
         clerk_user_id=claims["sub"],
         email=claims.get("email"),
         display_name=claims.get("name"),
+        email_verified=bool(claims.get("email_verified")),
     )
     resolve = ResolveAssessor(
         SqlAlchemyAssessorRepository(uow.session),
+        SqlAlchemyInvitationRepository(uow.session),
+        uow.events,
         uow,
         # Bootstrap allowlist: only ever applied when creating a new assessor.
         bootstrap_admins=get_settings().bootstrap_admin_emails,

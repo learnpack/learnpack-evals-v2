@@ -5,8 +5,12 @@ Sync read-only queries across modules are allowed; writes are not (05-connect.md
 
 from uuid import UUID
 
-from app.modules.identity.application.dtos import AssessorDTO, AutomatedIdentity
-from app.modules.identity.application.ports import AssessorRepositoryPort
+from app.modules.identity.application.dtos import AssessorDTO, AutomatedIdentity, InvitationDTO
+from app.modules.identity.application.invitations import to_dto as invitation_to_dto
+from app.modules.identity.application.ports import (
+    AssessorRepositoryPort,
+    InvitationRepositoryPort,
+)
 
 
 def to_dto(assessor) -> AssessorDTO:  # noqa: ANN001 — domain entity
@@ -48,3 +52,14 @@ def list_assessors(
 def list_all_assessors(assessors: AssessorRepositoryPort) -> list[AssessorDTO]:
     """Every assessor — the admin console's assign picker (08-code.md §7)."""
     return [to_dto(a) for a in assessors.list_all()]
+
+
+def list_invitations(invitations: InvitationRepositoryPort) -> list[InvitationDTO]:
+    """Every invitation, newest first — the console's roster of acts (ADR-0049)."""
+    return [invitation_to_dto(i) for i in invitations.list_all()]
+
+
+def list_pending_invitations(invitations: InvitationRepositoryPort) -> list[InvitationDTO]:
+    """Only the ones still waiting for a login. Expired ones are included: expiry is
+    derived, so an expired invitation is a pending one whose window closed."""
+    return [invitation_to_dto(i) for i in invitations.list_pending()]
