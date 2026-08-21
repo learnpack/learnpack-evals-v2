@@ -5,6 +5,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 
@@ -38,3 +39,25 @@ class AssessorDTO:
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+
+@dataclass(frozen=True)
+class InvitationDTO:
+    """A pending act of the roster, or the record of one that was used (ADR-0049).
+
+    `expired` is computed at read time from `expires_at`, never stored: `status` stays
+    `pending` until somebody redeems or revokes it, and a reader must not be shown a
+    pending row whose window has closed without being told so.
+    """
+
+    invitation_id: UUID
+    email: str
+    role: str
+    status: str
+    expired: bool
+    display_name: str | None = None
+    expertise: str | None = None
+    invited_by: UUID | None = None
+    expires_at: datetime | None = None
+    accepted_by: UUID | None = None
+    created_at: datetime | None = None

@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-20._
+_Last updated: 2026-08-21._
 
 ## Where we are
 
@@ -23,6 +23,28 @@ triple — dataset × instrument version × assessor, realized end to end) on to
 
 **ADR-0044 (a study's recipe declares which generators it measures) is decided and its
 backend + minimal console are in — see below.**
+
+**ADR-0049 (registering a human evaluator is an invitation, not an account) is decided and
+its backend is in; the console comes next.** A human `Assessor` had no act that created it:
+the row appeared at the first login with whatever role `ADMIN_EMAILS` gave it, everything
+around that decision happened in Clerk's dashboard, and `assessors.expertise` — a column the
+GLOSSARY makes part of what a human assessor *is* — had no writer at all. Now an admin
+**invites**: `assessor_invitations` records the address, the role, the expertise and who
+asked, and the assessor is still born at that address's first login, already carrying them.
+The invariant ADR-0007 protects is untouched, because redemption happens **only while
+creating** an assessor — an existing one is never re-examined, so authentication still cannot
+escalate a privilege — and an invitation is not a principal, which is what keeps ADR-0007's
+own refusal ("seeding an admin row by email") standing. Redemption requires a verified
+address: matching on one the provider never vouched for is a known account-takeover shape, so
+`email_verified` joins the JWT template and a login that would have redeemed without it logs
+a warning naming the template rather than failing silently. **`expired` is derived** from
+`expires_at` and never stored, so no job exists to keep a status honest; at most one
+invitation is pending per address, and revoking frees it again. Delivery is a port with a
+**logging adapter**: creating the invitation in Clerk is a separate act until its adapter
+lands, and the log says so instead of implying an email went out. In local mode
+`GET /dev/identities` offers the invited-but-never-seen addresses, so the whole flow walks
+end to end with no accounts and no cloud. `invite-assessor` and `list-invitations` do the
+same from the CLI.
 
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
@@ -1603,7 +1625,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 908 tests, 1 skipped** against local Postgres (~70 s). Requires
+- **Backend suite green: 1147 tests, 1 skipped** against local Postgres (~66 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -1809,6 +1831,19 @@ the data in the package).
 
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
+- **Inviting is still two acts.** An invitation registered here does not create one in Clerk,
+  so the person also needs a Clerk invitation to get through the door. `InvitationDispatcherPort`
+  is where the adapter goes and `clerk_secret_key` is already in `Settings`, unused. The
+  console and the log name the second act rather than hiding it (ADR-0049 §8).
+- **A JWT template without `email_verified` grants the default role instead of the invited
+  one.** The backend cannot detect a misconfigured template, only the login it affects, so it
+  logs a warning naming the remedy each time it declines to redeem. An invitation left pending
+  for days with the person already signed in is the symptom to look for.
+- **No invitation reaches an assessor that already exists**, by design — so somebody who
+  signed in before being invited keeps the default role until an admin changes it, which is
+  still `app.cli set-role`.
+- **There is no console for any of this yet.** The endpoints and the CLI are in; the
+  `/admin/assessors` page still says evaluators "appear the first time they sign in".
 - **Studies that predate the pin stay unpinned, and mixed ones stay mixed.** Migration 0019
   fills the pin only where the answer is unambiguous; a study whose judgments already come
   from two assessors is left null on purpose (ADR-0042 §11 — choosing one afterwards would

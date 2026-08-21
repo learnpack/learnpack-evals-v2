@@ -4,6 +4,7 @@ from typing import Protocol
 from uuid import UUID
 
 from app.modules.identity.domain.assessor import Assessor
+from app.modules.identity.domain.invitation import Invitation
 
 
 class AssessorRepositoryPort(Protocol):
@@ -28,3 +29,38 @@ class AssessorRepositoryPort(Protocol):
     def add(self, assessor: Assessor) -> None: ...
 
     def update(self, assessor: Assessor) -> None: ...
+
+
+class InvitationRepositoryPort(Protocol):
+    def get(self, invitation_id: UUID) -> Invitation | None: ...
+
+    def find_pending_by_email(self, email: str) -> Invitation | None:
+        """The one a login is matched against (ADR-0049). At most one exists per address —
+        the partial unique index guarantees it, the use case refuses before reaching it."""
+        ...
+
+    def list_all(self) -> list[Invitation]:
+        """Every invitation, newest first — the console reads pending ones to act on and
+        the rest to see what happened."""
+        ...
+
+    def list_pending(self) -> list[Invitation]:
+        """Only the ones still waiting for a login, expired included: expiry is derived, so
+        an expired invitation is a pending one whose window closed, not another state."""
+        ...
+
+    def add(self, invitation: Invitation) -> None: ...
+
+    def update(self, invitation: Invitation) -> None: ...
+
+
+class InvitationDispatcherPort(Protocol):
+    """How an invitation reaches the person it names.
+
+    Deliberately a port with a do-nothing adapter for now: creating the invitation in the
+    identity provider is the provider's business, and putting that call inside the use case
+    would make the act untestable without a network and unrepeatable without an account. The
+    admin still invites in Clerk by hand until the adapter that does it lands.
+    """
+
+    def dispatch(self, invitation: Invitation) -> None: ...

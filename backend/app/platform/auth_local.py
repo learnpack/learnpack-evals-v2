@@ -26,14 +26,24 @@ def display_name_for(email: str) -> str:
     return " ".join(part.capitalize() for part in local_part.split(".") if part)
 
 
-def claims_from_header(request: Request) -> dict[str, str | None]:
+def claims_from_header(request: Request) -> dict[str, str | bool | None]:
     """Build the same claim shape Clerk returns, from `X-Dev-User: <email>`.
 
     `sub` is namespaced (`local|<email>`) so a local assessor can never collide with a real
     Clerk user id if the same database is ever reused.
+
+    `email_verified` is true because in this mode the header **is** the identity: there is
+    no weaker statement to make about the address than the one that already got you in, and
+    a false here would make invitations unredeemable on the only box where the whole flow
+    can be walked through without accounts (ADR-0008, ADR-0049).
     """
     email = (request.headers.get(DEV_USER_HEADER) or "").strip()
     if not email:
         raise InvalidToken(f"missing {DEV_USER_HEADER} header (AUTH_MODE=local)")
 
-    return {"sub": f"local|{email.lower()}", "email": email, "name": display_name_for(email)}
+    return {
+        "sub": f"local|{email.lower()}",
+        "email": email,
+        "name": display_name_for(email),
+        "email_verified": True,
+    }

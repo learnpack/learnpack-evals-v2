@@ -228,6 +228,14 @@
     a human `Assessor`.)*
   - `automated` → a `SourceConfiguration` `{name, version, instrumentId, coverage, config}`
     (+ the per-version ratifications, which live apart — ADR-0019).
+- **Invitation** — the act that **registers a human `Assessor`** (ADR-0049): an admin declares
+  an address, a `role` and an `expertise` profile, and the `Assessor` itself is still born at
+  that address's **first login** (ADR-0004). It holds no credential and grants nothing by
+  existing; the login consumes it **once**, and only while creating the assessor — never for
+  one that already exists, which is what keeps authentication unable to escalate privileges.
+  Lifecycle `Pending → Accepted | Revoked`; **`expired` is derived** from `expiresAt`, never a
+  stored state. At most one pending invitation per address. Only `human` assessors are
+  invitable: an automated one has no credential to arrive with (ADR-0016).
 - **SourceConfiguration** — the config that defines an automated `Assessor` (ADR-0016).
   Any change — code, mapping, model, prompt, internal threshold — ⇒ *another* `Assessor`
   (calibration does not transfer: invalidation by identity).
@@ -343,7 +351,8 @@
   `ExtractionAccepted` · `InstrumentVersionPublished` · `InstrumentDefectIdentified` ·
   `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` · `FindingRaised` ·
   `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudySignedOff` /
-  `StudiesCompared` · human path: `AssignmentCreated`/`AssignmentCancelled`,
+  `StudiesCompared` · human path: `AssessorInvited`/`InvitationResent`/`InvitationRevoked`/
+  `InvitationAccepted`, `AssignmentCreated`/`AssignmentCancelled`,
   `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` · `SourceCalibrated`
   `[future]`. Killed by Define: `EvaluationRunStarted` (DP28) · `MetricComputed` as an event
   (DP19: it is a row, not an event) · `RubricPublished` → `InstrumentVersionPublished`.

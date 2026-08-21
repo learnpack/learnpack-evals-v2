@@ -1,22 +1,44 @@
-"""HTTP adapter for Identity: the admin's read-only roster of assessors.
+"""HTTP adapter for Identity: the admin's roster of assessors and the invitations to it.
 
-The only write path into Identity is the login upsert (`ResolveAssessor`, ADR-0004); role
-changes stay in the CLI (`app.cli set-role`). This router is purely a query surface so the
-admin console can pick who to assign (08-code.md §7).
+Reading the roster was the whole surface until invitations existed, because the only write
+path into Identity was the login upsert (`ResolveAssessor`, ADR-0004) and role changes lived
+in the CLI. Inviting is a write, and it belongs here: it is the act that registers a human
+evaluator (ADR-0049), and it creates no account — the `assessors` row still appears at that
+address's first login.
 """
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
+from app.modules.identity.application.dtos import InvitationDTO
+from app.modules.identity.application.invitations import (
+    AssessorAlreadyRegistered,
+    InvitationAlreadyPending,
+    InvitationNotFound,
+    InviteAssessor,
+    InviteAssessorCommand,
+    ResendInvitation,
+    RevokeInvitation,
+)
+from app.modules.identity.domain.assessor import Role
+from app.modules.identity.domain.invitation import InvalidInvitation, InvalidInvitationTransition
+from app.modules.identity.infrastructure.dispatchers import LoggingInvitationDispatcher
+from app.modules.identity.infrastructure.invitation_repository import (
+    SqlAlchemyInvitationRepository,
+)
+from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.modules.identity.public import IdentityQueries, get_identity_queries
 from app.platform.security import AdminAssessor
+from app.platform.uow import UnitOfWork, get_uow
 
 admin_router = APIRouter(prefix="/admin", tags=["identity-admin"])
 
 Identities = Annotated[IdentityQueries, Depends(get_identity_queries)]
+Uow = Annotated[UnitOfWork, Depends(get_uow)]
 
 
 class AutomatedIdentityResponse(BaseModel):
@@ -34,6 +56,39 @@ class AssessorResponse(BaseModel):
     display_name: str | None = None
     kind: str = "human"
     automated: AutomatedIdentityResponse | None = None
+
+
+class InvitationResponse(BaseModel):
+    invitation_id: UUID
+    email: str
+    role: str
+    status: str
+    # Derived from `expires_at`, never stored (ADR-0049): a pending row whose window closed
+    # must not read as merely pending.
+    expired: bool
+    display_name: str | None = None
+    expertise: str | None = None
+    invited_by: UUID | None = None
+    expires_at: datetime | None = None
+    accepted_by: UUID | None = None
+    created_at: datetime | None = None
+
+
+class InviteAssessorRequest(BaseModel):
+    # A plain string, validated by the aggregate rather than by `EmailStr`: the shape of an
+    # address is a rule of the invitation, and the domain already normalizes and refuses it
+    # in the one place the CLI goes through too.
+    email: str = Field(examples=["ada@example.com"])
+    role: str = Field(default="evaluator", examples=["evaluator"])
+    display_name: str | None = None
+    expertise: str | None = Field(
+        default=None,
+        description="The expertise profile this SME brings, as the roster knows it.",
+    )
+
+
+def _to_response(invitation: InvitationDTO) -> InvitationResponse:
+    return InvitationResponse(**vars(invitation))
 
 
 @admin_router.get("/assessors", response_model=list[AssessorResponse])
@@ -61,3 +116,94 @@ def list_assessors(admin: AdminAssessor, identities: Identities) -> list[Assesso
         )
         for a in identities.list_all_assessors()
     ]
+
+
+# ------------------------------------------------------------------------- invitations
+
+
+@admin_router.get("/invitations", response_model=list[InvitationResponse])
+def list_invitations(admin: AdminAssessor, identities: Identities) -> list[InvitationResponse]:
+    """Newest first, in every state. Accepted and revoked rows stay because the question
+    the console answers is not only "who is waiting" but "what did we do"."""
+    return [_to_response(i) for i in identities.list_invitations()]
+
+
+@admin_router.post(
+    "/invitations", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED
+)
+def invite_assessor(
+    request: InviteAssessorRequest, admin: AdminAssessor, uow: Uow
+) -> InvitationResponse:
+    try:
+        role = Role(request.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"unknown role: {request.role!r}",
+        ) from None
+
+    use_case = InviteAssessor(
+        invitations=SqlAlchemyInvitationRepository(uow.session),
+        assessors=SqlAlchemyAssessorRepository(uow.session),
+        publisher=uow.events,
+        uow=uow,
+        dispatcher=LoggingInvitationDispatcher(),
+    )
+    try:
+        invitation = use_case(
+            InviteAssessorCommand(
+                email=str(request.email),
+                role=role,
+                display_name=request.display_name,
+                expertise=request.expertise,
+                invited_by=admin.assessor_id,
+            )
+        )
+    except AssessorAlreadyRegistered as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{exc} has already signed in - change their role instead of inviting them",
+        ) from exc
+    except InvitationAlreadyPending as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{exc} already has a pending invitation - re-send or revoke that one",
+        ) from exc
+    except InvalidInvitation as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return _to_response(invitation)
+
+
+@admin_router.post("/invitations/{invitation_id}/resend", response_model=InvitationResponse)
+def resend_invitation(invitation_id: UUID, admin: AdminAssessor, uow: Uow) -> InvitationResponse:
+    """Give a pending invitation a fresh window — including one that already expired,
+    which is still pending and is exactly what this remedies."""
+    use_case = ResendInvitation(
+        invitations=SqlAlchemyInvitationRepository(uow.session),
+        publisher=uow.events,
+        uow=uow,
+        dispatcher=LoggingInvitationDispatcher(),
+    )
+    return _to_response(_act(use_case, invitation_id))
+
+
+@admin_router.post("/invitations/{invitation_id}/revoke", response_model=InvitationResponse)
+def revoke_invitation(invitation_id: UUID, admin: AdminAssessor, uow: Uow) -> InvitationResponse:
+    use_case = RevokeInvitation(
+        invitations=SqlAlchemyInvitationRepository(uow.session), publisher=uow.events, uow=uow
+    )
+    return _to_response(_act(use_case, invitation_id))
+
+
+def _act(use_case, invitation_id: UUID) -> InvitationDTO:  # noqa: ANN001 — two use cases
+    """The two refusals both acts share: it does not exist, or it is no longer pending."""
+    try:
+        return use_case(invitation_id)
+    except InvitationNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="invitation not found"
+        ) from exc
+    except InvalidInvitationTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

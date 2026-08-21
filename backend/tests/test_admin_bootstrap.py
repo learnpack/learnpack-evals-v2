@@ -43,13 +43,43 @@ class FakeUow:
     def rollback(self) -> None: ...
 
 
-def resolve(repository, *, allowlist=(), **claims):
-    use_case = ResolveAssessor(repository, FakeUow(), bootstrap_admins=allowlist)
+class FakeInvitationRepository:
+    """No invitations at all — these tests are about the allowlist, which is precisely the
+    default that applies to whoever arrives without one (ADR-0049)."""
+
+    def __init__(self, pending: list | None = None) -> None:
+        self.pending = pending or []
+        self.updated: list = []
+
+    def find_pending_by_email(self, email: str):
+        return next((i for i in self.pending if i.email == email.strip().lower()), None)
+
+    def update(self, invitation) -> None:
+        self.updated.append(invitation)
+
+
+class FakePublisher:
+    def __init__(self) -> None:
+        self.published: list = []
+
+    def publish(self, event) -> None:
+        self.published.append(event)
+
+
+def resolve(repository, *, allowlist=(), invitations=None, **claims):
+    use_case = ResolveAssessor(
+        repository,
+        invitations if invitations is not None else FakeInvitationRepository(),
+        FakePublisher(),
+        FakeUow(),
+        bootstrap_admins=allowlist,
+    )
     return use_case(
         ClerkIdentity(
             clerk_user_id=claims.get("clerk_user_id", "user_1"),
             email=claims.get("email"),
             display_name=claims.get("name", "Someone"),
+            email_verified=claims.get("email_verified", True),
         )
     )
 

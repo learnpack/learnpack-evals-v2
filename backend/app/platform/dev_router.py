@@ -23,6 +23,10 @@ class DevIdentityResponse(BaseModel):
     email: str
     display_name: str | None = None
     role: str
+    # True for an address that was invited and has never signed in (ADR-0049). Signing in as
+    # one is what redeems the invitation, so this is the only way to walk the whole flow on
+    # a box with no accounts — and the picker has to say which rows are not people yet.
+    pending: bool = False
 
 
 @router.get("/identities", response_model=list[DevIdentityResponse])
@@ -33,8 +37,20 @@ def list_dev_identities(
     if not get_settings().is_local_auth:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
 
-    return [
+    identities = [
         DevIdentityResponse(email=a.email, display_name=a.display_name, role=a.role)
         for a in queries.list_all_assessors()
         if a.email
     ]
+    # Expired ones are offered too: signing in as one and finding the default role is the
+    # behaviour worth being able to see, not a state to hide.
+    identities.extend(
+        DevIdentityResponse(
+            email=i.email,
+            display_name=i.display_name,
+            role=i.role,
+            pending=True,
+        )
+        for i in queries.list_pending_invitations()
+    )
+    return identities
