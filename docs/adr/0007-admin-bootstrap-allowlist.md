@@ -1,6 +1,7 @@
 # ADR-0007 — First-admin bootstrap: provisioning allowlist
 
-**Status:** accepted · **Date:** 2026-07 · **Context:** Identity & Access (generic)
+**Status:** accepted · **clause 3 superseded by ADR-0050** · **Date:** 2026-07 ·
+**Context:** Identity & Access (generic)
 
 ## Context
 The role lives in `assessors.role` (our DB), not in Clerk (ADR-0004). The MVP needs at least

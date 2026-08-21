@@ -14,7 +14,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.modules.identity.application.dtos import InvitationDTO
+from app.modules.identity.application.change_role import (
+    AssessorNotFound,
+    CannotChangeOwnRole,
+    CannotDemoteLastAdmin,
+    ChangeAssessorRole,
+    ChangeAssessorRoleCommand,
+    NotAHumanAssessor,
+)
+from app.modules.identity.application.dtos import AssessorDTO, InvitationDTO
 from app.modules.identity.application.invitations import (
     AssessorAlreadyRegistered,
     InvitationAlreadyPending,
@@ -74,6 +82,10 @@ class InvitationResponse(BaseModel):
     created_at: datetime | None = None
 
 
+class ChangeRoleRequest(BaseModel):
+    role: str = Field(examples=["admin"])
+
+
 class InviteAssessorRequest(BaseModel):
     # A plain string, validated by the aggregate rather than by `EmailStr`: the shape of an
     # address is a rule of the invitation, and the domain already normalizes and refuses it
@@ -91,31 +103,82 @@ def _to_response(invitation: InvitationDTO) -> InvitationResponse:
     return InvitationResponse(**vars(invitation))
 
 
+def _assessor_response(a: AssessorDTO) -> AssessorResponse:
+    return AssessorResponse(
+        assessor_id=a.assessor_id,
+        role=a.role,
+        email=a.email,
+        display_name=a.display_name,
+        kind=a.kind,
+        automated=(
+            AutomatedIdentityResponse(
+                name=a.automated.name,
+                version=a.automated.version,
+                instrument_id=a.automated.instrument_id,
+            )
+            if a.automated is not None
+            else None
+        ),
+    )
+
+
 @admin_router.get("/assessors", response_model=list[AssessorResponse])
 def list_assessors(admin: AdminAssessor, identities: Identities) -> list[AssessorResponse]:
     """Every assessor, of both kinds. The assign picker filters `role == 'evaluator'`
     client-side; the assessors page groups by `kind`, which is why it is stated here —
     the two kinds are structurally different (ADR-0016) and a list that mixes them
     without saying so cannot be read."""
-    return [
-        AssessorResponse(
-            assessor_id=a.assessor_id,
-            role=a.role,
-            email=a.email,
-            display_name=a.display_name,
-            kind=a.kind,
-            automated=(
-                AutomatedIdentityResponse(
-                    name=a.automated.name,
-                    version=a.automated.version,
-                    instrument_id=a.automated.instrument_id,
-                )
-                if a.automated is not None
-                else None
-            ),
+    return [_assessor_response(a) for a in identities.list_all_assessors()]
+
+
+@admin_router.patch("/assessors/{assessor_id}", response_model=AssessorResponse)
+def change_assessor_role(
+    assessor_id: UUID, request: ChangeRoleRequest, admin: AdminAssessor, uow: Uow
+) -> AssessorResponse:
+    """Grant or withdraw a role (ADR-0050).
+
+    Not a login path: this is an admin-only act with an author in the outbox, so the
+    invariant ADR-0007 protects — authenticating cannot escalate a privilege — is untouched.
+    """
+    try:
+        role = Role(request.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"unknown role: {request.role!r}",
+        ) from None
+
+    use_case = ChangeAssessorRole(
+        assessors=SqlAlchemyAssessorRepository(uow.session), publisher=uow.events, uow=uow
+    )
+    try:
+        assessor = use_case(
+            ChangeAssessorRoleCommand(
+                assessor_id=assessor_id, role=role, changed_by=admin.assessor_id
+            )
         )
-        for a in identities.list_all_assessors()
-    ]
+    except AssessorNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="assessor not found"
+        ) from exc
+    except CannotChangeOwnRole as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="you cannot change your own role - somebody else grants it",
+        ) from exc
+    except CannotDemoteLastAdmin as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this is the last admin - promote somebody else first, or nobody could "
+            "grant the role back",
+        ) from exc
+    except NotAHumanAssessor as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="an automated assessor has no role - what it may do is decided by "
+            "ratification (ADR-0019)",
+        ) from exc
+    return _assessor_response(assessor)
 
 
 # ------------------------------------------------------------------------- invitations

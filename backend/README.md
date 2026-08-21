@@ -185,11 +185,20 @@ without the invitation. If you ever disable invite-only, revisit ADR-0007.
 The allowlist is the default for whoever arrives **uninvited**. Everybody after the first
 admin is registered by inviting them, which is where the role is decided per person.
 
-To change the role of someone who already exists, the only path is:
+Changing the role of someone who already exists is done from `/admin/assessors` (ADR-0050).
+Two refusals are enforced, because neither is recoverable from inside the product: **nobody
+changes their own role**, and **the last admin cannot be demoted**. Every grant is recorded
+with its author.
+
+`set-role` remains as **break-glass** — for a store whose console nobody can reach, which is
+the bootstrap case above:
 
 ```bash
 uv run python -m app.cli set-role --email you@yourcompany.com --role admin
 ```
+
+It enforces neither guardrail. That is the point of a break-glass tool, and the reason not to
+reach for it when a screen would do.
 
 ### Registering the evaluators after the first admin (ADR-0049)
 
@@ -237,7 +246,8 @@ nothing to delete, no allowlist to touch — fix it with
 uv run python -m app.cli set-role --email <admin email> --role admin
 ```
 
-which is the only mechanism to change the role of someone who already exists.
+which is the break-glass path: at that point there is no admin, so there is nobody who could
+grant the role from the console.
 
 ## Layers (Dependency Rule)
 
