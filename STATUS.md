@@ -25,7 +25,7 @@ triple — dataset × instrument version × assessor, realized end to end) on to
 backend + minimal console are in — see below.**
 
 **ADR-0049 (registering a human evaluator is an invitation, not an account) is decided and
-its backend is in; the console comes next.** A human `Assessor` had no act that created it:
+in, end to end.** A human `Assessor` had no act that created it:
 the row appeared at the first login with whatever role `ADMIN_EMAILS` gave it, everything
 around that decision happened in Clerk's dashboard, and `assessors.expertise` — a column the
 GLOSSARY makes part of what a human assessor *is* — had no writer at all. Now an admin
@@ -42,9 +42,12 @@ a warning naming the template rather than failing silently. **`expired` is deriv
 invitation is pending per address, and revoking frees it again. Delivery is a port with a
 **logging adapter**: creating the invitation in Clerk is a separate act until its adapter
 lands, and the log says so instead of implying an email went out. In local mode
-`GET /dev/identities` offers the invited-but-never-seen addresses, so the whole flow walks
-end to end with no accounts and no cloud. `invite-assessor` and `list-invitations` do the
-same from the CLI.
+`GET /dev/identities` offers the invited-but-never-seen addresses — marked `invited` in the
+user picker — so the whole flow walks end to end with no accounts and no cloud;
+`invite-assessor` and `list-invitations` do the same from the CLI. **The console is
+`/admin/assessors`**, where the pending list sits above the registered people because it is
+the half with an act on it: invite, re-send, revoke, and `expired` as its own badge beside a
+row that still reads `pending` — the two can disagree, and that is the point of deriving it.
 
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
@@ -1841,9 +1844,10 @@ the data in the package).
   for days with the person already signed in is the symptom to look for.
 - **No invitation reaches an assessor that already exists**, by design — so somebody who
   signed in before being invited keeps the default role until an admin changes it, which is
-  still `app.cli set-role`.
-- **There is no console for any of this yet.** The endpoints and the CLI are in; the
-  `/admin/assessors` page still says evaluators "appear the first time they sign in".
+  still `app.cli set-role`. That command is the last act of this area with no screen.
+- **The invitation console was not looked at in a browser.** Types, `npm run build` and the
+  backend flow over real HTTP are green; nobody has seen the page render. The frontend has no
+  tests, so this is the usual gap, named here rather than implied.
 - **Studies that predate the pin stay unpinned, and mixed ones stay mixed.** Migration 0019
   fills the pin only where the answer is unambiguous; a study whose judgments already come
   from two assessors is left null on purpose (ADR-0042 §11 — choosing one afterwards would
