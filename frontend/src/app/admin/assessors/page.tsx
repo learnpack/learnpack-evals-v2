@@ -568,6 +568,13 @@ function RegisteredRow({
               deactivated
             </Badge>
           )}
+          {/* Under the name, where a pending invitation shows it too: the profile is read
+              to decide who gets which course, so it belongs next to the person. */}
+          {assessor.expertise ? (
+            <span className="block text-xs font-normal text-muted-foreground">
+              {assessor.expertise}
+            </span>
+          ) : null}
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {assessor.email ?? "—"}

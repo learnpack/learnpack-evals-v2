@@ -99,6 +99,14 @@ they already introduced honest in the schema. The backfill states what each row 
 `local|`-prefixed came from the local adapter, everything else from Clerk — rather than
 guessing, because both adapters wrote through the one lookup and there was no third source.
 
+**And the expertise profile finally has a reader.** ADR-0049 justified the field by giving it
+a writer; it got one and had none on the other side — `AssessorDTO` did not carry it, the
+roster endpoint did not publish it, and the console showed it only while the invitation was
+still pending, so it vanished the moment the person signed in. It is published now and shown
+in two places: under the name in the roster, and **in the assign picker's option label**,
+which is the act it exists for — deciding who should read this course. Nothing is editable
+yet: what an invitation declared is what the assessor carries.
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
@@ -1892,6 +1900,9 @@ the data in the package).
   one.** The backend cannot detect a misconfigured template, only the login it affects, so it
   logs a warning naming the remedy each time it declines to redeem. An invitation left pending
   for days with the person already signed in is the symptom to look for.
+- **An expertise profile cannot be edited after the fact.** What the invitation declared is
+  what the assessor carries; somebody whose focus changes, or who joined before invitations
+  existed, has no path to fix it.
 - **No invitation reaches an assessor that already exists**, by design — so somebody who
   signed in before being invited keeps the default role until an admin grants them another
   one from the console.

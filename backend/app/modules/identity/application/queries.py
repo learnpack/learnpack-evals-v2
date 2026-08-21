@@ -22,6 +22,7 @@ def to_dto(assessor) -> AssessorDTO:  # noqa: ANN001 — domain entity
         display_name=assessor.display_name,
         kind=str(assessor.kind),
         status=str(assessor.status),
+        expertise=assessor.expertise,
         # The aggregate guarantees the three keys for an automated assessor; a human has
         # no `source_config` at all.
         automated=(

@@ -92,9 +92,13 @@ export function AssignForm({
         <Label>Evaluator</Label>
         <Select value={assessorId} onChange={(e) => setAssessorId(e.target.value)}>
           <option value="">Select an evaluator…</option>
+          {/* The expertise profile rides in the label because this is the act it exists for:
+              deciding who should read *this* course. A native <option> takes no markup, so
+              it is appended rather than laid out. */}
           {evaluators.map((a) => (
             <option key={a.assessor_id} value={a.assessor_id}>
               {a.display_name ?? a.email ?? a.assessor_id.slice(0, 8)}
+              {a.expertise ? ` — ${a.expertise}` : ""}
             </option>
           ))}
         </Select>

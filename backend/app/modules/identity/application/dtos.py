@@ -36,6 +36,11 @@ class AssessorDTO:
     # Whether they still take part (ADR-0051). A deactivated assessor keeps every judgment
     # they produced and is offered no new work.
     status: str = "active"
+    # What this SME brings, as the roster knows it — the expertise profile the GLOSSARY makes
+    # part of what a human assessor *is*. Written when the invitation is redeemed (ADR-0049)
+    # and published here, because a value with a writer and no reader is a value nobody can
+    # act on. Always absent for an automated assessor.
+    expertise: str | None = None
     # Present exactly when `kind == "automated"`.
     automated: AutomatedIdentity | None = None
 
