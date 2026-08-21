@@ -26,8 +26,11 @@ export function AssignForm({
     () => (contents ?? []).filter((c) => campaign.content_ids.includes(c.content_id)),
     [contents, campaign.content_ids],
   );
+  // Deactivated people are dropped rather than disabled: unlike a course with no consumable
+  // URL, there is nothing here for a reason to explain — they left, and offering the row
+  // would only invite an act that the server refuses anyway (ADR-0051).
   const evaluators = useMemo(
-    () => (assessors ?? []).filter((a) => a.role === "evaluator"),
+    () => (assessors ?? []).filter((a) => a.role === "evaluator" && a.status === "active"),
     [assessors],
   );
 

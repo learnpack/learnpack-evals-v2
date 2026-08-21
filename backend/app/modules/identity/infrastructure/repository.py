@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.identity.domain.assessor import Assessor
 
-_COLUMNS = "id, clerk_user_id, email, display_name, role, expertise, kind, source_config"
+_COLUMNS = "id, clerk_user_id, email, display_name, role, expertise, kind, status, source_config"
 
 
 class SqlAlchemyAssessorRepository:
@@ -72,7 +72,10 @@ class SqlAlchemyAssessorRepository:
         it must see the rows as they are, not as a page load once saw them."""
         return int(
             self._session.execute(
-                text("SELECT count(*) FROM assessors WHERE kind = 'human' AND role = 'admin'")
+                text(
+                    "SELECT count(*) FROM assessors "
+                    "WHERE kind = 'human' AND role = 'admin' AND status = 'active'"
+                )
             ).scalar_one()
         )
 
@@ -86,6 +89,7 @@ class SqlAlchemyAssessorRepository:
             role=row["role"],
             expertise=row["expertise"],
             kind=row["kind"],
+            status=row["status"],
             source_config=row["source_config"],
         )
 
@@ -94,10 +98,11 @@ class SqlAlchemyAssessorRepository:
             text(
                 """
                 INSERT INTO assessors
-                    (id, clerk_user_id, email, display_name, role, expertise, kind, source_config)
+                    (id, clerk_user_id, email, display_name, role, expertise, kind, status,
+                     source_config)
                 VALUES
                     (:id, :clerk_user_id, :email, :display_name, :role, :expertise, :kind,
-                     cast(:source_config as jsonb))
+                     :status, cast(:source_config as jsonb))
                 """
             ),
             self._as_params(assessor),
@@ -111,7 +116,8 @@ class SqlAlchemyAssessorRepository:
                    SET email = :email,
                        display_name = :display_name,
                        role = :role,
-                       expertise = :expertise
+                       expertise = :expertise,
+                       status = :status
                  WHERE id = :id
                 """
             ),
@@ -128,6 +134,7 @@ class SqlAlchemyAssessorRepository:
             "role": str(assessor.role),
             "expertise": assessor.expertise,
             "kind": str(assessor.kind),
+            "status": str(assessor.status),
             "source_config": (
                 json.dumps(assessor.source_config) if assessor.source_config is not None else None
             ),

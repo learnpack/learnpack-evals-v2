@@ -15,14 +15,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.modules.identity.application.change_role import (
-    AssessorNotFound,
     CannotChangeOwnRole,
     CannotDemoteLastAdmin,
     ChangeAssessorRole,
     ChangeAssessorRoleCommand,
-    NotAHumanAssessor,
+)
+from app.modules.identity.application.deactivate_assessor import (
+    CannotDeactivateLastAdmin,
+    CannotDeactivateYourself,
+    SetAssessorActive,
+    SetAssessorActiveCommand,
 )
 from app.modules.identity.application.dtos import AssessorDTO, InvitationDTO
+from app.modules.identity.application.errors import AssessorNotFound, NotAHumanAssessor
 from app.modules.identity.application.invitations import (
     AssessorAlreadyRegistered,
     InvitationAlreadyPending,
@@ -63,6 +68,9 @@ class AssessorResponse(BaseModel):
     email: str | None = None
     display_name: str | None = None
     kind: str = "human"
+    # `active` or `deactivated` (ADR-0051). Published because a picker that silently drops
+    # somebody reads as a bug; the caller decides how to show them.
+    status: str = "active"
     automated: AutomatedIdentityResponse | None = None
 
 
@@ -84,6 +92,10 @@ class InvitationResponse(BaseModel):
 
 class ChangeRoleRequest(BaseModel):
     role: str = Field(examples=["admin"])
+
+
+class SetActiveRequest(BaseModel):
+    active: bool
 
 
 class InviteAssessorRequest(BaseModel):
@@ -110,6 +122,7 @@ def _assessor_response(a: AssessorDTO) -> AssessorResponse:
         email=a.email,
         display_name=a.display_name,
         kind=a.kind,
+        status=a.status,
         automated=(
             AutomatedIdentityResponse(
                 name=a.automated.name,
@@ -177,6 +190,48 @@ def change_assessor_role(
             status_code=status.HTTP_409_CONFLICT,
             detail="an automated assessor has no role - what it may do is decided by "
             "ratification (ADR-0019)",
+        ) from exc
+    return _assessor_response(assessor)
+
+
+@admin_router.post("/assessors/{assessor_id}/active", response_model=AssessorResponse)
+def set_assessor_active(
+    assessor_id: UUID, request: SetActiveRequest, admin: AdminAssessor, uow: Uow
+) -> AssessorResponse:
+    """Withdraw an assessor from the future, or bring them back (ADR-0051).
+
+    Not a deletion: everything they produced stays, because it records what happened. What
+    changes is that they are offered no new work and no longer get through the door.
+    """
+    use_case = SetAssessorActive(
+        assessors=SqlAlchemyAssessorRepository(uow.session), publisher=uow.events, uow=uow
+    )
+    try:
+        assessor = use_case(
+            SetAssessorActiveCommand(
+                assessor_id=assessor_id, active=request.active, changed_by=admin.assessor_id
+            )
+        )
+    except AssessorNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="assessor not found"
+        ) from exc
+    except CannotDeactivateYourself as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="you cannot deactivate yourself - it would lock you out in one click",
+        ) from exc
+    except CannotDeactivateLastAdmin as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this is the last admin - promote somebody else first, or nobody could "
+            "bring them back",
+        ) from exc
+    except NotAHumanAssessor as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="an automated assessor is withdrawn by ceasing to declare it in code, "
+            "not from here",
         ) from exc
     return _assessor_response(assessor)
 

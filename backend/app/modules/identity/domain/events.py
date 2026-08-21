@@ -64,6 +64,25 @@ def assessor_role_changed(assessor: Assessor, was: Role, changed_by: UUID) -> Do
     )
 
 
+def _lifecycle_event(event_type: str, assessor: Assessor, changed_by: UUID) -> DomainEvent:
+    return DomainEvent(
+        event_type=event_type,
+        aggregate_type=ASSESSOR_AGGREGATE,
+        aggregate_id=str(assessor.id),
+        payload={"assessorId": str(assessor.id), "changedBy": str(changed_by)},
+    )
+
+
+def assessor_deactivated(assessor: Assessor, changed_by: UUID) -> DomainEvent:
+    """They stop taking part (ADR-0051). Nothing they produced is affected — this says the
+    roster changed, not that the record did."""
+    return _lifecycle_event("AssessorDeactivated", assessor, changed_by)
+
+
+def assessor_reactivated(assessor: Assessor, changed_by: UUID) -> DomainEvent:
+    return _lifecycle_event("AssessorReactivated", assessor, changed_by)
+
+
 def invitation_accepted(invitation: Invitation) -> DomainEvent:
     """The login that consumed it. `assessorId` is what the invitation produced — the
     single place where the roster's intent and a real credential meet."""

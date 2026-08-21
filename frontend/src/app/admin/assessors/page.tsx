@@ -28,6 +28,7 @@ import {
   useRatifyAssessor,
   useResendInvitation,
   useRevokeInvitation,
+  useSetAssessorActive,
 } from "@/lib/api/hooks";
 import type {
   AssessorPackageResponse,
@@ -462,6 +463,7 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -509,7 +511,27 @@ function RegisteredRow({
   isSelf: boolean;
 }) {
   const [pending, setPending] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const change = useChangeAssessorRole();
+  const setActive = useSetAssessorActive();
+  const active = assessor.status === "active";
+  const who = assessor.display_name ?? assessor.email ?? "They";
+
+  function setActiveTo(next: boolean) {
+    setActive.mutate(
+      { assessorId: assessor.assessor_id, active: next },
+      {
+        onSuccess: () => {
+          setLeaving(false);
+          toast.success(next ? `${who} is back.` : `${who} has been deactivated.`);
+        },
+        onError: (err) => {
+          setLeaving(false);
+          toast.error("Could not change that.", { description: (err as ApiError).message });
+        },
+      },
+    );
+  }
 
   function confirm() {
     if (!pending) return;
@@ -538,24 +560,31 @@ function RegisteredRow({
 
   return (
     <>
-      <TableRow>
-        <TableCell className="font-medium">{assessor.display_name ?? "—"}</TableCell>
+      <TableRow className={active ? undefined : "opacity-60"}>
+        <TableCell className="font-medium">
+          {assessor.display_name ?? "—"}
+          {active ? null : (
+            <Badge variant="outline" className="ml-2">
+              deactivated
+            </Badge>
+          )}
+        </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {assessor.email ?? "—"}
         </TableCell>
         <TableCell>
-          {isSelf ? (
+          {isSelf || !active ? (
             <span className="flex items-center gap-2">
               <Badge variant={assessor.role === "admin" ? "default" : "secondary"}>
                 {assessor.role}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                yours — somebody else grants it
+                {isSelf ? "yours — somebody else grants it" : "they left"}
               </span>
             </span>
           ) : (
             <Select
-              aria-label={`Role of ${assessor.display_name ?? assessor.email ?? "this assessor"}`}
+              aria-label={`Role of ${who}`}
               className="h-9 w-40"
               value={assessor.role}
               disabled={change.isPending}
@@ -564,6 +593,27 @@ function RegisteredRow({
               <option value="evaluator">Evaluator</option>
               <option value="admin">Admin</option>
             </Select>
+          )}
+        </TableCell>
+        <TableCell className="text-right">
+          {isSelf ? null : active ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={setActive.isPending}
+              onClick={() => setLeaving(true)}
+            >
+              Deactivate
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={setActive.isPending}
+              onClick={() => setActiveTo(true)}
+            >
+              Reactivate
+            </Button>
           )}
         </TableCell>
       </TableRow>
@@ -603,6 +653,31 @@ function RegisteredRow({
           <Button onClick={confirm} disabled={change.isPending}>
             {change.isPending ? <Spinner /> : null}
             {pending === "admin" ? "Grant admin" : "Make evaluator"}
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={leaving} onClose={() => setLeaving(false)} title={`Deactivate ${who}?`}>
+        <p className="text-sm text-muted-foreground">
+          They stop being offered work and can no longer sign in. Nothing is deleted:{" "}
+          <span className="font-medium text-foreground">
+            every evaluation they submitted stays exactly as it is
+          </span>
+          , and the reports that name them keep naming them — those record what happened.
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Reversible from this same row, and recorded with your name against it.
+        </p>
+        <div className="mt-4 flex justify-end gap-2 pt-2">
+          <Button
+            variant="outline"
+            onClick={() => setLeaving(false)}
+            disabled={setActive.isPending}
+          >
+            Cancel
+          </Button>
+          <Button onClick={() => setActiveTo(false)} disabled={setActive.isPending}>
+            {setActive.isPending ? <Spinner /> : null} Deactivate
           </Button>
         </div>
       </Dialog>

@@ -24,6 +24,18 @@ class Kind(StrEnum):
     AUTOMATED = "automated"
 
 
+class Status(StrEnum):
+    """Whether this assessor still takes part (ADR-0051).
+
+    `deactivated` is not a deletion and not a lesser identity: the judgments this assessor
+    produced stay exactly as they were, because they are facts about what happened. What it
+    withdraws is the future — no new work, no way in.
+    """
+
+    ACTIVE = "active"
+    DEACTIVATED = "deactivated"
+
+
 class InvalidAssessor(Exception):
     """The assessor breaks an invariant of its aggregate."""
 
@@ -40,6 +52,7 @@ class Assessor:
     role: Role = Role.EVALUATOR
     expertise: str | None = None
     kind: Kind = Kind.HUMAN
+    status: Status = Status.ACTIVE
     source_config: dict[str, Any] | None = field(default=None)
 
     def __post_init__(self) -> None:
@@ -54,6 +67,11 @@ class Assessor:
                 self.kind = Kind(self.kind)
             except ValueError as exc:
                 raise InvalidAssessor(f"unknown kind: {self.kind!r}") from exc
+        if not isinstance(self.status, Status):
+            try:
+                self.status = Status(self.status)
+            except ValueError as exc:
+                raise InvalidAssessor(f"unknown status: {self.status!r}") from exc
         if self.kind is Kind.HUMAN:
             if not self.clerk_user_id or not self.clerk_user_id.strip():
                 raise InvalidAssessor("clerk_user_id is required for a human assessor")
@@ -71,8 +89,25 @@ class Assessor:
     def is_admin(self) -> bool:
         return self.role is Role.ADMIN
 
+    @property
+    def is_active(self) -> bool:
+        return self.status is Status.ACTIVE
+
+    def deactivate(self) -> None:
+        """Withdraw this assessor from the future. Idempotent.
+
+        Nothing is deleted: their evaluations, the assignments they answered and the reports
+        naming them are untouched, because they record what happened (ADR-0051, and the same
+        argument ADR-0033 makes for content).
+        """
+        self.status = Status.DEACTIVATED
+
+    def reactivate(self) -> None:
+        """They are back. Idempotent, and it restores nothing: nothing was taken away."""
+        self.status = Status.ACTIVE
+
     def assign_role(self, role: Role | str) -> None:
-        """Change the role. Only the admin CLI does this — never the login flow."""
+        """Change the role. An admin act, never the login flow (ADR-0050)."""
         try:
             self.role = Role(role)
         except ValueError as exc:

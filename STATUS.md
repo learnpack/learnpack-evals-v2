@@ -67,6 +67,26 @@ The console's role cell is a select except on your own row, where it stays a bad
 reason next to it. `set-role` survives as **break-glass**, enforcing neither guardrail and
 documented as such. Clause 3 of ADR-0007 is superseded; the rest of it stands.
 
+**ADR-0051 (an assessor leaves without being erased) is decided and in.** Nothing removed a
+person from the roster: they appeared at their first login and stayed for ever, in every
+picker and — the half that matters — able to sign in. Just-in-time provisioning is the
+arrival and nothing else; nobody stops existing by not signing in. Deleting the row was never
+the alternative: an `Assessor` is the key of provenance, one third of the triple that
+identifies a result (ADR-0042), and every `CriterionScore` names its author — the argument
+ADR-0033 already made for content, with more force. So leaving is `assessors.status`
+(migration 0023), and **the refusal lives in `get_current_assessor`**, the one place a request
+becomes an identity: a status that merely dropped somebody from pickers would be cosmetic
+while their credential still opened everything. The two guardrails are ADR-0050's — not
+yourself, not the last admin — and `count_admins()` now counts **active** admins, so the
+guard protects a door somebody can actually open and ADR-0050's own refusal reads correctly.
+An automated assessor is refused: it is withdrawn by ceasing to declare it in code. The
+assign picker drops deactivated people outright rather than disabling them with a reason
+(ADR-0028's idiom is for facts somebody can fix); the roster keeps the row, dimmed and
+labelled, because "what happened to them" is a question that page exists to answer. **Not
+done, deliberately:** deactivating does not cancel open assignments — that is an
+orchestration act with its own aggregate, and reaching into it from an identity act would
+cross the boundary the wrong way.
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
@@ -1646,7 +1666,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1159 tests, 1 skipped** against local Postgres (~69 s). Requires
+- **Backend suite green: 1172 tests, 1 skipped** against local Postgres (~76 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -1863,12 +1883,15 @@ the data in the package).
 - **No invitation reaches an assessor that already exists**, by design — so somebody who
   signed in before being invited keeps the default role until an admin grants them another
   one from the console.
-- **An admin can demote every other admin one at a time and then be unable to demote
-  themselves.** The console stays reachable, which is the property the guard protects, but
-  the store ends with one admin and no screen that can change it. `set-role` is the exit.
-- **The last-admin guard is not covered by an API test.** It reads the whole store, and the
+- **An admin can demote or deactivate every other admin one at a time and then be unable to
+  do it to themselves.** The console stays reachable, which is the property the guards
+  protect, but the store ends with one admin and no screen that can change it. `set-role` is
+  the exit.
+- **Deactivating somebody leaves their open assignments open.** They will never be answered
+  and nothing says so on the campaign screen; cancelling them is a manual act in Campaigns.
+- **The last-admin guards are not covered by API tests.** They read the whole store, and the
   suite shares one, so "there is exactly one admin left" cannot be arranged without demoting
-  other tests' fixtures. It is tested at the use-case level over a fake repository.
+  other tests' fixtures. Both are tested at the use-case level over a fake repository.
 - **The assessors console was not looked at in a browser.** Types, `npm run build` and the
   backend flows over real HTTP are green; nobody has seen the page render. The frontend has
   no tests, so this is the usual gap, named here rather than implied.

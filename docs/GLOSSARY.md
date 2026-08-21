@@ -228,6 +228,13 @@
     a human `Assessor`.)*
   - `automated` → a `SourceConfiguration` `{name, version, instrumentId, coverage, config}`
     (+ the per-version ratifications, which live apart — ADR-0019).
+- **assessor status** — `active | deactivated` (ADR-0051). Whether this assessor still takes
+  part. **Deactivating deletes nothing**: their evaluations, the assignments they answered
+  and the reports naming them are facts about what happened, and an `Assessor` is the key of
+  provenance (the same argument ADR-0033 makes for content). What it withdraws is the future
+  — no new work, and no way in. A deactivated admin does not count towards the last-admin
+  guard. Only `human` assessors have one: an automated assessor is withdrawn by ceasing to
+  declare it in code.
 - **Invitation** — the act that **registers a human `Assessor`** (ADR-0049): an admin declares
   an address, a `role` and an `expertise` profile, and the `Assessor` itself is still born at
   that address's **first login** (ADR-0004). It holds no credential and grants nothing by
@@ -352,7 +359,8 @@
   `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` · `FindingRaised` ·
   `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudySignedOff` /
   `StudiesCompared` · human path: `AssessorInvited`/`InvitationResent`/`InvitationRevoked`/
-  `InvitationAccepted`, `AssignmentCreated`/`AssignmentCancelled`,
+  `InvitationAccepted` · `AssessorRoleChanged` ·
+  `AssessorDeactivated`/`AssessorReactivated`, `AssignmentCreated`/`AssignmentCancelled`,
   `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` · `SourceCalibrated`
   `[future]`. Killed by Define: `EvaluationRunStarted` (DP28) · `MetricComputed` as an event
   (DP19: it is a row, not an event) · `RubricPublished` → `InstrumentVersionPublished`.
