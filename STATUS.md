@@ -49,6 +49,24 @@ user picker — so the whole flow walks end to end with no accounts and no cloud
 the half with an act on it: invite, re-send, revoke, and `expired` as its own badge beside a
 row that still reads `pending` — the two can disagree, and that is the point of deriving it.
 
+**ADR-0050 (granting a role is an act of the console) is decided and in.** ADR-0007 settled a
+real property — *authenticating cannot escalate a privilege* — and then, to keep it obviously
+true, made `set-role` the only mechanism. The sentence conflated two actors: the invariant is
+about the person **signing in**, the restriction about the person **administering**, and
+nothing in the first needs the second. In practice it meant one person with production
+credentials, at a time that suited them, with no record beyond shell history — and, after
+ADR-0049, a roster editable exactly once. `PATCH /admin/assessors/{id}` now grants and
+withdraws, refusing the two cases nothing inside the product could undo: **your own row**
+(somebody else grants it) and **the last admin** (counted in the store at the moment of the
+act, not over a list a page load once read). An automated assessor is refused too — what it
+may do is ratification's answer (ADR-0019), and a role control would offer a competing one.
+Setting a role somebody already has is a no-op, **not an event**: a change that changed
+nothing must not enter the outbox. `AssessorRoleChanged` carries `from`, `to` and `changedBy`,
+because the audit question is never "what is their role" but "what changed, and who decided".
+The console's role cell is a select except on your own row, where it stays a badge with its
+reason next to it. `set-role` survives as **break-glass**, enforcing neither guardrail and
+documented as such. Clause 3 of ADR-0007 is superseded; the rest of it stands.
+
 **ADR-0043 (choosing is not pinning, and publishing is signing off) is decided and being
 built in three steps.** Step 1 is in: a study carries a `name` and an optional
 `description` (`purpose` goes back to meaning the typology the GLOSSARY reserves it for),
@@ -1628,7 +1646,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1147 tests, 1 skipped** against local Postgres (~66 s). Requires
+- **Backend suite green: 1159 tests, 1 skipped** against local Postgres (~69 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -1843,11 +1861,17 @@ the data in the package).
   logs a warning naming the remedy each time it declines to redeem. An invitation left pending
   for days with the person already signed in is the symptom to look for.
 - **No invitation reaches an assessor that already exists**, by design — so somebody who
-  signed in before being invited keeps the default role until an admin changes it, which is
-  still `app.cli set-role`. That command is the last act of this area with no screen.
-- **The invitation console was not looked at in a browser.** Types, `npm run build` and the
-  backend flow over real HTTP are green; nobody has seen the page render. The frontend has no
-  tests, so this is the usual gap, named here rather than implied.
+  signed in before being invited keeps the default role until an admin grants them another
+  one from the console.
+- **An admin can demote every other admin one at a time and then be unable to demote
+  themselves.** The console stays reachable, which is the property the guard protects, but
+  the store ends with one admin and no screen that can change it. `set-role` is the exit.
+- **The last-admin guard is not covered by an API test.** It reads the whole store, and the
+  suite shares one, so "there is exactly one admin left" cannot be arranged without demoting
+  other tests' fixtures. It is tested at the use-case level over a fake repository.
+- **The assessors console was not looked at in a browser.** Types, `npm run build` and the
+  backend flows over real HTTP are green; nobody has seen the page render. The frontend has
+  no tests, so this is the usual gap, named here rather than implied.
 - **Studies that predate the pin stay unpinned, and mixed ones stay mixed.** Migration 0019
   fills the pin only where the answer is unambiguous; a study whose judgments already come
   from two assessors is left null on purpose (ADR-0042 §11 — choosing one afterwards would

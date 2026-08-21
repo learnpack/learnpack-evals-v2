@@ -67,6 +67,15 @@ class SqlAlchemyAssessorRepository:
         )
         return [self._hydrate(row) for row in rows]
 
+    def count_admins(self) -> int:
+        """Counted in the store rather than over `list_all()`: this decides a refusal, and
+        it must see the rows as they are, not as a page load once saw them."""
+        return int(
+            self._session.execute(
+                text("SELECT count(*) FROM assessors WHERE kind = 'human' AND role = 'admin'")
+            ).scalar_one()
+        )
+
     @staticmethod
     def _hydrate(row) -> Assessor:  # noqa: ANN001 — SQLAlchemy row mapping
         return Assessor(

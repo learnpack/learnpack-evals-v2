@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Dialog } from "@/components/ui/dialog";
+import { Select } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,7 +22,9 @@ import { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
   useAssessors,
+  useChangeAssessorRole,
   useInvitations,
+  useMe,
   useRatifyAssessor,
   useResendInvitation,
   useRevokeInvitation,
@@ -398,6 +401,8 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
   const humans = assessors.filter((a) => a.kind === "human");
   const [inviting, setInviting] = useState(false);
   const invitations = useInvitations();
+  // Which row is the reader's own: the one row whose role they may not touch (ADR-0050).
+  const me = useMe();
   const pending = (invitations.data ?? []).filter((i) => i.status === "pending");
 
   return (
@@ -461,19 +466,11 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
                 </TableHeader>
                 <TableBody>
                   {humans.map((assessor) => (
-                    <TableRow key={assessor.assessor_id}>
-                      <TableCell className="font-medium">
-                        {assessor.display_name ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {assessor.email ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={assessor.role === "admin" ? "default" : "secondary"}>
-                          {assessor.role}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
+                    <RegisteredRow
+                      key={assessor.assessor_id}
+                      assessor={assessor}
+                      isSelf={assessor.assessor_id === me.data?.assessor_id}
+                    />
                   ))}
                 </TableBody>
               </Table>
@@ -481,9 +478,9 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
           </Card>
         )}
         <p className="mt-3 text-sm text-muted-foreground">
-          The role of someone who already signed in is changed with{" "}
-          <code>app.cli set-role</code>: an invitation only ever reaches an assessor that does
-          not exist yet, so that a login can never escalate a privilege.
+          A role is granted by somebody else, never by the person holding it, and the last
+          admin cannot be demoted — both would lock a door with no handle on this side. What
+          a login can never do is change the role of an assessor that already exists.
         </p>
       </div>
 
@@ -496,6 +493,120 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
         <InviteForm onDone={() => setInviting(false)} />
       </Dialog>
     </section>
+  );
+}
+
+/**
+ * One registered human. The role cell is the act (ADR-0050) — a select, not a badge, except
+ * on your own row, where it stays a badge with its reason beside it: a disabled control that
+ * says why reads as a rule, a missing one reads as a bug.
+ */
+function RegisteredRow({
+  assessor,
+  isSelf,
+}: {
+  assessor: AssessorResponse;
+  isSelf: boolean;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  const change = useChangeAssessorRole();
+
+  function confirm() {
+    if (!pending) return;
+    change.mutate(
+      { assessorId: assessor.assessor_id, role: pending },
+      {
+        onSuccess: (updated) => {
+          setPending(null);
+          toast.success(
+            `${updated.display_name ?? updated.email ?? "They"} ${
+              updated.role === "admin" ? "can now administer" : "is now an evaluator"
+            }.`,
+          );
+        },
+        onError: (err) => {
+          setPending(null);
+          // A 409 states a rule — the last admin, your own row. Repeating the request
+          // would only produce the same sentence.
+          toast.error("Could not change the role.", {
+            description: (err as ApiError).message,
+          });
+        },
+      },
+    );
+  }
+
+  return (
+    <>
+      <TableRow>
+        <TableCell className="font-medium">{assessor.display_name ?? "—"}</TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {assessor.email ?? "—"}
+        </TableCell>
+        <TableCell>
+          {isSelf ? (
+            <span className="flex items-center gap-2">
+              <Badge variant={assessor.role === "admin" ? "default" : "secondary"}>
+                {assessor.role}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                yours — somebody else grants it
+              </span>
+            </span>
+          ) : (
+            <Select
+              aria-label={`Role of ${assessor.display_name ?? assessor.email ?? "this assessor"}`}
+              className="h-9 w-40"
+              value={assessor.role}
+              disabled={change.isPending}
+              onChange={(e) => setPending(e.target.value)}
+            >
+              <option value="evaluator">Evaluator</option>
+              <option value="admin">Admin</option>
+            </Select>
+          )}
+        </TableCell>
+      </TableRow>
+
+      <Dialog
+        open={pending !== null}
+        onClose={() => setPending(null)}
+        title={pending === "admin" ? "Make them an admin?" : "Make them an evaluator?"}
+      >
+        <p className="text-sm text-muted-foreground">
+          {pending === "admin" ? (
+            <>
+              <span className="font-medium text-foreground">
+                {assessor.display_name ?? assessor.email}
+              </span>{" "}
+              will be able to register courses, run studies, invite people and grant this
+              same role to others.
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-foreground">
+                {assessor.display_name ?? assessor.email}
+              </span>{" "}
+              will keep every evaluation they have already submitted, and lose access to the
+              admin console.
+            </>
+          )}
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          It is recorded with your name against it, and it can be changed back by anyone but
+          them.
+        </p>
+        <div className="mt-4 flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={() => setPending(null)} disabled={change.isPending}>
+            Cancel
+          </Button>
+          <Button onClick={confirm} disabled={change.isPending}>
+            {change.isPending ? <Spinner /> : null}
+            {pending === "admin" ? "Grant admin" : "Make evaluator"}
+          </Button>
+        </div>
+      </Dialog>
+    </>
   );
 }
 

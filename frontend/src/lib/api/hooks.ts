@@ -475,6 +475,28 @@ export function useAssessors() {
   });
 }
 
+/** Granting or withdrawing a role (ADR-0050). Admin-only, refused with a 409 in the two
+ *  cases nothing inside the product could undo: the last admin, and your own row. */
+export function useChangeAssessorRole() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: ({ assessorId, role }: { assessorId: Uuid; role: string }) =>
+      api<AssessorResponse>(`/admin/assessors/${assessorId}`, {
+        method: "PATCH",
+        body: { role },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.assessors });
+      // The caller's own role is read from `/me` for the nav and the guards; a grant to
+      // somebody else cannot change it, but a stale `me` after any roster write is the
+      // kind of thing that only shows up as a missing menu entry.
+      qc.invalidateQueries({ queryKey: queryKeys.me });
+    },
+  });
+}
+
 /** Who the roster is expecting, and what happened to everyone it expected before
  *  (ADR-0049). Every state, newest first: an accepted row is the record of a registration
  *  that worked, and a revoked one of a decision somebody took. */
