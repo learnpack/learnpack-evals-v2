@@ -100,9 +100,12 @@ export function UserMenu() {
                 {identity.display_name ?? identity.email}
                 <span className="block text-xs text-muted-foreground">{identity.email}</span>
               </span>
-              <Badge variant={identity.role === "admin" ? "default" : "secondary"}>
-                {identity.role}
-              </Badge>
+              <span className="flex shrink-0 items-center gap-1">
+                {identity.pending ? <Badge variant="warning">invited</Badge> : null}
+                <Badge variant={identity.role === "admin" ? "default" : "secondary"}>
+                  {identity.role}
+                </Badge>
+              </span>
             </button>
           ))}
           <button
@@ -147,9 +150,14 @@ export function SignInScreen() {
             <span className="text-sm font-medium">{identity.display_name ?? identity.email}</span>
             <span className="block text-xs text-muted-foreground">{identity.email}</span>
           </span>
-          <Badge variant={identity.role === "admin" ? "default" : "secondary"}>
-            {identity.role}
-          </Badge>
+          <span className="flex shrink-0 items-center gap-1">
+            {/* Invited and never seen: signing in as one is what redeems the invitation,
+                so the picker has to say which rows are not people here yet (ADR-0049). */}
+            {identity.pending ? <Badge variant="warning">invited</Badge> : null}
+            <Badge variant={identity.role === "admin" ? "default" : "secondary"}>
+              {identity.role}
+            </Badge>
+          </span>
         </button>
       ))}
     </div>
