@@ -146,18 +146,25 @@ in the Clerk dashboard with these claims:
 {
   "email": "{{user.primary_email_address}}",
   "name": "{{user.full_name}}",
-  "email_verified": "{{user.primary_email_address_verified}}"
+  "email_verified": "{{user.email_verified}}"
 }
 ```
 
 The backend tolerates their absence (the profile stays `NULL`), but without them you cannot
 identify the SMEs or use `set-role`.
 
-`email_verified` gates one thing: **redeeming an invitation** (ADR-0049). Without it every
-invitation stays pending while people sign in and get the default role — so the backend logs
-a warning naming this template each time it declines to redeem one. Matching an invitation on
-an address the provider never vouched for is a known account-takeover shape, which is why the
-claim is required rather than assumed.
+`email_verified` gates one thing: **redeeming an invitation** (ADR-0049). Matching an
+invitation on an address the provider never vouched for is a known account-takeover shape,
+which is why the claim is required rather than assumed.
+
+**The symptom of getting it wrong is quiet**: the person signs in and appears in the roster
+with the *default* role, while their invitation sits there still saying `pending` — because
+an invitation is consumed only while the assessor is being created, and by then it is too
+late. The backend logs a warning naming this template every time it declines to redeem, and
+the console marks such an invitation. **Get the shortcode right before anybody signs in**:
+`{{user.email_verified}}`, not any of the other names it might plausibly have. Quoted or
+unquoted both work — the backend reads a real boolean and the string `"true"` alike, and,
+deliberately, reads `"false"` as false.
 
 **Create the template before anyone signs in.** The `email` claim also decides the first
 admin's initial role, and that decision is taken **exactly once** — see the order in

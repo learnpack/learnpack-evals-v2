@@ -83,6 +83,30 @@ def test_the_dev_header_does_nothing_in_clerk_mode(client, clerk_auth):
     assert response.status_code == 401
 
 
+@pytest.mark.parametrize(
+    ("claim", "verified"),
+    [
+        (True, True),
+        ("true", True),
+        ("True", True),
+        # The one that matters: a quoted shortcode interpolates to a STRING, and
+        # `bool("false")` is True — which would turn an unverified address into a verified
+        # one, the exact thing the gate exists to prevent (ADR-0049 §3).
+        ("false", False),
+        (False, False),
+        (None, False),
+        ("", False),
+        # Not a statement anybody can interpret, so not a statement.
+        ("yes", False),
+        (1, False),
+    ],
+)
+def test_a_verified_email_claim_is_read_in_both_shapes(claim, verified):
+    from app.platform.security import _is_verified
+
+    assert _is_verified(claim) is verified
+
+
 def test_a_backend_in_local_mode_names_a_frontend_built_for_clerk(client, local_auth):
     """The two halves of the seam are configured separately, so they can disagree — and then
     every request is a 401 that reads like an expired session. The evidence is in the

@@ -151,6 +151,22 @@ the page still imports no Clerk in local mode. The default `redirect_url` moved 
 redirect URL is baked into the ticket when the invitation is created**, so links sent before
 this keep pointing at the old page: revoke and invite again.
 
+**Then the first real redemption did not happen, quietly**, which is the failure ADR-0049 §3
+predicted and this closes on three fronts. The person signed up, appeared in the roster with
+the default role, and their invitation went on saying `pending` — no `InvitationAccepted`
+anywhere. Two causes, one documentation and one code. **The JWT template shortcode this repo
+documented does not exist**: it is `{{user.email_verified}}`, and the invented name meant the
+claim never arrived, so the gate refused every redemption exactly as designed. And **the gate
+read the claim wrongly**: Clerk interpolates a *quoted* shortcode into a string, so the claim
+is legitimately `"false"` — and `bool("false")` is `True`, which would have turned an
+unverified address into a verified one, the precise thing the gate exists to prevent. It now
+accepts a real boolean and the string `"true"`, reads `"false"` as false, and treats anything
+it cannot interpret as unverified. Third front, because a quiet failure needs a loud symptom:
+the console now marks a pending invitation whose address **has already signed in** as one
+that can never be redeemed, naming the likely cause and the two remedies. Nothing recovers a
+redemption after the fact, by design — an invitation is consumed while the assessor is being
+created and never afterwards, which is what keeps a login from escalating a privilege.
+
 **And a crossed auth mode now says so.** The two halves of ADR-0008's seam are configured
 separately — `AUTH_MODE` in the backend's environment, `NEXT_PUBLIC_AUTH_MODE` in the
 frontend's — so they can disagree, and when they do **every** request is a 401. The message
@@ -1742,7 +1758,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1205 tests, 1 skipped** against local Postgres (~89 s). Requires
+- **Backend suite green: 1214 tests, 1 skipped** against local Postgres (~87 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
