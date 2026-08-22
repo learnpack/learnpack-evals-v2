@@ -407,6 +407,9 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
   // Which row is the reader's own: the one row whose role they may not touch (ADR-0050).
   const me = useMe();
   const pending = (invitations.data ?? []).filter((i) => i.status === "pending");
+  const signedIn = new Set(
+    humans.map((a) => a.email?.toLowerCase()).filter((e): e is string => Boolean(e)),
+  );
 
   return (
     <section className="space-y-8">
@@ -440,7 +443,15 @@ function HumansSection({ assessors }: { assessors: AssessorResponse[] }) {
                 </TableHeader>
                 <TableBody>
                   {pending.map((invitation) => (
-                    <PendingRow key={invitation.invitation_id} invitation={invitation} />
+                    <PendingRow
+                      key={invitation.invitation_id}
+                      invitation={invitation}
+                      // A pending invitation whose address already signed in will never be
+                      // redeemed: an invitation is consumed only while the assessor is
+                      // being created. Saying so is the difference between "somebody is
+                      // slow to accept" and "the provider's claims are misconfigured".
+                      alreadySignedIn={signedIn.has(invitation.email.toLowerCase())}
+                    />
                   ))}
                 </TableBody>
               </Table>
@@ -757,7 +768,13 @@ function RegisteredRow({
   );
 }
 
-function PendingRow({ invitation }: { invitation: InvitationResponse }) {
+function PendingRow({
+  invitation,
+  alreadySignedIn,
+}: {
+  invitation: InvitationResponse;
+  alreadySignedIn: boolean;
+}) {
   const resend = useResendInvitation();
   const revoke = useRevokeInvitation();
   const busy = resend.isPending || revoke.isPending;
@@ -805,6 +822,13 @@ function PendingRow({ invitation }: { invitation: InvitationResponse }) {
           <Badge variant="warning" className="ml-2">
             expired
           </Badge>
+        ) : null}
+        {alreadySignedIn ? (
+          <span className="mt-1 block text-xs text-amber-600 dark:text-amber-500">
+            They already signed in, so this can no longer be redeemed — they were registered
+            with the default role. Usually the provider is not sending a verified email;
+            check the JWT template. Revoke this, and set their role below.
+          </span>
         ) : null}
       </TableCell>
       <TableCell className="text-right">

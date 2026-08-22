@@ -103,6 +103,26 @@ def _crossed_modes(request: Request, expected: str) -> str | None:
     return None
 
 
+def _is_verified(claim: Any) -> bool:
+    """Read `email_verified` without letting the string `"false"` mean verified.
+
+    A JWT template can send this either way. A bare shortcode keeps the original type and
+    arrives as a boolean; a **quoted** one — `"email_verified": "{{user.email_verified}}"` —
+    is interpolated, and Clerk documents that interpolated shortcodes always produce strings.
+    So the claim is legitimately `False` or `"false"`, and `bool("false")` is `True`: the one
+    reading that turns an unverified address into a verified one, which is exactly what this
+    gate exists to prevent (ADR-0049 §3).
+
+    Anything unrecognised is not verified. The claim is a statement somebody has to make, and
+    a value nobody can interpret is not that statement.
+    """
+    if isinstance(claim, bool):
+        return claim
+    if isinstance(claim, str):
+        return claim.strip().lower() == "true"
+    return False
+
+
 def get_current_assessor(
     claims: Annotated[dict[str, Any], Depends(get_verified_claims)],
     uow: Annotated[UnitOfWork, Depends(get_uow)],
@@ -122,7 +142,7 @@ def get_current_assessor(
         subject=claims["sub"],
         email=claims.get("email"),
         display_name=claims.get("name"),
-        email_verified=bool(claims.get("email_verified")),
+        email_verified=_is_verified(claims.get("email_verified")),
     )
     resolve = ResolveAssessor(
         SqlAlchemyAssessorRepository(uow.session),
