@@ -2,7 +2,7 @@
 
 /** Clerk adapter — the real identity provider (ADR-0004). Default mode. */
 
-import { ClerkProvider, SignIn, UserButton, useAuth } from "@clerk/nextjs";
+import { ClerkProvider, SignIn, SignUp, UserButton, useAuth } from "@clerk/nextjs";
 import { useCallback } from "react";
 
 // If a named Clerk JWT template carries the email/name claims, set this; otherwise the
@@ -27,4 +27,16 @@ export function UserMenu() {
 
 export function SignInScreen() {
   return <SignIn />;
+}
+
+/**
+ * Where an invitation link lands, and it must be `<SignUp/>`.
+ *
+ * An invited person does not exist yet: Clerk hands the ticket over with
+ * `__clerk_status=sign_up`, and `<SignIn/>` cannot complete it — it renders and spins for
+ * ever. This is the page `redirect_url` points at when the backend creates the Clerk
+ * invitation (ADR-0049 §8).
+ */
+export function AcceptInvitationScreen() {
+  return <SignUp fallbackRedirectUrl="/" />;
 }

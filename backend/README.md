@@ -229,8 +229,15 @@ reopens a window that closed. Revoking one frees the address to be invited again
 
 Under `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` set, this **also creates the Clerk
 invitation**, so it is one act: the person gets Clerk's email and can sign in to an
-invite-only instance. Set `CLERK_INVITATION_REDIRECT_URL` if the link should land somewhere
-other than `<first ALLOWED_ORIGINS entry>/sign-in`.
+invite-only instance.
+
+The link lands on **`/accept-invitation`**, which renders a sign-up. That is not a detail:
+somebody accepting an invitation **has no account yet**, so Clerk hands the ticket over as
+`__clerk_status=sign_up`, and a page rendering the sign-in form cannot complete it — it
+renders and spins for ever. Override with `CLERK_INVITATION_REDIRECT_URL` only towards
+another page that signs somebody **up**; the default is
+`<first ALLOWED_ORIGINS entry>/accept-invitation`. Point Clerk's own
+`NEXT_PUBLIC_CLERK_SIGN_UP_URL` at the same route.
 
 Under `AUTH_MODE=local`, or with no secret key, nothing is delivered and the log says so —
 the invitation still stands and is redeemed at that address's first sign-in.

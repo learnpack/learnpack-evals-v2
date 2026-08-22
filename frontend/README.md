@@ -26,6 +26,15 @@ To use Clerk instead, remove `NEXT_PUBLIC_AUTH_MODE=local` and fill in the keys 
 The backend must be running (`../backend`, `:8000` by default) with `ALLOWED_ORIGINS`
 including `http://localhost:3000`.
 
+## The two doors
+
+`/sign-in` and `/accept-invitation` are the only routes the middleware leaves public, and
+they are two because the people arriving at them are in different states: one **has** an
+account, the other is being given one. Under Clerk that is literally `<SignIn/>` versus
+`<SignUp/>` — an invitation ticket arrives as `__clerk_status=sign_up`, and the sign-in form
+cannot complete it. Both go through the seam in `src/lib/auth/`, so neither page imports
+`@clerk/nextjs`.
+
 ## Local mode: no Clerk (ADR-0008)
 
 With `NEXT_PUBLIC_AUTH_MODE=local` (what `.env.local.example` ships) the app does not use

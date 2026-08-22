@@ -163,3 +163,22 @@ export function SignInScreen() {
     </div>
   );
 }
+
+/**
+ * The same screen in local mode, where it can only be reached by typing the URL: nothing is
+ * delivered here, so no link leads to it (ADR-0008, ADR-0049). It exists because the route
+ * is in the build for both modes, and this file is what keeps `@clerk/nextjs` out of it.
+ */
+export function AcceptInvitationScreen() {
+  return (
+    <div className="w-full max-w-sm rounded-lg border bg-background p-6 text-center">
+      <p className="text-sm text-muted-foreground">
+        Invitations are not delivered in local mode. Pick the invited address on the sign-in
+        page — signing in as it is what redeems the invitation.
+      </p>
+      <Button className="mt-4" onClick={() => window.location.assign("/sign-in")}>
+        Go to sign-in
+      </Button>
+    </div>
+  );
+}

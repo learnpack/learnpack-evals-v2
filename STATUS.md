@@ -140,6 +140,17 @@ the row carries. A `clerk` process with no secret key falls back to logging with
 rather than failing every invitation. **No ADR: ADR-0049 §8 named this adapter as the thing
 that was missing; this is it.**
 
+**The link it sends now lands on a page that can finish the job.** The first real invitation
+went out pointing at `/sign-in`, and the person accepting it got Clerk's card with a spinner
+that never resolved. The reason is structural, not a bug in the card: somebody accepting an
+invitation **has no account yet**, so Clerk hands the ticket over as `__clerk_status=sign_up`,
+and `<SignIn/>` cannot complete a sign-up ticket. `/accept-invitation` is the second public
+route — a catch-all, because Clerk's component owns the sub-paths of its own multi-step flow
+— and it renders `<SignUp/>` through the same seam every other auth surface goes through, so
+the page still imports no Clerk in local mode. The default `redirect_url` moved with it. **The
+redirect URL is baked into the ticket when the invitation is created**, so links sent before
+this keep pointing at the old page: revoke and invite again.
+
 **And a crossed auth mode now says so.** The two halves of ADR-0008's seam are configured
 separately — `AUTH_MODE` in the backend's environment, `NEXT_PUBLIC_AUTH_MODE` in the
 frontend's — so they can disagree, and when they do **every** request is a 401. The message
@@ -1731,7 +1742,7 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1203 tests, 1 skipped** against local Postgres (~76 s). Requires
+- **Backend suite green: 1205 tests, 1 skipped** against local Postgres (~89 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
