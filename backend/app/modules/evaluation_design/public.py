@@ -1,6 +1,6 @@
 """Public surface of Evaluation Design (ARCHITECTURE.md §3).
 
-Today this exposes only the legacy read surface for `Rubric v1` — the reference
+Today this exposes only the read surface for the human reference instrument — the reference
 instrument (ADR-0015), which keeps its Rubric* names on purpose. Evaluation
 stores only an instrument version id and reads the instrument through here.
 """

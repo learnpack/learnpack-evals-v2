@@ -22,7 +22,9 @@ from uuid import UUID
 
 class ScoreLike(Protocol):
     criterion_id: str
-    score: int
+    # Null is an abstention, not a zero: the assessor answered "I could not judge this"
+    # (ADR-0052 §4). Nothing here averages one.
+    score: int | None
 
 
 class EvaluationLike(Protocol):
@@ -81,17 +83,26 @@ def _ordering_key(evaluation: EvaluationLike) -> tuple[datetime, str]:
 
 
 def scores_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, list[int]]:
-    """One list of scores per criterion — one entry per assessor. Collapses first."""
+    """One list of scores per criterion — one entry per assessor that scored it.
+
+    An abstention (null score) is **dropped from the list but keeps its criterion in the
+    map**, so a criterion everybody abstained on stays visible with an empty list. Dropping
+    the key instead would make "nobody could judge this" indistinguishable from "this
+    criterion was never asked", which is the coverage lie ADR-0011 §3 forbids.
+    """
     grouped: dict[str, list[int]] = {}
     for evaluation in collapse_latest_per_assessor(evaluations):
         for score in evaluation.scores:
-            grouped.setdefault(score.criterion_id, []).append(score.score)
+            scores = grouped.setdefault(score.criterion_id, [])
+            if score.score is not None:
+                scores.append(score.score)
     return grouped
 
 
-def average_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, float]:
+def average_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, float | None]:
+    """`None` where every assessor abstained — never 0, which would read as the worst score."""
     return {
-        criterion_id: round(statistics.fmean(scores), 2)
+        criterion_id: round(statistics.fmean(scores), 2) if scores else None
         for criterion_id, scores in scores_by_criterion(evaluations).items()
     }
 

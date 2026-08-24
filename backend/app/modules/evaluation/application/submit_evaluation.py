@@ -18,7 +18,7 @@ from app.shared.domain.ids import new_id
 @dataclass(frozen=True)
 class ScoreInput:
     criterion_id: str
-    score: int
+    score: int | None
     comment: str | None = None
 
 

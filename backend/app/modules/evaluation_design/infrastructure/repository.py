@@ -1,7 +1,8 @@
 """SQLAlchemy adapters for Evaluation Design's ports.
 
 Hand-mapped Core statements keep the domain free of SQLAlchemy (ARCHITECTURE.md §1).
-`SqlAlchemyRubricRepository` reads Rubric v1, seeded from `docs/seed/rubric-v1.json`.
+`SqlAlchemyRubricRepository` reads the human reference instrument, seeded from
+`docs/seed/rubric-v2.json`.
 """
 
 import json
@@ -29,7 +30,8 @@ class SqlAlchemyRubricRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT id, rubric_id, version, name, status, scope, scale_min, scale_max
+                    SELECT id, rubric_id, version, name, status, scope, scale_min, scale_max,
+                           response_format
                       FROM rubric_versions
                      WHERE id = :id
                     """
@@ -68,6 +70,7 @@ class SqlAlchemyRubricRepository:
             scope=version["scope"],
             scale_min=version["scale_min"],
             scale_max=version["scale_max"],
+            response_format=version["response_format"],
             criteria=[
                 CriterionDTO(
                     criterion_id=row["criterion_id"],

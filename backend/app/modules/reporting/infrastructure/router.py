@@ -36,7 +36,8 @@ class DispersionResponse(BaseModel):
 
 class ScoreDetailResponse(BaseModel):
     criterion_id: str
-    score: int
+    # Null is an abstention — see `ScoreDetailDTO`.
+    score: int | None
     comment: str | None
 
 
@@ -51,7 +52,8 @@ class IndividualEvaluationResponse(BaseModel):
 
 class CriterionSummaryResponse(BaseModel):
     criterion_id: str
-    average: float
+    # Null when nobody scored it — see `CriterionSummaryDTO`.
+    average: float | None
     dispersion: DispersionResponse
 
 

@@ -28,7 +28,7 @@ def make_assignment(**overrides) -> Assignment:
 def make_campaign(**overrides) -> EvaluationCampaign:
     base = {
         "id": new_id(),
-        "instrument_version_id": "learnpack-pedagogical-v1",
+        "instrument_version_id": "learnpack-pedagogical-v2",
         "required_evaluations_per_content": 2,
         "content_ids": [new_id()],
     }

@@ -43,7 +43,9 @@ export default function AssignmentPage({
     markOpened(assignmentId);
   }, [assignment, alreadyDone, assignmentId, markOpened]);
 
-  function handleSubmit(scores: { criterion_id: string; score: number; comment: string | null }[]) {
+  function handleSubmit(
+    scores: { criterion_id: string; score: number | null; comment: string | null }[],
+  ) {
     submitEvaluation.mutate(
       { assignment_id: assignmentId, scores },
       {
@@ -141,12 +143,13 @@ export default function AssignmentPage({
                 <div className="space-y-4">
                   <CollapsibleSection
                     title="Score"
-                    badge={`${assignment.criteria.length} criteria`}
+                    badge={`${assignment.criteria.length} items`}
                   >
                     <ScoreForm
                       criteria={[...assignment.criteria].sort((a, b) => a.order - b.order)}
                       scaleMin={assignment.scale_min}
                       scaleMax={assignment.scale_max}
+                      responseFormat={assignment.response_format}
                       submitting={submitEvaluation.isPending}
                       onSubmit={handleSubmit}
                     />

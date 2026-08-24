@@ -1,0 +1,190 @@
+{
+  "rubricId": "learnpack-pedagogical",
+  "version": "v2",
+  "name": "LearnPack Pedagogical Reference v2",
+  "status": "published",
+  "locked": true,
+  "responseFormat": "likert",
+  "scope": "The layer-1 human reference (ADR-0015): a panel of subject-matter experts judges qualities directly, by taking the course, outside instrument execution and without a profile. One item per Quality, so that each claim of an instrument can be correlated with the human score of its own quality (ADR-0015 §4, ADR-0026). Not subject to ADR-0010: this is another artifact, with other rules.",
+  "evaluatorMaterials": [
+    "the deployed course, all lessons, taken as a learner would take it"
+  ],
+  "scale": {
+    "min": 1,
+    "max": 5,
+    "anchorLow": "Strongly disagree",
+    "anchorHigh": "Strongly agree"
+  },
+  "criteria": [
+    {
+      "criterionId": "objectives-observable",
+      "order": 1,
+      "dimension": "objectives-quality",
+      "prompt": "The course states what a learner will be able to do by the end, in terms concrete enough to check.",
+      "guidance": "Agree if every goal the course states names an action you could watch a learner perform — solve, classify, build, debug. Disagree if the course only names the topics it will cover, or states its goals in terms you could not check, such as 'understand', 'learn about' or 'get familiar with'.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["objectives-observable"],
+      "groundedIn": ["Biggs", "Revised Bloom"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "progression-starting-point",
+      "order": 2,
+      "dimension": "learning-progression",
+      "prompt": "The course states who it is for and what it assumes the learner already knows.",
+      "guidance": "Agree if both are stated, and they match what the course actually demands of you as you work through it. Disagree if the course leaves you to infer its audience or its prerequisites from the first lesson, or if what it states does not match what it then demands.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["progression-starting-point"],
+      "groundedIn": ["Learning Progressions", "Merrill"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "alignment-coverage",
+      "order": 3,
+      "dimension": "constructive-alignment",
+      "prompt": "Everything the course sets out to teach is actually developed somewhere in it.",
+      "guidance": "Agree if each thing the course sets out to teach has a part of the course that develops it, not merely a mention. Disagree if some of what it sets out to teach is only named in passing, or never appears again after being announced.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["alignment-coverage"],
+      "groundedIn": ["Biggs"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "alignment-assessment",
+      "order": 4,
+      "dimension": "constructive-alignment",
+      "prompt": "The exercises and tasks check the things the course set out to teach.",
+      "guidance": "Agree if each thing the course set out to teach has a task that would show whether a learner can actually do it. Disagree if there are no tasks, if the tasks check something other than what the course set out to teach, or if they only ask the learner to recall what was said.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["alignment-assessment"],
+      "groundedIn": ["Biggs"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "instruction-authentic-problems",
+      "order": 5,
+      "dimension": "instructional-design",
+      "prompt": "New material is introduced through a problem, case or task that makes it needed, rather than starting from the explanation.",
+      "guidance": "Agree if new material almost always arrives after a concrete problem or task that makes you want it. Disagree if lessons open with definitions and theory, and the reason to care — if it comes at all — comes afterwards.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["instruction-authentic-problems"],
+      "groundedIn": ["Merrill"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "instruction-demonstration",
+      "order": 6,
+      "dimension": "instructional-design",
+      "prompt": "When the course teaches how to do something, it shows it worked through step by step.",
+      "guidance": "Agree if every skill the course teaches is shown being carried out before the learner is asked to do it. Disagree if the course describes how something is done without ever showing it done, or jumps from the description straight to the exercise.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["instruction-demonstration"],
+      "groundedIn": ["Merrill"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "instruction-prior-knowledge",
+      "order": 7,
+      "dimension": "instructional-design",
+      "prompt": "The course connects new material to things the learner already knows.",
+      "guidance": "Agree if new ideas are tied to prior knowledge, or to everyday experience this audience would have. Disagree if new ideas arrive with no bridge from anything the learner brings, as self-contained blocks of information.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["instruction-prior-knowledge"],
+      "groundedIn": ["Merrill"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "coherence-logical-sequence",
+      "order": 8,
+      "dimension": "inter-lesson-coherence",
+      "prompt": "Read in order, the course reads as one argument rather than a set of separate articles.",
+      "guidance": "Agree if the course opens, develops and closes, and the order it uses is doing work — each part needs the ones before it. Disagree if the parts could be shuffled with little loss, because each stands on its own.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["coherence-logical-sequence"],
+      "groundedIn": ["Schmidt"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "coherence-reinforcement",
+      "order": 9,
+      "dimension": "inter-lesson-coherence",
+      "prompt": "Later parts of the course put earlier parts to work instead of starting over.",
+      "guidance": "Agree if later material consistently works with what came before, treating it as something the learner now has. Disagree if each part stands alone, and earlier material is explained again rather than used.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["coherence-reinforcement"],
+      "groundedIn": ["Schmidt"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "coherence-explicit-links",
+      "order": 10,
+      "dimension": "inter-lesson-coherence",
+      "prompt": "The course makes the connections between its lessons and ideas explicit, rather than leaving you to infer them.",
+      "guidance": "This is not about whether the sequence is coherent, but about whether the course says so. Agree if the course tells you how its parts relate: why this comes after that, what an idea builds on. Disagree if lessons are presented one after another and you have to work out for yourself how they relate.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["coherence-explicit-links"],
+      "groundedIn": ["Schmidt"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "progression-prerequisites",
+      "order": 11,
+      "dimension": "learning-progression",
+      "prompt": "Ideas the course builds on are introduced before they are needed.",
+      "guidance": "Agree if, where a lesson depends on an idea, that idea was introduced earlier in the course, or it is genuinely part of the background this course is written for. Disagree if lessons depend on ideas that were never introduced and that this audience would not be expected to bring.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["progression-prerequisites"],
+      "groundedIn": ["Learning Progressions", "Schmidt"],
+      "eligibleSources": ["HumanExpert"]
+    },
+    {
+      "criterionId": "progression-cognitive-demand",
+      "order": 12,
+      "dimension": "learning-progression",
+      "prompt": "The course grows more demanding at a pace someone arriving at it could follow.",
+      "guidance": "Agree if the course gets steadily more demanding and each step is reachable from the one before. Disagree if it stays flat throughout, or if at least one lesson runs far ahead of the rest of the course.",
+      "anchorLow": "Strongly disagree",
+      "anchorHigh": "Strongly agree",
+      "qualities": ["progression-cognitive-demand"],
+      "groundedIn": ["Learning Progressions", "Revised Bloom"],
+      "eligibleSources": ["HumanExpert"]
+    }
+  ],
+  "frameworks": [
+    {
+      "id": "Merrill",
+      "citation": "Merrill, M. D. (2002). First Principles of Instruction. ETR&D, 50(3), 43-59."
+    },
+    {
+      "id": "Biggs",
+      "citation": "Biggs, J. (1996). Enhancing teaching through constructive alignment. Higher Education, 32, 347-364."
+    },
+    {
+      "id": "Revised Bloom",
+      "citation": "Anderson & Krathwohl (2001); Krathwohl (2002), Theory Into Practice, 41(4), 212-218."
+    },
+    {
+      "id": "SOLO",
+      "citation": "Biggs & Collis (1982). Evaluating the Quality of Learning: The SOLO Taxonomy."
+    },
+    {
+      "id": "Schmidt",
+      "citation": "Schmidt, Wang & McKnight (2005); Schmidt, Houang & Cogan (2002). Curriculum coherence."
+    },
+    {
+      "id": "Learning Progressions",
+      "citation": "Duschl, Maeng & Sezen (2011). Learning progressions and teaching sequences."
+    }
+  ]
+}

@@ -98,25 +98,31 @@
   across instrument versions; the `qualityId`s persist and give thematic continuity across lines
   of studies. *(Naming open: perhaps `PedagogicalAttribute`.)*
 - **EvaluationCriterion** — the verifiable unit of judgment. With claims (ADR-0013), the criterion
-  **evidences claims** and reaches the `Quality` through them — the claim mediates; in `Rubric v1`
-  (legacy) the criterion↔dimension operationalization is direct. It **cites** its grounding (N:M);
+  **evidences claims** and reaches the `Quality` through them — the claim mediates; in the
+  human reference instrument the item↔`Quality` relation is direct, one item per quality
+  (ADR-0052). It **cites** its grounding (N:M);
   it does not contain it. It declares its `eligible_sources`, the **data it requires** (ids,
   ADR-0014) and `onMissingEvidence` ∈ {`no_evidence` (default), `fail`} — the **consequence** of
   the datum's absence; the **fact** is determined by matching/profile (mechanical, never the
   assessor), and `not_applicable` only arises from capability/conditionals.
   ADR-0010 defines its shape: **verifiable pass condition + enumerated failure modes**,
   outcome `scored (pass/fail) | not_applicable | no_evidence | not_assessed |
-  execution_error` (ADR-0018, ADR-0037) — not an appreciation scale. (The 1–5 scale survives in `Rubric v1`, which is **not migrated**: it is
-  the reference instrument of calibration — ADR-0015.)
+  execution_error` (ADR-0018, ADR-0037) — not an appreciation scale. (The 1–5 scale survives
+  in the **human reference instrument**, which is **not migrated** to this shape: it is the
+  reference instrument of calibration — ADR-0015, ADR-0052.)
 - **Rubric** (aka `EvaluationInstrument`) — an ordered, **versioned** set of criteria.
-  Interchangeable unit. MVP = `LearnPack Pedagogical Rubric v1` (5 criteria).
+  Interchangeable unit. The human reference instrument is
+  `LearnPack Pedagogical Reference v2` (12 items).
   Genesis (ADR-0012): an instrument is born from **purpose + content type** (designed-for);
   frameworks **ground** (warrant), they do not originate. Reusing it on another type = a
   deliberate act, re-binding the task model.
-  **Role of `Rubric v1` (ADR-0015):** it is not migrated to the ADR-0010 shape — it is
-  **stabilized as the reference instrument** of calibration (layer 1): holistic elicitation per
-  dimension (1–5) for the human panel. Its stability is a feature: a reference that changes is
-  no reference.
+  **Role of the reference instrument (ADR-0015, ADR-0052):** it is not migrated to the
+  ADR-0010 shape — it is the **reference instrument** of calibration (layer 1): holistic
+  elicitation for the human panel, **one item per `Quality`**, answered as agreement with a
+  statement on a uniform 1–5 scale. That grain is what makes ADR-0015 §4's per-claim
+  coefficient computable, since a claim asserts about exactly one quality (ADR-0026). Its
+  stability is a feature — a reference that changes is no reference — and it is honoured by
+  **versioning** it: from its first reference campaign, a version is frozen.
 
 ## Evaluation design — the evidential argument (ECD-lite, ADRs 0012–0014)
 
@@ -127,8 +133,8 @@
   atomic and **human**. `Published` ⇒ immutable — any change ⇒ new version; `claimId`/`criterionId`
   stable across versions (lineage). **It is "the composite"**: with the instrument owning
   claims + criteria + sufficiency + bindings, the old "rubric preset" needs no name of its
-  own (DP28). Relationship to `Rubric`: a slice 1 term that the Instrument supersedes;
-  `Rubric v1` survives as the reference instrument (ADR-0015).
+  own (DP28). Relationship to `Rubric`: a slice 1 term that the Instrument supersedes; the
+  human reference instrument survives under it (ADR-0015, ADR-0052).
 - **Claim** — an assessable, **one-sentence** assertion about **exactly one `Quality`**
   (ADR-0026, checked at publish), with: required evidence,
   warrant (framework) and alternative explanations. Being the only path from a `Criterion` to a
@@ -255,7 +261,8 @@
 ## Evaluation & results
 
 - **Evaluation** — one concrete **act** of evaluation (not a unique fact): an `Assessor`
-  evaluates a content version using an `InstrumentVersion` (legacy: `Rubric v1`). Identity =
+  evaluates a content version using an `InstrumentVersion` (the human reference instrument is
+  one). Identity =
   **its own id** (`evaluationId`) + coordinates `{assessorId, contentId (version),
   instrumentVersion (formerly rubricVersion), adapterVersion of the profile,
   occurredAt/attempt}`. There is **no** uniqueness by coordinates: **repetitions** of the same
@@ -289,7 +296,10 @@
   (`not_applicable`) · datum absent from the content (`no_evidence`) · assessor with no
   executor for the criterion (`not_assessed`) · this run's execution failed on it
   (`execution_error` — a fact of the run, never of the content; re-evaluating replaces it).
-  (The 1–5 score survives in the **reference panel** flow — `Rubric v1`, ADR-0015.)
+  (The 1–5 score survives in the **reference panel** flow — ADR-0015, ADR-0052 — where a
+  **null score** is the assessor's abstention: *I could not see enough of this course to judge
+  this*. It is not the bottom of the scale, which is an answer and penalises like the
+  absence-derived `fail` does.)
 - **EvaluationResult** — the set of `CriterionScore`s (+ comments) of an `Evaluation`.
 - **QualityJudgment** — the published quality judgment on a content: a **per-criterion
   profile** (never a single aggregated score, ADR-0011) + **coverage** (assessed / not
@@ -397,8 +407,8 @@
 ## Framework combination — two levels (do not confuse)
 
 - **Design-time synthesis** — an instrument whose claims/criteria are `grounded_in` several
-  frameworks (the case of `Rubric v1`: 5 questions distill 6 frameworks; in the claims model,
-  each claim's warrant cites its frameworks).
+  frameworks (the case of the human reference instrument: 12 statements distill 6 frameworks;
+  in the claims model, each claim's warrant cites its frameworks).
 - **Runtime composition** — *(superseded by Define slice 2)*: the "composite of rubrics/lenses"
   no longer exists as a separate concept — **the `Instrument` is the composite** (it owns
   claims + criteria + sufficiency + bindings, DP28), and aggregation is set by its

@@ -11,103 +11,190 @@ import { Spinner } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 import type { Criterion } from "@/lib/api/types";
 
+/**
+ * Two elicitations, one form.
+ *
+ * - **`likert`** (ADR-0052): each item is a *statement* and the answer is agreement with it,
+ *   on the same five points for every item. The rater learns the scale once and never
+ *   changes frame, which is what lets twelve items cost less than five anchored ones did.
+ * - **`numeric`**: the older shape — a question, numbered buttons, and a per-item anchor at
+ *   each end.
+ *
+ * Both carry the same off-scale escape. **`ABSTAIN` is not the bottom of the scale**: the
+ * bottom is an answer ("the course does not do this") and has to weigh like one, while an
+ * abstention says the rater could not see enough to judge and is stored as a null score.
+ * Collapsing the two would silently turn "I don't know" into the worst possible verdict.
+ */
+
 interface Props {
   criteria: Criterion[];
   scaleMin: number;
   scaleMax: number;
+  responseFormat: string;
   submitting: boolean;
-  onSubmit: (scores: { criterion_id: string; score: number; comment: string | null }[]) => void;
+  onSubmit: (scores: { criterion_id: string; score: number | null; comment: string | null }[]) => void;
 }
 
-export function ScoreForm({ criteria, scaleMin, scaleMax, submitting, onSubmit }: Props) {
+/** The sentinel for the off-scale answer. A string, so it can never collide with a point. */
+const ABSTAIN = "abstain" as const;
+
+/** Uniform across every item — that uniformity is what makes it a Likert scale. */
+const AGREEMENT_LABELS = [
+  "Strongly disagree",
+  "Disagree",
+  "Neither",
+  "Agree",
+  "Strongly agree",
+] as const;
+
+export function ScoreForm({
+  criteria,
+  scaleMin,
+  scaleMax,
+  responseFormat,
+  submitting,
+  onSubmit,
+}: Props) {
+  const likert = responseFormat === "likert";
+
   const schema = useMemo(() => {
     const shape: Record<string, z.ZodTypeAny> = {};
     for (const c of criteria) {
       shape[c.criterion_id] = z.object({
-        score: z
-          .number({ required_error: `Select a score (${scaleMin}–${scaleMax})` })
-          .int()
-          .min(scaleMin)
-          .max(scaleMax),
+        // Required, and satisfied by either an answer or an explicit abstention — never by
+        // leaving the item alone. Silence is not an answer of any kind.
+        answer: z.union([z.number().int().min(scaleMin).max(scaleMax), z.literal(ABSTAIN)], {
+          required_error: likert ? "Answer or skip this statement" : "Score or skip this criterion",
+        }),
         comment: z.string().max(2000).optional(),
       });
     }
     return z.object(shape);
-  }, [criteria, scaleMin, scaleMax]);
+  }, [criteria, scaleMin, scaleMax, likert]);
 
   const {
     control,
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<Record<string, { score?: number; comment?: string }>>({
+  } = useForm<Record<string, { answer?: number | typeof ABSTAIN; comment?: string }>>({
     resolver: zodResolver(schema),
   });
 
   const submit = handleSubmit((values) => {
     onSubmit(
-      criteria.map((c) => ({
-        criterion_id: c.criterion_id,
-        score: values[c.criterion_id].score as number,
-        comment: values[c.criterion_id].comment?.trim() || null,
-      })),
+      criteria.map((c) => {
+        const answer = values[c.criterion_id].answer;
+        return {
+          criterion_id: c.criterion_id,
+          score: answer === ABSTAIN ? null : (answer as number),
+          comment: values[c.criterion_id].comment?.trim() || null,
+        };
+      }),
     );
   });
 
   const scale = Array.from({ length: scaleMax - scaleMin + 1 }, (_, i) => scaleMin + i);
 
-  // Progress replaces the old wizard stepper: how many criteria already have a score.
+  // Progress: how many items have been answered. An abstention counts — it is an answer
+  // about the rater's evidence, not a blank.
   const values = useWatch({ control });
-  const scored = criteria.filter((c) => typeof values?.[c.criterion_id]?.score === "number").length;
+  const answered = criteria.filter((c) => values?.[c.criterion_id]?.answer !== undefined).length;
 
   return (
     <form onSubmit={submit} className="space-y-8">
       {criteria.map((criterion, index) => {
-        const fieldError = errors[criterion.criterion_id]?.score?.message as string | undefined;
+        const fieldError = errors[criterion.criterion_id]?.answer?.message as string | undefined;
         return (
-          <fieldset key={criterion.criterion_id} className="space-y-3 border-t pt-6 first:border-t-0 first:pt-0">
+          <fieldset
+            key={criterion.criterion_id}
+            className="space-y-3 border-t pt-6 first:border-t-0 first:pt-0"
+          >
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
                   {index + 1}/{criteria.length}
                 </span>
-                <h3 className="font-medium">{criterion.dimension}</h3>
+                {/* A Likert form is statements, not sections: the dimension is a grouping for
+                    reports, and showing it here would only invite scoring the group. */}
+                {!likert ? <h3 className="font-medium">{criterion.dimension}</h3> : null}
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">{criterion.prompt}</p>
-              <GuidanceDisclosure guidance={criterion.guidance} />
+              <p className={cn("mt-1 text-sm", likert ? "text-foreground" : "text-muted-foreground")}>
+                {criterion.prompt}
+              </p>
+              <GuidanceDisclosure guidance={criterion.guidance} likert={likert} />
             </div>
 
             <Controller
               control={control}
-              name={`${criterion.criterion_id}.score`}
+              name={`${criterion.criterion_id}.answer`}
               render={({ field }) => (
                 <div>
-                  <div className="flex flex-wrap gap-2">
-                    {scale.map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={field.value === value}
-                        onClick={() => field.onChange(value)}
-                        className={cn(
-                          "h-10 w-10 rounded-md border text-sm font-medium transition-colors",
-                          field.value === value
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-input bg-background hover:bg-accent",
-                        )}
-                      >
-                        {value}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
-                    <span>
-                      {scaleMin} · {criterion.anchor_low}
-                    </span>
-                    <span>
-                      {criterion.anchor_high} · {scaleMax}
-                    </span>
-                  </div>
+                  {likert ? (
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {scale.map((value, i) => (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={field.value === value}
+                          onClick={() => field.onChange(value)}
+                          className={cn(
+                            "rounded-md border px-1 py-2 text-[11px] font-medium leading-tight transition-colors",
+                            field.value === value
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-input bg-background hover:bg-accent",
+                          )}
+                        >
+                          {AGREEMENT_LABELS[i] ?? value}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {scale.map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={field.value === value}
+                            onClick={() => field.onChange(value)}
+                            className={cn(
+                              "h-10 w-10 rounded-md border text-sm font-medium transition-colors",
+                              field.value === value
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-input bg-background hover:bg-accent",
+                            )}
+                          >
+                            {value}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
+                        <span>
+                          {scaleMin} · {criterion.anchor_low}
+                        </span>
+                        <span>
+                          {criterion.anchor_high} · {scaleMax}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Set apart from the row on purpose: it is not a sixth point. */}
+                  <button
+                    type="button"
+                    aria-pressed={field.value === ABSTAIN}
+                    onClick={() => field.onChange(field.value === ABSTAIN ? undefined : ABSTAIN)}
+                    className={cn(
+                      "mt-2 w-full rounded-md border border-dashed px-2 py-1.5 text-xs transition-colors",
+                      field.value === ABSTAIN
+                        ? "border-foreground/40 bg-muted font-medium text-foreground"
+                        : "border-input text-muted-foreground hover:bg-accent",
+                    )}
+                  >
+                    I couldn&apos;t see enough of this course to judge this
+                  </button>
+
                   {fieldError ? (
                     <p className="mt-1 text-xs font-medium text-destructive">{fieldError}</p>
                   ) : null}
@@ -124,13 +211,13 @@ export function ScoreForm({ criteria, scaleMin, scaleMax, submitting, onSubmit }
         );
       })}
 
-      {/* Stays in reach while scrolling a long rubric (bleeds out of the section padding). */}
+      {/* Stays in reach while scrolling a long instrument (bleeds out of the section padding). */}
       <div className="sticky bottom-0 -mx-5 -mb-5 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-5 py-3 backdrop-blur">
         <p className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground">
-            {scored}/{criteria.length}
+            {answered}/{criteria.length}
           </span>{" "}
-          scored
+          answered
         </p>
         <Button type="submit" disabled={submitting}>
           {submitting ? <Spinner /> : null}
@@ -141,7 +228,7 @@ export function ScoreForm({ criteria, scaleMin, scaleMax, submitting, onSubmit }
   );
 }
 
-function GuidanceDisclosure({ guidance }: { guidance: string }) {
+function GuidanceDisclosure({ guidance, likert }: { guidance: string; likert: boolean }) {
   const [open, setOpen] = useState(false);
   if (!guidance) return null;
   return (
@@ -152,7 +239,7 @@ function GuidanceDisclosure({ guidance }: { guidance: string }) {
         className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
       >
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
-        {open ? "Hide guidance" : "Show guidance"}
+        {open ? "Hide guidance" : likert ? "What agreeing means" : "Show guidance"}
       </button>
       {open ? (
         <p className="mt-1.5 rounded-md bg-muted/60 p-3 text-sm text-muted-foreground">{guidance}</p>

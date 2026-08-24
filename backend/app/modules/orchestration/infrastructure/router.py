@@ -49,7 +49,7 @@ evaluator_router = APIRouter(tags=["orchestration"])
 
 
 class OpenCampaignRequest(BaseModel):
-    instrument_version_id: str = Field(examples=["learnpack-pedagogical-v1"])
+    instrument_version_id: str = Field(examples=["learnpack-pedagogical-v2"])
     required_evaluations_per_content: int = Field(ge=1, examples=[2])
     content_ids: list[UUID]
     golden_coverage_threshold: float = 1.0
@@ -116,6 +116,9 @@ class AssignmentDetailResponse(BaseModel):
     instrument_version_id: str
     scale_min: int
     scale_max: int
+    # `numeric | likert`: the range is the same for both, the meaning of its points is not
+    # (ADR-0052 §3). The screen renders a different control for each.
+    response_format: str
     criteria: list[CriterionResponse]
 
 
@@ -356,10 +359,11 @@ def assignment_detail(
         status=assignment.status,
         content_id=snapshot.content_id,
         consumable_url=snapshot.consumable_url,
-        # RubricSnapshot keeps its Rubric v1 name (ADR-0015); the public JSON speaks instrument.
+        # RubricSnapshot keeps the slice 1 name (ADR-0015); the public JSON speaks instrument.
         instrument_version_id=rubric.rubric_version_id,
         scale_min=rubric.scale_min,
         scale_max=rubric.scale_max,
+        response_format=rubric.response_format,
         criteria=[
             CriterionResponse(
                 criterion_id=c.criterion_id,

@@ -10,14 +10,21 @@ from sqlalchemy import text
 from app.modules.orchestration.infrastructure.policies import on_evaluation_submitted
 from app.shared.domain.events import DomainEvent
 
-RUBRIC = "learnpack-pedagogical-v1"
+RUBRIC = "learnpack-pedagogical-v2"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 CRITERIA = [
-    "objectives-quality",
-    "constructive-alignment",
-    "instructional-design",
-    "inter-lesson-coherence",
-    "learning-progression",
+    "objectives-observable",
+    "progression-starting-point",
+    "alignment-coverage",
+    "alignment-assessment",
+    "instruction-authentic-problems",
+    "instruction-demonstration",
+    "instruction-prior-knowledge",
+    "coherence-logical-sequence",
+    "coherence-reinforcement",
+    "coherence-explicit-links",
+    "progression-prerequisites",
+    "progression-cognitive-demand",
 ]
 
 

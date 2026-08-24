@@ -2,7 +2,7 @@
 
 `get_instrument(version) → InstrumentSnapshot` is how Evaluation and Studies read an
 instrument — self-contained, never by touching the tables. `get_rubric` is the legacy
-surface for Rubric v1 (ADR-0015).
+surface for the human reference instrument (ADR-0015, ADR-0052).
 """
 
 from app.modules.evaluation_design.application.dtos import (

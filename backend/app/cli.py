@@ -7,10 +7,10 @@ dump-concept-touches | dump-concept-map | declare-study | update-study | open-st
 sign-off-study | show-preview |
 show-report | attribute-generator | register-generator | register-generator-version`.
 
-The MVP has no rubric authoring UI: `LearnPack Pedagogical Rubric v1` is seeded straight
+The MVP has no rubric authoring UI: the human reference instrument is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
 
-`docs/seed/rubric-v1.json` stays the single source of truth — it is not duplicated inside
+`docs/seed/rubric-v2.json` stays the single source of truth — it is not duplicated inside
 /backend. The seed therefore runs locally against Neon, never from the Render container.
 """
 
@@ -273,7 +273,7 @@ from app.shared.domain.ids import new_id
 from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v1.json"
+DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v2.json"
 DEFAULT_REFERENCE_FILE = REPO_ROOT / "docs" / "seed" / "pedagogical-reference.yaml"
 
 
@@ -301,15 +301,18 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
         text(
             """
             INSERT INTO rubric_versions
-                (id, rubric_id, version, name, status, scope, scale_min, scale_max, published_at)
+                (id, rubric_id, version, name, status, scope, scale_min, scale_max,
+                 response_format, published_at)
             VALUES
-                (:id, :rubric_id, :version, :name, :status, :scope, :scale_min, :scale_max, now())
+                (:id, :rubric_id, :version, :name, :status, :scope, :scale_min, :scale_max,
+                 :response_format, now())
             ON CONFLICT (id) DO UPDATE SET
                 name = excluded.name,
                 status = excluded.status,
                 scope = excluded.scope,
                 scale_min = excluded.scale_min,
-                scale_max = excluded.scale_max
+                scale_max = excluded.scale_max,
+                response_format = excluded.response_format
             """
         ),
         {
@@ -321,6 +324,8 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
             "scope": rubric["scope"],
             "scale_min": scale["min"],
             "scale_max": scale["max"],
+            # Absent means the old numeric scale; a version that elicits agreement says so.
+            "response_format": rubric.get("responseFormat", "numeric"),
         },
     )
 
@@ -3296,7 +3301,7 @@ def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
 # It goes through the real use cases instead of raw INSERTs, so the events are published and
 # the policies run exactly as they would in production.
 
-DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v1"
+DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v2"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 
 # (email, display name, role). The credential mirrors what auth_local builds from the header,
@@ -3686,7 +3691,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    seed_parser = subparsers.add_parser("seed", help="seed rubric v1 + reference data")
+    seed_parser = subparsers.add_parser(
+        "seed", help="seed the human reference instrument + reference data"
+    )
     seed_parser.add_argument("--file", type=Path, default=DEFAULT_SEED_FILE)
 
     role_parser = subparsers.add_parser("set-role", help="assign a role to an assessor")

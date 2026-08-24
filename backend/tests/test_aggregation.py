@@ -18,12 +18,12 @@ NOW = datetime(2026, 7, 21, 12, 0, tzinfo=UTC)
 @dataclass
 class FakeScore:
     criterion_id: str
-    score: int
+    score: int | None
     comment: str | None = None
 
 
 CONTENT = uuid4()
-RUBRIC = "learnpack-pedagogical-v1"
+RUBRIC = "learnpack-pedagogical-v2"
 
 
 @dataclass
@@ -204,3 +204,27 @@ def test_dispersion_by_criterion_uses_one_score_per_assessor():
     result = aggregation.dispersion_by_criterion(evaluations)["a"]
     assert result.rater_count == 2
     assert result.exact_agreement_pct == 100.0
+
+
+# ------------------------------------------------------------------------- abstentions
+
+
+def test_an_abstention_is_not_averaged():
+    """A null score is "I could not judge this", not a number (ADR-0052 §4)."""
+    ada, bob = uuid4(), uuid4()
+    evaluations = [evaluation(ada, a=4), evaluation(bob, a=None)]
+
+    assert aggregation.average_by_criterion(evaluations) == {"a": 4.0}
+    assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 1
+
+
+def test_a_criterion_everyone_abstained_on_stays_visible_with_no_average():
+    """Dropping the key would make "nobody could judge this" look like "never asked" —
+    the coverage lie ADR-0011 §3 forbids. And it is None, never 0: a zero would read as
+    the worst possible score."""
+    ada, bob = uuid4(), uuid4()
+    evaluations = [evaluation(ada, a=None), evaluation(bob, a=None)]
+
+    averages = aggregation.average_by_criterion(evaluations)
+    assert averages == {"a": None}
+    assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 0

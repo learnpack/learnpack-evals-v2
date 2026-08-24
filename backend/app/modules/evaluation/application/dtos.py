@@ -13,8 +13,10 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class CriterionScoreDTO:
+    """`score` is null when the assessor abstained — see `CriterionScore` (ADR-0052 §4)."""
+
     criterion_id: str
-    score: int
+    score: int | None
     comment: str | None = None
 
 

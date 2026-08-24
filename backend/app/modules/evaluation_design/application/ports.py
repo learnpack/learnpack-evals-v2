@@ -8,7 +8,7 @@ from app.modules.evaluation_design.domain.reference import DataRequirement
 
 
 class RubricRepositoryPort(Protocol):
-    """Legacy read surface of Rubric v1, the reference instrument (ADR-0015)."""
+    """Read surface of the human reference instrument (ADR-0015, ADR-0052)."""
 
     def get_snapshot(self, rubric_version_id: str) -> RubricSnapshot | None: ...
 

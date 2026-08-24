@@ -73,7 +73,11 @@ Evaluations = Annotated[EvaluationQueries, Depends(get_evaluation_queries)]
 
 class ScoreRequest(BaseModel):
     criterion_id: str
-    score: int = Field(ge=1, le=5)
+    # Null is the abstention — the assessor answered "I could not judge this" (ADR-0052 §4)
+    # — and it is REQUIRED, not defaulted: an omitted field would let silence mean an
+    # abstention, and silence is never evidence. Every criterion of the instrument still
+    # travels; exact coverage is an invariant of the aggregate.
+    score: Annotated[int, Field(ge=1, le=5)] | None
     comment: str | None = None
 
 

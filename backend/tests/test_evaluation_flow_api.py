@@ -7,14 +7,21 @@ satisfying two campaigns.
 import pytest
 from sqlalchemy import text
 
-RUBRIC = "learnpack-pedagogical-v1"
+RUBRIC = "learnpack-pedagogical-v2"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 CRITERIA = [
-    "objectives-quality",
-    "constructive-alignment",
-    "instructional-design",
-    "inter-lesson-coherence",
-    "learning-progression",
+    "objectives-observable",
+    "progression-starting-point",
+    "alignment-coverage",
+    "alignment-assessment",
+    "instruction-authentic-problems",
+    "instruction-demonstration",
+    "instruction-prior-knowledge",
+    "coherence-logical-sequence",
+    "coherence-reinforcement",
+    "coherence-explicit-links",
+    "progression-prerequisites",
+    "progression-cognitive-demand",
 ]
 
 
@@ -102,6 +109,7 @@ def test_full_evaluator_flow(admin, evaluator, content, make_campaign, session):
     assert detail["consumable_url"] == COURSE_URL
     assert [c["criterion_id"] for c in detail["criteria"]] == CRITERIA
     assert detail["scale_min"] == 1 and detail["scale_max"] == 5
+    assert detail["response_format"] == "likert"
 
     # 3. open, then submit
     assert client.post(f"/assignments/{assignment_id}/open").json()["status"] == "opened"
@@ -407,3 +415,56 @@ def test_closed_campaign_rejects_new_assignments(admin, evaluator, content, make
         json={"content_id": content, "assessor_id": ada_id},
     )
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------- abstentions
+
+
+def test_an_abstention_travels_as_a_null_score(admin, evaluator, content, make_campaign, session):
+    """The off-scale answer of ADR-0052 §4, end to end: it covers its criterion, it
+    persists as a null, and the report does not average it into anything."""
+    campaign_id = make_campaign(required=1)
+    client, assessor_id = evaluator("ada")
+    assignment_id = assign(admin, campaign_id, content, assessor_id)
+    client.post(f"/assignments/{assignment_id}/open")
+
+    submitted = client.post(
+        "/evaluations",
+        json={
+            "assignment_id": assignment_id,
+            "scores": scores(**{CRITERIA[0]: None}),
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+
+    stored = session.execute(
+        text("SELECT score FROM criterion_scores WHERE evaluation_id = :id AND criterion_id = :c"),
+        {"id": submitted.json()["evaluation_id"], "c": CRITERIA[0]},
+    ).scalar_one()
+    assert stored is None
+
+    report = admin.get("/admin/reports/scores").json()
+    summaries = {
+        c["criterion_id"]: c
+        for content_report in report["contents"]
+        if content_report["content_id"] == content
+        for c in content_report["criteria"]
+    }
+    # Still reported — the criterion was asked — but with no average and no rater.
+    assert summaries[CRITERIA[0]]["average"] is None
+    assert summaries[CRITERIA[0]]["dispersion"]["rater_count"] == 0
+    assert summaries[CRITERIA[1]]["average"] == 4.0
+
+
+def test_an_omitted_score_field_is_refused(admin, evaluator, content, make_campaign):
+    """Null is the abstention; a MISSING field is not. Silence is never evidence."""
+    campaign_id = make_campaign(required=1)
+    client, assessor_id = evaluator("ada")
+    assignment_id = assign(admin, campaign_id, content, assessor_id)
+    client.post(f"/assignments/{assignment_id}/open")
+
+    payload = scores()
+    payload[0].pop("score")
+
+    refused = client.post("/evaluations", json={"assignment_id": assignment_id, "scores": payload})
+    assert refused.status_code == 422, refused.text

@@ -1,5 +1,5 @@
-"""The seed must be re-runnable: rubric v1 is published and locked, so a second run
-updates in place instead of duplicating (08-code.md §9).
+"""The seed must be re-runnable: the reference instrument is published and locked, so a
+second run updates in place instead of duplicating (08-code.md §9).
 """
 
 import json
@@ -12,7 +12,7 @@ from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRep
 from app.platform.db import SessionLocal
 from app.shared.domain.ids import new_id
 
-RUBRIC_VERSION_ID = "learnpack-pedagogical-v1"
+RUBRIC_VERSION_ID = "learnpack-pedagogical-v2"
 
 
 def test_seed_is_idempotent(requires_db):
@@ -41,22 +41,37 @@ def test_seed_is_idempotent(requires_db):
             .scalars()
             .all()
         )
+        response_format = session.execute(
+            text("SELECT response_format FROM rubric_versions WHERE id = :id"),
+            {"id": RUBRIC_VERSION_ID},
+        ).scalar_one()
 
-    assert criteria == 5
+    assert criteria == 12
     assert frameworks == 6
     assert status == "published"
+    assert response_format == "likert"
+    # One item per Quality, and the item's id IS the quality id — the join ADR-0015 §4 needs
+    # is the primary key, not a lookup (ADR-0052 §1).
     assert order == [
-        "objectives-quality",
-        "constructive-alignment",
-        "instructional-design",
-        "inter-lesson-coherence",
-        "learning-progression",
+        "objectives-observable",
+        "progression-starting-point",
+        "alignment-coverage",
+        "alignment-assessment",
+        "instruction-authentic-problems",
+        "instruction-demonstration",
+        "instruction-prior-knowledge",
+        "coherence-logical-sequence",
+        "coherence-reinforcement",
+        "coherence-explicit-links",
+        "progression-prerequisites",
+        "progression-cognitive-demand",
     ]
 
 
 def test_reference_data_seeded(requires_db):
-    """Dimensions and qualities mirror Rubric v1's five dimensions — the stable column of
-    the language (ADR-0015 anchors the human reference panel on the same qualities)."""
+    """Dimensions and qualities are the stable column of the language, and since ADR-0052
+    the reference panel elicits one item per quality rather than one per dimension — so the
+    twelve items above are a subset of these ids, not a parallel vocabulary."""
     run_seed(DEFAULT_SEED_FILE)
     run_seed(DEFAULT_SEED_FILE)  # idempotent
 
