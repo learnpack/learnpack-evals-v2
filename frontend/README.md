@@ -69,7 +69,7 @@ ADR-0007). Therefore:
 2. Put that name in `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`. The frontend requests the token with
    `getToken({ template })` (see `src/lib/api/hooks.ts`).
 3. **The template must exist BEFORE the admin's first login** — otherwise they are born
-   `evaluator` and the allowlist does not rescue them (see `../backend/README.md`).
+   `evaluator` and the allowlist does not rescue them (see `../backend/ENVIRONMENT.md`).
 
 Access is **invite-only**: configured in Clerk (Restrictions → Allowlist / invitations).
 Evaluators appear in the assignment picker **after their first sign-in**.

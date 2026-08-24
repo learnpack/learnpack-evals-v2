@@ -12,7 +12,7 @@ Every document carries a **maintenance contract**, declared by its location:
 | **`docs/` root** | reference | **Always true of `main`.** Changes in the same commit as the code. No dates, no status. |
 | `docs/adr/` | decision | **Immutable.** An ADR is never edited: a new one supersedes it. Sole exception: the superseded ADR's **Estado** line is updated to point at its successor. |
 | `docs/design/` | snapshot | **Frozen.** What we thought and why, at the time. Not maintained. |
-| `../backend/README.md`, `../frontend/README.md` | reference | Operational runbook, next to the code it operates. |
+| `../backend/README.md`, `../frontend/README.md` | reference | Operational runbook, next to the code it operates. `backend/ENVIRONMENT.md` (preparing an environment) and `backend/TUNING.md` (throughput and its ceilings) are the same class. |
 | `../STATUS.md` | status | **The only place with dated status.** Rewritten whole. |
 | `notes/` (gitignored) | working | Ephemeral. When the task closes: promoted or deleted. |
 
@@ -42,6 +42,9 @@ to do with a note when its task ends — are in `../CLAUDE.md`, section **Docume
 - `RUNBOOK-measuring.md` — you have a folder of courses a generator wrote and you want a score.
 - `RUNBOOK-calibrating.md` — a criterion is not measuring what you meant, or does not exist
   yet, and you want to find out what it should ask.
+- `RUNBOOK-adding-a-format.md` — you have a packaging convention the system cannot read yet.
+- `RUNBOOK-authoring-an-instrument.md` — you want to decide what a study asserts, and write it
+  down as something the system can execute.
 
 **Decisions (`adr/`, immutable)**
 `0001` open content metadata *(superseded by 0017)* · `0002` campaigns/assignments/quorum ·

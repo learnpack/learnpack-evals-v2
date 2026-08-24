@@ -91,8 +91,8 @@ have to say the same thing:
 
 Clerk works against `localhost` too — its development instance is built for it — so the real
 login and invitation flows can be exercised without deploying anything. What that needs
-(keys, JWT template, what stops working) is in `backend/README.md`, *Running Clerk against
-your own machine*.
+(keys, JWT template, what stops working) is in `backend/ENVIRONMENT.md`, *Running Clerk
+against your own machine*.
 
 Two things to know:
 
@@ -130,5 +130,5 @@ Switch users from the header menu. To wipe just that demo dataset and reload it:
 ## Production
 
 Clerk (invite-only) + Neon + Render + Netlify. Local mode does **not** apply there:
-`AUTH_MODE=local` with `ENVIRONMENT=production` refuses to boot. See `backend/README.md`,
-`frontend/README.md` and `docs/design/08-code.md` §10.
+`AUTH_MODE=local` with `ENVIRONMENT=production` refuses to boot. Preparing one is
+`backend/ENVIRONMENT.md`; see also `frontend/README.md` and `docs/design/08-code.md` §10.

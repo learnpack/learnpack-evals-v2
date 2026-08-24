@@ -1,6 +1,6 @@
 """One `FormatCase` per registered package format — the data half of the format
 contract kit (`test_format_contract.py`), and the executable companion of the
-"Adding a package format" runbook in `backend/README.md`.
+"Adding a package format" runbook in `../docs/RUNBOOK-adding-a-format.md`.
 
 A case declares WHAT the contract suite should observe over a format's frozen fixture;
 the suite supplies the HOW once, for every format. A format registered in any of the
