@@ -916,7 +916,8 @@ this points the registered version at it:
 
 ```bash
 # one course
-uv run python -m app.cli declare-deployment --external-id <slug>   --url https://<course>.learn-pack.com/ --email <admin>
+uv run python -m app.cli declare-deployment --external-id <slug> \
+  --url https://<course>.learn-pack.com/ --email <admin>
 
 # a spreadsheet of them: two columns, `external_id,url`
 uv run python -m app.cli declare-deployment --from-csv ./deployments.csv --email <admin>
