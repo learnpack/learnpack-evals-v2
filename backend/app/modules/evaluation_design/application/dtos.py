@@ -8,8 +8,14 @@ Read-only module: the MVP seeds `LearnPack Pedagogical Reference v2` straight to
 invariants — are `[futuro]`.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
+
+# The one provenance this module needs to name. Content Profiling owns the vocabulary
+# (`declared_structured | declared_in_content | absent`); only the third decides anything
+# here, and a module never imports another's domain to learn a string.
+PROVENANCE_ABSENT = "absent"
 
 
 @dataclass(frozen=True)
@@ -24,6 +30,10 @@ class CriterionDTO:
     qualities: list[str]
     grounded_in: list[str]
     eligible_sources: list[str]
+    # data_requirement ids from the same demand-side namespace the automated instrument uses
+    # (ADR-0014), under the same name and meaning: the data this item is about. What differs
+    # is the consequence — here it decides whether the item is put to a human (ADR-0053).
+    required_data: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -115,3 +125,43 @@ class RubricSnapshot:
     @property
     def is_published(self) -> bool:
         return self.status == "published"
+
+    def withheld(self, provenances: Mapping[str, str]) -> dict[str, int | None]:
+        """The items not put to this content's rater, each with the score to record.
+
+        ADR-0053. `provenances` maps `data_requirement_id -> provenance` over the content's
+        most recent **ok** profile; an id the profile has no entry for is simply absent from
+        the mapping, which is what makes the two cases distinguishable here:
+
+        - **no entry** — the format has no field for it (ADR-0017), nobody could have
+          declared it, and the automated side derives `not_applicable`, out of the
+          denominator. Recorded with **no score**: there is no answer, nothing was askable.
+        - **`absent`** — the adapter looked and the course said nothing. The automated side
+          derives a penalising outcome, so this one is recorded at the **scale minimum**.
+
+        The order is the automated path's — capability first, absence second. Read the other
+        way round, a course whose format cannot express objectives would be indistinguishable
+        from one that omitted them.
+
+        An empty mapping means no `ok` profile, and then nothing is withheld: an unknown fact
+        is not an absent datum. It is also, harmlessly, what a profile with no entries says.
+
+        This is the ONE definition of the rule (ADR-0053 §5). The screen decides what to ask
+        from it and the submit path decides what to derive from it; if those two sets ever
+        disagreed, the `Evaluation` aggregate's exact-coverage invariant would break as a
+        rater pressed submit.
+        """
+        if not provenances:
+            return {}
+        withheld: dict[str, int | None] = {}
+        for criterion in self.criteria:
+            if any(datum not in provenances for datum in criterion.required_data):
+                withheld[criterion.criterion_id] = None
+            elif any(provenances[datum] == PROVENANCE_ABSENT for datum in criterion.required_data):
+                withheld[criterion.criterion_id] = self.scale_min
+        return withheld
+
+    def asked(self, provenances: Mapping[str, str]) -> list[CriterionDTO]:
+        """The items this content's rater actually answers — everything not withheld."""
+        withheld = self.withheld(provenances)
+        return [c for c in self.criteria if c.criterion_id not in withheld]

@@ -13,11 +13,12 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class CriterionScoreDTO:
-    """`score` is null when the assessor abstained — see `CriterionScore` (ADR-0052 §4)."""
+    """Four states out of `score` + `derived` — see `CriterionScore` (ADR-0052, ADR-0053)."""
 
     criterion_id: str
     score: int | None
     comment: str | None = None
+    derived: bool = False
 
 
 @dataclass(frozen=True)

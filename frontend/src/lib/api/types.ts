@@ -249,6 +249,9 @@ export interface AssignmentDetail {
   /** `numeric | likert` — what the points of the scale mean, which the range cannot say
    *  (ADR-0052). Decides which control the score form renders. */
   response_format: string;
+  /** How many items this course's profile settles as undeclared, so they are not asked
+   *  (ADR-0053). `criteria` already excludes them; this is only so the screen can say so. */
+  withheld_count: number;
   criteria: Criterion[];
 }
 
@@ -258,6 +261,12 @@ export interface ScoreInput {
    *  (ADR-0052 §4). It is NOT the bottom of the scale, which is an answer. */
   score: number | null;
   comment: string | null;
+}
+
+/** A stored score as it comes back. `derived` is read-only by design: the mechanics sets it
+ *  for an item nobody was asked (ADR-0053), and a client cannot claim it. */
+export interface ScoreDetail extends ScoreInput {
+  derived: boolean;
 }
 
 export interface SubmitEvaluationRequest {
@@ -317,9 +326,12 @@ export interface Dispersion {
 
 export interface CriterionSummary {
   criterion_id: string;
-  /** Null when every assessor abstained on this criterion — never 0, which would read as
-   *  the worst possible score (ADR-0052 §4). */
+  /** Null when nobody scored this criterion — never 0, which would read as the worst
+   *  possible score. Two things produce it, and `withheld` tells them apart. */
   average: number | null;
+  /** True when nobody was *asked*: the course declares nothing this item could be about
+   *  (ADR-0053). False when they were asked and abstained (ADR-0052 §4). */
+  withheld: boolean;
   dispersion: Dispersion;
 }
 
@@ -329,7 +341,7 @@ export interface IndividualEvaluation {
   assessor_name: string | null;
   submitted_at: string | null;
   superseded: boolean;
-  scores: ScoreInput[];
+  scores: ScoreDetail[];
 }
 
 export interface ContentScores {

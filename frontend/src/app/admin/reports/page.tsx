@@ -90,7 +90,17 @@ function ContentCard({ content }: { content: ContentScores }) {
               {content.criteria.map((c) => (
                 <TableRow key={c.criterion_id}>
                   <TableCell className="font-medium">{c.criterion_id}</TableCell>
-                  <TableCell>{fmt(c.average)}</TableCell>
+                  <TableCell>
+                    {/* An em dash would read as "nobody agreed on a number". This one was
+                        never put to anybody, because the course declares nothing the item
+                        asks about (ADR-0053) — a different fact, and the reason the API
+                        carries it separately. */}
+                    {c.withheld ? (
+                      <span className="text-xs text-muted-foreground">not declared</span>
+                    ) : (
+                      fmt(c.average)
+                    )}
+                  </TableCell>
                   <TableCell>{fmt(c.dispersion.stdev)}</TableCell>
                   <TableCell>{fmt(c.dispersion.mean_pairwise_abs_diff)}</TableCell>
                   <TableCell>

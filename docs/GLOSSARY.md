@@ -296,10 +296,15 @@
   (`not_applicable`) · datum absent from the content (`no_evidence`) · assessor with no
   executor for the criterion (`not_assessed`) · this run's execution failed on it
   (`execution_error` — a fact of the run, never of the content; re-evaluating replaces it).
-  (The 1–5 score survives in the **reference panel** flow — ADR-0015, ADR-0052 — where a
-  **null score** is the assessor's abstention: *I could not see enough of this course to judge
-  this*. It is not the bottom of the scale, which is an answer and penalises like the
-  absence-derived `fail` does.)
+  (The 1–5 score survives in the **reference panel** flow — ADR-0015, ADR-0052 — where
+  `score` + `derived` give **four states**: a judgement (`1–5`, not derived) · the assessor's
+  abstention, *I could not see enough of this course to judge this* (null, not derived) · an
+  item that **does not apply** to this content's format, because no adapter declares the
+  datum it is about (null, derived — ADR-0053) · an item the course **could have declared and
+  did not** (the scale minimum, derived). The bottom of the scale is an answer, never an
+  abstention wearing a number, and nothing that reports what humans said averages a derived
+  row. Which items a rater is asked at all is decided from the content's profile by
+  `RubricSnapshot.withheld`, the one definition both the screen and the submit path read.)
 - **EvaluationResult** — the set of `CriterionScore`s (+ comments) of an `Evaluation`.
 - **QualityJudgment** — the published quality judgment on a content: a **per-criterion
   profile** (never a single aggregated score, ADR-0011) + **coverage** (assessed / not

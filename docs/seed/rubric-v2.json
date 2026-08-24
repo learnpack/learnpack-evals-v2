@@ -25,6 +25,7 @@
       "anchorLow": "Strongly disagree",
       "anchorHigh": "Strongly agree",
       "qualities": ["objectives-observable"],
+      "requiredData": ["learning_objectives"],
       "groundedIn": ["Biggs", "Revised Bloom"],
       "eligibleSources": ["HumanExpert"]
     },
@@ -37,6 +38,7 @@
       "anchorLow": "Strongly disagree",
       "anchorHigh": "Strongly agree",
       "qualities": ["progression-starting-point"],
+      "requiredData": ["target_audience"],
       "groundedIn": ["Learning Progressions", "Merrill"],
       "eligibleSources": ["HumanExpert"]
     },
@@ -49,6 +51,7 @@
       "anchorLow": "Strongly disagree",
       "anchorHigh": "Strongly agree",
       "qualities": ["alignment-coverage"],
+      "requiredData": ["learning_objectives"],
       "groundedIn": ["Biggs"],
       "eligibleSources": ["HumanExpert"]
     },
@@ -61,6 +64,7 @@
       "anchorLow": "Strongly disagree",
       "anchorHigh": "Strongly agree",
       "qualities": ["alignment-assessment"],
+      "requiredData": ["learning_objectives"],
       "groundedIn": ["Biggs"],
       "eligibleSources": ["HumanExpert"]
     },

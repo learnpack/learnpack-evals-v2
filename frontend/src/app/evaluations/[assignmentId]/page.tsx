@@ -145,6 +145,16 @@ export default function AssignmentPage({
                     title="Score"
                     badge={`${assignment.criteria.length} items`}
                   >
+                    {assignment.withheld_count > 0 ? (
+                      /* Said, rather than left as a silent gap: an evaluator who scores two
+                         courses notices a different number of items and reads it as a bug.
+                         It names no generator and no version — the panel stays blind to
+                         which one made a course (ADR-0053). */
+                      <p className="mb-5 rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
+                        Some items are not shown for this course, because it does not declare
+                        what they ask about. Answer the ones below.
+                      </p>
+                    ) : null}
                     <ScoreForm
                       criteria={[...assignment.criteria].sort((a, b) => a.order - b.order)}
                       scaleMin={assignment.scale_min}

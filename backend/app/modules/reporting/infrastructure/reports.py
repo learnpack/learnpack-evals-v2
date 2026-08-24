@@ -29,6 +29,7 @@ class ScoreDetailDTO:
     # the individual evaluation: what a rater could not judge is part of what they answered.
     score: int | None
     comment: str | None
+    derived: bool = False
 
 
 @dataclass(frozen=True)
@@ -44,9 +45,12 @@ class IndividualEvaluationDTO:
 @dataclass(frozen=True)
 class CriterionSummaryDTO:
     criterion_id: str
-    # Null when every assessor abstained on this criterion (ADR-0052 §4). Not 0: a zero
-    # would read as the worst possible score, when nobody scored it at all.
+    # Null when nobody scored this criterion. Not 0: a zero would read as the worst possible
+    # score, when nobody scored it at all. Two different things produce it, and `withheld`
+    # is what tells them apart — every assessor abstained (ADR-0052 §4), or nobody was asked
+    # because the content declares nothing the item could be about (ADR-0053).
     average: float | None
+    withheld: bool
     dispersion: Dispersion
 
 
@@ -93,6 +97,7 @@ def build_scores_report(
 
         averages = aggregation.average_by_criterion(found)
         dispersions = aggregation.dispersion_by_criterion(found)
+        withheld = aggregation.withheld_criteria(found)
 
         content_reports.append(
             ContentScoresDTO(
@@ -105,6 +110,7 @@ def build_scores_report(
                     CriterionSummaryDTO(
                         criterion_id=criterion_id,
                         average=averages[criterion_id],
+                        withheld=criterion_id in withheld,
                         dispersion=dispersions[criterion_id],
                     )
                     for criterion_id in sorted(averages)
@@ -119,7 +125,10 @@ def build_scores_report(
                         superseded=e.evaluation_id not in counted_ids,
                         scores=[
                             ScoreDetailDTO(
-                                criterion_id=s.criterion_id, score=s.score, comment=s.comment
+                                criterion_id=s.criterion_id,
+                                score=s.score,
+                                comment=s.comment,
+                                derived=s.derived,
                             )
                             for s in e.scores
                         ],

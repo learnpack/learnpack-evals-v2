@@ -335,10 +335,12 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
                 """
                 INSERT INTO criteria
                     (rubric_version_id, criterion_id, ord, dimension, prompt, guidance,
-                     anchor_low, anchor_high, qualities, grounded_in, eligible_sources)
+                     anchor_low, anchor_high, qualities, grounded_in, eligible_sources,
+                     required_data)
                 VALUES
                     (:rubric_version_id, :criterion_id, :ord, :dimension, :prompt, :guidance,
-                     :anchor_low, :anchor_high, :qualities, :grounded_in, :eligible_sources)
+                     :anchor_low, :anchor_high, :qualities, :grounded_in, :eligible_sources,
+                     :required_data)
                 ON CONFLICT (rubric_version_id, criterion_id) DO UPDATE SET
                     ord = excluded.ord,
                     dimension = excluded.dimension,
@@ -348,7 +350,8 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
                     anchor_high = excluded.anchor_high,
                     qualities = excluded.qualities,
                     grounded_in = excluded.grounded_in,
-                    eligible_sources = excluded.eligible_sources
+                    eligible_sources = excluded.eligible_sources,
+                    required_data = excluded.required_data
                 """
             ),
             {
@@ -363,6 +366,8 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
                 "qualities": json.dumps(criterion["qualities"]),
                 "grounded_in": json.dumps(criterion["groundedIn"]),
                 "eligible_sources": json.dumps(criterion["eligibleSources"]),
+                # Absent means the item is asked of everybody (ADR-0053).
+                "required_data": json.dumps(criterion.get("requiredData", [])),
             },
         )
 

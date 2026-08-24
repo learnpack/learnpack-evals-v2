@@ -8,6 +8,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.modules.content_profiling.public import (
+    ContentProfilingQueries,
+    get_content_profiling_queries,
+)
 from app.modules.evaluand_registry.public import (
     EvaluandRegistryQueries,
     get_evaluand_registry_queries,
@@ -40,6 +44,7 @@ Uow = Annotated[UnitOfWork, Depends(get_uow)]
 # Other modules are reached only through their public query surface (ARCHITECTURE.md §3).
 Contents = Annotated[EvaluandRegistryQueries, Depends(get_evaluand_registry_queries)]
 Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
+Profiles = Annotated[ContentProfilingQueries, Depends(get_content_profiling_queries)]
 
 admin_router = APIRouter(prefix="/admin", tags=["orchestration-admin"])
 evaluator_router = APIRouter(tags=["orchestration"])
@@ -119,6 +124,10 @@ class AssignmentDetailResponse(BaseModel):
     # `numeric | likert`: the range is the same for both, the meaning of its points is not
     # (ADR-0052 §3). The screen renders a different control for each.
     response_format: str
+    # How many items this content's profile settles as undeclared, so they are not asked
+    # (ADR-0053). The screen says so in one neutral line; it never says which generator made
+    # a course, and the count is not a property of one.
+    withheld_count: int
     criteria: list[CriterionResponse]
 
 
@@ -334,8 +343,9 @@ def assignment_detail(
     uow: Uow,
     contents: Contents,
     rubrics: Rubrics,
+    profiles: Profiles,
 ) -> AssignmentDetailResponse:
-    """Composes three modules through their public query surfaces — no cross-module JOINs."""
+    """Composes four modules through their public query surfaces — no cross-module JOINs."""
     assignment = queries.get_assignment(
         SqlAlchemyAssignmentRepository(uow.session),
         SqlAlchemyCampaignRepository(uow.session),
@@ -354,6 +364,11 @@ def assignment_detail(
     if rubric is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rubric not found")
 
+    # An item is withheld only when the profile SETTLES that its datum is undeclared
+    # (ADR-0053). No profile, or one that failed, settles nothing — the mapping stays empty
+    # and every item is asked, because an unknown fact is not an absent datum.
+    declared = profiles.get_declared_data(assignment.content_id)
+
     return AssignmentDetailResponse(
         assignment_id=assignment.assignment_id,
         status=assignment.status,
@@ -364,6 +379,7 @@ def assignment_detail(
         scale_min=rubric.scale_min,
         scale_max=rubric.scale_max,
         response_format=rubric.response_format,
+        withheld_count=len(rubric.withheld(declared)),
         criteria=[
             CriterionResponse(
                 criterion_id=c.criterion_id,
@@ -374,7 +390,7 @@ def assignment_detail(
                 anchor_low=c.anchor_low,
                 anchor_high=c.anchor_high,
             )
-            for c in rubric.criteria
+            for c in rubric.asked(declared)
         ],
     )
 

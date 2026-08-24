@@ -20,6 +20,7 @@ class FakeScore:
     criterion_id: str
     score: int | None
     comment: str | None = None
+    derived: bool = False
 
 
 CONTENT = uuid4()
@@ -228,3 +229,43 @@ def test_a_criterion_everyone_abstained_on_stays_visible_with_no_average():
     averages = aggregation.average_by_criterion(evaluations)
     assert averages == {"a": None}
     assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 0
+
+
+# --------------------------------------------------------------------------- withheld
+
+
+def derived_evaluation(assessor_id: UUID, /, **scores):
+    """An evaluation whose named criteria were never asked of anybody (ADR-0053)."""
+    return FakeEvaluation(
+        assessor_id=assessor_id,
+        scores=[FakeScore(criterion_id=c, score=s, derived=True) for c, s in scores.items()],
+    )
+
+
+def test_a_derived_row_is_not_something_a_human_said():
+    """Nobody was asked, so it is neither averaged nor counted as a rater."""
+    ada = uuid4()
+    evaluations = [derived_evaluation(ada, a=1)]
+
+    assert aggregation.average_by_criterion(evaluations) == {"a": None}
+    assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 0
+    assert aggregation.withheld_criteria(evaluations) == {"a"}
+
+
+def test_withheld_needs_every_row_derived_not_just_one():
+    """If one assessor was asked and another was not — a content re-profiled between two
+    submissions — the criterion is still one somebody judged."""
+    ada, bob = uuid4(), uuid4()
+    evaluations = [evaluation(ada, a=4), derived_evaluation(bob, a=1)]
+
+    assert aggregation.withheld_criteria(evaluations) == set()
+    assert aggregation.average_by_criterion(evaluations) == {"a": 4.0}
+
+
+def test_an_abstention_is_not_withheld():
+    """Both come back with no average, and only `withheld` tells them apart."""
+    ada = uuid4()
+    evaluations = [evaluation(ada, a=None)]
+
+    assert aggregation.average_by_criterion(evaluations) == {"a": None}
+    assert aggregation.withheld_criteria(evaluations) == set()
