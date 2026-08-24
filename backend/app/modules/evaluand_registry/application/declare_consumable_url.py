@@ -13,20 +13,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-# The same condition the act next door raises, and deliberately the same class: two
-# exceptions with one name is how a caller ends up catching the other one.
-from app.modules.evaluand_registry.application.attribute_generator import ContentNotFound
+from app.modules.evaluand_registry.application.errors import ContentNotFound
 from app.modules.evaluand_registry.application.ports import ContentRepositoryPort
 from app.modules.evaluand_registry.domain import events
 from app.modules.evaluand_registry.domain.content import EducationalContent
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
-
-__all__ = [
-    "ConsumableUrlChangedMeanwhile",
-    "ContentNotFound",
-    "DeclareConsumableUrl",
-    "DeclareConsumableUrlCommand",
-]
 
 
 class ConsumableUrlChangedMeanwhile(Exception):

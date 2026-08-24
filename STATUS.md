@@ -112,7 +112,18 @@ declaration and asserts they are identical.
 
 One thing found while building it and worth keeping: the new use case first defined its own
 `ContentNotFound`, and the router went on catching `attribute_generator`'s — two exceptions
-with one name, and a 404 that arrived as a 500. They are one class now.
+with one name, and a 404 that arrived as a 500.
+
+**That is now one class and a rule.** `ContentNotFound` lives in
+`evaluand_registry/application/errors.py`, the shape `identity/application/errors.py` had
+already set: a module's `errors.py` holds the refusals **more than one act shares**, and an
+exception belonging to a single act stays with it. `ARCHITECTURE.md` §3 states it — *one name,
+one exception, within a module* — and `test_an_exception_name_means_one_thing_within_a_module`
+checks it, resolving exception-ness within each module so local hierarchies count. Across
+modules the same name stays legal, because the registry's `ContentNotFound` and Content
+Profiling's mean different things and the CLI aliases one of them. The check was verified by
+reintroducing the duplicate and watching it name both files, which is the only way to know a
+guardrail is not decorative.
 
 **ADR-0053 (an undeclared datum is not asked of a human) is decided and in, and it corrects
 ADR-0052 §7.** §7 said an item resting on a datum the course never declared is withheld and

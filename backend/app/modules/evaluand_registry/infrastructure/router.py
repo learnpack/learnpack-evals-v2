@@ -14,7 +14,6 @@ from app.modules.evaluand_registry.application import queries
 from app.modules.evaluand_registry.application.attribute_generator import (
     AttributeGenerator,
     AttributeGeneratorCommand,
-    ContentNotFound,
 )
 from app.modules.evaluand_registry.application.declare_consumable_url import (
     ConsumableUrlChangedMeanwhile,
@@ -28,6 +27,7 @@ from app.modules.evaluand_registry.application.dtos import (
     GeneratorDTO,
     GeneratorVersionDTO,
 )
+from app.modules.evaluand_registry.application.errors import ContentNotFound
 from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
 from app.modules.evaluand_registry.application.register_brief import (
     RegisterBrief,

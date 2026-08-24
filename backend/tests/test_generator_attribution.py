@@ -14,8 +14,8 @@ from sqlalchemy import text
 from app.modules.evaluand_registry.application.attribute_generator import (
     AttributeGenerator,
     AttributeGeneratorCommand,
-    ContentNotFound,
 )
+from app.modules.evaluand_registry.application.errors import ContentNotFound
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
