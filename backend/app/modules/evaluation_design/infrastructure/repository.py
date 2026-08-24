@@ -49,7 +49,8 @@ class SqlAlchemyRubricRepository:
                 text(
                     """
                     SELECT criterion_id, ord, dimension, prompt, guidance, anchor_low,
-                           anchor_high, qualities, grounded_in, eligible_sources
+                           anchor_high, qualities, grounded_in, eligible_sources,
+                           required_data
                       FROM criteria
                      WHERE rubric_version_id = :id
                      ORDER BY ord
@@ -83,6 +84,7 @@ class SqlAlchemyRubricRepository:
                     qualities=row["qualities"] or [],
                     grounded_in=row["grounded_in"] or [],
                     eligible_sources=row["eligible_sources"] or [],
+                    required_data=row["required_data"] or [],
                 )
                 for row in criteria
             ],

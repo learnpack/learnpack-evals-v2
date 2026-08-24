@@ -53,6 +53,26 @@ def get_profile(
     return _snapshot(profile) if profile is not None else None
 
 
+def get_declared_data(profiles: ProfileRepositoryPort, content_id: UUID) -> dict[str, str]:
+    """`{data_requirement_id: provenance}` over the content's most recent **ok** profile.
+
+    Empty when there is no ok profile — which is not the same statement as an empty profile,
+    and consumers are told to read it as "nothing is settled" rather than "nothing was
+    declared" (ADR-0053 §2). The `status` guard lives here rather than in each caller because
+    `get_profile` deliberately falls back to the most recent *failed* profile so the
+    workbench can show what broke, and a consumer that forgot the guard would read a broken
+    extraction as a statement about the course.
+
+    The two cases a caller needs are both readable from the result: an id missing from the
+    mapping is one no adapter declared, and an id mapped to `absent` is one the adapter
+    looked for and did not find.
+    """
+    profile = profiles.get(content_id, None)
+    if profile is None or profile.status != "ok":
+        return {}
+    return {entry.data_requirement_id: entry.provenance for entry in profile.entries}
+
+
 def list_profiles(profiles: ProfileRepositoryPort) -> list[ContentProfileSnapshot]:
     return [_snapshot(profile) for profile in profiles.list_all()]
 

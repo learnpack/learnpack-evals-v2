@@ -77,6 +77,10 @@ class ContentProfilingQueries:
     ) -> ContentProfileSnapshot | None:
         return _queries.get_profile(self._profiles, content_id, adapter_version)
 
+    def get_declared_data(self, content_id: UUID) -> dict[str, str]:
+        """`{data_requirement_id: provenance}` over the most recent **ok** profile, or {}."""
+        return _queries.get_declared_data(self._profiles, content_id)
+
     def list_profiles(self) -> list[ContentProfileSnapshot]:
         return _queries.list_profiles(self._profiles)
 

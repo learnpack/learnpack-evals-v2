@@ -25,6 +25,9 @@ class ScoreLike(Protocol):
     # Null is an abstention, not a zero: the assessor answered "I could not judge this"
     # (ADR-0052 §4). Nothing here averages one.
     score: int | None
+    # True when the mechanics produced the row because the content declares nothing the item
+    # could be about (ADR-0053). Nobody judged it, so nothing here counts it either.
+    derived: bool
 
 
 class EvaluationLike(Protocol):
@@ -85,18 +88,33 @@ def _ordering_key(evaluation: EvaluationLike) -> tuple[datetime, str]:
 def scores_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, list[int]]:
     """One list of scores per criterion — one entry per assessor that scored it.
 
-    An abstention (null score) is **dropped from the list but keeps its criterion in the
-    map**, so a criterion everybody abstained on stays visible with an empty list. Dropping
-    the key instead would make "nobody could judge this" indistinguishable from "this
-    criterion was never asked", which is the coverage lie ADR-0011 §3 forbids.
+    Two kinds of row are **dropped from the list while keeping their criterion in the map**:
+    an abstention (null score) and a derived row (ADR-0053), neither of which anybody judged.
+    A criterion nobody scored therefore stays visible with an empty list; dropping the key
+    instead would make it indistinguishable from a criterion that was never part of the
+    instrument, which is the coverage lie ADR-0011 §3 forbids.
     """
     grouped: dict[str, list[int]] = {}
     for evaluation in collapse_latest_per_assessor(evaluations):
         for score in evaluation.scores:
             scores = grouped.setdefault(score.criterion_id, [])
-            if score.score is not None:
+            if score.score is not None and not score.derived:
                 scores.append(score.score)
     return grouped
+
+
+def withheld_criteria(evaluations: Sequence[EvaluationLike]) -> set[str]:
+    """The criteria no assessor was asked: every row for them is derived (ADR-0053).
+
+    "Every", not "any": while one assessor was asked and another was not, the criterion is
+    still one somebody judged. That only happens if a content is re-profiled between two
+    submissions, which is rare and not a reason to hide what the first rater said.
+    """
+    by_criterion: dict[str, list[bool]] = {}
+    for evaluation in collapse_latest_per_assessor(evaluations):
+        for score in evaluation.scores:
+            by_criterion.setdefault(score.criterion_id, []).append(score.derived)
+    return {criterion_id for criterion_id, flags in by_criterion.items() if all(flags)}
 
 
 def average_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, float | None]:

@@ -61,8 +61,9 @@ class SqlAlchemyEvaluationRepository:
             self._session.execute(
                 text(
                     """
-                    INSERT INTO criterion_scores (evaluation_id, criterion_id, score, comment)
-                    VALUES (:evaluation_id, :criterion_id, :score, :comment)
+                    INSERT INTO criterion_scores
+                        (evaluation_id, criterion_id, score, comment, derived)
+                    VALUES (:evaluation_id, :criterion_id, :score, :comment, :derived)
                     """
                 ),
                 {
@@ -70,6 +71,7 @@ class SqlAlchemyEvaluationRepository:
                     "criterion_id": score.criterion_id,
                     "score": score.score,
                     "comment": score.comment,
+                    "derived": score.derived,
                 },
             )
 
@@ -100,7 +102,7 @@ class SqlAlchemyEvaluationRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT evaluation_id, criterion_id, score, comment
+                    SELECT evaluation_id, criterion_id, score, comment, derived
                       FROM criterion_scores
                      WHERE evaluation_id = ANY(:evaluation_ids)
                      ORDER BY criterion_id
@@ -119,6 +121,7 @@ class SqlAlchemyEvaluationRepository:
                     criterion_id=score["criterion_id"],
                     score=score["score"],
                     comment=score["comment"],
+                    derived=score["derived"],
                 )
             )
 

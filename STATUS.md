@@ -67,6 +67,63 @@ The console's role cell is a select except on your own row, where it stays a bad
 reason next to it. `set-role` survives as **break-glass**, enforcing neither guardrail and
 documented as such. Clause 3 of ADR-0007 is superseded; the rest of it stands.
 
+**ADR-0053 (an undeclared datum is not asked of a human) is decided and in, and it corrects
+ADR-0052 §7.** §7 said an item resting on a datum the course never declared is withheld and
+its value produced by the system — right — and then that the derived value *enters the fitness
+and penalises*, citing ADR-0023 §2. **Both halves of that sentence are wrong, and the second
+would have written a defect into the record that does not exist.** The fitness is the wrong
+aggregate: `fitness.py` computes over `criterion_outcomes`, and nothing a rater does has ever
+reached it. And the case the feature exists for is not an omission at all — a **LearnpackV1**
+package produces **no entry** for `learning_objectives` / `target_audience`, not an `absent`
+one, because the V1 adapter declares no capability for them (the format has nowhere to put
+them, ADR-0017). `derivation.py` reads that as **`not_applicable`**, which ADR-0023 §2 puts
+*out* of the denominator: the automated side does not charge a V1 generator for objectives it
+had no field to declare, and neither may the human side.
+
+So the rule has **three branches, in the order `derivation.py` uses them** — capability first,
+absence second, because read the other way round a course whose format cannot express
+objectives is indistinguishable from one that omitted them. No entry → withheld with **no
+score**. An explicit `absent` → withheld at the **scale minimum**, which is what the
+penalising outcome looks like on a 1–5 scale. A value → **asked**. And **no `ok` profile means
+everything is asked**: an unknown fact is not an absent datum, so a content that was never
+profiled, or whose profiling failed, settles nothing.
+
+`criterion_scores.derived` (migration 0026) is ADR-0021's own column ported over, and with a
+nullable `score` it yields **four states out of two columns** — a judgement, an abstention, an
+item this format cannot declare, an item the course could have declared and did not. No third
+column, and no way for the four to disagree. `criteria.required_data` carries the ids an item
+is about, under **the same name the automated instrument uses**, because it is the same
+demand-side namespace; what differs is the consequence. Four items declare one:
+`objectives-observable`, `alignment-coverage` and `alignment-assessment` name
+`learning_objectives`, `progression-starting-point` names `target_audience`. **Not
+`prerequisites`** — no adapter in the repo declares that capability, so naming it would
+withhold that item everywhere for ever, and the rater reads the deployed course, where
+prerequisites can sit in prose no profile extracts.
+
+**The rule is one function** (`RubricSnapshot.withheld`), read by the screen to decide what to
+ask and by the submit path to decide what to derive. Two definitions could disagree, and the
+disagreement would break the `Evaluation` aggregate's exact-coverage invariant at the moment
+somebody pressed submit — the same argument ADR-0020 §3 made for the value-domain grammar.
+Both callers reach Content Profiling through its published `get_declared_data`, which is where
+the `status = 'ok'` guard lives: `get_profile` deliberately falls back to the most recent
+*failed* profile so the workbench can show what broke, and a consumer that forgot the guard
+would read a broken extraction as a statement about the course. **A client cannot answer a
+withheld item**: the router recomputes the set and overrides whatever was sent, because what
+an item is worth when nobody was asked is a mechanical fact, and `derived` is absent from the
+request model so a judgement cannot be laundered into one.
+
+Reporting excludes derived rows from the average and the dispersion — nobody judged them — and
+`CriterionSummary` gains **`withheld`**, because a criterion showing no average for two
+different reasons with nothing to tell them apart is the coverage lie ADR-0011 §3 forbids. The
+admin table says *not declared* where a dash would have read as "nobody agreed on a number".
+
+**The consequence to know before composing the dataset:** over LearnpackV1 courses the four
+objectives-dependent qualities receive **no human data at all** — the rater sees eight items,
+not twelve. They are measurable only on contents whose format declares those ids, so the mix
+of the campaign decides how well that family of claims can be validated. It is a real loss of
+coverage and the honest one: the alternative was a number about a question the course never
+answered.
+
 **ADR-0052 (the human reference is elicited per quality) is decided and in.** ADR-0015 gave
 the panel a job — *"each claim is correlated with the human score of **its** quality across
 the contents of the set"* (§4) — and a shape: five items, one per `PedagogicalDimension`,
@@ -2171,21 +2228,22 @@ the data in the package).
   which is an amendment to ADR-0034 and wants its own decision. Nothing is lost by waiting:
   the trace already records which provider answered, so the size of the problem can be
   measured from runs that have already happened.
-- **The human reference's mechanical derivation** (ADR-0052 §7) is decided and **not built**.
-  An item whose datum the course never declared should be withheld from the rater and its
-  value produced by the system — the posture 12-define already takes for automated executors
-  — and today every course is asked all twelve. It needs `criteria.requires`,
-  `criterion_scores.derived` (the port of ADR-0021's own column to the human path) and a
-  query port into Content Profiling asking which required ids are `absent`. Until it exists,
-  a package that declares no learning objectives puts four unanswerable items in front of an
-  expert. **It has to land before the first reference campaign, not before the form ships.**
 - **The validity coefficients themselves** (ADR-0015 §4) are still where 13-code §7.2 left
   them: out of the increment, trigger *first reference campaign completed + usable golden*,
-  no schema until then. What ADR-0052 changes is that they became **computable** — the human
+  no schema until then. What ADR-0052 changed is that they became **computable** — the human
   score now exists per quality, which is the grain a claim's coefficient needs. Two rules are
-  decided and enforced nowhere yet: a derived value enters the fitness and is excluded from
-  the coefficient, and a quality whose automated side has no variance cannot be validated by
-  any number of raters (`progression-prerequisites` is the known case).
+  decided and enforced nowhere yet: **a derived score is excluded from the coefficient**
+  (ADR-0053 §4 — nobody judged it, so a content whose items were all derived would otherwise
+  contribute a perfect agreement no human produced), and a quality whose automated side has
+  **no variance** cannot be validated by any number of raters (`progression-prerequisites` is
+  the known case: zero violations over every draft judged so far). The second is not a rule
+  the code can enforce; it is a check to run over the dataset **before** spending expert
+  hours on it.
+- **The `absent` branch of the withholding rule has no end-to-end test**, because no frozen
+  package in the repo produces one: LearnpackV1 has no capability for those ids at all, and
+  the single LearnpackV2 fixture populates both fields. The rule is covered over the snapshot
+  and the storage is covered on its own; what is not covered is a real profile with an
+  `absent` entry travelling the whole way. A synthetic V2 package would close it.
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);
   what does not exist is the loop around it — generating a population, registering and
   evaluating it in bulk, and selecting on the signal. Bulk registration — its first

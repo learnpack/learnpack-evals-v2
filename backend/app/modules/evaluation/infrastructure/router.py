@@ -35,6 +35,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.modules.content_profiling.public import (
+    ContentProfilingQueries,
+    get_content_profiling_queries,
+)
 from app.modules.evaluation.application.preview_evaluation import (
     Preview,
     PreviewEvaluationCommand,
@@ -66,6 +70,7 @@ admin_router = APIRouter(prefix="/admin", tags=["automated-evaluation"])
 Uow = Annotated[UnitOfWork, Depends(get_uow)]
 Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_queries)]
 Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
+Profiles = Annotated[ContentProfilingQueries, Depends(get_content_profiling_queries)]
 Instruments = Annotated[InstrumentQueries, Depends(get_instrument_queries)]
 Identities = Annotated[IdentityQueries, Depends(get_identity_queries)]
 Evaluations = Annotated[EvaluationQueries, Depends(get_evaluation_queries)]
@@ -86,12 +91,27 @@ class SubmitEvaluationRequest(BaseModel):
     scores: list[ScoreRequest]
 
 
+class ScoreResponse(BaseModel):
+    """What came back, which is not what can be sent.
+
+    `derived` says the mechanics produced this row because the content's profile settles that
+    its datum is undeclared (ADR-0053). It has no place on the request: a rater may not
+    declare their own answer mechanical, and a field that allowed it would be a way to
+    launder a judgement into a fact.
+    """
+
+    criterion_id: str
+    score: int | None
+    comment: str | None = None
+    derived: bool = False
+
+
 class EvaluationResponse(BaseModel):
     evaluation_id: UUID
     assessor_id: UUID
     content_id: UUID
     instrument_version_id: str
-    scores: list[ScoreRequest]
+    scores: list[ScoreResponse]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=EvaluationResponse)
@@ -101,6 +121,7 @@ def submit_evaluation(
     uow: Uow,
     orchestration: Orchestration,
     rubrics: Rubrics,
+    profiles: Profiles,
 ) -> EvaluationResponse:
     assignment = orchestration.get_assignment(request.assignment_id)
     if assignment is None:
@@ -125,6 +146,13 @@ def submit_evaluation(
     if rubric is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="rubric not found")
 
+    # The same one rule the screen used to decide what to show (ADR-0053 §5). Reading it
+    # again here rather than trusting the request is the point: what an item is worth when
+    # nobody was asked is a mechanical fact, and a client that could assert it could launder
+    # a judgement into one.
+    declared = profiles.get_declared_data(assignment.content_id)
+    withheld = rubric.withheld(declared)
+
     use_case = SubmitEvaluation(
         evaluations=SqlAlchemyEvaluationRepository(uow.session), publisher=uow.events, uow=uow
     )
@@ -137,7 +165,14 @@ def submit_evaluation(
                 scores=[
                     ScoreInput(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
                     for s in request.scores
+                    if s.criterion_id not in withheld
+                ]
+                + [
+                    ScoreInput(criterion_id=criterion_id, score=score, derived=True)
+                    for criterion_id, score in withheld.items()
                 ],
+                # Still every criterion of the instrument: exact coverage is an invariant of
+                # the aggregate, and a withheld item is covered by its derived row.
                 rubric_criterion_ids=rubric.criterion_ids,
             )
         )
@@ -152,7 +187,12 @@ def submit_evaluation(
         content_id=evaluation.content_id,
         instrument_version_id=evaluation.instrument_version_id,
         scores=[
-            ScoreRequest(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
+            ScoreResponse(
+                criterion_id=s.criterion_id,
+                score=s.score,
+                comment=s.comment,
+                derived=s.derived,
+            )
             for s in evaluation.result.scores
         ],
     )

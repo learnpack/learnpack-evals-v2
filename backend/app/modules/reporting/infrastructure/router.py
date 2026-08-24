@@ -39,6 +39,7 @@ class ScoreDetailResponse(BaseModel):
     # Null is an abstention — see `ScoreDetailDTO`.
     score: int | None
     comment: str | None
+    derived: bool = False
 
 
 class IndividualEvaluationResponse(BaseModel):
@@ -54,6 +55,9 @@ class CriterionSummaryResponse(BaseModel):
     criterion_id: str
     # Null when nobody scored it — see `CriterionSummaryDTO`.
     average: float | None
+    # True when nobody was ASKED: the content declares nothing this item could be about
+    # (ADR-0053). Without it, that reads the same as everybody abstaining.
+    withheld: bool
     dispersion: DispersionResponse
 
 
@@ -129,6 +133,7 @@ def scores_report(
                     CriterionSummaryResponse(
                         criterion_id=criterion.criterion_id,
                         average=criterion.average,
+                        withheld=criterion.withheld,
                         dispersion=DispersionResponse(
                             stdev=criterion.dispersion.stdev,
                             mean_pairwise_abs_diff=criterion.dispersion.mean_pairwise_abs_diff,
@@ -147,7 +152,10 @@ def scores_report(
                         superseded=e.superseded,
                         scores=[
                             ScoreDetailResponse(
-                                criterion_id=s.criterion_id, score=s.score, comment=s.comment
+                                criterion_id=s.criterion_id,
+                                score=s.score,
+                                comment=s.comment,
+                                derived=s.derived,
                             )
                             for s in e.scores
                         ],

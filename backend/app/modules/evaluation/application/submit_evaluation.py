@@ -20,6 +20,10 @@ class ScoreInput:
     criterion_id: str
     score: int | None
     comment: str | None = None
+    # True only for rows the mechanics produced for a withheld item (ADR-0053). The router
+    # mints those; a client cannot set it, because a rater may not declare their own answer
+    # mechanical.
+    derived: bool = False
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,12 @@ class SubmitEvaluation:
             content_id=command.content_id,
             instrument_version_id=command.instrument_version_id,
             scores=[
-                CriterionScore(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
+                CriterionScore(
+                    criterion_id=s.criterion_id,
+                    score=s.score,
+                    comment=s.comment,
+                    derived=s.derived,
+                )
                 for s in command.scores
             ],
             rubric_criterion_ids=command.rubric_criterion_ids,

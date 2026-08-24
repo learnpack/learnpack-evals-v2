@@ -24,16 +24,25 @@ class InvalidEvaluation(Exception):
 class CriterionScore:
     """A judgement on one criterion. Distinct from a `ComputedMetric` (a raw measurement).
 
-    A null `score` is an **abstention**: the assessor looked and could not judge this
-    criterion from what the course gave them (ADR-0052 §4). It is not the bottom of the
-    scale, which is an answer — *the course does not do this* — and which has to penalise
-    the way the automated side's absence-derived outcome does (ADR-0021, ADR-0023 §2).
-    Keeping the two apart is what stops an abstention from being read as agreement.
+    Four states, out of two fields (ADR-0052 §4, ADR-0053 §3):
+
+    | `score` | `derived` | |
+    |---|---|---|
+    | 1-5   | false | a judgement |
+    | null  | false | the assessor abstained -- they looked and could not judge it |
+    | null  | true  | the item does not apply to this content's format |
+    | 1     | true  | the course could have declared the datum and did not |
+
+    `derived` is ADR-0021's own column ported here, for the reason it was added there: it
+    distinguishes in data "someone judged it" from "the mechanics derived it". Nothing that
+    reports what humans said may average a derived row, and the bottom of the scale is an
+    answer -- never an abstention wearing a number.
     """
 
     criterion_id: str
     score: int | None
     comment: str | None = None
+    derived: bool = False
 
     def __post_init__(self) -> None:
         if not self.criterion_id or not self.criterion_id.strip():

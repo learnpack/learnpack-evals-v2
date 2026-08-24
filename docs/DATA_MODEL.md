@@ -265,6 +265,7 @@ erDiagram
         jsonb qualities
         jsonb grounded_in
         jsonb eligible_sources
+        jsonb required_data "asked only if the content declares these"
     }
 ```
 
@@ -347,8 +348,9 @@ erDiagram
     criterion_scores {
         uuid evaluation_id PK_FK
         text criterion_id PK
-        int score "1..5, null = abstained"
+        int score "1..5, null = not scored"
         text comment
+        bool derived "the mechanics answered, not a person"
     }
 
     criterion_outcomes {
