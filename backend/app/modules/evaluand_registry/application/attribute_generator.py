@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+from app.modules.evaluand_registry.application.errors import ContentNotFound
 from app.modules.evaluand_registry.application.ports import (
     ContentRepositoryPort,
     GeneratorVersionRepositoryPort,
@@ -23,10 +24,6 @@ from app.modules.evaluand_registry.domain.content import (
     GeneratorAlreadyAttributed,
 )
 from app.shared.application.ports import EventPublisherPort, UnitOfWorkPort
-
-
-class ContentNotFound(Exception):
-    """No content version with that id."""
 
 
 @dataclass(frozen=True)

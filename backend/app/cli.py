@@ -66,14 +66,15 @@ from app.modules.evaluand_registry.application.attribute_generator import (
     AttributeGenerator,
     AttributeGeneratorCommand,
 )
-from app.modules.evaluand_registry.application.attribute_generator import (
-    # Profiling has a same-named exception; both are imported here.
-    ContentNotFound as UnregisteredContent,
-)
 from app.modules.evaluand_registry.application.declare_consumable_url import (
     ConsumableUrlChangedMeanwhile,
     DeclareConsumableUrl,
     DeclareConsumableUrlCommand,
+)
+from app.modules.evaluand_registry.application.errors import (
+    # Content Profiling has a same-named exception meaning something else; both are
+    # imported here, and this alias is why they never collided.
+    ContentNotFound as UnregisteredContent,
 )
 from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
 from app.modules.evaluand_registry.application.register_content_version import (

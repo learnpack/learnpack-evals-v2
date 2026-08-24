@@ -95,6 +95,14 @@ domain. Between modules:
 - The internal domain **and the `infrastructure`** of another module are **never** imported, nor
   is its concrete repo/adapter named. Other modules import **only** from the module's
   `public.py`. **Executable:** `test_modules_do_not_reach_into_each_others_internals`.
+- **One name, one exception, within a module:** an exception class name is defined **once**
+  per module; a refusal two acts share lives in that module's `application/errors.py`, and one
+  that belongs to a single act stays with it. `except` matches the class and not the name, so
+  a second class with a familiar name is caught by nobody — the refusal escapes its handler
+  and leaves as a 500 where the code plainly says 404, with mypy and ruff both green. Across
+  modules the same name is fine and sometimes right (Evaluand Registry and Content Profiling
+  each have a `ContentNotFound`, meaning different things); the caller that needs both aliases
+  one. **Executable:** `test_an_exception_name_means_one_thing_within_a_module`.
 - The boundaries with external systems (LearnPack, LLM providers) go through an **ACL** in the
   adapter, which translates the external model into ours.
 

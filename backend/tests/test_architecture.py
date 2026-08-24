@@ -133,3 +133,63 @@ def test_every_consumed_module_publishes_a_public_surface():
     assert not missing, "Consumed modules must publish a contract (ARCHITECTURE.md §3):\n" + (
         "\n".join(missing)
     )
+
+
+def _exception_classes(paths: list[pathlib.Path]) -> dict[str, list[str]]:
+    """`{class name: [files]}` for every exception defined across one module's files.
+
+    Exception-ness is resolved **within the module**, iterating until nothing new is found,
+    so a local hierarchy counts too: `LlmError(Exception)` makes `LlmConfigurationError(LlmError)`
+    one. A class whose base comes from outside the module is not chased — the rule is about a
+    name meaning one thing here, and a missed class is a gap, never a false accusation.
+    """
+    defined: dict[str, list[tuple[str, list[str]]]] = {}
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
+                defined.setdefault(node.name, []).append((_relative(path), bases))
+
+    exceptions = {"Exception"}
+    while True:
+        found = {
+            name
+            for name, definitions in defined.items()
+            if name not in exceptions
+            and any(set(bases) & exceptions for _file, bases in definitions)
+        }
+        if not found:
+            break
+        exceptions |= found
+
+    return {
+        name: [file for file, _bases in definitions]
+        for name, definitions in defined.items()
+        if name in exceptions
+    }
+
+
+def test_an_exception_name_means_one_thing_within_a_module():
+    """Two exceptions with one name inside a module is a defect that hides (ARCHITECTURE.md §3).
+
+    `except` matches the class, not the name, so the second definition is caught by nobody:
+    the refusal escapes its handler and leaves as a 500 where the code says 404. Neither mypy
+    nor ruff can see it — both classes are valid, and the `except` clause is type-correct — and
+    every line reads right. This is the check that would have caught it.
+
+    Across modules is a different question and deliberately allowed: Evaluand Registry and
+    Content Profiling both have a `ContentNotFound` meaning different things, and the caller
+    that needs both aliases one.
+    """
+    violations = []
+    for module in sorted(p.name for p in (APP / "modules").iterdir() if p.is_dir()):
+        paths = _python_files(APP / "modules" / module)
+        for name, files in sorted(_exception_classes(paths).items()):
+            if len(files) > 1:
+                violations.append(f"{module}: '{name}' is defined in {', '.join(sorted(files))}")
+
+    assert not violations, (
+        "An exception name must mean one thing within a module (ARCHITECTURE.md §3) — move the "
+        "shared one to the module's application/errors.py:\n" + "\n".join(violations)
+    )

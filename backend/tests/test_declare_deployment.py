@@ -18,10 +18,10 @@ from app.cli import _deployments_from_csv, _UnusableDeploymentList, run_declare_
 from app.modules.content_profiling.application.profile_content import ProfileContentCommand
 from app.modules.evaluand_registry.application.declare_consumable_url import (
     ConsumableUrlChangedMeanwhile,
-    ContentNotFound,
     DeclareConsumableUrl,
     DeclareConsumableUrlCommand,
 )
+from app.modules.evaluand_registry.application.errors import ContentNotFound
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
