@@ -132,6 +132,8 @@ erDiagram
         text edit_provenance "pure | human_edited | unknown"
         uuid generator_attributed_by "late attribution"
         timestamptz generator_attributed_at
+        uuid consumable_url_declared_by "null = came from registration"
+        timestamptz consumable_url_declared_at
         timestamptz created_at
     }
 

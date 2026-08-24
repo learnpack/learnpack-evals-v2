@@ -68,6 +68,27 @@ def generator_attributed(content: EducationalContent) -> DomainEvent:
     )
 
 
+def consumable_url_declared(content: EducationalContent, previous: str | None) -> DomainEvent:
+    """A deployment declared after registration (ADR-0054).
+
+    `from` and `to`, because the audit question is never *what is this content's URL* — the
+    row answers that — but *what changed, and who decided*. Only emitted when something did
+    change; a no-op in the outbox is noise a future reader has to rule out.
+    """
+    return DomainEvent(
+        event_type="ConsumableUrlDeclared",
+        aggregate_type=AGGREGATE_TYPE,
+        aggregate_id=str(content.id),
+        payload={
+            "contentId": str(content.id),
+            # Null means this content declared no deployment until now (ADR-0028).
+            "from": previous,
+            "to": content.consumable_url,
+            "declaredBy": str(content.consumable_url_declared_by),
+        },
+    )
+
+
 def content_version_registered(content: EducationalContent) -> DomainEvent:
     return DomainEvent(
         event_type="ContentVersionRegistered",
