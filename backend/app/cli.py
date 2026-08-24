@@ -1,6 +1,6 @@
 """Admin CLI: `python -m app.cli seed | seed-workbench | measure | set-role |
 invite-assessor | list-invitations |
-import-learnpack | register-package |
+import-learnpack | register-package | declare-deployment |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate |
 dump-concept-touches | dump-concept-map | declare-study | update-study | open-study |
@@ -69,6 +69,11 @@ from app.modules.evaluand_registry.application.attribute_generator import (
 from app.modules.evaluand_registry.application.attribute_generator import (
     # Profiling has a same-named exception; both are imported here.
     ContentNotFound as UnregisteredContent,
+)
+from app.modules.evaluand_registry.application.declare_consumable_url import (
+    ConsumableUrlChangedMeanwhile,
+    DeclareConsumableUrl,
+    DeclareConsumableUrlCommand,
 )
 from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
 from app.modules.evaluand_registry.application.register_content_version import (
@@ -1405,6 +1410,118 @@ def run_attribute_generator(content_id: UUID, generator_version_id: UUID, email:
 
     print(f"attributed {content.external_id} to generator {generator_version_id} (by {email})")
     return 0
+
+
+# --------------------------------------------------------------- declare-deployment
+
+
+class _UnusableDeploymentList(Exception):
+    """The file cannot be read as a list of (course, deployment)."""
+
+
+def _deployments_from_csv(path: Path) -> list[tuple[str, str]]:
+    """`external_id,url` per row, read as forgivingly as `--from-csv` reads its URLs.
+
+    Same posture, same reasons: what arrives is a spreadsheet somebody exported, so a header
+    row, a blank line and a `#` where a course was parked are not errors. Two things are
+    refused instead of guessed — a second column that is not an http(s) URL (anywhere but the
+    first row, where a spreadsheet writes its header), and **the same course named twice with
+    different URLs**, which is not a duplicate but a disagreement about where it is deployed.
+    """
+    try:
+        # `utf-8-sig`: Excel writes a BOM, and a BOM glued to the first slug is a lookup that
+        # fails for a reason nobody could read off the error.
+        rows = [
+            [cell.strip() for cell in row]
+            for row in csv.reader(path.read_text(encoding="utf-8-sig").splitlines())
+            if row and any(cell.strip() for cell in row)
+        ]
+    except OSError as exc:
+        raise _UnusableDeploymentList(f"could not read '{path.as_posix()}': {exc}") from exc
+
+    declared: dict[str, str] = {}
+    duplicates = 0
+    for index, row in enumerate(r for r in rows if not r[0].startswith("#")):
+        if len(row) < 2 or not row[1].startswith(("http://", "https://")):
+            if index == 0:
+                continue  # the header
+            raise _UnusableDeploymentList(
+                f"row {index + 1} ('{row[0]}') has no http(s) URL in its second column"
+            )
+        external_id, url = row[0], row[1]
+        if external_id in declared and declared[external_id] != url:
+            raise _UnusableDeploymentList(
+                f"'{external_id}' is named twice with different URLs — which one is the "
+                "deployment is not this command's to decide"
+            )
+        if external_id in declared:
+            duplicates += 1
+        declared[external_id] = url
+
+    if not declared:
+        raise _UnusableDeploymentList(f"'{path.as_posix()}' names no course")
+    if duplicates:
+        print(f"  {duplicates} duplicate row(s) ignored", file=sys.stderr)
+    return list(declared.items())
+
+
+def run_declare_deployment(package_format: str, email: str, entries: list[tuple[str, str]]) -> int:
+    """The repair act (ADR-0054): point a registered version at its deployment.
+
+    It writes one column and its two record-keeping neighbours; it fetches nothing, because a
+    profile is built from artifact locators and this field is not one of them (ADR-0028 §4).
+    Resolution is by slug because what arrives is a spreadsheet, and a slug matching more than
+    one registered version is refused by name rather than resolved by picking one.
+    """
+    failures = 0
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+
+        contents = SqlAlchemyContentRepository(session)
+        for external_id, url in entries:
+            versions = contents.list_versions(package_format, external_id)
+            if not versions:
+                print(f"  not found   {external_id}", file=sys.stderr)
+                failures += 1
+                continue
+            if len(versions) > 1:
+                named = ", ".join(v.version for v in versions)
+                print(
+                    f"  ambiguous   {external_id} is registered at versions {named} — "
+                    "declare it by content id",
+                    file=sys.stderr,
+                )
+                failures += 1
+                continue
+
+            content = versions[0]
+            previous = content.consumable_url
+            uow = UnitOfWork(session)
+            try:
+                DeclareConsumableUrl(contents=contents, publisher=uow.events, uow=uow)(
+                    DeclareConsumableUrlCommand(
+                        content_id=content.id,
+                        consumable_url=url,
+                        declared_by=assessor.id,
+                    )
+                )
+            except (UnregisteredContent, ConsumableUrlChangedMeanwhile, InvalidContent) as exc:
+                print(f"  failed      {external_id}: {exc}", file=sys.stderr)
+                failures += 1
+                continue
+
+            if previous == url:
+                print(f"  unchanged   {external_id}")
+            elif previous is None:
+                print(f"  declared    {external_id} -> {url}")
+            else:
+                print(f"  redeclared  {external_id}: {previous} -> {url}")
+
+    print(f"{len(entries) - failures}/{len(entries)} declared (by {email})")
+    return 1 if failures else 0
 
 
 # ------------------------------------------------------------------- delete-content
@@ -4131,6 +4248,30 @@ def main(argv: list[str] | None = None) -> int:
     )
     delete_content_parser.add_argument("--content-id", required=True)
 
+    deployment_parser = subparsers.add_parser(
+        "declare-deployment",
+        help="point registered versions at their deployed instances (ADR-0054); repeatable, "
+        "and it fetches nothing",
+    )
+    deployment_parser.add_argument(
+        "--from-csv",
+        dest="from_csv",
+        type=Path,
+        help="a file of `external_id,url` rows — a header, blank lines, `#` rows and exact "
+        "duplicates are ignored",
+    )
+    deployment_parser.add_argument("--external-id", dest="external_id", help="one course")
+    deployment_parser.add_argument("--url", help="its deployed, human-consumable instance")
+    deployment_parser.add_argument(
+        "--format",
+        dest="package_format",
+        default=LEARNPACK_FORMAT,
+        help="the PackageFormat the slugs belong to; a slug is namespaced by it (ADR-0005)",
+    )
+    deployment_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (declared_by)"
+    )
+
     attribute_parser = subparsers.add_parser(
         "attribute-generator",
         help="record a generator learnt after registration (once, one way — ADR-0024)",
@@ -4325,6 +4466,26 @@ def main(argv: list[str] | None = None) -> int:
         return run_show_fitness(UUID(args.study_id))
     elif args.command == "delete-content":
         return run_delete_content(UUID(args.content_id))
+    elif args.command == "declare-deployment":
+        if bool(args.from_csv) == bool(args.external_id):
+            print(
+                "name the courses one way: --from-csv <file>, or --external-id with --url",
+                file=sys.stderr,
+            )
+            return 1
+        if args.external_id and not args.url:
+            print("--external-id needs the --url it is deployed at", file=sys.stderr)
+            return 1
+        try:
+            entries = (
+                _deployments_from_csv(args.from_csv)
+                if args.from_csv
+                else [(args.external_id, args.url)]
+            )
+        except _UnusableDeploymentList as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return run_declare_deployment(args.package_format, args.email, entries)
     elif args.command == "attribute-generator":
         return run_attribute_generator(
             UUID(args.content_id), UUID(args.generator_version_id), args.email

@@ -16,6 +16,11 @@ from app.modules.evaluand_registry.application.attribute_generator import (
     AttributeGeneratorCommand,
     ContentNotFound,
 )
+from app.modules.evaluand_registry.application.declare_consumable_url import (
+    ConsumableUrlChangedMeanwhile,
+    DeclareConsumableUrl,
+    DeclareConsumableUrlCommand,
+)
 from app.modules.evaluand_registry.application.dtos import (
     BriefDTO,
     ContentPackageDTO,
@@ -166,6 +171,12 @@ class PackageArtifactResponse(BaseModel):
     kind: str
     locator: str
     format: str | None
+
+
+class DeclareConsumableUrlRequest(BaseModel):
+    # Required and non-null: clearing a declaration is a different act, refused for now and
+    # named in ADR-0054 §5 rather than left as a silent `null` somebody discovers.
+    consumable_url: str
 
 
 class ContentPackageResponse(BaseModel):
@@ -342,6 +353,39 @@ def attribute_generator(
     except GeneratorAlreadyAttributed as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except UnknownGeneratorVersion as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+
+    return ContentResponse.from_snapshot(_snapshot_or_404(uow, content_id))
+
+
+@router.post("/{content_id}/consumable-url", response_model=ContentResponse)
+def declare_consumable_url(
+    content_id: UUID, request: DeclareConsumableUrlRequest, admin: AdminAssessor, uow: Uow
+) -> ContentResponse:
+    """Declare the deployment of an already-registered version (ADR-0054).
+
+    Repeatable, unlike `attribute_generator` next door: a generator link is a discovery, a
+    deployment is a statement about the world right now. Declaring the URL the content
+    already has is a no-op and writes nothing.
+    """
+    use_case = DeclareConsumableUrl(
+        contents=SqlAlchemyContentRepository(uow.session), publisher=uow.events, uow=uow
+    )
+    try:
+        use_case(
+            DeclareConsumableUrlCommand(
+                content_id=content_id,
+                consumable_url=request.consumable_url,
+                declared_by=admin.assessor_id,
+            )
+        )
+    except ContentNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ConsumableUrlChangedMeanwhile as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InvalidContent as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc

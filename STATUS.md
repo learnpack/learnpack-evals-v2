@@ -67,6 +67,53 @@ The console's role cell is a select except on your own row, where it stays a bad
 reason next to it. `set-role` survives as **break-glass**, enforcing neither guardrail and
 documented as such. Clause 3 of ADR-0007 is superseded; the rest of it stands.
 
+**ADR-0054 (a deployment is declared when it exists, and redeclared when it moves) is decided
+and in.** ADR-0028 made the consumable URL optional and wrote down what that cost: *"deploying
+an already-registered course means declaring a new version or a hand-written UPDATE."* ADR-0052
+§6 turned that cost into a blocker — the campaign judges the deployed, processed course while
+the evaluand stays the **draft**, and drafts are registered from `courses/`, which declares no
+URL. `register-package --all` refuses `--consumable-url` (one URL cannot declare a deployment
+for many), `RegisterContentVersion` was the only writer of `contents`, and re-registering is a
+no-op — so **every content the campaign meant to put in front of an expert was unassignable.**
+
+The act is `attribute-generator`'s shape and **parts from it on the one thing that matters:
+it may be repeated.** An attribution is a discovery — the fact was always true, so replacing
+one would rewrite history — while a deployment is a statement about the world right now. A
+course moves, comes down, is redeployed; a declaration that could be made only once would
+leave a dead link with no repair, which is the hole being closed, recreated one level up. The
+`STATUS.md` sketch that said *"one-way… refusing what is already declared"* inherited the rule
+from the wrong precedent, and ADR-0054 §2 says so.
+
+**A change is recorded and a no-op is not.** `ConsumableUrlDeclared` carries `from`, `to` and
+who, because the audit question is never *what is this content's URL* — the row answers that —
+but what changed and who decided (ADR-0050's rule). Declaring the URL a content already has
+writes nothing, records no actor and emits nothing. The update is **conditional on the value
+that was read** (`IS NOT DISTINCT FROM`, since the previous value is usually NULL and
+`NULL = NULL` is not true), the same trick ADR-0024's `IS NULL` plays: two admins declaring at
+once end with one refusal instead of one silent overwrite. **Clearing is refused and named**
+rather than left as a silent `null` — a course taken down is a real thing to want to say, and
+saying it needs an answer about the evaluations already produced against the old URL that
+nothing consumes yet.
+
+**Both gates:** `POST /admin/contents/{id}/consumable-url` and `declare-deployment`, which
+takes `--external-id --url` or a `--from-csv` of `external_id,url` read as forgivingly as
+`register-package --from-csv` reads its list. Resolution is by slug because what arrives is a
+spreadsheet, and two things are refused rather than guessed: the same course named twice with
+different URLs, and a slug registered at more than one version — `(format, external_id)` is the
+logical content (ADR-0005) and which version is deployed is not something a slug settles. A
+failed row makes the run exit non-zero, so a fifty-row file cannot half-succeed quietly.
+
+**And the question it will be asked, answered by a test:** the act **fetches nothing**. A
+profile is built from artifact locators and `content_profiling` never reads this field; the
+only subscriber to a registry event is auto-profiling, which reacts to
+`ContentVersionRegistered`; and that use case refuses coordinates it already profiled. The test
+snapshots the profile row, its entry count and the content hash on either side of the
+declaration and asserts they are identical.
+
+One thing found while building it and worth keeping: the new use case first defined its own
+`ContentNotFound`, and the router went on catching `attribute_generator`'s — two exceptions
+with one name, and a 404 that arrived as a 500. They are one class now.
+
 **ADR-0053 (an undeclared datum is not asked of a human) is decided and in, and it corrects
 ADR-0052 §7.** §7 said an item resting on a datum the course never declared is withheld and
 its value produced by the system — right — and then that the derived value *enters the fitness
@@ -2437,15 +2484,9 @@ the data in the package).
   front of a course that is not deployed anywhere. The door stays open: the field is nullable
   and the port is purely additive.
 
-  **Declaring a consumable URL after registration** — the repair act — is `[future]`. A
-  course deployed *after* its version was registered has no way back: the URL is written at
-  registration and `RegisterContentVersion` remains the only writer of `contents`. The act
-  has a shape already, `attribute-generator`'s (ADR-0024): one-way, actor and time recorded,
-  refusing what is already declared, offered at the two gates (CLI + admin endpoint), plus a
-  `WHERE consumable_url IS NULL` update. It is not built because the demand is not here — the
-  courses the GA loop registers are not deployed at all, and the ones that are (`seed-demo`,
-  register-by-source over http) declare their URL at registration. Cost accepted: deploying
-  an already-registered course means declaring a new version or a hand-written UPDATE.
+  **Declaring a consumable URL after registration** is built (ADR-0054, below): the demand
+  arrived with ADR-0052 §6, which puts the deployed course in front of an expert while the
+  evaluand stays the draft.
 - **Generator registration is a prerequisite of generator-level analysis.**
   `learnpack-generator 1.0.0` (SemVer) is registered in the local dev DB and by `seed-demo`;
   **repeat the act in production before registering real content**, so the declaration

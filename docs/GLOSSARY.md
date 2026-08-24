@@ -64,6 +64,13 @@
   `null` when none is. The package's bytes are reached through the artifact locators — a
   serving root is transport, not a deployment — so a content that declares no URL is a
   complete evaluand for automated evaluation and simply cannot be handed to a human evaluator.
+  It has its **own act** (ADR-0054, `declare-deployment` / `POST
+  /admin/contents/{id}/consumable-url`), which unlike late generator attribution **may be
+  repeated**: an attribution is a discovery, and a deployment is a statement about the world
+  right now — courses move and come down. Every change is recorded (`ConsumableUrlDeclared`
+  with `from`, `to` and who); declaring the URL a content already has is a no-op and emits
+  nothing; clearing one is refused. The act writes one column and **fetches nothing** — the
+  profile is built from artifact locators, which this field is not one of.
 - **GenerationBrief** — the generation commission: **its own aggregate, immutable, with identity**
   (`briefId`) that `ContentVersion`s reference — the key to the **paired design** across
   `GeneratorVersion`s (same briefs, new products). Lean content: free text + only the typed

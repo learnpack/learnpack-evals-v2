@@ -17,7 +17,8 @@ from app.modules.evaluand_registry.domain.package import ContentPackage, Package
 _COLUMNS = (
     "id, package_format, external_id, version, consumable_url, "
     "brief_id, generator_version_id, edit_provenance, content_hash, "
-    "generator_attributed_by, generator_attributed_at"
+    "generator_attributed_by, generator_attributed_at, "
+    "consumable_url_declared_by, consumable_url_declared_at"
 )
 
 
@@ -40,6 +41,8 @@ class SqlAlchemyContentRepository:
             content_hash=row["content_hash"],
             generator_attributed_by=row["generator_attributed_by"],
             generator_attributed_at=row["generator_attributed_at"],
+            consumable_url_declared_by=row["consumable_url_declared_by"],
+            consumable_url_declared_at=row["consumable_url_declared_at"],
         )
 
     def _packages_for(self, content_ids: list[UUID]) -> dict[UUID, ContentPackage]:
@@ -113,6 +116,24 @@ class SqlAlchemyContentRepository:
             return None
         packages = self._packages_for([row["id"]])
         return self._to_domain(row, packages.get(row["id"], ContentPackage()))
+
+    def list_versions(self, package_format: str, external_id: str) -> list[EducationalContent]:
+        rows = (
+            self._session.execute(
+                text(
+                    f"""
+                    SELECT {_COLUMNS} FROM contents
+                     WHERE package_format = :gs AND external_id = :eid
+                     ORDER BY version
+                    """  # noqa: S608 — _COLUMNS is a module constant, not input
+                ),
+                {"gs": package_format, "eid": external_id},
+            )
+            .mappings()
+            .all()
+        )
+        packages = self._packages_for([row["id"] for row in rows])
+        return [self._to_domain(row, packages.get(row["id"], ContentPackage())) for row in rows]
 
     def find_by_logical_and_hash(
         self, package_format: str, external_id: str, content_hash: str
@@ -211,6 +232,36 @@ class SqlAlchemyContentRepository:
                 "gvid": content.generator_version_id,
                 "by": content.generator_attributed_by,
                 "at": content.generator_attributed_at,
+            },
+        ).scalar()
+        return applied is not None
+
+    def declare_consumable_url(self, content: EducationalContent, previous: str | None) -> bool:
+        """Write the deployment, conditional on the value that was read (ADR-0054 §4).
+
+        `IS NOT DISTINCT FROM` rather than `=` because the previous value is often NULL, and
+        `NULL = NULL` is not true. Same trick `attribute_generator`'s `IS NULL` plays: the
+        aggregate states the rule where it is read, this holds it under concurrency. False =
+        somebody declared something else in between, and the caller says so instead of
+        overwriting a decision it never saw.
+        """
+        applied = self._session.execute(
+            text(
+                """
+                UPDATE contents
+                   SET consumable_url = :url,
+                       consumable_url_declared_by = :by,
+                       consumable_url_declared_at = :at
+                 WHERE id = :id AND consumable_url IS NOT DISTINCT FROM :previous
+                RETURNING 1
+                """
+            ),
+            {
+                "id": content.id,
+                "url": content.consumable_url,
+                "by": content.consumable_url_declared_by,
+                "at": content.consumable_url_declared_at,
+                "previous": previous,
             },
         ).scalar()
         return applied is not None

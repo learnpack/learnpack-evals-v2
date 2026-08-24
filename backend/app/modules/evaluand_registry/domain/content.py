@@ -59,6 +59,11 @@ class EducationalContent:
     # the generator was declared when the content was registered.
     generator_attributed_by: UUID | None = None
     generator_attributed_at: datetime | None = None
+    # The same reading for the deployment (ADR-0054): null on both means the URL — if there
+    # is one — came from registration rather than from a later act. The last act, not a
+    # history; the history is `ConsumableUrlDeclared` in the outbox.
+    consumable_url_declared_by: UUID | None = None
+    consumable_url_declared_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.package_format or not self.package_format.strip():
@@ -90,6 +95,28 @@ class EducationalContent:
         self.generator_version_id = generator_version_id
         self.generator_attributed_by = attributed_by
         self.generator_attributed_at = at
+
+    def declare_consumable_url(self, url: str, declared_by: UUID, at: datetime) -> bool:
+        """Declare the deployment of an already-registered version (ADR-0054).
+
+        **Repeatable**, and that is where this parts from `attribute_generator`: a generator
+        link is a discovery — the fact was always true — while a deployment is a statement
+        about the world right now. A course moves, comes down, is redeployed; a declaration
+        that could be made only once would leave a dead link with no repair.
+
+        Returns whether anything changed, so the caller can keep a no-op out of the outbox
+        (ADR-0054 §3). Clearing is refused rather than silently allowed: `None` already means
+        *none declared* in this column, and writing it would need an answer about the
+        evaluations already produced against the old URL that nothing consumes yet.
+        """
+        if url is None or not url.startswith(("http://", "https://")):
+            raise InvalidContent("consumable_url must be an http(s) URL when declared")
+        if url == self.consumable_url:
+            return False
+        self.consumable_url = url
+        self.consumable_url_declared_by = declared_by
+        self.consumable_url_declared_at = at
+        return True
 
     @property
     def logical_id(self) -> tuple[str, str]:

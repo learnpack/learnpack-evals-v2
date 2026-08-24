@@ -907,6 +907,37 @@ than couple the builders, `ProfileContent` wraps the fetcher for the length of o
 timing one, the two halves are still worth timing apart: the CLI's `created …` line closes the
 discovery, and what `register-package` prints after it is the profiling.
 
+### Declaring the deployment of a registered course (`declare-deployment`)
+
+A course registered from `courses/` declares **no** consumable URL — dropping a folder into a
+tree deploys nothing (ADR-0028) — and without one the console refuses it in the assign picker,
+so it cannot be put in front of a human evaluator. When the course *is* deployed afterwards,
+this points the registered version at it:
+
+```bash
+# one course
+uv run python -m app.cli declare-deployment --external-id <slug>   --url https://<course>.learn-pack.com/ --email <admin>
+
+# a spreadsheet of them: two columns, `external_id,url`
+uv run python -m app.cli declare-deployment --from-csv ./deployments.csv --email <admin>
+```
+
+**It fetches nothing.** A `ContentProfile` is built from artifact locators and Content
+Profiling never reads this field, so the evaluand keeps its identity, its `content_hash` and
+its profile — the only thing that changes is whether a human can be handed the course.
+
+**Unlike `attribute-generator`, it may be repeated** (ADR-0054): an attribution is a discovery
+— the fact was always true — while a deployment is a statement about the world right now, and
+courses move. Every change is recorded with what it moved from and who moved it; declaring the
+URL a content already has is a no-op that writes nothing; clearing one is refused.
+
+The file is read as forgivingly as `--from-csv` reads its URLs — a header row, blank lines,
+`#` rows and exact duplicates are all ignored. Two things are refused rather than guessed: the
+same course named twice with **different** URLs, and a **slug registered at more than one
+version**, since `(format, external_id)` is the logical content and which version is deployed
+is not something a slug settles. Any failed row makes the run exit non-zero, so a fifty-row
+file cannot half-succeed quietly.
+
 ### From other trees, from the CLI and from the console (ADR-0035)
 
 A tree that does not live under `courses/` is declared in the environment, because a
