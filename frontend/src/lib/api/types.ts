@@ -246,12 +246,17 @@ export interface AssignmentDetail {
   instrument_version_id: string;
   scale_min: number;
   scale_max: number;
+  /** `numeric | likert` — what the points of the scale mean, which the range cannot say
+   *  (ADR-0052). Decides which control the score form renders. */
+  response_format: string;
   criteria: Criterion[];
 }
 
 export interface ScoreInput {
   criterion_id: string;
-  score: number;
+  /** Null is an abstention — "I couldn't see enough of this course to judge this"
+   *  (ADR-0052 §4). It is NOT the bottom of the scale, which is an answer. */
+  score: number | null;
   comment: string | null;
 }
 
@@ -312,7 +317,9 @@ export interface Dispersion {
 
 export interface CriterionSummary {
   criterion_id: string;
-  average: number;
+  /** Null when every assessor abstained on this criterion — never 0, which would read as
+   *  the worst possible score (ADR-0052 §4). */
+  average: number | null;
   dispersion: Dispersion;
 }
 

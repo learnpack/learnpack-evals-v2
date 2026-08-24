@@ -6,7 +6,7 @@ populate its campaign list and its assign picker. Both require the admin role.
 
 import pytest
 
-RUBRIC = "learnpack-pedagogical-v1"
+RUBRIC = "learnpack-pedagogical-v2"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 
 

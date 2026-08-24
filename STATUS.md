@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-21._
+_Last updated: 2026-08-24._
 
 ## Where we are
 
@@ -66,6 +66,38 @@ because the audit question is never "what is their role" but "what changed, and 
 The console's role cell is a select except on your own row, where it stays a badge with its
 reason next to it. `set-role` survives as **break-glass**, enforcing neither guardrail and
 documented as such. Clause 3 of ADR-0007 is superseded; the rest of it stands.
+
+**ADR-0052 (the human reference is elicited per quality) is decided and in.** ADR-0015 gave
+the panel a job — *"each claim is correlated with the human score of **its** quality across
+the contents of the set"* (§4) — and a shape: five items, one per `PedagogicalDimension`,
+1–5 (§3). **The two do not fit.** `course-drafts-qa-v9` carries 21 claims over 19 qualities
+and the form produced five numbers, so the four claims of the objectives family could only be
+correlated against *the same* one, and the two failure modes the panel exists to separate —
+*the criteria measure something else* and *this question is not answerable holistically* —
+came back indistinguishable. The per-claim diagnosis was not weak at that grain, it was
+arithmetically unavailable. So the reference is now **twelve items, one per `Quality`, with
+the item's id equal to the `qualityId`**: after ADR-0026 a claim asserts about exactly one
+quality, which makes the join a primary key rather than a mapping. `Rubric v1` is superseded
+rather than amended — the stability §3 protects binds *from* the first campaign, and none has
+run, so the shape was free exactly once and is now frozen at v2. The response is **agreement
+with a statement**, on the same five points for every item, with the behavioural anchors v1
+never had moved into each item's `guidance` as an **Agree** half and a **Disagree** half that
+each stand alone (a half written as the continuation of the other is not read at all, because
+a rater reads one or the other). Twelve anchored items cost a rater less than five unanchored
+ones: the scale is learned once. **The bottom of the scale is an answer and the abstention is
+off it** — `1` means *the course does not do this* and has to weigh like the absence-derived
+`fail` (ADR-0021), while *"I couldn't see enough of this course to judge"* is a null score
+(migration 0025 drops the NOT NULL; the 1–5 CHECK is left alone, since a null passes it) and
+is averaged into nothing. The twelve were chosen where validity is at risk rather than where
+evidence is abundant, and deliberately include the three this repo had already written down
+as unresolved: `progression-cognitive-demand` (`MEASUREMENT.md`: *"a proxy awaiting
+calibration against the human reference"*), `coherence-reinforcement` (ADR-0047 §8's bar,
+*"underspecified and known to be"*) and `progression-prerequisites` (zero violations over
+three drafts against a defect two independent readers found). The panel reads the **processed,
+deployed course**, declared as the draft's `consumable_url`: the evaluand stays the draft, so
+the two sides meet on one `contentId` with no join, the prose is the same text, and only the
+assessment item is confounded — the human read a delivered challenge where the instrument read
+a proposal (ADR-0046), which the ADR names as an alternative explanation instead of hiding.
 
 **ADR-0051 (an assessor leaves without being erased) is decided and in.** Nothing removed a
 person from the roster: they appeared at their first login and stayed for ever, in every
@@ -1696,11 +1728,13 @@ any future rename carries the same two.
    local database all three held and the row is gone; the same check has to be repeated
    wherever else the rename lands.
 
-Rubric v1 keeps the **old wording** in `criteria.qualities` ("Anchoring in authentic
-problems or tasks"), and that is correct: it is the frozen human reference (ADR-0015), a
-separate artifact that stores display names as free text and references no quality id. The
-cost is that the two vocabularies no longer read identically for this one quality —
-relevant only to anyone matching them by name.
+**And since ADR-0052 that check has a fourth item.** The reference instrument used to store
+display names as free text in `criteria.qualities` and reference no quality id at all, which
+is why a rename could not reach it. It now stores **the quality id itself**, one per item,
+and the item's own `criterion_id` is that same id — so renaming a quality that the reference
+elicits means editing `docs/seed/rubric-v2.json` and re-seeding, and the join a validity
+coefficient is computed over breaks silently if it is not. Check `criteria.qualities` and
+`criteria.criterion_id` alongside the other three before deleting a row.
 
 **Second pending input from the team (block 5):** review the profile samples
 (`/admin/profiles` or `app.cli profile-content`) and **accept the extraction** when the team
@@ -2137,8 +2171,21 @@ the data in the package).
   which is an amendment to ADR-0034 and wants its own decision. Nothing is lost by waiting:
   the trace already records which provider answered, so the size of the problem can be
   measured from runs that have already happened.
-- **Rubric v1**: light review (anchors, definitions) pending before the first reference
-  campaign (ADR-0015) — outside the first increment of slice 2.
+- **The human reference's mechanical derivation** (ADR-0052 §7) is decided and **not built**.
+  An item whose datum the course never declared should be withheld from the rater and its
+  value produced by the system — the posture 12-define already takes for automated executors
+  — and today every course is asked all twelve. It needs `criteria.requires`,
+  `criterion_scores.derived` (the port of ADR-0021's own column to the human path) and a
+  query port into Content Profiling asking which required ids are `absent`. Until it exists,
+  a package that declares no learning objectives puts four unanswerable items in front of an
+  expert. **It has to land before the first reference campaign, not before the form ships.**
+- **The validity coefficients themselves** (ADR-0015 §4) are still where 13-code §7.2 left
+  them: out of the increment, trigger *first reference campaign completed + usable golden*,
+  no schema until then. What ADR-0052 changes is that they became **computable** — the human
+  score now exists per quality, which is the grain a claim's coefficient needs. Two rules are
+  decided and enforced nowhere yet: a derived value enters the fitness and is excluded from
+  the coefficient, and a quality whose automated side has no variance cannot be validated by
+  any number of raters (`progression-prerequisites` is the known case).
 - **The genetic-algorithm experiment itself.** The fitness it reads exists (ADR-0023, above);
   what does not exist is the loop around it — generating a population, registering and
   evaluating it in bulk, and selecting on the signal. Bulk registration — its first

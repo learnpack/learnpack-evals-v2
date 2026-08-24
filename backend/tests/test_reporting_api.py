@@ -5,14 +5,21 @@ Averages are checked against numbers computed by hand, so a wrong aggregation ca
 
 import pytest
 
-RUBRIC = "learnpack-pedagogical-v1"
+RUBRIC = "learnpack-pedagogical-v2"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 CRITERIA = [
-    "objectives-quality",
-    "constructive-alignment",
-    "instructional-design",
-    "inter-lesson-coherence",
-    "learning-progression",
+    "objectives-observable",
+    "progression-starting-point",
+    "alignment-coverage",
+    "alignment-assessment",
+    "instruction-authentic-problems",
+    "instruction-demonstration",
+    "instruction-prior-knowledge",
+    "coherence-logical-sequence",
+    "coherence-reinforcement",
+    "coherence-explicit-links",
+    "progression-prerequisites",
+    "progression-cognitive-demand",
 ]
 
 
@@ -90,12 +97,12 @@ def test_scores_report_averages_across_evaluators(admin, evaluator, content, cam
     ada, ada_id = evaluator("ada")
     bob, bob_id = evaluator("bob")
 
-    # Ada gives all 4s except objectives-quality = 2; Bob gives all 4s.
+    # Ada gives all 4s except objectives-observable = 2; Bob gives all 4s.
     ada.post(
         "/evaluations",
         json={
             "assignment_id": assign(admin, campaign, content, ada_id),
-            "scores": scores(4, **{"objectives-quality": 2}),
+            "scores": scores(4, **{"objectives-observable": 2}),
         },
     )
     bob.post(
@@ -109,8 +116,8 @@ def test_scores_report_averages_across_evaluators(admin, evaluator, content, cam
     assert course["evaluator_count"] == 2
     criteria = {c["criterion_id"]: c for c in course["criteria"]}
     # (2 + 4) / 2 = 3.0
-    assert criteria["objectives-quality"]["average"] == 3.0
-    assert criteria["instructional-design"]["average"] == 4.0
+    assert criteria["objectives-observable"]["average"] == 3.0
+    assert criteria["instruction-demonstration"]["average"] == 4.0
 
 
 def test_dispersion_reflects_the_disagreement(admin, evaluator, content, campaign):
@@ -121,26 +128,26 @@ def test_dispersion_reflects_the_disagreement(admin, evaluator, content, campaig
         "/evaluations",
         json={
             "assignment_id": assign(admin, campaign, content, ada_id),
-            "scores": scores(4, **{"objectives-quality": 1}),
+            "scores": scores(4, **{"objectives-observable": 1}),
         },
     )
     bob.post(
         "/evaluations",
         json={
             "assignment_id": assign(admin, campaign, content, bob_id),
-            "scores": scores(4, **{"objectives-quality": 5}),
+            "scores": scores(4, **{"objectives-observable": 5}),
         },
     )
 
     report = admin.get("/admin/reports/scores").json()
     criteria = {c["criterion_id"]: c for c in find_content(report, content)["criteria"]}
 
-    contested = criteria["objectives-quality"]["dispersion"]
+    contested = criteria["objectives-observable"]["dispersion"]
     assert contested["mean_pairwise_abs_diff"] == 4.0
     assert contested["exact_agreement_pct"] == 0.0
     assert contested["rater_count"] == 2
 
-    agreed = criteria["instructional-design"]["dispersion"]
+    agreed = criteria["instruction-demonstration"]["dispersion"]
     assert agreed["exact_agreement_pct"] == 100.0
     assert agreed["stdev"] == 0.0
 
@@ -163,7 +170,7 @@ def test_comments_and_evaluator_names_reach_the_report(admin, evaluator, content
     ada, ada_id = evaluator("ada")
     payload = scores(4)
     payload[0] = {
-        "criterion_id": "objectives-quality",
+        "criterion_id": "objectives-observable",
         "score": 2,
         "comment": "verbs are not observable",
     }
@@ -177,7 +184,7 @@ def test_comments_and_evaluator_names_reach_the_report(admin, evaluator, content
     assert individual["assessor_name"] == "ada"
     assert individual["superseded"] is False
     comment = next(
-        s["comment"] for s in individual["scores"] if s["criterion_id"] == "objectives-quality"
+        s["comment"] for s in individual["scores"] if s["criterion_id"] == "objectives-observable"
     )
     assert comment == "verbs are not observable"
 

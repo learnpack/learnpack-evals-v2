@@ -3,7 +3,7 @@
 `RubricSnapshot` is what Evaluation and the evaluator UI consume. A published rubric version
 is immutable and locked, so a snapshot is safe to hand out as-is.
 
-Read-only module: the MVP seeds `LearnPack Pedagogical Rubric v1` straight to `published`
+Read-only module: the MVP seeds `LearnPack Pedagogical Reference v2` straight to `published`
 (08-code.md §9). Authoring commands — and the rich `Rubric` aggregate that guards their
 invariants — are `[futuro]`.
 """
@@ -102,6 +102,9 @@ class RubricSnapshot:
     scope: str | None
     scale_min: int
     scale_max: int
+    # `numeric | likert` — what the five points MEAN, which the range alone cannot say
+    # (ADR-0052 §3). The evaluator screen picks its control from this.
+    response_format: str
     criteria: list[CriterionDTO]
 
     @property

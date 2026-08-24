@@ -25,7 +25,9 @@ from app.modules.reporting.application.aggregation import Dispersion
 @dataclass(frozen=True)
 class ScoreDetailDTO:
     criterion_id: str
-    score: int
+    # Null is this assessor's abstention on this criterion (ADR-0052 §4). Kept visible in
+    # the individual evaluation: what a rater could not judge is part of what they answered.
+    score: int | None
     comment: str | None
 
 
@@ -42,7 +44,9 @@ class IndividualEvaluationDTO:
 @dataclass(frozen=True)
 class CriterionSummaryDTO:
     criterion_id: str
-    average: float
+    # Null when every assessor abstained on this criterion (ADR-0052 §4). Not 0: a zero
+    # would read as the worst possible score, when nobody scored it at all.
+    average: float | None
     dispersion: Dispersion
 
 

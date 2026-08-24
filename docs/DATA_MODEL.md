@@ -153,7 +153,9 @@ deployment, not package bytes.
 ## 4. evaluation_design
 
 Norm-side reference data and the Instrument aggregate. `rubric_versions` / `criteria` store
-**Rubric v1** (human reference panel); new instruments live in `instrument_*`.
+the **human reference instrument** (the panel of ADR-0015 layer 1, one item per `Quality` —
+ADR-0052); new instruments live in `instrument_*`. `rubric_versions.response_format` says
+what the points of its scale mean (`numeric | likert`), which the range cannot.
 
 ```mermaid
 erDiagram
@@ -247,6 +249,7 @@ erDiagram
         text scope
         int scale_min
         int scale_max
+        text response_format
         timestamptz published_at
     }
 
@@ -344,7 +347,7 @@ erDiagram
     criterion_scores {
         uuid evaluation_id PK_FK
         text criterion_id PK
-        int score "1..5"
+        int score "1..5, null = abstained"
         text comment
     }
 

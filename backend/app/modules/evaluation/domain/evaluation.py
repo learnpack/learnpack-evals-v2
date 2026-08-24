@@ -22,15 +22,24 @@ class InvalidEvaluation(Exception):
 
 @dataclass(frozen=True)
 class CriterionScore:
-    """A judgement on one criterion. Distinct from a `ComputedMetric` (a raw measurement)."""
+    """A judgement on one criterion. Distinct from a `ComputedMetric` (a raw measurement).
+
+    A null `score` is an **abstention**: the assessor looked and could not judge this
+    criterion from what the course gave them (ADR-0052 §4). It is not the bottom of the
+    scale, which is an answer — *the course does not do this* — and which has to penalise
+    the way the automated side's absence-derived outcome does (ADR-0021, ADR-0023 §2).
+    Keeping the two apart is what stops an abstention from being read as agreement.
+    """
 
     criterion_id: str
-    score: int
+    score: int | None
     comment: str | None = None
 
     def __post_init__(self) -> None:
         if not self.criterion_id or not self.criterion_id.strip():
             raise InvalidEvaluation("criterion_id is required")
+        if self.score is None:
+            return
         # bool is an int subclass — reject it explicitly.
         if isinstance(self.score, bool) or not isinstance(self.score, int):
             raise InvalidEvaluation(f"score for '{self.criterion_id}' must be an integer")
