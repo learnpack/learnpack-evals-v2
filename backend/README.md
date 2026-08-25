@@ -1,366 +1,194 @@
 # backend
 
-FastAPI + Postgres (Neon). Design lives in `../docs/` — **it is the source of truth**.
+FastAPI + Postgres. Design lives in `../docs/` — **it is the source of truth**.
 Hard rules: `../docs/ARCHITECTURE.md`. Names: `../docs/GLOSSARY.md`.
 Where development stands today: `../STATUS.md` (this README describes **how it works**, not
 what state it is in).
 
-**Just want to measure a generator's output?** `../docs/RUNBOOK-measuring.md` is that guide, and it
-does not need this file.
+**Just want to measure a generator's output?** `../docs/RUNBOOK-measuring.md` is that guide,
+and it does not need this file.
 
 ## Where to look
 
 | You want to… | Read |
 |---|---|
-| run it locally | [Setup](#setup) |
-| understand the code's shape | [Layers](#layers-dependency-rule), [A module's public surface](#a-modules-public-surface-architecturemd-3), [Events-first](#events-first-adr-0003) |
-| register courses and run a round | [Registering courses](#registering-courses), [Evaluating a study in batch](#evaluating-a-study-in-batch) |
-| find out why a judge answered that | [Reading a calibration trace](#reading-a-calibration-trace), [What repeated runs tell you](#what-repeated-runs-tell-you) |
-| teach the system a new package format | [Adding a package format](#adding-a-package-format) |
-| write or revise an instrument | [Authoring an instrument](#authoring-an-instrument) |
-| set up a real (Clerk) environment | [Clerk](#clerk-adr-0004), [Preparing an environment](#preparing-an-environment--order-matters) |
+| run it on your machine | [Setup](#setup) |
+| find a command or a setting | [Commands](#commands) · [Configuration](#configuration) |
+| understand the code's shape | [Code shape](#code-shape) |
+| register courses | [Registering courses](#registering-courses) |
+| run a round and read its result | [Evaluating](#evaluating) |
+| deploy an instance for an SME campaign | [`ENVIRONMENT.md`](ENVIRONMENT.md) |
+| make a batch bigger or faster | [`TUNING.md`](TUNING.md) |
+| teach the system a new package format | [`../docs/RUNBOOK-adding-a-format.md`](../docs/RUNBOOK-adding-a-format.md) |
+| write or revise an instrument | [`../docs/RUNBOOK-authoring-an-instrument.md`](../docs/RUNBOOK-authoring-an-instrument.md) |
+| find out why a judge answered that | [`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md) |
 
 ## Setup
+
+**This system is meant to be run on your machine.** Everything below — registering a
+generation, judging it, reading the score — happens against a Postgres container and needs no
+accounts and no cloud. A deployed instance exists for one errand, putting courses in front of
+subject-matter experts, and is [its own job](#a-deployed-instance).
+
+From the repo root, with Docker, [Task](https://taskfile.dev/installation/),
+[uv](https://docs.astral.sh/uv/) and Node 20+ installed:
+
+```bash
+task setup     # once: env templates, dependencies, Postgres, migrations, seed + workbench
+task dev       # daily: the containers, the API on :8000, the console on :3000
+```
+
+`task --list` has the rest; the ones worth knowing:
+
+| Task | |
+|---|---|
+| `task db:reset` | destroy the local database and rebuild it from zero — volume, migrations, workbench. It asks first |
+| `task seed:demo` | add the human panel's demo on top: two evaluators, two frozen courses, an open campaign ([below](#local-mode-and-clerk-mode-adr-0008)) |
+| `task backend` · `task frontend` | one server at a time, when you do not want both |
+| `task db` · `task db:down` | the Postgres containers alone; `db:down` keeps the dev volume |
+
+`GET /health` verifies that the API boots and the DB responds.
+
+**The same setup by hand**, from `backend/`, when you want to vary a step or see what one did:
 
 ```bash
 cp .env.example .env      # ships in local mode: nothing to fill in
 uv sync
+docker compose up -d --wait
 uv run alembic upgrade head
-uv run python -m app.cli seed             # rubric v1 + pedagogical reference data (idempotent)
-uv run python -m app.cli seed-workbench   # local only: publish, accept, ratify, register
+uv run python -m app.cli seed             # the human reference instrument + reference data
+uv run python -m app.cli seed-workbench   # publish, accept, ratify, register (local only)
 uv run uvicorn app.main:app --reload
 ```
 
-`GET /health` verifies that the API boots and the DB responds. From the repo root,
-`task setup` does all of it (plus Docker and the frontend) and `task db:reset` starts over
-from an empty database.
+`seed` installs the two things nothing in the app can author, both idempotent: the **human
+reference instrument** (`../docs/seed/rubric-v2.json` — one Likert statement per quality, which
+is how a panel of experts is asked, ADR-0052) and the **pedagogical reference data** — the
+qualities, dimensions and frameworks an instrument cites, without which publishing one refuses.
 
-For a real environment, `.env` needs `DATABASE_URL` (Neon), the Clerk keys and
-`AUTH_MODE=clerk` — see [Local mode](#local-mode-no-clerk-and-no-neon-adr-0008) and
-[Preparing an environment](#preparing-an-environment--order-matters).
+### A deployed instance
+
+Clerk, Neon, Render and Netlify come in for one reason: a human evaluation campaign, where SMEs
+who do not have this repository open a course in a browser and score it. `.env` then needs
+`DATABASE_URL` (Neon), the Clerk keys and `AUTH_MODE=clerk`, and it is done **once per instance**
+in an order that cannot be improvised — [`ENVIRONMENT.md`](ENVIRONMENT.md) is that whole job.
+Nothing else in this file needs it.
 
 ### The workbench: what makes a fresh database able to measure (ADR-0045)
 
 Migrating and seeding leaves a database that holds no published instrument, vouches for no
-extraction adapter and permits no assessor to judge — so `evaluate` refuses and
-`/admin/assessors` lists three packages with no row behind them. Three acts fix that, and all
-three are human acts by decision: publishing an instrument version (ADR-0012), accepting a
-format's extraction (ADR-0012) and ratifying an assessor against a version (ADR-0019).
+extraction adapter and permits no assessor to judge — so `evaluate` refuses. Three acts fix
+that, and all three are human acts by decision: publishing an instrument version (ADR-0012),
+accepting a format's extraction (ADR-0012) and ratifying an assessor against a version
+(ADR-0019).
 
 `seed-workbench` **replays** them from `../docs/seed/workbench.yaml`, which declares the
 instrument versions to publish, the formats to accept and the generator lineages to register.
-What is replayed is the repetition, never the decision: it installs exactly what the manifest
-names, attributes every act to the local admin, and **refuses outside `AUTH_MODE=local`**. It
-is idempotent — a published version is left alone, an existing lineage is reported — so run it
-after every migration and every wipe.
+It installs exactly what the manifest names, attributes every act to the local admin, and
+**refuses outside `AUTH_MODE=local`** — what is replayed is the repetition, never the decision.
+It is idempotent, so run it after every migration and every wipe.
 
-Assessors are not in the manifest on purpose. Which ones exist is the code registry's answer
-(ADR-0016), so every automated package is ratified against the published version of **its own**
-lineage; a package whose lineage the manifest does not publish is reported and left unratified.
-To move a lineage forward, bump the instrument, calibrate the new version with
-`evaluate --dry-run`, and change one line in the manifest.
+Assessors, courses and generator **versions** are absent from the manifest on purpose: which
+assessors exist is the code registry's answer (ADR-0016), and courses and generator versions are
+facts about a run, read off the tree each generation is registered from
+([Registering courses](#registering-courses)). To move a lineage forward: bump the instrument,
+calibrate the new version with `evaluate --dry-run`, and change one line in the manifest.
 
-Courses and generator **versions** are deliberately absent too: both are facts about a run, and
-they are read off the tree each generation is registered from (§*Registering courses*).
+**The schema is checked at both doors.** The API and the CLI compare the database's revision against
+this checkout's head before doing anything. On your machine (`AUTH_MODE=local`) a mismatch **refuses
+to start** and names the fix (`uv run alembic upgrade head`); on a deployed instance it logs a
+warning and carries on, because a deploy may start a process while the migration step is still
+running. The suite migrates its own database, so a green suite says nothing about the store you run
+against — which is why the check exists. If the revision is one this checkout does not know, pull.
 
-`seed-demo` is the other seeder and is not part of setup: it installs the human MVP's demo —
-two evaluators, two frozen courses and an open campaign — for anyone who wants to see that flow.
-
-**The schema is checked at both doors.** The API and the CLI compare the database's revision
-against this checkout's head before doing anything. On a dev box (`AUTH_MODE=local`) a
-mismatch **refuses to start** and names the fix; anywhere else it logs a warning and carries
-on, because a deploy may start a process while the migration step is still running. A
-database it cannot reach says nothing — that is a different failure, with its own reporting.
-
-The reason it exists: a batch once died mid-course on a missing column because the
-development database was one migration behind. The test database never is (the suite
-migrates it at session start), so a green suite says nothing about the store you run
-against — and the cost of finding out late is a half-spent evaluation. If it refuses:
-`uv run alembic upgrade head`. If it says the database is at a revision this checkout does
-not know, the stale thing is the code: pull.
-
-## Local mode: no Clerk and no Neon (ADR-0008)
+## Local mode and Clerk mode (ADR-0008)
 
 `AUTH_MODE` decides where a request's identity comes from:
 
-| Mode | Identity | When |
+| Mode | Identity | Where |
 |---|---|---|
-| `clerk` (default) | session JWT verified against the JWKS | production and any real environment |
-| `local` | the `X-Dev-User: <email>` header, unverified | development, no accounts and no cloud |
+| `local` | the `X-Dev-User: <email>` header, unverified | your machine — no accounts, no cloud. `.env.example` ships it |
+| `clerk` (the code's default) | session JWT verified against the JWKS | a deployed instance, where real people sign in |
 
-Below the claim **it is the same code in both modes**: `ResolveAssessor`, `assessors.role`,
-`require_admin`. Local mode does not fork business rules, it only replaces where identity
-comes from — the same cut the test suite uses.
+Below the claim **it is the same code in both modes** (`ResolveAssessor`, `assessors.role`,
+`require_admin`): local mode does not fork business rules, it only replaces where identity comes
+from — the same cut the test suite uses. So a flow rehearsed locally is the flow that runs
+deployed, and the console has no second version of itself. Setting up the other mode, Clerk
+against your own machine included, is [`ENVIRONMENT.md`](ENVIRONMENT.md).
 
-Two seeders, and they answer different questions.
+The two share one database, and credentials cannot collide — a local assessor is stored as
+`('local', <email>)` and a Clerk one as `('clerk', <sub>)`. What keeps the modes themselves from
+mixing:
 
-**`seed-workbench`** makes the database able to **measure**: it publishes the instrument
-versions `../docs/seed/workbench.yaml` names, accepts their extraction adapters, ratifies
-every automated assessor against the published version of its own lineage, and registers the
-generator lineages (ADR-0045). It is what `task setup` runs, and it is idempotent.
+- A value that is neither `clerk` nor `local` **does not boot**: a configuration error, not a
+  silent degrade.
+- `AUTH_MODE=local` with `ENVIRONMENT=production`, or with a `DATABASE_URL` not pointing at
+  localhost → **does not boot** either. Two checks because each covers the other's blind spot:
+  `ENVIRONMENT` is a label nobody guarantees, the database host is a fact about where the data lives.
+- In `clerk` mode the `X-Dev-User` header **is not read** — it is another adapter, not a fallback
+  for a missing token. It *is* looked at to explain a 401, naming the mismatch and both files to fix.
+- `seed-demo` and `seed-workbench` abort unless the mode is `local`. For the second the stake is
+  larger than stray rows: it replays acts that are human ones by decision (ADR-0045 §2).
+- `GET /dev/identities` — the list feeding the frontend's user picker — 404s outside local mode. It
+  also offers the addresses **invited and never signed in**, marked `pending`, so the whole
+  registration flow can be walked through with no accounts and no cloud (ADR-0049).
 
-**`seed-demo`** installs the **human MVP's** demo, which the setup deliberately does not: 3
-users (`admin@local.dev`, `ada.lovelace@local.dev`, `grace.hopper@local.dev`), 2 courses
-registered from their real frozen packages and profiled by the seeder's own explicit step
-(their locators are relative to the fixture tree, and automatic profiling only reaches
-http(s) ones — ADR-0029), and an open campaign with **quorum 2** and its 4 assignments, all
-pending. Two evaluators is the minimum for inter-rater dispersion and for
-`ContentEvaluationCompleted → GoldenReferenceEstablished` to fire. It goes through the real
-use cases, so it publishes the same events the UI would, and it is idempotent.
+**`seed-demo`, the third seeder** (`task seed:demo`). `seed` installs what nothing can author and
+`seed-workbench` makes the database able to **measure**; this one installs the **human panel's**
+demo, so that the flow an SME campaign runs can be walked through locally, with no accounts and no
+cloud: 3 users (`admin@local.dev`, `ada.lovelace@local.dev`, `grace.hopper@local.dev`), 2 courses
+registered from their real frozen packages and profiled by an explicit step of its own (their
+locators are relative to the fixture tree, and automatic profiling only reaches http(s) ones —
+ADR-0029), and an open campaign with **quorum 2** and its 4 assignments. Two evaluators is the
+minimum for inter-rater dispersion and for `ContentEvaluationCompleted → GoldenReferenceEstablished`
+to fire. It goes through the real use cases, so it publishes the same events the console would.
 
-`seed-demo --reset` **wipes the local dataset** — everything the app writes (courses,
-profiles, campaigns, evaluations, acceptances, minted data requirements and `local|` users) —
-and reseeds; it does not touch the rubric or the reference data. Deliberately wholesale
-rather than "delete what today's demo lists name": editing `DEMO_ASSESSORS`/`DEMO_CONTENTS`
-is the normal way to shape a demo, and a scoped delete strands everything the previous
-version created. `task db:reset` is the bigger hammer — it destroys the database volume and
-rebuilds everything, so there is no list of tables to keep in step.
+`seed-demo --reset` **wipes the local dataset** — everything the app writes, `local|` users included
+— and reseeds; it does not touch the rubric or the reference data. Deliberately wholesale rather
+than scoped: editing `DEMO_ASSESSORS`/`DEMO_CONTENTS` is the normal way to shape a demo, and a
+scoped delete strands everything the previous version created. `task db:reset` is the bigger hammer
+— it destroys the database volume, so there is no list of tables to keep in step.
 
-What keeps this from leaking into a real environment:
+## Configuration
 
-- The code's default is `clerk` (`.env.example` ships `local` because it is the development
-  template; in production Render sets the variables). A value that is neither `clerk` nor
-  `local` **does not boot**: it is a configuration error, not a silent degrade.
-- `AUTH_MODE=local` with `ENVIRONMENT=production` → **the app does not boot**.
-- `AUTH_MODE=local` with a `DATABASE_URL` not pointing at localhost → **does not boot
-  either**. Two checks because each covers the other's blind spot: `ENVIRONMENT` is a label
-  nobody guarantees, while the database host is a fact about where the data lives.
-- In `clerk` mode the `X-Dev-User` header **is not read**: it is another adapter, not a
-  fallback for a missing token. It *is* looked at to explain a 401, though: a request that
-  carries the other mode's credential gets a message naming the mismatch and both files to
-  fix, because "missing bearer token" sends a reader looking for an expired session.
-- `seed-demo` and `seed-workbench` abort unless the mode is `local`. For the second the stake
-  is larger than stray rows: it replays acts that are human ones by decision, and outside a
-  dev box the person who publishes an instrument is a person (ADR-0045 §2).
-- `GET /dev/identities` — the list feeding the frontend's user picker — 404s outside local
-  mode. It also offers the addresses that have been **invited and never signed in**, marked
-  `pending`: signing in as one is what redeems the invitation, so the whole registration flow
-  can be walked through with no accounts and no cloud (ADR-0049).
+`.env.example` is the local template and carries the reasoning for every variable — copy it as-is
+and the app runs. What you may actually need to change:
 
-## Clerk (ADR-0004)
-
-Clerk's default session token **carries neither email nor name**. Create a **JWT template**
-in the Clerk dashboard with these claims:
-
-```json
-{
-  "email": "{{user.primary_email_address}}",
-  "name": "{{user.full_name}}",
-  "email_verified": "{{user.email_verified}}"
-}
-```
-
-The backend tolerates their absence (the profile stays `NULL`), but without them you cannot
-identify the SMEs or use `set-role`.
-
-`email_verified` gates one thing: **redeeming an invitation** (ADR-0049). Matching an
-invitation on an address the provider never vouched for is a known account-takeover shape,
-which is why the claim is required rather than assumed.
-
-**The symptom of getting it wrong is quiet**: the person signs in and appears in the roster
-with the *default* role, while their invitation sits there still saying `pending` — because
-an invitation is consumed only while the assessor is being created, and by then it is too
-late. The backend logs a warning naming this template every time it declines to redeem, and
-the console marks such an invitation. **Get the shortcode right before anybody signs in**:
-`{{user.email_verified}}`, not any of the other names it might plausibly have. Quoted or
-unquoted both work — the backend reads a real boolean and the string `"true"` alike, and,
-deliberately, reads `"false"` as false.
-
-**Create the template before anyone signs in.** The `email` claim also decides the first
-admin's initial role, and that decision is taken **exactly once** — see the order in
-[Preparing an environment](#preparing-an-environment--order-matters).
-
-### Roles and the first admin (ADR-0007)
-
-`assessors.role` is the **source of truth** for authorization, and **login never changes
-anyone's role** — authenticating cannot escalate privileges.
-
-For bootstrap (an admin is needed before an admin exists to create one) there is
-`ADMIN_EMAILS`: a **provisioning** allowlist, not an authorization one. It only decides the
-role a **new** assessor is created with:
-
-```bash
-ADMIN_EMAILS=you@yourcompany.com,other@yourcompany.com
-```
-
-- Email on the list and the person has **never signed in** → created as `admin`.
-- Email on the list but the person **already exists** as `evaluator` → **stays** `evaluator`.
-- An existing `admin` you **remove** from the list → **stays** `admin`.
-- No `email` claim (missing JWT template) → `evaluator`.
-
-This is safe **because access is invite-only**: nobody can register with an admin's email
-without the invitation. If you ever disable invite-only, revisit ADR-0007.
-
-The allowlist is the default for whoever arrives **uninvited**. Everybody after the first
-admin is registered by inviting them, which is where the role is decided per person.
-
-Changing the role of someone who already exists is done from `/admin/assessors` (ADR-0050).
-Two refusals are enforced, because neither is recoverable from inside the product: **nobody
-changes their own role**, and **the last admin cannot be demoted**. Every grant is recorded
-with its author.
-
-`set-role` remains as **break-glass** — for a store whose console nobody can reach, which is
-the bootstrap case above:
-
-```bash
-uv run python -m app.cli set-role --email you@yourcompany.com --role admin
-```
-
-It enforces neither guardrail. That is the point of a break-glass tool, and the reason not to
-reach for it when a screen would do.
-
-### When somebody leaves (ADR-0051)
-
-Deactivate them from `/admin/assessors`. Nothing is deleted — their evaluations and the
-reports naming them are what happened, and an `Assessor` is the key of provenance — but they
-are offered no new work and **every request they make answers 403**. It is reversible from
-the same row. The same two refusals apply: not yourself, and not the last active admin.
-
-Deactivating does **not** cancel their open assignments; that lives in campaigns and stays a
-manual step.
-
-### Registering the evaluators after the first admin (ADR-0049)
-
-Inviting somebody creates **no account**: it records the address, the role and the expertise
-profile, and the `assessors` row still appears at that address's first login, already
-carrying them. Done from `/admin/assessors` in the console, or here:
-
-```bash
-uv run python -m app.cli invite-assessor --email ada@yourcompany.com \
-    --role evaluator --name "Ada Lovelace" --expertise "Instructional design"
-uv run python -m app.cli list-invitations
-```
-
-An invitation is redeemable for seven days, at most one is pending per address, and re-sending
-reopens a window that closed. Revoking one frees the address to be invited again.
-
-Under `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` set, this **also creates the Clerk
-invitation**, so it is one act: the person gets Clerk's email and can sign in to an
-invite-only instance.
-
-The link lands on **`/accept-invitation`**, which renders a sign-up. That is not a detail:
-somebody accepting an invitation **has no account yet**, so Clerk hands the ticket over as
-`__clerk_status=sign_up`, and a page rendering the sign-in form cannot complete it — it
-renders and spins for ever. Override with `CLERK_INVITATION_REDIRECT_URL` only towards
-another page that signs somebody **up**; the default is
-`<first ALLOWED_ORIGINS entry>/accept-invitation`. Point Clerk's own
-`NEXT_PUBLIC_CLERK_SIGN_UP_URL` at the same route.
-
-Under `AUTH_MODE=local`, or with no secret key, nothing is delivered and the log says so —
-the invitation still stands and is redeemed at that address's first sign-in.
-
-> ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
-> already a Clerk user, and that rule cannot be bypassed. The invitation is created here
-> either way and the answer says `delivered: false` with Clerk's own sentence; the remedies
-> are **Re-send**, or inviting that person in Clerk by hand.
-
-### Running Clerk against your own machine
-
-Clerk's **development** instance is built for `localhost`, so the real login flow — and the
-real invitation flow — can be exercised without deploying anything. Nothing in the code
-prevents it: the only guard is the reverse one (`AUTH_MODE=local` refuses a remote database
-and `ENVIRONMENT=production`).
-
-`backend/.env`:
-
-```bash
-AUTH_MODE=clerk
-CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
-CLERK_SECRET_KEY=sk_test_...
-# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
-```
-
-`frontend/.env.local`:
-
-```bash
-NEXT_PUBLIC_AUTH_MODE=clerk
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
-```
-
-Then create the **JWT template** in the Clerk dashboard, with the three claims above
-(`email`, `name`, `email_verified`) — before signing in for the first time.
-
-What changes when you do this:
-
-- The user picker is gone; you sign in through Clerk, as a real person.
-- `GET /dev/identities` and the rest of the dev-only surface answer **404**, by design.
-- `seed-demo` refuses to run: it only works in local mode.
-- Inviting from the console really creates a Clerk invitation and really sends an email.
-
-The two modes share one database, and a local assessor's credential is stored as
-`('local', <email>)` while a Clerk one is `('clerk', <sub>)`, so they cannot collide — the
-same person signing in both ways is two assessors, which is what you want on a dev box.
-
-### Preparing an environment — **order matters**
-
-This sequence runs **once per environment** (one Clerk instance = one environment), before
-anyone signs in.
-
-> ⚠️ **The JWT template with the `email` claim must exist BEFORE the admin's first login.**
-> Without that claim the assessor is created as `evaluator` (a safe degrade), and since the
-> allowlist applies **once, at row creation**, adding the template later does not rescue it.
-> Two individually correct behaviors that, in the wrong order, leave the admin born an
-> evaluator.
-
-1. **Render:** `ADMIN_EMAILS=<the admin's email>` (and wait for the redeploy to finish).
-2. **Clerk:** create the **JWT template** with the `email` claim (above) and invite both
-   accounts. **Nobody signs in yet.**
-3. **Only now:** the admin signs in. Verify with `GET /me` that it says `"role": "admin"`.
-4. The admin invites the evaluators from `/admin/assessors` (and, until that adapter exists,
-   in Clerk too). They sign in → their role and expertise come from the invitation.
-5. Register the generator and its courses (see [Registering courses](#registering-courses))
-   and open the campaign from the admin UI.
-
-**If you got the order wrong** (the admin already signed in and landed as `evaluator`):
-nothing to delete, no allowlist to touch — fix it with
-
-```bash
-uv run python -m app.cli set-role --email <admin email> --role admin
-```
-
-which is the break-glass path: at that point there is no admin, so there is nobody who could
-grant the role from the console.
-
-## Layers (Dependency Rule)
-
-| Folder | Layer | May import |
-|---|---|---|
-| `app/modules/*/domain` | Domain | no framework — **pure Python** |
-| `app/modules/*/application` | Application | its own domain + `shared`; **defines the ports** |
-| `app/modules/*/infrastructure` | Adapters | application + domain (repos, routers, ACLs, extraction adapters) |
-| `app/platform`, `app/main.py` | Frameworks | everything; injects the dependencies |
-
-## A module's public surface (ARCHITECTURE.md §3)
-
-Each module exposes its contract in `modules/<m>/public.py`: query DTOs, its event names,
-and a `get_<m>_queries` provider for `Depends` injection that **builds its own repo
-inside**. Other modules import **only** from there — never from
-`modules/<other>/infrastructure` (that would couple them to the concrete adapter instead of
-the port) nor from `modules/<other>/domain`.
-
-Sole exception: the composition root (`main.py`, `cli.py`, `platform/`), whose job *is* to
-inject concrete adapters.
-
-`tests/test_architecture.py` makes the rule executable: the build fails if someone breaks
-it. It runs on every `pytest`, without a DB.
-
-## Events-first (ADR-0003)
-
-Publishing an event = an `INSERT` into `events` with the use case's session, in the same
-transaction as the aggregate (`OutboxEventPublisher`). After commit, the in-process
-`EventDispatcher` delivers the event to subscribed policies. Handlers must be idempotent by
-`event_type + aggregate_id`, so reprocessing from the `events` table is safe.
-
-Policies wired today (one list in `app/platform/policies.py`, called by both the API and the
-CLI so the two processes cannot drift — ADR-0029 §1): the completion chain of the human path
-(below) and, from slice 2, `ContentVersionRegistered → ProfileContent` — registering content
-auto-profiles it **iff** the format's extraction is accepted **and** every artifact locator
-is an http(s) URL. Packages rooted on a filesystem (the seeder's fixtures,
-`import-learnpack --base-dir`) are declined in silence and stay on the manual path, which
-picks its own fetcher.
+| Variable | For |
+|---|---|
+| `LLM_API_KEY` | assessors that carry an LLM. An **OpenRouter** key: access, never identity (ADR-0034). The one thing local mode cannot ship filled in |
+| `LOCAL_SOURCE_ROOTS` | trees of generated courses outside `courses/` — [From other trees](#from-other-trees-adr-0035) |
+| `TEST_DATABASE_URL` | where the suite runs — see [Tests and CI](#tests-and-ci) |
+| `DATABASE_URL` | the store. The local container by default; Neon needs `?sslmode=require` |
+| `LLM_TRACE_DIR` | where a run writes its prompts and raw answers; empty means no trace file |
+| `BATCH_MAX_COURSES` · `LLM_MAX_CONCURRENCY` · `HTTP_MAX_CONCURRENCY` · `DB_POOL_SIZE` | how much is asked for at once — [`TUNING.md`](TUNING.md) |
+| `AUTH_MODE`, `CLERK_*`, `ADMIN_EMAILS` | only a deployed instance — [`ENVIRONMENT.md`](ENVIRONMENT.md) |
 
 ## Commands
+
+Every CLI command runs from `backend/` as `uv run python -m app.cli <command>`, and `--help` on
+any of them is authoritative. What each one is *for*:
+
+| Command | For |
+|---|---|
+| `seed` · `seed-workbench` · `seed-demo` | the human reference instrument and the reference data · what a database needs to measure · the human panel's demo (the last two, local only) |
+| `invite-assessor` · `list-invitations` | register a human evaluator by inviting them ([`ENVIRONMENT.md`](ENVIRONMENT.md)) |
+| `set-role` | break-glass role change, without the console's guardrails |
+| `register-generator` · `register-generator-version` | the lineage, then a version under it |
+| `register-package` | register a content version by discovering a package source |
+| `import-learnpack` | hand-composed batches that carry their own artifact lists |
+| `attribute-generator` · `declare-deployment` | a generator learnt after registration (once) · where a version is deployed (repeatable) |
+| `delete-content` | remove a content version nothing has used — local development only |
+| `profile-content` · `accept-extraction` · `reprofile` | read one package by hand · arm auto-profiling for a format · re-profile a format in batch |
+| `import-instrument` · `publish-instrument` · `bump-instrument` | draft · the human act that freezes it · clone a published version into the next draft |
+| `ratify-assessor` | make an instrument version evaluable by an automated assessor |
+| `evaluate` · `evaluate-study` · `measure` | one content · every course of an open study · a folder, register to score |
+| `dump-concept-touches` · `dump-concept-map` | the two calibration dumps ([`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md)) |
+| `declare-study` · `update-study` · `open-study` | declare a round, shape it, then pin it |
+| `show-preview` · `sign-off-study` | the report a study *would* publish · compose, freeze and sign it |
+| `show-report` · `show-fitness` | the signed-off report · the fitness projection (ADR-0023) |
+
+Development, from `backend/`:
 
 ```bash
 docker compose up -d     # local Postgres: db (tests) + db-dev (development)
@@ -370,381 +198,64 @@ uv run ruff format .     # format
 uv run mypy              # types (strict, scope in pyproject.toml)
 ```
 
-All of it also runs in CI on every PR and push to main (`.github/workflows/ci.yml`): lint +
-format + types + backend suite (with Postgres as a service container) + frontend typecheck
-(`npm run typecheck`).
+## Code shape
 
-### Why tests run against local Postgres
+Dependencies point inwards only. The full rules are `../docs/ARCHITECTURE.md`; this is the map.
 
-The suite is **latency-bound**, not CPU-bound: each query to Neon (`us-east-1`) costs
-~150 ms from Latam, and an integration test makes over a hundred. That is ~20 s per test
-and a +10 min suite. Against local Postgres the same query costs ~0.3 ms.
+| Folder | Layer | May import |
+|---|---|---|
+| `app/modules/*/domain` | Domain | no framework — **pure Python** |
+| `app/modules/*/application` | Application | its own domain + `shared`; **defines the ports** |
+| `app/modules/*/infrastructure` | Adapters | application + domain (repos, routers, ACLs, extraction adapters) |
+| `app/platform`, `app/main.py` | Frameworks | everything; injects the dependencies |
 
-With `TEST_DATABASE_URL` set (see `.env.example`), `tests/conftest.py` redirects the suite
-to that DB and **migrates and seeds it by itself**. Without it, tests run against
-`DATABASE_URL` — valid, just slow; in that case conftest does **not** migrate or seed
-anything (the real store is never touched automatically).
+**A module's public surface** (ARCHITECTURE.md §3). Each module exposes its contract in
+`modules/<m>/public.py`: query DTOs, its event names, and a `get_<m>_queries` provider for
+`Depends` injection that **builds its own repo inside**. Other modules import **only** from
+there — never from another module's `infrastructure` (that couples them to the concrete adapter
+instead of the port) nor from its `domain`. The sole exception is the composition root
+(`main.py`, `cli.py`, `platform/`), whose job *is* to inject concrete adapters.
+`tests/test_architecture.py` makes the rule executable, on every `pytest`, without a DB.
 
-Neon remains the store of truth: migrations, deploy and the final smoke check.
+**Events-first** (ADR-0003). Publishing an event is an `INSERT` into `events` with the use case's
+session, in the same transaction as the aggregate (`OutboxEventPublisher`). After commit, the
+in-process `EventDispatcher` delivers it to subscribed policies, which must be idempotent by
+`event_type + aggregate_id` so reprocessing from the table is safe. The wiring is one list in
+`app/platform/policies.py`, called by both the API and the CLI so the two processes cannot drift
+(ADR-0029 §1). `app/platform/uow.py` is the transactional boundary each use case receives:
+`uow.commit()` commits and **then** dispatches the now-durable events.
 
-## Unit of work
-
-`app/platform/uow.py` is each use case's transactional boundary: it holds the `Session`,
-the `OutboxEventPublisher` over that same session, and the dispatcher. `uow.commit()`
-commits and **then** dispatches the now-durable events. Use cases receive `uow` + the ports
-they need; concrete adapters are injected from the router.
-
-## Completion policy (ADR-0002)
-
-On `EvaluationSubmitted`, `orchestration` marks `submitted` every open assignment of
-`(assessor, content)` whose campaign uses the same `instrumentVersion` — so one evaluation
-can satisfy several campaigns — and publishes `ContentEvaluationCompleted` when
-`COUNT(assignments submitted) ≥ required`.
-
-It runs **after** the evaluation's commit, in its own transaction: completion is
-**eventual**, not a transactional invariant. It is idempotent (`ON CONFLICT DO NOTHING` +
-publish only on insert), so reprocessing from `events` is safe.
-
-## Golden dataset and reports
-
-The complete human chain, all through events (`../docs/design/08-code.md` §5):
+**The policies wired today.** Registering content auto-profiles it **iff** the format's extraction
+is accepted **and** every artifact locator is an http(s) URL — packages rooted on a filesystem are
+declined in silence and stay on the manual path. And the human path's completion chain:
 
 ```
 EvaluationSubmitted → (orchestration) ContentEvaluationCompleted
                     → (golden)        GoldenReferenceEstablished
 ```
 
-Golden keeps no count of its own: it asks orchestration for coverage through its query port
-and applies its rule (`coverage ≥ threshold`). Idempotent like the quorum policy.
+`orchestration` marks `submitted` every open assignment of `(assessor, content)` whose campaign uses
+the same `instrumentVersion` — so one evaluation can satisfy several campaigns — and publishes
+`ContentEvaluationCompleted` at `COUNT(assignments submitted) ≥ required` (ADR-0002), in its own
+transaction after the evaluation's commit: completion is **eventual**, not a transactional
+invariant. Golden keeps no count of its own; it asks orchestration for coverage through its query
+port and applies `coverage ≥ threshold`.
 
-**Reporting** (ADR-0006) composes the other modules through their `public.py` and
-aggregates in Python — no cross-module JOINs and no read-model tables. Endpoints:
-`GET /admin/reports/scores` (each course's per-criterion profile: per-criterion average
-across assessors + inter-rater dispersion; **no aggregate score across criteria**,
-ADR-0011) and `GET /admin/progress` (who evaluated what, cross-campaign).
-
-Two aggregation rules not to confuse:
-- A **repetition** is the same assessor on the same `(content, instrumentVersion)` — it
-  collapses to the most recent, because it is a correction. Evaluating **two different
-  courses** is not a repetition.
-- Dispersion with a single rater is `null`, not `0`: there is no agreement to measure.
-
-## Instruments and content profiling (slice 2)
-
-### Authoring an instrument version
-
-Authoring is **file-based** (`../docs/seed/instruments/*.yaml`, one file per version, named
-`{instrument_id}-{version}.yaml`); there is no authoring UI. Publishing is always a human act,
-and a published version never changes — any change is a new version.
-
-| You want to… | Then… |
-|---|---|
-| Create an instrument, or keep editing one that is still a **draft** | Edit the YAML and `uv run python -m app.cli import-instrument --file <yaml>` — the draft is replaced in place, as often as needed (no bump involved). Import also mints the `data_requirement` ids the extraction conforms to (ADR-0014). |
-| Lock a draft so evaluations and studies can rely on it | `uv run python -m app.cli publish-instrument --id <version-id> --email <admin>`, or the Publish button in `/admin/instruments`. Publish validates the full evidential argument; from here the version is immutable. |
-| Change anything in a **published** version — a threshold, a wording, a new criterion | `uv run python -m app.cli bump-instrument --file <yaml> [--to vN] [--reason "..."]` clones the YAML into the next version's file **textually** (header comments and block-scalar style survive; only `version:` and, with `--reason`, `revision_reason:` change), then: edit the new file → `import-instrument` → `publish-instrument`. Claim/criterion ids stay stable across versions — the lineage. |
-| Change the declaration of an **existing** `data_requirement` — reword the definition (same meaning) or adjust its `value_domain` | Edit it in the YAML and add `--revise-definitions` to `import-instrument`: the deliberate act that lifts the ADR-0014/0020 lint; each revision is applied and reported old → new. Without the flag the lint blocks — the guardrail against silently rewriting the contract adapters conform to. |
-| Express a **different** concept than an existing `data_requirement` | Do NOT revise it — mint a new id with its own definition (ADR-0014: same meaning → alias or revision; similar-but-different → new id). |
-
-Versions are cheap by design: iterate by bumping and deprecate freely — what reproducibility
-hangs on is the version a study **pins**, never how many versions came before it.
-`bump-instrument` refuses collisions (target file on disk, target version in the db) and
-self-checks the textual edit before writing, so it never produces a corrupt or overwritten
-file. Which version a local workbench is set up with is recorded in
-`../docs/seed/workbench.yaml` (ADR-0045).
-
-The long form — when a new instrument is warranted at all, and how to get one published —
-is [Authoring an instrument](#authoring-an-instrument) at the end of this file.
-
-### Extraction: reading a package
-
-`content_profiling` derives a cited profile from a package's artifacts — no inference,
-absence is a result (ADR-0009). One adapter per package format (`LearnpackV1`,
-`LearnpackV2`), each declaring which data requirements it can supply.
-
-Automatic profiling on registration is armed by the human acceptance of the adapter version:
-
-```bash
-uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email <admin>
-```
-
-That act (ADR-0012) belongs after reviewing samples — in `/admin/profiles`, or by reading a
-package by hand with `profile-content --content-id <id>`. `seed-workbench` performs it for
-the formats the workbench manifest names, which is the same act replayed rather than a
-different one.
-
-### Automated evaluation
-
-Calibrate an instrument — **drafts included** — against real content, spending calls but
-persisting nothing:
-
-```bash
-uv run python -m app.cli evaluate --content-id <id> --instrument-version-id <id> \
-                                  --assessor <name>:<version> --dry-run
-```
-
-It prints the outcome table per criterion and the claim summary. `--assessor` is always
-explicit: an instrument admits 0..N assessors (ADR-0016) — the registry holds `structural`
-for `learnpack-course-qa` and, for `course-drafts-qa`, both `drafts-structural` (pure code)
-and `drafts-hybrid` (its superset, with LLM-carried criteria) — and naming which one is
-judging is part of the act. `/admin/assessors` lists the versions the registry currently
-carries.
-
-**Judgments do not combine across assessors.** The report and the fitness read the most
-recent judgment per content, so within one study evaluate each content with ONE assessor.
-
-The real path (no `--dry-run`) requires a **published** version and a **ratified** assessor:
-
-```bash
-uv run python -m app.cli ratify-assessor --name drafts-hybrid --version <v> \
-                                         --instrument-version-id <id> --email <admin>
-```
-
-The initial registration is the first ratification. Against a later version of the same
-lineage the diff is computed mechanically, and only changed or new **executed** criteria
-demand `--confirm <criterion-id>` (ADR-0019). The same act is on `/admin/assessors`
-(ADR-0036), with a second step listing each changed criterion and the `pass_condition` being
-confirmed; both gates run one use case, so they cannot answer differently. Then `evaluate`
-persists the evaluation (outcomes + raw metrics) and the judgment policy derives claims,
-coverage and findings.
-
-### The assessors page
-
-`/admin/assessors` is where that state is read: assessors grouped by kind (automated by
-default, humans optional, both), and per automated package its coverage plus every version of
-its lineage with whether it may judge with it, who ratified it and when.
-
-The automated rows come from `GET /admin/assessor-packages` — the in-code registry carrying
-that state — rather than from the `assessors` table, on purpose: a package nobody has
-ratified has no row there at all, and it is the one worth acting on. The act itself is
-`POST /admin/assessor-packages/{name}/{version}/ratify` (409 with the criteria to decide, 422
-with its cause named for everything else); it is composed in
-`app/platform/ratification_router.py` because it spans Identity and Evaluation.
-
-### Assessors that carry an LLM (ADR-0034)
-
-`drafts-hybrid` extracts and classifies with an LLM and decides pass/fail in code. It needs an
-**OpenRouter** `LLM_API_KEY` in the environment (see `.env.example`).
-
-The transport speaks the OpenAI chat-completions shape, but that does not make the provider
-interchangeable: the models are pinned as OpenRouter slugs — `deepseek/…`, and the namespace
-*is* the provider — and every request carries OpenRouter's own `provider` routing, which is
-how a misbehaving upstream is excluded (ADR-0038). `provider` sits in the assessor's
-`SOURCE_CONFIG`, so it is identity: judging through another provider is a new assessor
-version, not a new `LLM_BASE_URL`.
-
-**The key is *access*. Identity is what decides the answer** and is pinned in the assessor's
-code and declared in its `SOURCE_CONFIG`, prompts fingerprint included: which model judges,
-how it is sampled (temperature, output budget, whether it may reason, how many samples decide
-a verdict) and which prompts it is asked. Changing any of them without a VERSION bump is
-refused at ratification. Sampling counts as identity because it decides the answer:
-`drafts-hybrid:2` exists because v1 asked a reasoning model for an answer inside a budget its
-thinking consumed whole, and got nothing back — see
-[Reading a calibration trace](#reading-a-calibration-trace).
-
-Every `evaluate` — dry run included — spends real calls (tasks are memoized per profile, and
-tokens/latency/`clean_retries` come back as `llm_*` metrics with the outcomes). When a task
-irrecoverably fails (transport down, output contract never satisfied, a degeneration that
-survived its one clean-conversation retry), the criteria it feeds degrade to
-**`execution_error`** — a fact of the run, never of the content, carrying its cause
-`{task, kind, message}` — and the rest of the evaluation persists (ADR-0037). Past the
-**failure budget** (a quarter of the criteria mapped for execution) the run was not an
-evaluation: it aborts whole and persists nothing; fix, or just retry.
-
-`LLM_TIMEOUT_SECONDS` bounds one call before the transport treats it as transient and backs
-off — access like the key, so raising it for a long prompt against a slow provider re-versions
-nothing. The test suite never touches the network: the transport is faked at the
-`runtime.get_client` seam.
-
-### The calibration page
-
-`/admin/calibration` is the guided way to run the dry-run loop: pick a profiled content, an
-instrument version (drafts included) and an assessor package, run, and read the outcome table
-with quotes, claim statuses and LLM spend.
-
-It sits on `GET /admin/assessor-packages` (the in-code registry as data) and on the dry-run's
-three: `POST /admin/evaluations/preview` **starts** a run and returns its id (202),
-`GET /admin/evaluations/preview/{run_id}` reads it while it advances — one step per executed
-criterion and per LLM attempt, then the result or a named error — and `.../trace` returns
-every LLM attempt whole, prompts and raw answers included. It is the same `PreviewEvaluation`
-use case the CLI wires (accepts drafts, needs no ratification, persists nothing); it is
-started rather than awaited because with LLM-carried criteria it takes minutes. Runs live
-**in memory**, last few only: a restart forgets them, which is the correct trade for a dry run
-that persists nothing. The CLI (`evaluate --dry-run`) stays the scriptable path.
-
-An LLM-carrying assessor spends real calls per run, on the backend's `LLM_API_KEY`.
-
-### Evaluating a study in batch
-
-A generation of the optimization experiment is a whole study's worth of courses, which is
-one command (ADR-0040):
-
-```
-uv run python -m app.cli evaluate-study --study-id <id>
-                                        [--assessor <name>:<version>]
-                                        [--concurrency N] [--re-evaluate]
-```
-
-**The study decides the assessor** (ADR-0042): it pinned one before it opened, and the run
-uses it. `--assessor` is optional and is *checked* rather than obeyed — passing one that
-disagrees with the pin is refused, so a script written before the pin keeps working and a
-mismatch is stated instead of silently resolved.
-
-**Progress goes to stderr, the summary to stdout** — one JSON document naming every course
-with its `briefId`, its status, its duration and what it spent, which is what a script reads
-to know how a generation went. The statuses mean:
-
-| status | what happened |
-|---|---|
-| `evaluated` | the course was judged and its evaluation persisted |
-| `skipped` | this assessor had already evaluated it under this instrument version |
-| `failed` | this course could not be judged; `cause` says why, and the others carried on |
-| `cancelled` | the run stopped before reaching it; nothing was written for it |
-
-**It refuses before it spends.** A study that is not open, no instrument pinned, no assessor
-pinned, an empty dataset, an assessor that is unregistered or has not ratified the pinned
-version, or a `--assessor` that disagrees with the pin: each would
-fail identically for every course, so the command ends with the cause named and nothing paid
-for. The same reasoning applies while it runs — a configuration failure, a coverage bug or
-any failure this loop cannot place (a database one migration behind, say) ends the batch on
-the first course, and three consecutive transport deaths end it too (any course that
-completes clears that streak). A run that ends this way reports `failed` and names the course
-that met it; `cancelled` is reserved for a human stopping it, because only one of the two is
-a reason to go looking for a cause.
-
-**Re-running resumes it.** What this assessor already evaluated is skipped, so a batch
-interrupted at course twelve of twenty is continued by running the same command again.
-`--re-evaluate` asks for all of them regardless.
-
-**Ctrl-C stops it**, and stopping means *stop starting*: courses that finished stay
-persisted, the ones in flight stop at their next call, and the summary still prints. Nothing
-needs undoing — an evaluation that does not reach its end writes nothing.
-
-**How much it asks for at once — two numbers, not one.** `--concurrency` is how many
-**courses** run at a time (default `BATCH_MAX_COURSES`, 6). How many **requests** may be in
-flight is `LLM_MAX_CONCURRENCY` (16) at the transport itself, whatever the callers do, so
-nested fan-outs can never multiply into a burst nobody chose.
-
-They are configured apart because one course is no longer one request. An evaluation looks at
-every judgeable criterion at once (ADR-0048), and `drafts-hybrid` asks its concept map as one
-call plus one per module inside that — so one course peaks at roughly
-`(1 + modules) + judged criteria + single-call tasks`, which is sixteen on the drafts measured.
-Requests wanted is that times the courses in flight. A ceiling below it does not save anything:
-it only moves the wait into the transport's queue, where it is recorded as latency and reads
-like a slow model.
-
-`LLM_MAX_CONCURRENCY` is bounded by what the account is served — OpenRouter states no
-concurrency limit for paid models and governs capacity per account, so opening more keys buys
-nothing. If the endpoint pushes back, the transport backs off on 429 honouring `Retry-After`:
-overshooting costs retries, not correctness.
-
-**`BATCH_MAX_COURSES` is bounded by the database instead**, and that is the lever worth
-knowing how to move.
-
-```
-DB_POOL_SIZE + DB_MAX_OVERFLOW  ≥  2 × workers  +  headroom
-```
-
-Two per worker, because a worker holds its own session and the one the policy opens when the
-evaluation commits — a policy runs in its own transaction (ADR-0003). At the defaults that is
-`5 + 10 = 15`, which serves seven workers with one connection left. Six is the default rather
-than seven on purpose: a pool that runs out does not make a batch slower, it makes a checkout
-wait `pool_timeout` and then raise, and **a failure nobody named ends the whole batch** rather
-than one course.
-
-**To run bigger batches**, raise the two together — `BATCH_MAX_COURSES` and the pool, in the
-same change — and check the server's own limit before you do: the local Postgres serves 100
-connections and a managed one has its own, so a pool above it just moves the error. Then
-measure, because the point is throughput and not the setting:
-
-- **Did it help?** Compare the batch's wall clock against the sum of the per-course durations
-  the summary reports. Six courses at four at a time is 304 s against 963 s; the same six all
-  at once is 180 s against 954 s. Once the wall clock equals the slowest single course, more
-  workers buy nothing — that is the floor for that set.
-- **Did it cost anything?** Read the map's tokens per second in the run's trace. Across both
-  of those batches it stayed at 97–141, the same band one course produces alone, which is how
-  you know the requests ceiling is not what is holding the batch back. If it falls, the next
-  limit is `LLM_MAX_CONCURRENCY` or the account behind it, not the pool.
-- **What failure looks like:** courses ending with a cause nobody named, and the batch
-  stopping instead of carrying on. That is the pool, not the endpoint — a rate limit shows up
-  as retries and 429s in the trace, and the transport absorbs it.
-
-**The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with
-the identical work behind it — one use case, two doors, so they cannot answer differently.
-It opens on the **durable** count ("12 of 20 courses judged"), which is a query over the
-judgments rather than a run's memory: it is still right after a restart, and it counts a
-batch someone ran from a terminal. Starting states what it commits to before asking, and
-only offers assessors that have **ratified the pinned version** — the option that would be
-refused is not shown. While it runs, the page reads it once a second (`POST
-/admin/studies/{id}/evaluations` returns a run id; `GET …/{run_id}` reads it; `POST
-…/{run_id}/cancel` stops it), showing a row per course, the current activity and a range for
-what is left. A run is refused with **409** while another one over the same courses is alive:
-two batches over one course would decide by arrival order, since every reader takes the most
-recent judgment.
-
-What the console cannot do, on purpose: watch or cancel a batch started from the CLI. They
-are different processes and runs live in memory — the durable count reflects it all the same.
-Runs are forgotten on restart; what they wrote is not.
-
-### Measuring a generation the generator just wrote
-
-When the courses are a folder rather than a study, `measure` chains the whole loop —
-register, open a round over exactly those courses, evaluate it, print the score:
-
-```
-uv run python -m app.cli measure --root generated --path learnpack-generator-04a7dd5-dirty
-                                 [--format LearnpackV2] [--assessor <name>[:<version>]]
-                                 [--instrument-version-id <id>] [--name "..."]
-                                 [--concurrency N] [--re-evaluate]
-```
-
-**Using it is `../docs/RUNBOOK-measuring.md`** — the layout it expects, how to read what comes out,
-and what the numbers may be compared with. What belongs here is why it is put together this
-way:
-
-- **Nothing new happens in it.** It is the six commands a person ran by hand, with the four
-  ids that were copied between them derived instead.
-- **The folder's name declares the generator version**, and that version — one, not "all of
-  them" — is the round's scope (ADR-0044). That is the defect the chaining removes, not the
-  typing: a round that measures a dataset nobody meant to name. A folder declaring `unknown`
-  is refused for the same reason.
-- **The norm and the judge are derived only when the derivation has one answer.** The
-  instrument is the published version bound to the format (an instrument declares which
-  formats it binds), and the judge is the assessor that has ratified it; two of either and the
-  command asks. `--assessor` takes `name` or `name:version` — the version identifies the
-  artifact and stays available, but a loop that runs every day should not need editing on
-  every bump.
-- **Both are resolved before the folder is registered**, since registering is a fetch per
-  lesson per course and none of it is worth doing for a round with nothing to judge it with.
-  That is the ADR-0040 stance one level up.
-- **Re-running resumes** rather than declaring a second round: an open study with the same
-  name, norm, judge and dataset is continued, and anything less than an identical match is a
-  new one.
-- **A course keeps the generator version it was first registered with.** Re-registering an
-  unchanged course returns the existing one and discards the declared generator (ADR-0035 §9),
-  so a store that already holds these courses under another version measures them *there* —
-  and `measure` names each one instead of composing an empty dataset.
-- **One JSON document comes out**, `{"batch": …, "fitness": …}`: reading the run and the score
-  separately is where a value gets paired with the wrong round.
-
-The console does the same thing on `/admin/measure`; this is the scriptable path.
-
-### Calibrating an instrument
-
-When a criterion is not measuring what you meant — or does not exist yet — the tools are the
-LLM trace, repeats of one course, and two calibration dumps that build the raw material a
-criterion would consume and hand it back as a table to mark up. None of them writes a
-judgment: they are outside the assessor's identity (ADR-0034) and their output is a proposal
-to change the instrument, not a verdict about a course.
-
-That is a job of its own, with its own audience and its own moment, so it has its own guide:
-**[docs/RUNBOOK-calibrating.md](../docs/RUNBOOK-calibrating.md)**.
+**Reporting** (ADR-0006) composes the other modules through their `public.py` and aggregates in
+Python — no cross-module JOINs and no read-model tables. `GET /admin/reports/scores` gives each
+course's per-criterion profile (average across assessors, plus inter-rater dispersion; **no
+aggregate score across criteria**, ADR-0011) and `GET /admin/progress` who evaluated what,
+cross-campaign. Two rules not to confuse: a **repetition** is the same assessor on the same
+`(content, instrumentVersion)` and collapses to the most recent because it is a correction
+(evaluating two different courses is not one); and dispersion with a single rater is `null`, not
+`0`, because there is no agreement to measure.
 
 ## Registering courses
 
-The canonical intake is **discovery** (ADR-0027): declare a package source and the system
-reads the artifact list, the descriptor and a content hash from the package itself. A course
-declares which generator produced it, so the generator has to exist first — two acts, because
-the name is typed once per generator and never again (ADR-0031):
+The canonical intake is **discovery** (ADR-0027): declare a package source and the system reads
+the artifact list, the descriptor and a content hash from the package itself. A course declares
+which generator produced it, so the generator has to exist first — two acts, because the name is
+typed once per generator and never again (ADR-0031):
 
 ```bash
 # the lineage. A name one or two edits from a registered one is refused until you echo the
@@ -752,8 +263,10 @@ the name is typed once per generator and never again (ADR-0031):
 uv run python -m app.cli register-generator --name learnpack-generator
 
 # a version under it, by id or by name; neither form ever creates the generator
-uv run python -m app.cli register-generator-version   --generator-name learnpack-generator --version 2.4.0 --changelog "What changed."
+uv run python -m app.cli register-generator-version --generator-name learnpack-generator --version 2.4.0 --changelog "What changed."
 ```
+
+Then the courses. Three ways of naming what to register, one act underneath:
 
 ```bash
 # one course, by URL or by a local directory inside a declared source root
@@ -763,596 +276,386 @@ uv run python -m app.cli register-package --source ../courses/unknown/my-course 
 # a course in any other package format — `--format` defaults to LearnpackV1
 uv run python -m app.cli register-package --source ../courses/gen@2.0.0/a-run --generator <uuid> --format LearnpackV2
 
-# every course under courses/<generator-folder>/ (batch)
+# every course under courses/<generator-folder>/, or of another declared tree
 uv run python -m app.cli register-package --all
-
-# every course of another declared tree (see "From other trees" below)
 uv run python -m app.cli register-package --all --root generated --format LearnpackV2
 
-# every course a file names, by URL (batch)
+# every course a file names, by URL
 uv run python -m app.cli register-package --from-csv ./courses.csv \
   --generator-name learnpack-generator --generator-version 2.4.0 [--register-new-version]
 ```
 
-`--format` names the source's `PackageFormat` and **defaults to `LearnpackV1`**, so a package
-in any other format needs it spelled out — discovery would otherwise read it with the wrong
-adapter and refuse it. `--all` takes one `--format` for the whole tree, so a tree holding more
-than one format is registered one format per run.
+`--format` names the source's `PackageFormat`, and **on `register-package` it defaults to
+`LearnpackV1`** — a package in any other format needs it spelled out, since discovery would
+otherwise read it with the wrong adapter and refuse it. (`measure` defaults to `LearnpackV2`
+instead, which is what the generator writes today.) `--all` and `--from-csv` take one `--format`
+and one generator for the whole run, so a tree or a file mixing two of either is two runs.
+
+**The generator folder declares the version, and a new version is registered as it is read.** Two
+conventions, tried in that order: `courses/`'s own `<name>@<version>`, and the `<name>-<version>`
+a generator writes when it names its own output folder (`learnpack-generator-04a7dd5-dirty`). The
+second cannot be split syntactically — the version carries hyphens of its own — so it is split
+against the registry: the registered lineage whose name the folder starts with, and the rest is
+the version. A **lineage** is never minted from a folder name (ADR-0031); a **version** is,
+because it changes with every commit of the generator being measured.
+
+**Local sources need the dev API running** (`AUTH_MODE=local`): it serves the repo's gitignored
+`courses/` tree at `/packages` (base URL `LOCAL_PACKAGES_BASE_URL`), so registered **locators**
+are fetchable http URLs and brief intake and profiling work exactly as with remote packages. That
+is all the mount gives them: a local course registers with **no `consumable_url`**, because
+serving a package's bytes is not deploying a course (ADR-0028). Pass `--consumable-url` only if
+the course really is deployed somewhere a human can open it; without one it can be evaluated
+automatically but not assigned for human scoring.
+
+Re-importing an unchanged course is a no-op (content hash); the same declared version with changed
+content is refused. See `../courses/README.md` for the folder convention, and
+[`TUNING.md`](TUNING.md) for how much a registration fetches at once and what bounds it.
+
+**Registering auto-profiles** each newly created course, once the format's extraction is accepted
+(ADR-0029 §1). Both commands print what it did (`profiling: N profiled, N failed, N not
+profiled`), because a decline is silent by design and a failure is only logged. A large tree
+therefore costs roughly one fetch per lesson per created course, and there is no way to opt out
+yet.
+
+`import-learnpack --file courses.json` remains for hand-composed batches that already carry their
+artifact lists (canonical JSON shape only). With `--base-dir` its locators are filesystem paths,
+so the automatic policy declines them; without it they are URLs and it profiles like any other
+path.
 
 ### A generation, from a list of URLs (`--from-csv`)
 
-Three ways of naming what to register, one act underneath: `--source` is one course, `--all` a
-tree of folders, `--from-csv` a **list**. The list declares one format and one generator for all
-of it — the rule `--all` already follows — so a file mixing two of either is two runs.
-
 **The file is read forgivingly**, because what arrives is a spreadsheet somebody exported: the
 **first column** of each row and nothing else, skipping a header row, blank lines, rows parked
-behind a `#`, and duplicates. The columns beside the URL are ignored. What is refused is an
-entry that is not `http(s)` — that is a course this path would register wrong, and a local one
-belongs to `--source` or `--all`.
+behind a `#`, and duplicates. What is refused is an entry that is not `http(s)` — that is a course
+this path would register wrong, and a local one belongs to `--source` or `--all`.
 
-**The generator is declared once, by id or by name:**
-
-```bash
---generator <uuid|unknown>                       # as a single registration declares it
---generator-name <lineage> --generator-version <version>   # the friendlier pair
-```
-
-The **lineage is resolved, never created** (ADR-0031: its name is typed once and never again).
-The **version may be created**, since it changes with every commit of the generator being
-measured — but only with `--register-new-version`, which takes no value: the version is always
-the one you typed. Without it, an unregistered version stops the run before a single course is
-fetched. That is the difference from `--all`, where the version is read off a folder the
-generator itself named: here a typo would not mint one stray version, it would attribute the
-whole list to it, and content is never retired (ADR-0033) while `attribute-generator` only fills
-an `unknown` and never corrects one.
+**The generator is declared once**, by id (`--generator <uuid|unknown>`) or by the friendlier pair
+`--generator-name <lineage> --generator-version <version>`. The lineage is **resolved, never
+created** (ADR-0031); the version **may** be created, but only with `--register-new-version`, and
+without it an unregistered version stops the run before a single course is fetched. That is the
+difference from `--all`, where the version is read off a folder the generator itself named: here a
+typo would not mint one stray version, it would attribute the whole list to it — and content is
+never retired (ADR-0033) while `attribute-generator` only fills an `unknown` and never corrects
+one.
 
 **Everything that would fail for every row fails once**, before the first fetch: the file, the
 format, the generator. After that a course that fails is one line of the summary and the batch
-carries on — and **re-running the same file finishes it**, because an unchanged package is a
-reported no-op.
+carries on, and **re-running the same file finishes it**, because an unchanged package is a
+reported no-op — which is also how *how far did it get* is answered, and why this stays a plain
+foreground command rather than a run in the shape `evaluate-study` uses.
 
-**Why this is a plain foreground command** and not a run in the shape `evaluate-study` uses.
-Progress and cancelling are not missing: a line per course goes to stderr as it happens, and
-Ctrl-C stops it with nothing to undo, since each course is its own transaction. What the resume
-property removes is the third thing a run exists for — surviving the process, so that *how far
-did it get* is still answerable afterwards. Here it is answered by running the file again.
-What a run would still add is doing any of those **from somewhere else**, which is what a
-browser would need, and that is the deferral rather than the ergonomics.
-
-Two differences from `evaluate-study`'s Ctrl-C, both from having no SIGINT handler here: it
-stops mid-course rather than after the one in flight, and no summary is printed. Neither loses
-work — but a course interrupted between its commit and its profiling stays unprofiled, and
-re-running the file will not notice, since an unchanged package emits nothing. `profile-content
---content-id` is the repair, exactly as it is for `--all`.
-
-Measured against real courses, a new one costs about **9 s** and one already registered about
-**4.6 s**, so fifty is roughly seven minutes of terminal — short enough to sit in front of,
-which is the other half of why nothing here runs in the background.
-
-`--root` names which **declared source root** to read (below); it defaults to the repo's own
-`courses/` tree, so nothing that worked before needs it. A `--source` that is not an http(s)
-URL is read as a path from where you are standing, and — if that names nothing — as one
-relative to `--root`, which is how the folder reads when you list the tree.
-
-**The generator folder declares the version, and a new version is registered as it is read.**
-Two conventions, tried in that order: `courses/`'s own `<name>@<version>`, and the
-`<name>-<version>` a generator writes when it names its own output folder
-(`learnpack-generator-04a7dd5-dirty`). The second cannot be split syntactically — the version
-carries hyphens of its own — so it is split against the registry: the registered lineage whose
-name the folder starts with, and the rest is the version. A **lineage** is never minted from a
-folder name (that name is typed once and never again, ADR-0031); a **version** is, because it
-changes with every commit of the generator being measured and demanding a second command for
-each one would put a manual act inside the loop this intake exists to automate. Each one is
-printed as it happens.
-
-Local sources need the dev API running (`AUTH_MODE=local`): it serves the repo's
-gitignored `courses/` tree at `/packages` (base URL: `LOCAL_PACKAGES_BASE_URL`, default
-`http://localhost:8000/packages`), so registered **locators** are fetchable http URLs —
-brief intake and profiling then work exactly as with remote packages. That is all the mount
-gives them: a local course registers with **no `consumable_url`**, because serving a
-package's bytes is not deploying a course (ADR-0028). Pass `--consumable-url` only if the
-course really is deployed somewhere a human can open it; without one it can be evaluated
-automatically but not assigned for human scoring.
-Re-importing an unchanged course is a no-op (content hash); the same declared version with
-changed content is refused. See `../courses/README.md` for the folder convention.
-
-**How much a registration asks for at once.** A package's manifests are read one at a time,
-because each one names the next; everything they then enumerate — dozens of lesson bodies and
-exercise files, 73 on the course measured — is asked for **together**, since nothing in that
-list is opened to find another. Over http that is a fan-out; off a filesystem it is still a
-loop, because a local read has nothing to wait for.
-
-`HTTP_MAX_CONCURRENCY` (8) is what bounds it, at the transport, so it holds for every artifact
-fetch whoever asked for it — a discovery reading a package and a profiling run reading another
-are the same requests to whoever is serving them. It is deliberately lower than
-`LLM_MAX_CONCURRENCY`, and not because origins are weaker: there the account is ours and the
-transport backs off on 429 honouring `Retry-After`, so overshooting costs retries. Here the
-origin is somebody else's course server, and a fetch that runs out of attempts refuses the
-whole registration (ADR-0027).
-
-**It does back off**, on the same policy: a connection error, a timeout or a `429/5xx` is the
-origin's weather, so it is retried up to three attempts with a jittered backoff that honours
-`Retry-After`. Every other 4xx is a fact about what was asked for, and re-asking cannot change
-it — so it is answered at once and never waited on. That case is not an edge: a package saying
-it carries no syllabus is a **404 read on every registration** (ADR-0022), and making it wait
-would tax every package that is fine. Note that origins differ in how they say it —
-`learn-pack.com` answers **403** for a missing artifact, not 404 — which is why the rule is
-"retry the retryable list", not "retry everything except 404".
-
-**What failure looks like now**: a course that used to register and now does not, with a
-message naming one artifact and `(after 3 attempts)`. That suffix is the tell — with it, the
-origin refused three times and the ceiling may be too high for it; without it, the origin
-answered, and the package really is missing that artifact.
-
-**What it measures, on a real course** (39 artifacts on `learn-pack.com`, about half a second a
-request): reading the declared surface takes **19.6 s one file at a time and 4.4 s at the
-default ceiling of eight** — 6.4 s at four, 3.2 s at sixteen, 3.1 s at twenty-four, no failure
-at any of them. Flat past sixteen, because what is left by then is the part that cannot fan out
-at all: three manifests read one after the next, since each one names the next. To try a
-different ceiling on your own origin, measure the same way and read both things — the wall
-clock, and whether any artifact started failing.
-
-**Profiling reads the same way, for the same reason.** It re-reads the package right after
-discovery, inside the same registration (ADR-0029), and its two group reads — the lesson
-bodies, and LearnpackV2's stats files — go out together as well: **9.4 s → 2.3 s** on that
-course, with the extraction returning byte-identical entries.
-
-It also reads each artifact **once**. An adapter's entry builders are independent on purpose,
-each reading and citing its own artifact without consulting the others, so the same file is
-legitimately asked for more than once — LearnpackV2's `lesson_plan.json` three times. Rather
-than couple the builders, `ProfileContent` wraps the fetcher for the length of one extraction.
-
-**So a whole registration is about 8 s of work against the ~31 s it started at**, and when
-timing one, the two halves are still worth timing apart: the CLI's `created …` line closes the
-discovery, and what `register-package` prints after it is the profiling.
+Ctrl-C stops it with nothing to undo, each course being its own transaction, but there is no SIGINT
+handler here: it stops mid-course and prints no summary. A course interrupted between its commit
+and its profiling stays unprofiled, and re-running the file will not notice, since an unchanged
+package emits nothing — `profile-content --content-id` is the repair, exactly as for `--all`.
 
 ### Declaring the deployment of a registered course (`declare-deployment`)
 
-A course registered from `courses/` declares **no** consumable URL — dropping a folder into a
-tree deploys nothing (ADR-0028) — and without one the console refuses it in the assign picker,
-so it cannot be put in front of a human evaluator. When the course *is* deployed afterwards,
-this points the registered version at it:
+A course registered from `courses/` declares **no** consumable URL — dropping a folder into a tree
+deploys nothing (ADR-0028) — and **that is what decides whether it can be scored by a person**:
+without one the console refuses it in the assign picker, so it can be judged automatically but
+never handed to an SME. When the course *is* deployed afterwards, this points the registered
+version at it:
 
 ```bash
-# one course
-uv run python -m app.cli declare-deployment --external-id <slug> \
-  --url https://<course>.learn-pack.com/ --email <admin>
-
-# a spreadsheet of them: two columns, `external_id,url`
+# one course, or a spreadsheet of them: two columns, `external_id,url`
+uv run python -m app.cli declare-deployment --external-id <id> --url https://<course>.learn-pack.com/ --email <admin>
 uv run python -m app.cli declare-deployment --from-csv ./deployments.csv --email <admin>
 ```
 
-**It fetches nothing.** A `ContentProfile` is built from artifact locators and Content
-Profiling never reads this field, so the evaluand keeps its identity, its `content_hash` and
-its profile — the only thing that changes is whether a human can be handed the course.
+**Which `external_id`.** It is the identity the package declares about itself, read off it by
+discovery and never typed by hand — `/admin/contents` lists it in the first column, and
+`register-package` prints it. What it is made of is the format's business:
 
-**Unlike `attribute-generator`, it may be repeated** (ADR-0054): an attribution is a discovery
-— the fact was always true — while a deployment is a statement about the world right now, and
-courses move. Every change is recorded with what it moved from and who moved it; declaring the
-URL a content already has is a no-op that writes nothing; clearing one is refused.
+| Format | `external_id` | From |
+|---|---|---|
+| `LearnpackV1` | the course slug — `introduction-to-generative-ai` | `slug` in `learn.json` |
+| `LearnpackV2` | `<seed>-<run start UTC>` — `03-html-fundamentals-20260810184810` | `system_metadata.run_info.seed_id` and `started_at`, in `traces/run_metadata.json` |
 
-The file is read as forgivingly as `--from-csv` reads its URLs — a header row, blank lines,
-`#` rows and exact duplicates are all ignored. Two things are refused rather than guessed: the
-same course named twice with **different** URLs, and a **slug registered at more than one
-version**, since `(format, external_id)` is the logical content and which version is deployed
-is not something a slug settles. Any failed row makes the run exit non-zero, so a fifty-row
-file cannot half-succeed quietly.
+LearnpackV2 composes it because neither half identifies a course alone: the seed says *which
+instruction* was given and collides across regenerations, the timestamp says *which run* and says
+nothing about what was asked. Both are the run's own declarations, so the id survives the tree
+being moved, renamed or served from somewhere else — which the directory name, the other obvious
+candidate, would not. It is namespaced by the format (ADR-0005), so `(format, external_id)` is the
+logical course and the same string under two formats is two courses.
 
-### From other trees, from the CLI and from the console (ADR-0035)
+**It fetches nothing.** A `ContentProfile` is built from artifact locators and Content Profiling
+never reads this field, so the evaluand keeps its identity, its `content_hash` and its profile —
+the only thing that changes is whether a human can be handed the course.
 
-A tree that does not live under `courses/` is declared in the environment, because a
-registered locator has to stay fetchable and only a served tree provides that:
+The same act is `POST /admin/contents/{content_id}/consumable-url`. The console does not offer it
+yet: `/admin/contents` shows a declared URL as a link and nothing more, so the CLI is the way in.
+
+**Unlike `attribute-generator`, it may be repeated** (ADR-0054): an attribution is a discovery —
+the fact was always true — while a deployment is a statement about the world right now, and courses
+move. Every change is recorded with what it moved from and who moved it; declaring the URL a
+content already has writes nothing; clearing one is refused.
+
+The file is read as forgivingly as `--from-csv` reads its URLs. Two things are refused rather than
+guessed: the same course named twice with **different** URLs, and an **id registered at more than
+one version**, since which version is deployed is not something the id settles. Any failed row
+makes the run exit non-zero, so a fifty-row file cannot half-succeed quietly.
+
+### From other trees (ADR-0035)
+
+A tree that does not live under `courses/` is declared in the environment, because a registered
+locator has to stay fetchable and only a served tree provides that:
 
 ```bash
-# one tree, which you decide to call `generated`
-LOCAL_SOURCE_ROOTS=generated=D:\generator\datasets\generated
-# two trees, comma-separated
 LOCAL_SOURCE_ROOTS=generated=D:\generator\datasets\generated,archive=/srv/old-courses
 ```
 
-Each entry is `<name>=<folder>`. The name is yours to choose, but it is not a label: it
-becomes the URL prefix the tree is served at (`LOCAL_SOURCES_BASE_URL/<name>/…`) and is stored
-inside every locator registered from it, so renaming it strands the courses already
-registered. It must match `[a-z0-9._-]+` and cannot be `courses` — that is the built-in root,
-which keeps its own base URL forever. A malformed entry stops the process; a folder that does
-not exist is reported as absent and skipped. Adding a root needs a restart, because the trees
-are mounted when the app assembles.
+Each entry is `<name>=<folder>`. The name is yours to choose, but it is not a label: it becomes the
+URL prefix the tree is served at (`LOCAL_SOURCES_BASE_URL/<name>/…`) and is stored inside every
+locator registered from it, so renaming it strands the courses already registered. It must match
+`[a-z0-9._-]+` and cannot be `courses` — the built-in root, which keeps its own base URL forever. A
+malformed entry stops the process; a folder that does not exist is reported as absent and skipped.
+Adding a root needs a restart, because the trees are mounted when the app assembles — which is also
+one of the two things `--root <key>` names when it refuses a key: never declared, or declared after
+the API started. `--root` works on `register-package` and on `measure`, and defaults to `courses`.
 
-**The CLI reads the same roots**: `--root <key>` on `register-package` and on `measure`
-points it at any declared tree, and the built-in `courses` is its default. A key nobody
-declared is refused before anything is read, naming both ways that happens — never declared,
-or declared after the API started, since the trees are mounted when the app assembles. The
-generator folder convention stays the CLI's own (above); the console declares the generator in
-its form instead and applies it to the whole scan.
+Every declared root is also browsable from **`/admin/measure`** in local mode, which is the page
+the console is arranged around: declare the format and generator version once, walk to the folder
+that holds the courses, and the scan says per subfolder what registering would do — `new`,
+`new_version`, `unchanged`, `conflict` or `unreadable` — before anything is written. Ticking the
+ones you want registers them, and the same page then opens the round over them. One thing the console cannot do, and says so: re-registering a course
+that was registered with an unknown generator does **not** fill it in. That registration is a no-op
+(the bytes match), so the declared generator is discarded — attribution is its own act, offered on
+the row (ADR-0024).
 
-Every declared root is also browsable from **`/admin/contents/import`** in local mode: pick the
-format and generator version once, walk to the folder that holds the courses, and the scan
-says per subfolder what registering would do — `new`, `new_version`, `unchanged`, `conflict`
-or `unreadable` — before anything is written.
+## Instruments and assessors
 
-One thing the console cannot do, and says so: re-registering a course that was registered
-with an unknown generator does **not** fill it in. That registration is a no-op (the bytes
-match), so the declared generator is discarded — attribution is its own act, offered on the
-row (ADR-0024).
+### Authoring an instrument
 
-Registering **auto-profiles** each newly created course, once the format's extraction is
-accepted — the same policy the admin form triggers (ADR-0029 §1). Both commands print what
-it did (`profiling: N profiled, N failed, N not profiled`), because a decline is silent by
-design and a failure is only logged. The batch therefore costs roughly one fetch per lesson
-per created course; a large tree takes minutes, and there is no way to opt out yet.
+Authoring is **file-based** (`../docs/seed/instruments/*.yaml`, one file per version, named
+`{instrument_id}-{version}.yaml`); there is no authoring UI. Publishing is always a human act, and
+a published version never changes — any change is a new version.
+[`../docs/RUNBOOK-authoring-an-instrument.md`](../docs/RUNBOOK-authoring-an-instrument.md) is what
+to write, which of `import-instrument` / `publish-instrument` / `bump-instrument` you want, and
+when a new instrument is warranted at all.
 
-`import-learnpack --file courses.json` remains for hand-composed batches that already
-carry their artifact lists (canonical JSON shape only). With `--base-dir` its locators are
-filesystem paths, so the automatic policy declines them; without it they are URLs and it
-profiles like any other path.
+Versions are cheap by design: iterate by bumping and deprecate freely — what reproducibility hangs
+on is the version a study **pins**, never how many versions came before it. Which version a local
+workbench is set up with is recorded in `../docs/seed/workbench.yaml` (ADR-0045).
 
-## Adding a package format
+### Extraction: reading a package
 
-A *package format* is a packaging convention this system knows how to read (e.g.
-`LearnpackV1`). Supporting a new one means writing two or three small adapters against
-existing ports, plus a handful of recorded human acts. You never touch the domain model,
-the evaluation pipeline, the frontend, or the database schema.
+`content_profiling` derives a cited profile from a package's artifacts — no inference, absence is
+a result (ADR-0009). One adapter per package format (`LearnpackV1`, `LearnpackV2`), each declaring
+which data requirements it can supply. Teaching the system a new one is
+[`../docs/RUNBOOK-adding-a-format.md`](../docs/RUNBOOK-adding-a-format.md).
 
-**Concepts you need (30 seconds).** A *port* is an interface the core defines
-(`FormatPackageDiscoveryPort`, `ExtractionAdapterPort`, `FormatBriefIntakePort`); an
-*adapter* is your implementation of it for your format; a *registry* is the dict that maps
-format name → adapter — adding a format is one new entry, never a wiring change.
-Everything downstream of the `ContentProfile` (the canonical representation your
-extraction adapter produces) is format-agnostic and does not change. The steps below land
-**incrementally**: after step 2 your packages already register and dedupe; profiling and
-evaluation come later.
-
-The contract every format must satisfy is executable:
-`tests/test_format_contract.py`, parametrized over `tests/format_cases.py`. A format
-registered in any registry without a `FormatCase` fails the suite — so the kit is also
-your to-do list: add your case early and work until it is green.
-
-### Step 0 — Choose the format name. Carefully.
-
-The string (e.g. `LearnpackV2`) is the namespace of every `externalId` (ADR-0005) and
-travels into immutable rows: persisted profiles, published study reports. There is no
-rename. This is the step with the least code and the most consequences.
-
-### Step 1 — Freeze a real fixture package
-
-Copy one real, representative package into `tests/fixtures/<your_format>/`. The fixture
-comes first, not last: every later step is verified against it, and the contract kit
-requires it. Prefer a package that exercises the format's full surface — every artifact
-kind, and the commission if the format carries one (see the `FormatCase` fields).
-
-### Step 2 — Discovery adapter (required; makes the format registrable)
-
-File: `app/modules/evaluand_registry/infrastructure/package_discovery.py` — add your
-class beside `LearnpackV1Discovery`, and one entry to the tuple that builds
-`DISCOVERIES_BY_FORMAT` at the bottom of the file. Implement
-`FormatPackageDiscoveryPort`: given a `PackageRoot` (an injected "place to fetch files
-from" — filesystem or HTTP, you don't care which), read your format's manifests and
-return a `DiscoveredPackage`: external id, title, the artifact list, and the content hash
-(use the module's `_content_hash` helper — the hash scheme is a compatibility contract).
-
-Rules that are easy to miss:
-
-- Discovery is **hard-failing** by design (ADR-0027): if a manifest is missing or lies,
-  raise `PackageDiscoveryError` — a mis-discovered package would *be* the evaluand,
-  wrong. The one allowed soft spot is the commission artifact (LearnpackV1's carrier is
-  its syllabus), whose absence is a recorded state.
-- Discovery is the **sole writer of the artifact `kind` vocabulary** for your format.
-  Your extraction adapter (step 3) will read exactly these kinds.
-- Never mint a `consumable_url` yourself: ask the root (`root.consumable_url`). A
-  filesystem root never declares one (ADR-0028 — serving bytes is transport, not
-  deployment).
-
-**You can stop here and ship.** After this step: the format appears in
-`GET /admin/contents/formats` and in the admin form's selector; `register-package --format
-<name>` works; re-imports dedupe by content hash; the brief registers absent; profiles are
-simply not built yet. In your `FormatCase`, `expected_capabilities=None` says exactly this —
-the extraction tests skip instead of failing.
-
-To try it against a real course you need a generator to declare, which step 6 only registers
-later. Declare `--generator unknown` instead: the state is a legitimate declaration and it is
-repairable — `attribute-generator` links the course once the lineage exists, exactly once
-(ADR-0024).
-
-### Step 3 — Extraction adapter (required for any evaluation)
-
-Directory: `app/modules/content_profiling/infrastructure/adapters/` — one module per
-format, plus one entry in `ADAPTERS_BY_FORMAT` (`adapters/__init__.py`). Implement
-`ExtractionAdapterPort`: read the registered artifacts and produce the entries of the
-`ContentProfile`. Declare:
-
-- `PACKAGE_FORMAT` — the same string as step 0. The two modules deliberately do not share
-  the constant (module isolation); the contract kit checks they agree.
-- `ADAPTER_VERSION` — the identity of *how you read*. Any change in the mapping is a new
-  version, and each version needs its own acceptance (step 6).
-- `CAPABILITIES` — which `DataRequirement` ids you can supply, chosen from the ids the
-  instrument mints (`../docs/seed/instruments/`). Do **not** invent data your format does
-  not declare: an unmet requirement correctly derives `not_applicable`, and
-  matching/readiness surface it. Every value you produce must satisfy the requirement's
-  declared `value_domain` (ADR-0020) — the profile aggregate verifies this when built.
-- Extraction is deterministic and fails whole (`ExtractionError` → a `failed` profile),
-  never half-profiles.
-
-### Step 4 — Brief intake (only if your format carries the commission)
-
-File: `app/modules/evaluand_registry/infrastructure/brief_intake.py`. If your packages
-embed the instruction they were generated from (LearnpackV1:
-`.learn/initialSyllabus.json`), implement `FormatBriefIntakePort` and register it in
-`BRIEF_INTAKES_BY_FORMAT`: `locate()` finds the artifact, `derive()` turns its bytes into
-a `DerivedBrief`. Intake is best-effort and non-blocking (ADR-0022): any miss logs and
-registers the brief absent — a valid state, not an error. If your format carries nothing,
-skip this step entirely; skipping is correct.
-
-A commission is written by a person, so **what carries it is structured and what it says is
-not**: both formats wrap free prose (LearnpackV1 in a syllabus field, LearnpackV2 in a
-`{"content": …}` envelope). Parse the carrier, then leave the instruction alone — reading
-fields out of the prose would substitute your reading for the creator's words. If the
-carrier is ever plain text with no envelope at all, `derive()` has to say for itself what
-"not a commission" looks like, because there is no parse step to fail it; the kit probes
-that case.
-
-Hash the **instruction**, not the payload: a brief's identity is what was asked, so the
-same request re-wrapped must not mint a second one.
-
-### Step 5 — Make the contract kit green
-
-Add your `FormatCase` to `tests/format_cases.py` (fixture path + expectations, written as
-literals — importing them from your adapter would make the assertions tautological). Run
-`uv run pytest tests/test_format_contract.py`. The failing tests are your remaining to-do
-list; when they are green, the code side is done. Behavior beyond the contract — your
-format's equivalent of LearnpackV1's activity counting — gets its own test file, plus
-calibration pins if any criterion depends on empirical thresholds
-(`../docs/MEASUREMENT.md`).
-
-### Step 6 — The recorded human acts (no code)
-
-These are deliberate human decisions (ADR-0012, ADR-0019, ADR-0031). Take each one; do not
-script it away. Once taken, record the outcome in `../docs/seed/workbench.yaml` so a rebuilt
-local database gets there without asking again — `seed-workbench` replays the acts a manifest
-names, and only in local mode (ADR-0045). Replaying a decision is not making one.
-
-1. **Register the generator lineage and version** (once per generator — see
-   [Registering courses](#registering-courses)). The spelling of the name is permanent;
-   the version's changelog is write-once.
-2. **Accept the extraction** (per adapter version): `accept-extraction --package-format
-   <name> --email <admin>`. This is what arms auto-profiling on registration; until then
-   profiling stays manual.
-3. **Bind the instrument to the format**: add a `bindings` entry with your
-   `package_format` (see `../docs/seed/instruments/learnpack-course-qa-v1.yaml`). A
-   published version is immutable, so this means a new instrument version
-   (`bump-instrument` → edit → `import-instrument` → `publish-instrument`). Then check
-   `GET /admin/instruments/{version}/matching?package_format=<name>` for the demand your
-   format cannot meet — those criteria derive `not_applicable`, which is honest, not
-   broken.
-4. **Ratify the assessor for the new instrument version** (ADR-0019, command — or the
-   `/admin/assessors` button — under
-   [Instruments and content profiling](#instruments-and-content-profiling-slice-2)).
-   Criteria the assessor cannot execute derive `not_assessed` — the visible backlog, not
-   a failure.
-
-### Step 7 — Verify end to end
-
-`register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
-instrument is a draft → `declare-study` (name it, and choose its instrument, judge, briefs
-and **generator scope** then or later with `update-study` — the scope is
-`--all-generator-versions` or one `--generator-version-id` per version the round measures,
-and `open-study` refuses a study that never said which, ADR-0044) → `open-study` (**this is
-what pins the triple**)
-→ `evaluate-study` (the whole dataset in one run) → `show-preview` (what signing off would
-write, readable before the irreversible act) → `sign-off-study` →
-`show-report` / `show-fitness`.
-
-### What you never touch
-
-Domain and application layers of any module · the ports · the events · the assessors'
-logic · the frontend (the form reads formats from the API) · migrations. If a step seems
-to require touching one of these, stop: either the step is wrong or it needs an ADR
-first.
-
-**What you may well touch:** `app/cli.py`. It is the composition root, and the local intake
-path in it has been written against one format at a time before. A helper that names a
-specific format's file is a bug the next format uncovers, not a rule you have to work
-around — fix it there.
-
-## Authoring an instrument
-
-An *instrument* is the **evidential argument** a study pins: what is being asserted about a
-generator's output, and what would count as evidence for it. Adding a package format teaches
-the system to *read* something; authoring an instrument decides what is worth *asking*.
-
-Authoring is file-based and assistant-drafted, publishing is a human act, and a published
-version never changes. The commands are in
-[Instruments and content profiling](#instruments-and-content-profiling-slice-2) — that table
-decides which one you want. This runbook is about what to write.
-
-**The chain, in one line.** A **quality** is what we care about · a **claim** asserts one
-thing about **exactly one** quality (ADR-0026) · a **criterion** is a check whose outcome
-evidences a claim · a **data requirement** is a datum a criterion needs to be executable, and
-an extraction adapter is what supplies it. You author from the top down and the system
-validates from the bottom up.
-
-There is no aggregate score across criteria and there never will be (ADR-0011). An instrument
-reports per criterion, per claim; anyone looking for one number is looking for a different
-system.
-
-### Step 0 — Do you actually need a new instrument?
-
-Usually not. **An instrument forks when its claims change, not when the package format
-changes** (ADR-0032). A new format normally joins the instrument you already have: add a
-`bindings` entry, publish the new version, done.
-
-Criteria the new format's extraction cannot feed derive `not_applicable`. That is a report,
-not a defect — demand stated honestly and left unanswered — and it is not a reason to fork.
-
-Measure it before deciding:
+Automatic profiling on registration is armed by the human acceptance of the adapter version:
 
 ```bash
-GET /admin/instruments/{instrument_version_id}/matching?package_format=<name>
+uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email <admin>
 ```
 
-It returns, per criterion, what it requires and what is missing; the unmet demand grouped by
-data requirement; and per claim, how many of its criteria are covered. **A claim with zero
-covered criteria is the signal to read closely**: either the format cannot answer a question
-that still applies, or the question does not apply to that artifact at all. The second case is
-where a second instrument is warranted — and what justifies it is the different question, not
-the different format.
+That act (ADR-0012) belongs after reviewing samples — in `/admin/profiles`, or by reading a package
+by hand with `profile-content --content-id <id>`. `seed-workbench` performs it for the formats the
+workbench manifest names, which is the same act replayed rather than a different one.
 
-### Step 1 — Know what you cannot mint here
+### Ratifying an assessor (ADR-0019)
 
-Qualities, dimensions and frameworks are **reference data**, not instrument content. They live
-in `../docs/seed/pedagogical-reference.yaml` and enter with `uv run python -m app.cli seed`.
-Your instrument *references* their ids; publishing refuses ids that do not exist.
-
-So if your argument needs a quality nobody has named yet, that is an edit to the reference
-file and a reseed — before you publish, not during. The same goes for a warrant: a claim can
-only cite a framework the reference declares.
-
-### Step 2 — Reuse data requirement ids; mint only what is new
-
-The demand-side namespace is **global across instruments** (ADR-0014). A criterion may require
-an id that already exists without redeclaring it in your file — inheriting `lesson_bodies` or
-`course_descriptor` costs nothing and keeps one meaning per id.
-
-Declare a `data_requirements` entry only for an id you are **minting**, and write its
-`definition` and its `value_domain` at that moment: the definition says what the datum means,
-the value domain says what shape it takes, and both are the contract extraction adapters
-conform to (ADR-0020).
-
-Redeclaring an existing id with a different definition or a different shape is blocked by a
-lint. That is the guardrail, not an obstacle — decide which case you are in:
-
-| Situation | What to do |
-|---|---|
-| Same meaning, different words | Keep the existing definition, or add an `aliases` entry |
-| Same meaning, the declaration itself is wrong | `import-instrument --revise-definitions`, the deliberate act |
-| Similar but **not** the same thing | Mint a new id with its own definition |
-
-One constraint that bites from the other side: **an extraction adapter cannot declare a
-capability for an id no instrument declares.** The format contract kit asserts
-`capabilities ⊆ declared_value_domains()`. So a datum and its supply land together — mint the
-id in the instrument and teach the adapter to produce it in the same change, or the kit
-refuses one half of it.
-
-### Step 3 — Write the YAML
-
-One file per version, `../docs/seed/instruments/{instrument_id}-{version}.yaml`.
-`learnpack-course-qa-v1.yaml` is the worked example to read alongside this.
-
-| Key | What it carries |
-|---|---|
-| `instrument_id`, `version`, `name`, `purpose` | The identity and what the argument is for |
-| `assisted_by` | What drafted it and in what role — assistance is recorded, never hidden |
-| `bindings` | The `package_format`s this version is designed for, plus `task_variables` a criterion conditions on (demand-driven: add one when a criterion needs it, not before) |
-| `data_requirements` | Only the ids you mint (step 2) |
-| `claims` | `statement`, one `qualities` entry, `warrants`, `sufficiency`, `alternative_explanations` |
-| `criteria` | `statement`, `pass_condition`, `failure_modes`, `claims`, `requires`, `on_missing_evidence`, `eligible_sources` |
-
-Four things that are easy to write carelessly:
-
-- **`alternative_explanations`** on a claim is the discipline that keeps a `fail` honest: what
-  else could produce this evidence besides the defect you are asserting? Write the ones a
-  dispute would raise.
-- **`on_missing_evidence`** decides what a criterion does when its datum is absent. `fail`
-  says the absence **is** the finding (ADR-0021 records it as derived, with no quote);
-  `no_evidence` says absence settles nothing. Choosing `fail` is a claim in itself — make it
-  deliberately.
-- **`pass_condition` and `failure_modes` are read by more than people.** An assessor that
-  judges with an LLM puts them **verbatim into the model's prompt**, so they have to stand on
-  their own: no criterion ids, no file names, no "that is handled elsewhere". A model has no
-  referent for those and, told about a neighbouring concern, will reason about the thing it
-  was asked not to judge. State an exclusion in its own terms — *"naming what comes next is
-  not teaching it"* — and stop there; the cross-reference belongs in a YAML comment, which
-  never reaches the model.
-- **The criteria of one claim must not contradict each other.** `sufficiency: conjunctive`
-  means every criterion has to pass, so if one passage can fail one criterion for being
-  present and another for being absent, that claim is **unsatisfiable** for that shape of
-  content — and no evidence will ever fix it. Read a claim's criteria together, against a
-  real example, before publishing. This is not hypothetical: `cl-course-closes-by-integrating`
-  shipped with exactly that defect and it took an LLM oscillating between the two readings to
-  make it visible.
-
-`sufficiency` today has one built rule: `conjunctive`. `existential` and `m_of_n` are
-documented vocabulary, not behavior — do not author against them yet.
-
-### Step 4 — Import, then make publish green
+An instrument admits 0..N assessors (ADR-0016). The registry holds `structural` for
+`learnpack-course-qa` and, for `course-drafts-qa`, both `drafts-structural` (pure code) and
+`drafts-hybrid` (its superset, with LLM-carried criteria). Judging for real requires a **published**
+instrument version and a **ratified** assessor:
 
 ```bash
-uv run python -m app.cli import-instrument --file ../docs/seed/instruments/<file>.yaml
-uv run python -m app.cli publish-instrument --id <version-id> --email <admin>
+uv run python -m app.cli ratify-assessor --name drafts-hybrid --version <v> \
+                                         --instrument-version-id <id> --email <admin>
 ```
 
-`import-instrument` creates or replaces a **draft** and runs the lint: data requirements
-well-formed, no divergent redeclarations, no criterion requiring an id nothing defines. It
-reports every problem in one run rather than stopping at the first.
+The initial registration is the first ratification. Against a later version of the same lineage the
+diff is computed mechanically, and only changed or new **executed** criteria demand
+`--confirm <criterion-id>`. The same act is on `/admin/assessors` (ADR-0036), with a second step
+listing each changed criterion and the `pass_condition` being confirmed; both gates run one use
+case, so they cannot answer differently.
 
-`publish-instrument` validates the **whole evidential argument**, and that list is this
-runbook's equivalent of the format contract kit — the executable definition of a complete
-instrument:
+`/admin/assessors` is where that state is read: assessors grouped by kind, and per automated package
+its coverage plus every version of its lineage with whether it may judge with it, who ratified it and
+when. The automated rows come from `GET /admin/assessor-packages` — the in-code registry as data —
+rather than from the `assessors` table, on purpose: a package nobody has ratified has no row there
+at all, and it is the one worth acting on. The act itself is
+`POST /admin/assessor-packages/{name}/{version}/ratify` (409 with the criteria to decide, 422 with
+its cause named for everything else).
 
-- every criterion references a claim that exists;
-- every criterion's required data is inside the namespace;
-- there is at least one claim;
-- every claim has at least one criterion evidencing it;
-- every claim asserts about **exactly one** quality (ADR-0026);
-- every quality and every warrant a claim cites is known reference data;
-- there is at least one `bindings` entry.
+### Assessors that carry an LLM (ADR-0034)
 
-Iterate on the draft as often as you like — it is replaced in place, no version bump involved.
-Publishing is the point of no return: from there the version is immutable and any change is a
-new version (`bump-instrument`).
+`drafts-hybrid` extracts and classifies with an LLM and decides pass/fail in code. It needs an
+**OpenRouter** `LLM_API_KEY` in the environment.
 
-### Step 5 — The recorded human acts
+**The key is *access*. Identity is what decides the answer**, and it is pinned in the assessor's code
+and declared in its `SOURCE_CONFIG`, prompts fingerprint included: which model judges, how it is
+sampled (temperature, output budget, whether it may reason, how many samples decide a verdict) and
+which prompts it is asked. Changing any of them without a VERSION bump is refused at ratification.
+Sampling counts because it decides the answer — the second version of `drafts-hybrid` exists
+because the first asked a reasoning model for an answer inside a budget its thinking consumed
+whole, and got nothing back. The lineage is well past that (`/admin/assessors` says where), which
+is the point: a bump is cheap and a silent change of mind is not allowed. The same goes for the upstream: the
+models are pinned as OpenRouter slugs (`deepseek/…`, and the namespace *is* the provider) and every
+request carries OpenRouter's own `provider` routing, which is how a misbehaving one is excluded
+(ADR-0038) — so judging through another is a new assessor version, not a new `LLM_BASE_URL`.
 
-1. **Publish** — the act above. Nothing assistant-drafted reaches published without a human
-   performing it.
-2. **Ratify the assessors** against this instrument version (ADR-0019), from the CLI or from
-   `/admin/assessors` (ADR-0036 — the page shows the text of each criterion whose decision
-   the act is waiting for). Within one lineage
-   this is cheap — the diff against the previous version is computed mechanically and only
-   changed or new executed criteria need `--confirm`. Across instruments it is not a diff at
-   all: an assessor vouched for one argument has not been vouched for another, so a new
-   instrument ratifies from scratch. Criteria no assessor can execute derive `not_assessed` —
-   the visible backlog, not a failure. There is no un-ratify: if the decision was wrong, the
-   exits are a new assessor version or a new instrument version.
+Every `evaluate` — dry run included — spends real calls (tasks are memoized per profile, and
+tokens/latency/`clean_retries` come back as `llm_*` metrics with the outcomes). When a task
+irrecoverably fails — transport down, output contract never satisfied, a degeneration that survived
+its one clean-conversation retry — the criteria it feeds degrade to **`execution_error`**, a fact of
+the run and never of the content, carrying its cause `{task, kind, message}`, and the rest of the
+evaluation persists (ADR-0037). Past the **failure budget** (a quarter of the criteria mapped for
+execution) the run was not an evaluation: it aborts whole and persists nothing; fix, or just retry.
+`LLM_TIMEOUT_SECONDS` bounds one call before the transport treats it as transient and backs off —
+access like the key, so raising it for a slow provider re-versions nothing. The test suite never
+touches the network: the transport is faked at the `runtime.get_client` seam.
 
-   One prerequisite the act cannot supply: a **new lineage** can ratify nothing until an
-   assessor artifact declares itself against it — coverage is code, not an act. The
-   declaration is the package's `INSTRUMENT_ID`
-   (`app/modules/evaluation/infrastructure/assessors/<name>/__init__.py`), and
-   `ratify-assessor` refuses a package whose `INSTRUMENT_ID` names another lineage. Writing
-   that package is the prerequisite; ratifying it is the human act.
+## Evaluating
 
-3. **Record which version a local workbench uses** — once the new version is the one to
-   measure with, replace the lineage's line in `../docs/seed/workbench.yaml`. That is what a
-   rebuilt database publishes and what every assessor of the lineage is then ratified against
-   (ADR-0045); the manifest holds one version per lineage on purpose.
+**The everyday path is the last one here**: a generation lands in a folder and
+[`measure`](#measuring-a-generation-the-generator-just-wrote) — or `/admin/measure` — takes it
+from folder to score in one act. The rest is what that chains together, and what to reach for
+when a step needs doing on its own.
 
-### Step 6 — Verify end to end
+### One content
 
-Calibrate while it is still a draft — `evaluate --content-id <id> --instrument-version-id <id>
---assessor <name>:<version> --dry-run` persists nothing and prints the outcome table, so you
-can read what your criteria actually do against real content before freezing them. It is also
-the **only** way to exercise an instrument whose lineage has no assessor yet: the dry run does
-not compare lineages, so any registered package's executors can be pointed at any version.
-Then the study path:
-`declare-study [| update-study] | open-study` →
-`evaluate-study` → `show-preview` → `sign-off-study` → `show-report`. The study needs a
-**generator scope** before it can open (`--all-generator-versions`, or
-`--generator-version-id` once per version it measures — several of them is an A/B between
-them, ADR-0044).
+Calibrate an instrument — **drafts included** — against real content, spending calls but persisting
+nothing:
 
-### What you never touch
+```bash
+uv run python -m app.cli evaluate --content-id <id> --instrument-version-id <id> \
+                                  --assessor <name>:<version> --dry-run
+```
 
-A published version, ever — bump instead · the qualities and frameworks from inside an
-instrument file — they are reference data (step 1) · the meaning of an existing data
-requirement id without `--revise-definitions` · the domain rules publish enforces. If your
-argument seems to need one of these bent, it needs an ADR first.
+It prints the outcome table per criterion and the claim summary. `--assessor` is always explicit:
+naming which one is judging is part of the act, and `/admin/assessors` lists the versions the
+registry currently carries. Without `--dry-run` it requires a published version and a ratified
+assessor, then persists the evaluation (outcomes + raw metrics) and the judgment policy derives
+claims, coverage and findings.
+
+**Judgments do not combine across assessors.** The report and the fitness read the most recent
+judgment per content, so within one study evaluate each content with ONE assessor.
+
+`/admin/calibration` is the guided way to run the same loop, on the dry run's three endpoints:
+`POST /admin/evaluations/preview` **starts** a run and returns its id (202),
+`GET /admin/evaluations/preview/{run_id}` reads it while it advances, and `…/trace` returns every
+LLM attempt whole, prompts and raw answers included. Same `PreviewEvaluation` use case the CLI
+wires; started rather than awaited because with LLM-carried criteria it takes minutes. Runs live
+**in memory**, last few only — the correct trade for a dry run that persists nothing. The CLI stays
+the scriptable path.
+
+### Evaluating a study in batch
+
+A generation of the optimization experiment is a whole study's worth of courses, which is one
+command (ADR-0040):
+
+```bash
+uv run python -m app.cli evaluate-study --study-id <id> [--assessor <name>:<version>] \
+                                        [--concurrency N] [--re-evaluate]
+```
+
+**The study decides the assessor** (ADR-0042): it pinned one before it opened, and the run uses it.
+`--assessor` is optional and is *checked* rather than obeyed — passing one that disagrees with the
+pin is refused, so a script written before the pin keeps working and a mismatch is stated instead
+of silently resolved.
+
+**Progress goes to stderr, the summary to stdout** — one JSON document naming every course with its
+`briefId`, its status, its duration and what it spent:
+
+| status | what happened |
+|---|---|
+| `evaluated` | the course was judged and its evaluation persisted |
+| `skipped` | this assessor had already evaluated it under this instrument version |
+| `failed` | this course could not be judged; `cause` says why, and the others carried on |
+| `cancelled` | the run stopped before reaching it; nothing was written for it |
+
+**It refuses before it spends.** A study that is not open, no instrument or assessor pinned, an empty
+dataset, an assessor that is unregistered or has not ratified the pinned version, a `--assessor` that
+disagrees with the pin: each would fail identically for every course, so the command ends with the
+cause named and nothing paid for. The same reasoning applies while it runs — a configuration failure,
+a coverage bug or any failure this loop cannot place ends the batch on the first course, and three
+consecutive transport deaths end it too (any course that completes clears that streak). A run that
+ends this way reports `failed` and names the course that met it; `cancelled` is reserved for a human
+stopping it, because only one of the two is a reason to go looking for a cause.
+
+**Re-running resumes it.** What this assessor already evaluated is skipped, so a batch interrupted
+at course twelve of twenty is continued by running the same command again; `--re-evaluate` asks for
+all of them regardless. **Ctrl-C stops it**, and stopping means *stop starting*: courses that
+finished stay persisted, the ones in flight stop at their next call, and the summary still prints.
+Nothing needs undoing — an evaluation that does not reach its end writes nothing. How many courses
+and how many requests run at once, and what bounds each, is [`TUNING.md`](TUNING.md).
+
+**The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with the
+identical work behind it — one use case, two doors. It opens on the **durable** count ("12 of 20
+courses judged"), a query over the judgments rather than a run's memory: still right after a
+restart, and it counts a batch someone ran from a terminal. It only offers assessors that have
+**ratified the pinned version**, and while it runs it reads the run once a second, showing a row per
+course. A run is refused with **409** while another one over the same courses is alive: two batches
+over one course would decide by arrival order, since every reader takes the most recent judgment.
+What it cannot do, on purpose: watch or cancel a batch started from the CLI — different processes,
+and runs live in memory. Runs are forgotten on restart; what they wrote is not.
+
+### Measuring a generation the generator just wrote
+
+When the courses are a folder rather than a study, `measure` chains the whole loop — register, open
+a round over exactly those courses, evaluate it, print the score:
+
+```bash
+uv run python -m app.cli measure --root generated --path learnpack-generator-04a7dd5-dirty \
+                                 [--format LearnpackV2] [--assessor <name>[:<version>]] \
+                                 [--instrument-version-id <id>] [--name "…"] \
+                                 [--concurrency N] [--re-evaluate]
+```
+
+**Using it is `../docs/RUNBOOK-measuring.md`.** What belongs here is why it is put together this
+way. Nothing new happens in it: it is the six commands a person ran by hand, with the four ids that
+were copied between them derived instead. The rest is what the derivation refuses to guess:
+
+- **The folder's name declares the generator version**, and that version — one, not "all of them" —
+  is the round's scope (ADR-0044). That is the defect the chaining removes, not the typing: a round
+  that measures a dataset nobody meant to name. A folder declaring `unknown` is refused likewise.
+- **The norm and the judge are derived only when the derivation has one answer**: the instrument is
+  the published version bound to the format, the judge is the assessor that has ratified it, and two
+  of either means the command asks. `--assessor` takes `name` or `name:version`, so a daily loop
+  need not be edited on every bump. Both are resolved **before** the folder is registered, since
+  registering is a fetch per lesson per course.
+- **Re-running resumes** rather than declaring a second round: an open study with the same name,
+  norm, judge and dataset is continued, and anything less than an identical match is a new one.
+- **A course keeps the generator version it was first registered with** (ADR-0035 §9), so a store
+  that already holds these courses under another version measures them *there* — and `measure`
+  names each one instead of composing an empty dataset.
+- **One JSON document comes out**, `{"batch": …, "fitness": …}`: reading the run and the score
+  separately is where a value gets paired with the wrong round.
+
+The console does the same thing on `/admin/measure`; this is the scriptable path.
+
+### When a criterion is not measuring what you meant
+
+The tools are the LLM trace, repeats of one course, and two calibration dumps that build the raw
+material a criterion would consume and hand it back as a table to mark up. None of them writes a
+judgment: they sit outside the assessor's identity (ADR-0034) and their output is a proposal to
+change the instrument, not a verdict about a course. That is a job of its own, with its own guide:
+[`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md) — including how to read a trace
+and what repeated runs tell you.
+
+## Tests and CI
+
+`uv run pytest` runs the suite; `.github/workflows/ci.yml` runs lint + format + types + the backend
+suite (with Postgres as a service container) + the frontend typecheck on every PR and push to main.
+
+**Why tests run against local Postgres.** The suite is **latency-bound**, not CPU-bound: a query to
+Neon costs ~150 ms from Latam and an integration test makes over a hundred, which is a +10 min
+suite; against local Postgres the same query costs ~0.3 ms. With `TEST_DATABASE_URL` set,
+`tests/conftest.py` redirects the suite there and **migrates and seeds it by itself**. Without it,
+tests run against `DATABASE_URL` — valid, just slow; in that case conftest does **not** migrate or
+seed anything, so the real store is never touched automatically. Neon remains the store of truth:
+migrations, deploy and the final smoke check.
 
 ## Modules
 
 identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·
-orchestration · golden_dataset · reporting. Each with `domain/`, `application/` and
-`infrastructure/`, and its contract in `public.py`.
+evaluation_studies · orchestration · golden_dataset · reporting. Each with `domain/`,
+`application/` and `infrastructure/`; the ones another module reads from also expose their
+contract in `public.py` (`reporting` and `evaluation_studies` do not — nothing reads from them).
 
 The plans that originated them are frozen in `../docs/design/08-code.md` (slice 1) and
 `../docs/design/13-code-qa.md` (slice 2); progress lives in `../STATUS.md`.

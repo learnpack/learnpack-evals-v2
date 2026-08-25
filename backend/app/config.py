@@ -184,7 +184,7 @@ class Settings(BaseSettings):
     # time took 304 s against 963 s of course time, six-plus took 180 s against 954 s — 3.2x
     # against 5.3x — with no retry, no 429, and the map's calls generating at the same 97-141
     # tokens per second either way. The requests ceiling is not what is holding a batch back.
-    # `backend/README.md` has the arithmetic for going higher, which means raising the pool in
+    # `backend/TUNING.md` has the arithmetic for going higher, which means raising the pool in
     # the same breath.
     batch_max_courses: int = 6
     # How many ARTIFACT fetches may be in flight at once — the same kind of ceiling as

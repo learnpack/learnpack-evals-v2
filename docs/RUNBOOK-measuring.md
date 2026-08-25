@@ -246,7 +246,7 @@ Two more worth knowing before they surprise you:
   but not always, so a small difference between two batches may be the judge rather than the
   generator. That is one more reason to keep the per-course values and not only the mean. What
   repeated runs have shown, and how to tell a wobbling judge from a criterion with no threshold
-  written down, is in `../backend/README.md` under *What repeated runs tell you*.
+  written down, is in [RUNBOOK-calibrating.md](RUNBOOK-calibrating.md#what-repeated-runs-tell-you).
 
 ## Where to look next
 
