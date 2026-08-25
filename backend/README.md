@@ -1,6 +1,6 @@
 # backend
 
-FastAPI + Postgres (Neon). Design lives in `../docs/` — **it is the source of truth**.
+FastAPI + Postgres. Design lives in `../docs/` — **it is the source of truth**.
 Hard rules: `../docs/ARCHITECTURE.md`. Names: `../docs/GLOSSARY.md`.
 Where development stands today: `../STATUS.md` (this README describes **how it works**, not
 what state it is in).
@@ -98,9 +98,8 @@ calibrate the new version with `evaluate --dry-run`, and change one line in the 
 this checkout's head before doing anything. On your machine (`AUTH_MODE=local`) a mismatch **refuses
 to start** and names the fix (`uv run alembic upgrade head`); on a deployed instance it logs a
 warning and carries on, because a deploy may start a process while the migration step is still
-running. The
-suite migrates its own database, so a green suite says nothing about the store you run against —
-which is why the check exists. If the revision is one this checkout does not know, pull.
+running. The suite migrates its own database, so a green suite says nothing about the store you run
+against — which is why the check exists. If the revision is one this checkout does not know, pull.
 
 ## Local mode and Clerk mode (ADR-0008)
 
@@ -353,19 +352,39 @@ package emits nothing — `profile-content --content-id` is the repair, exactly 
 ### Declaring the deployment of a registered course (`declare-deployment`)
 
 A course registered from `courses/` declares **no** consumable URL — dropping a folder into a tree
-deploys nothing (ADR-0028) — and without one the console refuses it in the assign picker, so it
-cannot be put in front of a human evaluator. When the course *is* deployed afterwards, this points
-the registered version at it:
+deploys nothing (ADR-0028) — and **that is what decides whether it can be scored by a person**:
+without one the console refuses it in the assign picker, so it can be judged automatically but
+never handed to an SME. When the course *is* deployed afterwards, this points the registered
+version at it:
 
 ```bash
 # one course, or a spreadsheet of them: two columns, `external_id,url`
-uv run python -m app.cli declare-deployment --external-id <slug> --url https://<course>.learn-pack.com/ --email <admin>
+uv run python -m app.cli declare-deployment --external-id <id> --url https://<course>.learn-pack.com/ --email <admin>
 uv run python -m app.cli declare-deployment --from-csv ./deployments.csv --email <admin>
 ```
+
+**Which `external_id`.** It is the identity the package declares about itself, read off it by
+discovery and never typed by hand — `/admin/contents` lists it in the first column, and
+`register-package` prints it. What it is made of is the format's business:
+
+| Format | `external_id` | From |
+|---|---|---|
+| `LearnpackV1` | the course slug — `introduction-to-generative-ai` | `slug` in `learn.json` |
+| `LearnpackV2` | `<seed>-<run start UTC>` — `03-html-fundamentals-20260810184810` | `system_metadata.run_info.seed_id` and `started_at`, in `traces/run_metadata.json` |
+
+LearnpackV2 composes it because neither half identifies a course alone: the seed says *which
+instruction* was given and collides across regenerations, the timestamp says *which run* and says
+nothing about what was asked. Both are the run's own declarations, so the id survives the tree
+being moved, renamed or served from somewhere else — which the directory name, the other obvious
+candidate, would not. It is namespaced by the format (ADR-0005), so `(format, external_id)` is the
+logical course and the same string under two formats is two courses.
 
 **It fetches nothing.** A `ContentProfile` is built from artifact locators and Content Profiling
 never reads this field, so the evaluand keeps its identity, its `content_hash` and its profile —
 the only thing that changes is whether a human can be handed the course.
+
+The same act is `POST /admin/contents/{content_id}/consumable-url`. The console does not offer it
+yet: `/admin/contents` shows a declared URL as a link and nothing more, so the CLI is the way in.
 
 **Unlike `attribute-generator`, it may be repeated** (ADR-0054): an attribution is a discovery —
 the fact was always true — while a deployment is a statement about the world right now, and courses
@@ -373,9 +392,9 @@ move. Every change is recorded with what it moved from and who moved it; declari
 content already has writes nothing; clearing one is refused.
 
 The file is read as forgivingly as `--from-csv` reads its URLs. Two things are refused rather than
-guessed: the same course named twice with **different** URLs, and a **slug registered at more than
-one version**, since `(format, external_id)` is the logical content. Any failed row makes the run
-exit non-zero, so a fifty-row file cannot half-succeed quietly.
+guessed: the same course named twice with **different** URLs, and an **id registered at more than
+one version**, since which version is deployed is not something the id settles. Any failed row
+makes the run exit non-zero, so a fifty-row file cannot half-succeed quietly.
 
 ### From other trees (ADR-0035)
 
