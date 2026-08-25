@@ -142,6 +142,9 @@ locators are relative to the fixture tree, and automatic profiling only reaches 
 ADR-0029), and an open campaign with **quorum 2** and its 4 assignments. Two evaluators is the
 minimum for inter-rater dispersion and for `ContentEvaluationCompleted → GoldenReferenceEstablished`
 to fire. It goes through the real use cases, so it publishes the same events the console would.
+If `learnpack-course-qa-v1` is already published — as after `seed-workbench` — the import is
+skipped rather than refused: published versions never change, and the rest of the demo still
+installs on top.
 
 `seed-demo --reset` **wipes the local dataset** — everything the app writes, `local|` users included
 — and reseeds; it does not touch the rubric or the reference data. Deliberately wholesale rather
