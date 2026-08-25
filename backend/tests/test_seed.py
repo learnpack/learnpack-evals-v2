@@ -6,7 +6,15 @@ import json
 
 from sqlalchemy import text
 
-from app.cli import DEFAULT_SEED_FILE, _reset_demo, run_seed
+from app.cli import (
+    DEFAULT_SEED_FILE,
+    DEMO_INSTRUMENT_SPEC,
+    _import_demo_instrument,
+    _instrument_identity,
+    _reset_demo,
+    run_import_instrument,
+    run_seed,
+)
 from app.modules.identity.domain.assessor import Assessor
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
 from app.platform.db import SessionLocal
@@ -165,3 +173,31 @@ def test_reset_demo_clears_the_automated_assessor_registration(requires_db, clea
             ).scalar_one()
             == 0
         )
+
+
+def test_seed_demo_leaves_a_published_instrument_alone(requires_db, cleanup, capsys):
+    """The workbench publishes learnpack-course-qa-v1; re-importing over a published
+    version is refused (ADR-0012). seed-demo must treat that as the idempotent branch,
+    the same way seed-workbench does, rather than aborting the rest of the demo.
+    """
+    _, version_id = _instrument_identity(DEMO_INSTRUMENT_SPEC)
+    cleanup["instruments"].append(version_id)
+    assert run_import_instrument(DEMO_INSTRUMENT_SPEC) == 0
+
+    with SessionLocal() as session:
+        session.execute(
+            text("UPDATE instrument_versions SET status = 'published' WHERE id = :id"),
+            {"id": version_id},
+        )
+        session.commit()
+
+    capsys.readouterr()
+    assert _import_demo_instrument() == 0
+    assert f"instrument {version_id} is already published" in capsys.readouterr().out
+
+    with SessionLocal() as session:
+        status = session.execute(
+            text("SELECT status FROM instrument_versions WHERE id = :id"),
+            {"id": version_id},
+        ).scalar_one()
+    assert status == "published"

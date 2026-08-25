@@ -3304,6 +3304,21 @@ def _instrument_identity(spec_file: Path) -> tuple[str, str]:
     return spec["instrument_id"], f"{spec['instrument_id']}-{spec['version']}"
 
 
+def _published_instrument_id(spec_file: Path) -> str | None:
+    """The version id if this spec is already published; else None.
+
+    A published version is immutable (ADR-0012), so re-importing over one is refused —
+    which is what makes this the idempotent branch rather than an error to swallow: if
+    the version is already published, the file on disk and the row already agree.
+    """
+    _, version_id = _instrument_identity(spec_file)
+    with SessionLocal() as session:
+        existing = SqlAlchemyInstrumentRepository(session).get(version_id)
+    if existing is not None and existing.is_published:
+        return version_id
+    return None
+
+
 def _publish_workbench_instrument(spec_file: Path, admin_email: str) -> str | None:
     """Import the authored YAML and publish it, or leave a published version alone.
 
@@ -3312,13 +3327,12 @@ def _publish_workbench_instrument(spec_file: Path, admin_email: str) -> str | No
     version is already published, the file on disk and the row already agree, and there is
     nothing to do.
     """
-    _, version_id = _instrument_identity(spec_file)
-    with SessionLocal() as session:
-        existing = SqlAlchemyInstrumentRepository(session).get(version_id)
-    if existing is not None and existing.is_published:
+    version_id = _published_instrument_id(spec_file)
+    if version_id is not None:
         print(f"instrument {version_id} is already published")
         return version_id
 
+    _, version_id = _instrument_identity(spec_file)
     if run_import_instrument(spec_file) != 0:
         return None
     if run_publish_instrument(version_id, admin_email) != 0:
@@ -3705,6 +3719,21 @@ def _reset_demo(session: Session) -> None:
 DEMO_INSTRUMENT_SPEC = REPO_ROOT / "docs" / "seed" / "instruments" / "learnpack-course-qa-v1.yaml"
 
 
+def _import_demo_instrument() -> int:
+    """Mint the data_requirements the extraction conforms to (ADR-0014), unless already published.
+
+    Publishing is the team's act, never this seeder's — so a missing or draft version is
+    imported as a draft. A published version is left alone: re-importing over one is refused
+    (ADR-0012), which is the same idempotent branch seed-workbench uses rather than an
+    error to swallow.
+    """
+    published = _published_instrument_id(DEMO_INSTRUMENT_SPEC)
+    if published is not None:
+        print(f"instrument {published} is already published")
+        return 0
+    return run_import_instrument(DEMO_INSTRUMENT_SPEC)
+
+
 def _seed_demo_acceptance(admin_id: UUID) -> None:
     """Accept the current LearnpackV1 adapter (demo only — in the real store this is the
     team's deliberate act, ADR-0012).
@@ -3761,7 +3790,9 @@ def run_seed_demo(reset: bool) -> int:
 
     # The instrument draft mints the data_requirements the extraction conforms to
     # (ADR-0014). It stays a DRAFT: publishing is the team's act, never the seeder's.
-    if run_import_instrument(DEMO_INSTRUMENT_SPEC) != 0:
+    # If the workbench already published it, leave it — the same idempotent branch
+    # `_publish_workbench_instrument` uses, rather than aborting on immutability.
+    if _import_demo_instrument() != 0:
         return 1
     _seed_demo_acceptance(assessor_ids["admin@local.dev"])
 
