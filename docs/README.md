@@ -12,7 +12,7 @@ Every document carries a **maintenance contract**, declared by its location:
 | **`docs/` root** | reference | **Always true of `main`.** Changes in the same commit as the code. No dates, no status. |
 | `docs/adr/` | decision | **Immutable.** An ADR is never edited: a new one supersedes it. Sole exception: the superseded ADR's **Estado** line is updated to point at its successor. |
 | `docs/design/` | snapshot | **Frozen.** What we thought and why, at the time. Not maintained. |
-| `../backend/README.md`, `../frontend/README.md` | reference | Operational runbook, next to the code it operates. `backend/ENVIRONMENT.md` (preparing an environment) and `backend/TUNING.md` (throughput and its ceilings) are the same class. |
+| `../backend/README.md`, `../frontend/README.md` | reference | Operational runbook, next to the code it operates. `backend/ENVIRONMENT.md` (deploying an instance for an SME campaign) and `backend/TUNING.md` (throughput and its ceilings) are the same class. |
 | `../STATUS.md` | status | **The only place with dated status.** Rewritten whole. |
 | `notes/` (gitignored) | working | Ephemeral. When the task closes: promoted or deleted. |
 

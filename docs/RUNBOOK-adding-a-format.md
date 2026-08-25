@@ -143,7 +143,7 @@ names, and only in local mode (ADR-0045). Replaying a decision is not making one
    `package_format` (see `seed/instruments/learnpack-course-qa-v1.yaml`). A
    published version is immutable, so this means a new instrument version
    (`bump-instrument` → edit → `import-instrument` → `publish-instrument`). Then check
-   `GET /admin/instruments/{version}/matching?package_format=<name>` for the demand your
+   `GET /admin/instruments/{instrument_version_id}/matching?package_format=<name>` for the demand your
    format cannot meet — those criteria derive `not_applicable`, which is honest, not
    broken.
 4. **Ratify the assessor for the new instrument version** (ADR-0019, command — or the

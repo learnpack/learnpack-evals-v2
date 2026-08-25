@@ -12,12 +12,12 @@ and it does not need this file.
 
 | You want to… | Read |
 |---|---|
-| run it locally | [Setup](#setup) |
+| run it on your machine | [Setup](#setup) |
 | find a command or a setting | [Commands](#commands) · [Configuration](#configuration) |
 | understand the code's shape | [Code shape](#code-shape) |
 | register courses | [Registering courses](#registering-courses) |
 | run a round and read its result | [Evaluating](#evaluating) |
-| set up a real (Clerk) environment | [`ENVIRONMENT.md`](ENVIRONMENT.md) |
+| deploy an instance for an SME campaign | [`ENVIRONMENT.md`](ENVIRONMENT.md) |
 | make a batch bigger or faster | [`TUNING.md`](TUNING.md) |
 | teach the system a new package format | [`../docs/RUNBOOK-adding-a-format.md`](../docs/RUNBOOK-adding-a-format.md) |
 | write or revise an instrument | [`../docs/RUNBOOK-authoring-an-instrument.md`](../docs/RUNBOOK-authoring-an-instrument.md) |
@@ -25,22 +25,54 @@ and it does not need this file.
 
 ## Setup
 
+**This system is meant to be run on your machine.** Everything below — registering a
+generation, judging it, reading the score — happens against a Postgres container and needs no
+accounts and no cloud. A deployed instance exists for one errand, putting courses in front of
+subject-matter experts, and is [its own job](#a-deployed-instance).
+
+From the repo root, with Docker, [Task](https://taskfile.dev/installation/),
+[uv](https://docs.astral.sh/uv/) and Node 20+ installed:
+
+```bash
+task setup     # once: env templates, dependencies, Postgres, migrations, seed + workbench
+task dev       # daily: the containers, the API on :8000, the console on :3000
+```
+
+`task --list` has the rest; the ones worth knowing:
+
+| Task | |
+|---|---|
+| `task db:reset` | destroy the local database and rebuild it from zero — volume, migrations, workbench. It asks first |
+| `task seed:demo` | add the human panel's demo on top: two evaluators, two frozen courses, an open campaign ([below](#local-mode-and-clerk-mode-adr-0008)) |
+| `task backend` · `task frontend` | one server at a time, when you do not want both |
+| `task db` · `task db:down` | the Postgres containers alone; `db:down` keeps the dev volume |
+
+`GET /health` verifies that the API boots and the DB responds.
+
+**The same setup by hand**, from `backend/`, when you want to vary a step or see what one did:
+
 ```bash
 cp .env.example .env      # ships in local mode: nothing to fill in
 uv sync
+docker compose up -d --wait
 uv run alembic upgrade head
-uv run python -m app.cli seed             # rubric v1 + pedagogical reference data (idempotent)
-uv run python -m app.cli seed-workbench   # local only: publish, accept, ratify, register
+uv run python -m app.cli seed             # the human reference instrument + reference data
+uv run python -m app.cli seed-workbench   # publish, accept, ratify, register (local only)
 uv run uvicorn app.main:app --reload
 ```
 
-`GET /health` verifies that the API boots and the DB responds. From the repo root,
-`task setup` does all of it (plus Docker and the frontend) and `task db:reset` starts over
-from an empty database.
+`seed` installs the two things nothing in the app can author, both idempotent: the **human
+reference instrument** (`../docs/seed/rubric-v2.json` — one Likert statement per quality, which
+is how a panel of experts is asked, ADR-0052) and the **pedagogical reference data** — the
+qualities, dimensions and frameworks an instrument cites, without which publishing one refuses.
 
-For a real environment `.env` needs `DATABASE_URL` (Neon), the Clerk keys and
-`AUTH_MODE=clerk` — [`ENVIRONMENT.md`](ENVIRONMENT.md) is that whole job, in the order it has
-to happen in.
+### A deployed instance
+
+Clerk, Neon, Render and Netlify come in for one reason: a human evaluation campaign, where SMEs
+who do not have this repository open a course in a browser and score it. `.env` then needs
+`DATABASE_URL` (Neon), the Clerk keys and `AUTH_MODE=clerk`, and it is done **once per instance**
+in an order that cannot be improvised — [`ENVIRONMENT.md`](ENVIRONMENT.md) is that whole job.
+Nothing else in this file needs it.
 
 ### The workbench: what makes a fresh database able to measure (ADR-0045)
 
@@ -63,9 +95,10 @@ facts about a run, read off the tree each generation is registered from
 calibrate the new version with `evaluate --dry-run`, and change one line in the manifest.
 
 **The schema is checked at both doors.** The API and the CLI compare the database's revision against
-this checkout's head before doing anything. On a dev box (`AUTH_MODE=local`) a mismatch **refuses to
-start** and names the fix (`uv run alembic upgrade head`); anywhere else it logs a warning and
-carries on, because a deploy may start a process while the migration step is still running. The
+this checkout's head before doing anything. On your machine (`AUTH_MODE=local`) a mismatch **refuses
+to start** and names the fix (`uv run alembic upgrade head`); on a deployed instance it logs a
+warning and carries on, because a deploy may start a process while the migration step is still
+running. The
 suite migrates its own database, so a green suite says nothing about the store you run against —
 which is why the check exists. If the revision is one this checkout does not know, pull.
 
@@ -73,20 +106,23 @@ which is why the check exists. If the revision is one this checkout does not kno
 
 `AUTH_MODE` decides where a request's identity comes from:
 
-| Mode | Identity | When |
+| Mode | Identity | Where |
 |---|---|---|
-| `clerk` (default) | session JWT verified against the JWKS | production and any real environment |
-| `local` | the `X-Dev-User: <email>` header, unverified | development, no accounts and no cloud |
+| `local` | the `X-Dev-User: <email>` header, unverified | your machine — no accounts, no cloud. `.env.example` ships it |
+| `clerk` (the code's default) | session JWT verified against the JWKS | a deployed instance, where real people sign in |
 
 Below the claim **it is the same code in both modes** (`ResolveAssessor`, `assessors.role`,
 `require_admin`): local mode does not fork business rules, it only replaces where identity comes
-from — the same cut the test suite uses. Setting the other one up, Clerk against your own
-machine included, is [`ENVIRONMENT.md`](ENVIRONMENT.md).
+from — the same cut the test suite uses. So a flow rehearsed locally is the flow that runs
+deployed, and the console has no second version of itself. Setting up the other mode, Clerk
+against your own machine included, is [`ENVIRONMENT.md`](ENVIRONMENT.md).
 
-What keeps local mode from leaking into a real environment:
+The two share one database, and credentials cannot collide — a local assessor is stored as
+`('local', <email>)` and a Clerk one as `('clerk', <sub>)`. What keeps the modes themselves from
+mixing:
 
-- The code's default is `clerk` (`.env.example` ships `local` because it is the development
-  template). A value that is neither **does not boot**: a configuration error, not a silent degrade.
+- A value that is neither `clerk` nor `local` **does not boot**: a configuration error, not a
+  silent degrade.
 - `AUTH_MODE=local` with `ENVIRONMENT=production`, or with a `DATABASE_URL` not pointing at
   localhost → **does not boot** either. Two checks because each covers the other's blind spot:
   `ENVIRONMENT` is a label nobody guarantees, the database host is a fact about where the data lives.
@@ -98,14 +134,15 @@ What keeps local mode from leaking into a real environment:
   also offers the addresses **invited and never signed in**, marked `pending`, so the whole
   registration flow can be walked through with no accounts and no cloud (ADR-0049).
 
-**The other seeder.** `seed-workbench` makes the database able to **measure**; `seed-demo` installs
-the **human MVP's** demo, which the setup deliberately does not: 3 users (`admin@local.dev`,
-`ada.lovelace@local.dev`, `grace.hopper@local.dev`), 2 courses registered from their real frozen
-packages and profiled by an explicit step of its own (their locators are relative to the fixture
-tree, and automatic profiling only reaches http(s) ones — ADR-0029), and an open campaign with
-**quorum 2** and its 4 assignments. Two evaluators is the minimum for inter-rater dispersion and for
-`ContentEvaluationCompleted → GoldenReferenceEstablished` to fire. It goes through the real use
-cases, so it publishes the same events the UI would.
+**`seed-demo`, the third seeder** (`task seed:demo`). `seed` installs what nothing can author and
+`seed-workbench` makes the database able to **measure**; this one installs the **human panel's**
+demo, so that the flow an SME campaign runs can be walked through locally, with no accounts and no
+cloud: 3 users (`admin@local.dev`, `ada.lovelace@local.dev`, `grace.hopper@local.dev`), 2 courses
+registered from their real frozen packages and profiled by an explicit step of its own (their
+locators are relative to the fixture tree, and automatic profiling only reaches http(s) ones —
+ADR-0029), and an open campaign with **quorum 2** and its 4 assignments. Two evaluators is the
+minimum for inter-rater dispersion and for `ContentEvaluationCompleted → GoldenReferenceEstablished`
+to fire. It goes through the real use cases, so it publishes the same events the console would.
 
 `seed-demo --reset` **wipes the local dataset** — everything the app writes, `local|` users included
 — and reseeds; it does not touch the rubric or the reference data. Deliberately wholesale rather
@@ -115,18 +152,18 @@ scoped delete strands everything the previous version created. `task db:reset` i
 
 ## Configuration
 
-`.env.example` is the local development template and carries the reasoning for every variable —
-copy it as-is and the app runs. What you may actually need to change:
+`.env.example` is the local template and carries the reasoning for every variable — copy it as-is
+and the app runs. What you may actually need to change:
 
 | Variable | For |
 |---|---|
-| `DATABASE_URL` | the store. The local container by default; Neon needs `?sslmode=require` |
-| `TEST_DATABASE_URL` | where the suite runs — see [Tests and CI](#tests-and-ci) |
-| `AUTH_MODE`, `CLERK_*`, `ADMIN_EMAILS` | a real environment — [`ENVIRONMENT.md`](ENVIRONMENT.md) |
-| `LLM_API_KEY` | assessors that carry an LLM. An **OpenRouter** key: access, never identity (ADR-0034) |
-| `LLM_TRACE_DIR` | where a run writes its prompts and raw answers; empty means no trace file |
+| `LLM_API_KEY` | assessors that carry an LLM. An **OpenRouter** key: access, never identity (ADR-0034). The one thing local mode cannot ship filled in |
 | `LOCAL_SOURCE_ROOTS` | trees of generated courses outside `courses/` — [From other trees](#from-other-trees-adr-0035) |
+| `TEST_DATABASE_URL` | where the suite runs — see [Tests and CI](#tests-and-ci) |
+| `DATABASE_URL` | the store. The local container by default; Neon needs `?sslmode=require` |
+| `LLM_TRACE_DIR` | where a run writes its prompts and raw answers; empty means no trace file |
 | `BATCH_MAX_COURSES` · `LLM_MAX_CONCURRENCY` · `HTTP_MAX_CONCURRENCY` · `DB_POOL_SIZE` | how much is asked for at once — [`TUNING.md`](TUNING.md) |
+| `AUTH_MODE`, `CLERK_*`, `ADMIN_EMAILS` | only a deployed instance — [`ENVIRONMENT.md`](ENVIRONMENT.md) |
 
 ## Commands
 
@@ -135,7 +172,7 @@ any of them is authoritative. What each one is *for*:
 
 | Command | For |
 |---|---|
-| `seed` · `seed-workbench` · `seed-demo` | the reference data · what a database needs to measure · the human MVP's demo (the last two, local only) |
+| `seed` · `seed-workbench` · `seed-demo` | the human reference instrument and the reference data · what a database needs to measure · the human panel's demo (the last two, local only) |
 | `invite-assessor` · `list-invitations` | register a human evaluator by inviting them ([`ENVIRONMENT.md`](ENVIRONMENT.md)) |
 | `set-role` | break-glass role change, without the console's guardrails |
 | `register-generator` · `register-generator-version` | the lineage, then a version under it |
@@ -147,6 +184,7 @@ any of them is authoritative. What each one is *for*:
 | `import-instrument` · `publish-instrument` · `bump-instrument` | draft · the human act that freezes it · clone a published version into the next draft |
 | `ratify-assessor` | make an instrument version evaluable by an automated assessor |
 | `evaluate` · `evaluate-study` · `measure` | one content · every course of an open study · a folder, register to score |
+| `dump-concept-touches` · `dump-concept-map` | the two calibration dumps ([`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md)) |
 | `declare-study` · `update-study` · `open-study` | declare a round, shape it, then pin it |
 | `show-preview` · `sign-off-study` | the report a study *would* publish · compose, freeze and sign it |
 | `show-report` · `show-fitness` | the signed-off report · the fitness projection (ADR-0023) |
@@ -248,10 +286,11 @@ uv run python -m app.cli register-package --from-csv ./courses.csv \
   --generator-name learnpack-generator --generator-version 2.4.0 [--register-new-version]
 ```
 
-`--format` names the source's `PackageFormat` and **defaults to `LearnpackV1`**, so a package in
-any other format needs it spelled out — discovery would otherwise read it with the wrong adapter
-and refuse it. `--all` and `--from-csv` take one `--format` and one generator for the whole run,
-so a tree or a file mixing two of either is two runs.
+`--format` names the source's `PackageFormat`, and **on `register-package` it defaults to
+`LearnpackV1`** — a package in any other format needs it spelled out, since discovery would
+otherwise read it with the wrong adapter and refuse it. (`measure` defaults to `LearnpackV2`
+instead, which is what the generator writes today.) `--all` and `--from-csv` take one `--format`
+and one generator for the whole run, so a tree or a file mixing two of either is two runs.
 
 **The generator folder declares the version, and a new version is registered as it is read.** Two
 conventions, tried in that order: `courses/`'s own `<name>@<version>`, and the `<name>-<version>`
@@ -356,10 +395,11 @@ Adding a root needs a restart, because the trees are mounted when the app assemb
 one of the two things `--root <key>` names when it refuses a key: never declared, or declared after
 the API started. `--root` works on `register-package` and on `measure`, and defaults to `courses`.
 
-Every declared root is also browsable from **`/admin/contents/import`** in local mode: pick the
-format and generator version once, walk to the folder that holds the courses, and the scan says per
-subfolder what registering would do — `new`, `new_version`, `unchanged`, `conflict` or `unreadable`
-— before anything is written. One thing the console cannot do, and says so: re-registering a course
+Every declared root is also browsable from **`/admin/measure`** in local mode, which is the page
+the console is arranged around: declare the format and generator version once, walk to the folder
+that holds the courses, and the scan says per subfolder what registering would do — `new`,
+`new_version`, `unchanged`, `conflict` or `unreadable` — before anything is written. Ticking the
+ones you want registers them, and the same page then opens the round over them. One thing the console cannot do, and says so: re-registering a course
 that was registered with an unknown generator does **not** fill it in. That registration is a no-op
 (the bytes match), so the declared generator is discarded — attribution is its own act, offered on
 the row (ADR-0024).
@@ -431,8 +471,10 @@ its cause named for everything else).
 and declared in its `SOURCE_CONFIG`, prompts fingerprint included: which model judges, how it is
 sampled (temperature, output budget, whether it may reason, how many samples decide a verdict) and
 which prompts it is asked. Changing any of them without a VERSION bump is refused at ratification.
-Sampling counts because it decides the answer: `drafts-hybrid:2` exists because v1 asked a reasoning
-model for an answer inside a budget its thinking consumed whole. The same goes for the upstream: the
+Sampling counts because it decides the answer — the second version of `drafts-hybrid` exists
+because the first asked a reasoning model for an answer inside a budget its thinking consumed
+whole, and got nothing back. The lineage is well past that (`/admin/assessors` says where), which
+is the point: a bump is cheap and a silent change of mind is not allowed. The same goes for the upstream: the
 models are pinned as OpenRouter slugs (`deepseek/…`, and the namespace *is* the provider) and every
 request carries OpenRouter's own `provider` routing, which is how a misbehaving one is excluded
 (ADR-0038) — so judging through another is a new assessor version, not a new `LLM_BASE_URL`.
@@ -449,6 +491,11 @@ access like the key, so raising it for a slow provider re-versions nothing. The 
 touches the network: the transport is faked at the `runtime.get_client` seam.
 
 ## Evaluating
+
+**The everyday path is the last one here**: a generation lands in a folder and
+[`measure`](#measuring-a-generation-the-generator-just-wrote) — or `/admin/measure` — takes it
+from folder to score in one act. The rest is what that chains together, and what to reach for
+when a step needs doing on its own.
 
 ### One content
 
@@ -587,8 +634,9 @@ migrations, deploy and the final smoke check.
 ## Modules
 
 identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·
-orchestration · golden_dataset · reporting. Each with `domain/`, `application/` and
-`infrastructure/`, and its contract in `public.py`.
+evaluation_studies · orchestration · golden_dataset · reporting. Each with `domain/`,
+`application/` and `infrastructure/`; the ones another module reads from also expose their
+contract in `public.py` (`reporting` and `evaluation_studies` do not — nothing reads from them).
 
 The plans that originated them are frozen in `../docs/design/08-code.md` (slice 1) and
 `../docs/design/13-code-qa.md` (slice 2); progress lives in `../STATUS.md`.

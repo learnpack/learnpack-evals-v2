@@ -1,12 +1,18 @@
-# Identity, roles and environments
+# Deploying an instance: identity and roles
 
-Everything that is done **once per environment**, before anyone signs in: the Clerk instance,
-who is born an admin, how the evaluators are registered, and the order all of it has to happen
-in. Running the backend on your own machine needs none of it — that is
-[local mode](README.md#local-mode-and-clerk-mode-adr-0008), which replaces where identity comes from and
-nothing else.
+This is for one errand: **a human evaluation campaign**, where subject-matter experts who do
+not have this repository open a course in a browser and score it. That needs real accounts, so
+it needs Clerk — and everything here is done **once per instance, before anyone signs in**: the
+Clerk instance itself, who is born an admin, how the evaluators are registered, and the order
+all of it has to happen in.
 
-One Clerk instance is one environment. Commands are run from `backend/`.
+Measuring a generator's output needs none of it. That runs on your machine in
+[local mode](README.md#local-mode-and-clerk-mode-adr-0008), which replaces where identity comes
+from and nothing else — so the campaign flow can be rehearsed locally first, and
+[Running Clerk against your own machine](#running-clerk-against-your-own-machine) is how to
+rehearse the sign-in and invitation halves too.
+
+One Clerk instance is one instance. Commands are run from `backend/`.
 
 ## Clerk (ADR-0004)
 
