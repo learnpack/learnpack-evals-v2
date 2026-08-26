@@ -298,6 +298,29 @@ export interface ReferenceInstrumentResponse {
   criterion_count: number;
 }
 
+/** One item of the reference instrument, whole. A superset of `Criterion`, so it can be
+ *  handed straight to `ScoreForm`. */
+export interface RubricCriterion extends Criterion {
+  qualities: string[];
+  grounded_in: string[];
+  eligible_sources: string[];
+  required_data: string[];
+}
+
+/** `GET /admin/reference/instruments/{id}` — what the rubric asks and on what grounds. */
+export interface RubricDetailResponse {
+  rubric_version_id: string;
+  rubric_id: string;
+  version: string;
+  name: string;
+  status: string;
+  scope: string | null;
+  scale_min: number;
+  scale_max: number;
+  response_format: string;
+  criteria: RubricCriterion[];
+}
+
 export interface CampaignResponse {
   campaign_id: Uuid;
   name: string;

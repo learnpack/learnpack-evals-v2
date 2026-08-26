@@ -51,6 +51,7 @@ import type {
   RatifyAssessorResponse,
   ReferenceInstrumentResponse,
   RenameCampaignRequest,
+  RubricDetailResponse,
   RegisterBriefRequest,
   RegisterBySourceRequest,
   RegisterBySourceResponse,
@@ -99,6 +100,7 @@ export const queryKeys = {
   profilingCapabilities: ["admin", "profiling", "capabilities"] as const,
   campaigns: ["admin", "campaigns"] as const,
   referenceInstruments: ["admin", "reference", "instruments"] as const,
+  referenceInstrument: (id: string) => ["admin", "reference", "instruments", id] as const,
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
@@ -434,6 +436,15 @@ export function useReferenceInstruments() {
   return useQuery({
     queryKey: queryKeys.referenceInstruments,
     queryFn: () => api<ReferenceInstrumentResponse[]>("/admin/reference/instruments"),
+  });
+}
+
+/** One reference instrument with every item — the rubric page reads its content from here. */
+export function useReferenceInstrument(id: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.referenceInstrument(id),
+    queryFn: () => api<RubricDetailResponse>(`/admin/reference/instruments/${id}`),
   });
 }
 

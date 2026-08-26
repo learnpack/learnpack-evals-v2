@@ -37,6 +37,9 @@ const NAV = [
     group: "Definitions",
     items: [
       { href: "/admin/instruments", label: "Instruments" },
+      // Beside Instruments because they are siblings: the evidential argument a machine
+      // executes, and the reference instrument a person answers.
+      { href: "/admin/rubrics", label: "Rubrics" },
       { href: "/admin/assessors", label: "Assessors" },
       { href: "/admin/generators", label: "Generators" },
       { href: "/admin/briefs", label: "Briefs" },

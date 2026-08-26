@@ -26,14 +26,23 @@ import type { Criterion } from "@/lib/api/types";
  * Collapsing the two would silently turn "I don't know" into the worst possible verdict.
  */
 
-interface Props {
+type Scores = { criterion_id: string; score: number | null; comment: string | null }[];
+
+/**
+ * `preview` is a discriminated arm rather than a flag so the compiler enforces the rule:
+ * in preview there is no submit handler to call, and the admin console cannot record an
+ * answer by accident. The two modes share every other prop because they must render the
+ * same form — a preview that drifts from the real one lies about the only thing it shows.
+ */
+type Props = {
   criteria: Criterion[];
   scaleMin: number;
   scaleMax: number;
   responseFormat: string;
-  submitting: boolean;
-  onSubmit: (scores: { criterion_id: string; score: number | null; comment: string | null }[]) => void;
-}
+} & (
+  | { preview: true; submitting?: never; onSubmit?: never }
+  | { preview?: false; submitting: boolean; onSubmit: (scores: Scores) => void }
+);
 
 /** The sentinel for the off-scale answer. A string, so it can never collide with a point. */
 const ABSTAIN = "abstain" as const;
@@ -52,6 +61,7 @@ export function ScoreForm({
   scaleMin,
   scaleMax,
   responseFormat,
+  preview = false,
   submitting,
   onSubmit,
 }: Props) {
@@ -82,6 +92,7 @@ export function ScoreForm({
   });
 
   const submit = handleSubmit((values) => {
+    if (!onSubmit) return; // preview: unreachable, the footer offers nothing to submit
     onSubmit(
       criteria.map((c) => {
         const answer = values[c.criterion_id].answer;
@@ -219,10 +230,17 @@ export function ScoreForm({
           </span>{" "}
           answered
         </p>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? <Spinner /> : null}
-          Submit evaluation
-        </Button>
+        {/* The counter stays in preview — clicking through the scale is how somebody
+            reviewing the instrument notices that a statement reads wrong. What goes is the
+            act: no button, so there is nothing to press by mistake. */}
+        {preview ? (
+          <p className="text-xs text-muted-foreground">Nothing here is recorded</p>
+        ) : (
+          <Button type="submit" disabled={submitting}>
+            {submitting ? <Spinner /> : null}
+            Submit evaluation
+          </Button>
+        )}
       </div>
     </form>
   );
