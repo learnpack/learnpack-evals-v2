@@ -49,6 +49,7 @@ import type {
   QualityReferenceResponse,
   RatifyAssessorRequest,
   RatifyAssessorResponse,
+  ReferenceInstrumentResponse,
   RenameCampaignRequest,
   RegisterBriefRequest,
   RegisterBySourceRequest,
@@ -97,6 +98,7 @@ export const queryKeys = {
   profiles: ["admin", "profiles"] as const,
   profilingCapabilities: ["admin", "profiling", "capabilities"] as const,
   campaigns: ["admin", "campaigns"] as const,
+  referenceInstruments: ["admin", "reference", "instruments"] as const,
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
@@ -423,6 +425,15 @@ export function useCreateBrief() {
     mutationFn: (body: RegisterBriefRequest) =>
       api<BriefResponse>("/admin/briefs", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.briefs }),
+  });
+}
+
+/** The reference instrument versions a campaign may pin — published only (ADR-0056). */
+export function useReferenceInstruments() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.referenceInstruments,
+    queryFn: () => api<ReferenceInstrumentResponse[]>("/admin/reference/instruments"),
   });
 }
 

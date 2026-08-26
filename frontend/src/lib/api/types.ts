@@ -282,6 +282,22 @@ export interface EvaluationResponse {
   scores: ScoreInput[];
 }
 
+/**
+ * `GET /admin/reference/instruments` — a version a campaign may pin (ADR-0056).
+ * The human reference instrument, not the automated one `InstrumentResponse` describes.
+ */
+export interface ReferenceInstrumentResponse {
+  rubric_version_id: string;
+  rubric_id: string;
+  version: string;
+  name: string;
+  scope: string | null;
+  scale_min: number;
+  scale_max: number;
+  response_format: string; // numeric | likert
+  criterion_count: number;
+}
+
 export interface CampaignResponse {
   campaign_id: Uuid;
   name: string;
