@@ -1907,7 +1907,18 @@ the data in the package).
 
 ## Verified
 
-- **Backend suite green: 1214 tests, 1 skipped** against local Postgres (~87 s). Requires
+- **A campaign is named, and the name is correctable** (suite + by hand over real HTTP,
+  ADR-0055). The aggregate refuses a blank name on the way in and on a rename, and a
+  **closed** campaign still renames — the decision, pinned at its edge. Over the running
+  backend against the dev store: `PATCH /admin/campaigns/{id}` replaces the label and the
+  change survives the re-read, a blank name answers 422, an unknown id 404, `CampaignOpened`
+  and `CampaignRenamed` both carry the name in the outbox. Migration 0028 was applied to a
+  **populated** database, not only a fresh one: the single campaign it found came back as
+  `Campaign 9e980bea` — the string the console was already displaying for it. `task db:reset`
+  followed by two runs of `task seed:demo` leaves one campaign, *Local demo campaign*, which
+  is now the key of that idempotence. The two console pages compile and build; **nobody has
+  seen them render** — the standing frontend gap, named here rather than implied.
+- **Backend suite green: 1265 tests, 1 skipped** against local Postgres (~82 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
