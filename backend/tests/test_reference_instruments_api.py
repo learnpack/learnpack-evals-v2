@@ -109,6 +109,50 @@ def test_a_draft_version_is_not_offered(admin, reference_version):
     assert draft not in {r["rubric_version_id"] for r in admin.get(ENDPOINT).json()}
 
 
+def test_the_detail_returns_every_item_with_what_grounds_it(admin):
+    """What the Items view renders, and what reading the seed file used to be for."""
+    response = admin.get(f"{ENDPOINT}/{SEEDED}")
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["name"] == "LearnPack Pedagogical Rubric"
+    assert body["response_format"] == "likert"
+    assert body["scope"]
+
+    criteria = body["criteria"]
+    assert len(criteria) == 12
+    assert [c["order"] for c in criteria] == sorted(c["order"] for c in criteria)
+
+    first = criteria[0]
+    assert first["criterion_id"] == "objectives-observable"
+    assert first["prompt"] and first["guidance"]
+    # One item per quality (ADR-0052): the item's own id IS the quality it elicits.
+    assert first["qualities"] == ["objectives-observable"]
+    assert first["grounded_in"] == ["Biggs", "Revised Bloom"]
+    # What decides whether this item is put to a human at all (ADR-0053).
+    assert first["required_data"] == ["learning_objectives"]
+
+
+def test_the_detail_of_an_unknown_instrument_is_404(admin):
+    assert admin.get(f"{ENDPOINT}/does-not-exist").status_code == 404
+
+
+def test_a_draft_can_be_read_even_though_it_is_not_offered(admin, reference_version):
+    """Reading what a version asks is not opening a campaign against it — that is the whole
+    reason to read a draft."""
+    draft = reference_version("learnpack-pedagogical-test-v97", "draft", criteria=2)
+
+    body = admin.get(f"{ENDPOINT}/{draft}").json()
+    assert body["status"] == "draft"
+    assert len(body["criteria"]) == 2
+
+
+def test_reading_one_requires_admin(as_user, cleanup, unique):
+    client = as_user(f"user_bob_{unique}", f"bob-{unique}@example.com", "Bob")
+    cleanup["assessors"].append(client.get("/me").json()["assessor_id"])
+    assert client.get(f"{ENDPOINT}/{SEEDED}").status_code == 403
+
+
 def test_listing_requires_admin(as_user, cleanup, unique):
     client = as_user(f"user_ada_{unique}", f"ada-{unique}@example.com", "Ada")
     cleanup["assessors"].append(client.get("/me").json()["assessor_id"])
