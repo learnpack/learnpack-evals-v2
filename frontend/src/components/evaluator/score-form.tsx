@@ -133,6 +133,13 @@ export function ScoreForm({
               <p className={cn("mt-1 text-sm", likert ? "text-foreground" : "text-muted-foreground")}>
                 {criterion.prompt}
               </p>
+              {/* The cost of putting the declarations above the form: by item 3 they have
+                  scrolled away. One line, no anchor — a reminder that the material is there. */}
+              {criterion.required_data.length > 0 && !preview ? (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Rests on what the course declares, above.
+                </p>
+              ) : null}
               <GuidanceDisclosure guidance={criterion.guidance} likert={likert} />
             </div>
 
