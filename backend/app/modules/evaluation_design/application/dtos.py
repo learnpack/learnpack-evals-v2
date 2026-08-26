@@ -103,6 +103,25 @@ class DataRequirementDTO:
 
 
 @dataclass(frozen=True)
+class RubricSummaryDTO:
+    """One published reference instrument version, as a chooser needs it (ADR-0056 §4).
+
+    Deliberately not a `RubricSnapshot`: what tells two versions apart is their identity,
+    their scale and how many items they ask, not the text of every item.
+    """
+
+    rubric_version_id: str
+    rubric_id: str
+    version: str
+    name: str
+    scope: str | None
+    scale_min: int
+    scale_max: int
+    response_format: str
+    criterion_count: int
+
+
+@dataclass(frozen=True)
 class RubricSnapshot:
     rubric_version_id: str
     rubric_id: str

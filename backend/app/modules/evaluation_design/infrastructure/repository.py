@@ -10,7 +10,11 @@ import json
 from sqlalchemy import RowMapping, text
 from sqlalchemy.orm import Session
 
-from app.modules.evaluation_design.application.dtos import CriterionDTO, RubricSnapshot
+from app.modules.evaluation_design.application.dtos import (
+    CriterionDTO,
+    RubricSnapshot,
+    RubricSummaryDTO,
+)
 from app.modules.evaluation_design.domain.instrument import (
     Claim,
     Criterion,
@@ -89,6 +93,39 @@ class SqlAlchemyRubricRepository:
                 for row in criteria
             ],
         )
+
+    def list_published(self) -> list[RubricSummaryDTO]:
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT v.id, v.rubric_id, v.version, v.name, v.scope, v.scale_min,
+                           v.scale_max, v.response_format,
+                           (SELECT count(*) FROM criteria c
+                             WHERE c.rubric_version_id = v.id) AS criterion_count
+                      FROM rubric_versions v
+                     WHERE v.status = 'published'
+                     ORDER BY v.rubric_id, v.version
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [
+            RubricSummaryDTO(
+                rubric_version_id=row["id"],
+                rubric_id=row["rubric_id"],
+                version=row["version"],
+                name=row["name"],
+                scope=row["scope"],
+                scale_min=row["scale_min"],
+                scale_max=row["scale_max"],
+                response_format=row["response_format"],
+                criterion_count=row["criterion_count"],
+            )
+            for row in rows
+        ]
 
 
 class SqlAlchemyInstrumentRepository:

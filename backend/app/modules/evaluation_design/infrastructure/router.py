@@ -22,6 +22,7 @@ from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyDataRequirementRepository,
     SqlAlchemyInstrumentRepository,
     SqlAlchemyReferenceDataRepository,
+    SqlAlchemyRubricRepository,
 )
 from app.platform.security import AdminAssessor
 from app.platform.uow import UnitOfWork, get_uow
@@ -138,6 +139,34 @@ def publish_instrument(
     )
     assert snapshot is not None  # just published in this transaction
     return InstrumentResponse.from_snapshot(snapshot)
+
+
+class ReferenceInstrumentResponse(BaseModel):
+    """One version a campaign may pin. A summary, not the instrument (ADR-0056 §4)."""
+
+    rubric_version_id: str
+    rubric_id: str
+    version: str
+    name: str
+    scope: str | None
+    scale_min: int
+    scale_max: int
+    # `numeric | likert` — what the points of the scale mean (ADR-0052 §3).
+    response_format: str
+    criterion_count: int
+
+
+@reference_router.get("/instruments", response_model=list[ReferenceInstrumentResponse])
+def list_reference_instruments(admin: AdminAssessor, uow: Uow) -> list[ReferenceInstrumentResponse]:
+    """The human reference instrument's published versions — what a campaign may pin.
+
+    Not `/admin/instruments`: that path serves the automated evidential argument, and the two
+    are different artifacts under a shared word (ADR-0056 §3). Only published versions are
+    listed, because `open_campaign` refuses any other and an option that cannot work is worse
+    than no option.
+    """
+    summaries = queries.list_published_rubrics(SqlAlchemyRubricRepository(uow.session))
+    return [ReferenceInstrumentResponse(**s.__dict__) for s in summaries]
 
 
 class QualityReferenceResponse(BaseModel):

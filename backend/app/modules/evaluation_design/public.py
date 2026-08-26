@@ -19,6 +19,7 @@ from app.modules.evaluation_design.application.dtos import (
     DataRequirementDTO,
     InstrumentSnapshot,
     RubricSnapshot,
+    RubricSummaryDTO,
 )
 from app.modules.evaluation_design.infrastructure.repository import (
     SqlAlchemyDataRequirementRepository,
@@ -42,6 +43,7 @@ __all__ = [
     "InstrumentSnapshot",
     "RubricQueries",
     "RubricSnapshot",
+    "RubricSummaryDTO",
     "get_instrument_queries",
     "get_rubric_queries",
 ]
@@ -78,6 +80,10 @@ class RubricQueries:
 
     def get_rubric(self, rubric_version_id: str) -> RubricSnapshot | None:
         return _queries.get_rubric(self._rubrics, rubric_version_id)
+
+    def list_published_rubrics(self) -> list[RubricSummaryDTO]:
+        """The versions a campaign may pin (ADR-0056)."""
+        return _queries.list_published_rubrics(self._rubrics)
 
 
 def get_rubric_queries(uow: Annotated[UnitOfWork, Depends(get_uow)]) -> RubricQueries:

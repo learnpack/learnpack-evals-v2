@@ -12,6 +12,7 @@ from app.modules.evaluation_design.application.dtos import (
     DataRequirementDTO,
     InstrumentSnapshot,
     RubricSnapshot,
+    RubricSummaryDTO,
 )
 from app.modules.evaluation_design.application.ports import (
     DataRequirementRepositoryPort,
@@ -23,6 +24,11 @@ from app.modules.evaluation_design.domain.instrument import InstrumentVersion
 
 def get_rubric(rubrics: RubricRepositoryPort, rubric_version_id: str) -> RubricSnapshot | None:
     return rubrics.get_snapshot(rubric_version_id)
+
+
+def list_published_rubrics(rubrics: RubricRepositoryPort) -> list[RubricSummaryDTO]:
+    """What a campaign may pin — the console's chooser reads this (ADR-0056)."""
+    return rubrics.list_published()
 
 
 def _to_snapshot(instrument: InstrumentVersion) -> InstrumentSnapshot:

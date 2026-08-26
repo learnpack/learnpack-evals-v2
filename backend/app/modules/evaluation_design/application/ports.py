@@ -2,7 +2,7 @@
 
 from typing import Any, Protocol
 
-from app.modules.evaluation_design.application.dtos import RubricSnapshot
+from app.modules.evaluation_design.application.dtos import RubricSnapshot, RubricSummaryDTO
 from app.modules.evaluation_design.domain.instrument import InstrumentVersion
 from app.modules.evaluation_design.domain.reference import DataRequirement
 
@@ -11,6 +11,10 @@ class RubricRepositoryPort(Protocol):
     """Read surface of the human reference instrument (ADR-0015, ADR-0052)."""
 
     def get_snapshot(self, rubric_version_id: str) -> RubricSnapshot | None: ...
+
+    def list_published(self) -> list[RubricSummaryDTO]:
+        """Only published versions: a campaign cannot open against any other (ADR-0056 §2)."""
+        ...
 
 
 class InstrumentRepositoryPort(Protocol):
