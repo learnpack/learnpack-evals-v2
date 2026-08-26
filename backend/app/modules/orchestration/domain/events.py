@@ -18,9 +18,26 @@ def campaign_opened(campaign: EvaluationCampaign) -> DomainEvent:
         aggregate_id=str(campaign.id),
         payload={
             "campaignId": str(campaign.id),
+            "name": campaign.name,
+            "description": campaign.description,
             "instrumentVersionId": campaign.instrument_version_id,
             "requiredEvaluationsPerContent": campaign.required_evaluations_per_content,
             "contentIds": [str(c) for c in campaign.content_ids],
+        },
+    )
+
+
+def campaign_renamed(campaign: EvaluationCampaign) -> DomainEvent:
+    """The label, replaced whole (ADR-0055). No policy reacts to it; `CampaignClosed` has no
+    reader either, and inside Orchestration every state change of the aggregate is recorded."""
+    return DomainEvent(
+        event_type="CampaignRenamed",
+        aggregate_type=CAMPAIGN_AGGREGATE,
+        aggregate_id=str(campaign.id),
+        payload={
+            "campaignId": str(campaign.id),
+            "name": campaign.name,
+            "description": campaign.description,
         },
     )
 

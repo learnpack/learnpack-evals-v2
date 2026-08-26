@@ -14,6 +14,10 @@ class CampaignRepositoryPort(Protocol):
 
     def update_status(self, campaign: EvaluationCampaign) -> None: ...
 
+    def update_label(self, campaign: EvaluationCampaign) -> None:
+        """Persist the name and the description — the pair a rename replaces (ADR-0055)."""
+        ...
+
     def list_all(self) -> list[EvaluationCampaign]: ...
 
 

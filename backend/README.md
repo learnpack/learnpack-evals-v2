@@ -139,7 +139,9 @@ demo, so that the flow an SME campaign runs can be walked through locally, with 
 cloud: 3 users (`admin@local.dev`, `ada.lovelace@local.dev`, `grace.hopper@local.dev`), 2 courses
 registered from their real frozen packages and profiled by an explicit step of its own (their
 locators are relative to the fixture tree, and automatic profiling only reaches http(s) ones —
-ADR-0029), and an open campaign with **quorum 2** and its 4 assignments. Two evaluators is the
+ADR-0029), and an open campaign named *Local demo campaign*, with **quorum 2** and its 4
+assignments — its name is what makes re-running the seeder reuse it rather than open a second
+one. Two evaluators is the
 minimum for inter-rater dispersion and for `ContentEvaluationCompleted → GoldenReferenceEstablished`
 to fire. It goes through the real use cases, so it publishes the same events the console would.
 If `learnpack-course-qa-v1` is already published — as after `seed-workbench` — the import is

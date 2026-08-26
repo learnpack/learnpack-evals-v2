@@ -58,7 +58,14 @@ export default function CampaignsPage() {
               <TableBody>
                 {campaigns.map((c) => (
                   <TableRow key={c.campaign_id}>
-                    <TableCell className="font-medium">{c.campaign_id.slice(0, 8)}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{c.name}</div>
+                      {c.description ? (
+                        <div className="max-w-md truncate text-xs text-muted-foreground">
+                          {c.description}
+                        </div>
+                      ) : null}
+                    </TableCell>
                     <TableCell>{c.content_ids.length}</TableCell>
                     <TableCell>{c.required_evaluations_per_content}</TableCell>
                     <TableCell>

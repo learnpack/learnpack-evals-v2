@@ -284,6 +284,8 @@ export interface EvaluationResponse {
 
 export interface CampaignResponse {
   campaign_id: Uuid;
+  name: string;
+  description: string | null;
   instrument_version_id: string;
   required_evaluations_per_content: number;
   content_ids: Uuid[];
@@ -877,10 +879,18 @@ export interface RegisterBySourceResponse {
 }
 
 export interface OpenCampaignRequest {
+  name: string;
+  description?: string | null;
   instrument_version_id: string;
   required_evaluations_per_content: number;
   content_ids: Uuid[];
   golden_coverage_threshold?: number;
+}
+
+/** `PATCH /admin/campaigns/{id}` — the label, replaced whole (ADR-0055). */
+export interface RenameCampaignRequest {
+  name: string;
+  description: string | null;
 }
 
 export interface AssignContentRequest {

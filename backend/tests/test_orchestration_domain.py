@@ -28,6 +28,7 @@ def make_assignment(**overrides) -> Assignment:
 def make_campaign(**overrides) -> EvaluationCampaign:
     base = {
         "id": new_id(),
+        "name": "A campaign",
         "instrument_version_id": "learnpack-pedagogical-v2",
         "required_evaluations_per_content": 2,
         "content_ids": [new_id()],
@@ -114,6 +115,35 @@ def test_cannot_open_with_an_empty_content_set():
 def test_required_evaluations_must_be_at_least_one():
     with pytest.raises(InvalidCampaign, match="at least 1"):
         make_campaign(required_evaluations_per_content=0)
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_name_is_required(name):
+    with pytest.raises(InvalidCampaign, match="name is required"):
+        make_campaign(name=name)
+
+
+def test_renaming_replaces_the_label_whole():
+    campaign = make_campaign(name="First round", description="Two courses")
+    campaign.rename("Second round", None)
+    assert campaign.name == "Second round"
+    assert campaign.description is None
+
+
+def test_renaming_re_checks_the_invariant():
+    campaign = make_campaign(name="First round")
+    with pytest.raises(InvalidCampaign, match="name is required"):
+        campaign.rename("  ", None)
+
+
+def test_a_closed_campaign_still_renames():
+    """A label binds nothing, so nothing about the status protects it (ADR-0055)."""
+    campaign = make_campaign()
+    campaign.open()
+    campaign.close()
+    campaign.rename("Renamed after closing", None)
+    assert campaign.name == "Renamed after closing"
+    assert campaign.status is CampaignStatus.CLOSED
 
 
 def test_rubric_version_is_required():

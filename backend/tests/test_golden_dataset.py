@@ -105,6 +105,7 @@ def open_campaign(admin, cleanup, content_ids, required=1, threshold=1.0):
     body = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Golden dataset campaign",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": required,
             "content_ids": content_ids,

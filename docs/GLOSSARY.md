@@ -352,7 +352,9 @@
 - **EvaluationCampaign** — the human realization of an `EvaluationRun`, **open and incremental**
   (config + scope): it pins `rubricVersion`, `requiredEvaluationsPerContent` (completeness
   threshold, not provisioning) and `metadataView`. It opens with whatever assessors exist and
-  adds more; it does **not own the assignments transactionally**. See ADR-0002.
+  adds more; it does **not own the assignments transactionally**. It also carries a **name**
+  (required, not unique) and an optional description — the label a campaign is read by, which
+  identifies nothing and is correctable in any status. See ADR-0002 and ADR-0055.
 - **Assignment** — an invitation to an `Assessor` to evaluate a `Content` in a campaign; a small
   aggregate with lifecycle `Assigned → Opened → Submitted | Cancelled`. Reassign = cancel + new
   one. **It is the unit of human anti-duplication:** ≤1 active assignment per

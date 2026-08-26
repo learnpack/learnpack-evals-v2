@@ -49,6 +49,7 @@ import type {
   QualityReferenceResponse,
   RatifyAssessorRequest,
   RatifyAssessorResponse,
+  RenameCampaignRequest,
   RegisterBriefRequest,
   RegisterBySourceRequest,
   RegisterBySourceResponse,
@@ -439,6 +440,16 @@ export function useCreateCampaign() {
   return useMutation({
     mutationFn: (body: OpenCampaignRequest) =>
       api<CampaignResponse>("/admin/campaigns", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.campaigns }),
+  });
+}
+
+export function useRenameCampaign(id: Uuid) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenameCampaignRequest) =>
+      api<CampaignResponse>(`/admin/campaigns/${id}`, { method: "PATCH", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.campaigns }),
   });
 }

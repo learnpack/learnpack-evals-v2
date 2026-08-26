@@ -70,6 +70,7 @@ def campaign(admin, cleanup, content):
     body = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Reporting campaign",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 2,
             "content_ids": [content],
@@ -259,6 +260,7 @@ def test_an_evaluator_counts_on_every_course_they_evaluated(
     both = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Campaign over two courses",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [content, second],

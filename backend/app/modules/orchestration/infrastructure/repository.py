@@ -26,6 +26,8 @@ class SqlAlchemyCampaignRepository:
         )
         return EvaluationCampaign(
             id=row["id"],
+            name=row["name"],
+            description=row["description"],
             instrument_version_id=row["instrument_version_id"],
             required_evaluations_per_content=row["required_evaluations_per_content"],
             content_ids=list(content_ids),
@@ -38,8 +40,8 @@ class SqlAlchemyCampaignRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT id, instrument_version_id, required_evaluations_per_content,
-                           golden_coverage_threshold, status
+                    SELECT id, name, description, instrument_version_id,
+                           required_evaluations_per_content, golden_coverage_threshold, status
                       FROM campaigns WHERE id = :id
                     """
                 ),
@@ -55,13 +57,15 @@ class SqlAlchemyCampaignRepository:
             text(
                 """
                 INSERT INTO campaigns
-                    (id, instrument_version_id, required_evaluations_per_content,
-                     golden_coverage_threshold, status)
-                VALUES (:id, :rubric, :required, :threshold, :status)
+                    (id, name, description, instrument_version_id,
+                     required_evaluations_per_content, golden_coverage_threshold, status)
+                VALUES (:id, :name, :description, :rubric, :required, :threshold, :status)
                 """
             ),
             {
                 "id": campaign.id,
+                "name": campaign.name,
+                "description": campaign.description,
                 "rubric": campaign.instrument_version_id,
                 "required": campaign.required_evaluations_per_content,
                 "threshold": campaign.golden_coverage_threshold,
@@ -86,13 +90,19 @@ class SqlAlchemyCampaignRepository:
             {"id": campaign.id, "status": str(campaign.status)},
         )
 
+    def update_label(self, campaign: EvaluationCampaign) -> None:
+        self._session.execute(
+            text("UPDATE campaigns SET name = :name, description = :description WHERE id = :id"),
+            {"id": campaign.id, "name": campaign.name, "description": campaign.description},
+        )
+
     def list_all(self) -> list[EvaluationCampaign]:
         rows = (
             self._session.execute(
                 text(
                     """
-                    SELECT id, instrument_version_id, required_evaluations_per_content,
-                           golden_coverage_threshold, status
+                    SELECT id, name, description, instrument_version_id,
+                           required_evaluations_per_content, golden_coverage_threshold, status
                       FROM campaigns ORDER BY created_at
                     """
                 )

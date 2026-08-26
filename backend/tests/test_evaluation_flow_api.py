@@ -72,6 +72,7 @@ def make_campaign(admin, cleanup, content):
         body = admin.post(
             "/admin/campaigns",
             json={
+                "name": "Evaluation flow campaign",
                 "instrument_version_id": RUBRIC,
                 "required_evaluations_per_content": required,
                 "content_ids": [content],
@@ -340,6 +341,7 @@ def test_campaign_requires_a_published_rubric(admin, content, cleanup):
     response = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Campaign over an unpublished instrument",
             "instrument_version_id": "does-not-exist",
             "required_evaluations_per_content": 1,
             "content_ids": [content],
@@ -391,6 +393,7 @@ def test_an_assignment_for_a_content_with_no_deployed_instance_carries_null(
     campaign = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Campaign over an undeployed course",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [undeployed["content_id"]],

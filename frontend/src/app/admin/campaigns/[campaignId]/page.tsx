@@ -3,7 +3,7 @@
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AssignForm } from "@/components/admin/assign-form";
+import { RenameCampaignForm } from "@/components/admin/rename-campaign-form";
 import {
   useAssessors,
   useCampaignAssignments,
@@ -38,6 +39,7 @@ export default function CampaignDetailPage({
   const cancelAssignment = useCancelAssignment(campaignId);
   const closeCampaign = useCloseCampaign();
   const [assigning, setAssigning] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   const campaign = campaigns.data?.find((c) => c.campaign_id === campaignId);
 
@@ -93,15 +95,24 @@ export default function CampaignDetailPage({
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
-            Campaign {campaignId.slice(0, 8)}
+            {campaign?.name}
             <Badge variant={p.status === "open" ? "success" : "secondary"}>{p.status}</Badge>
           </h1>
+          {campaign?.description ? (
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{campaign.description}</p>
+          ) : null}
           <p className="mt-1 text-sm text-muted-foreground">
             Instrument {p.instrument_version_id} · quorum {p.required_evaluations_per_content} · coverage{" "}
             {Math.round(p.coverage * 100)}%
           </p>
         </div>
         <div className="flex gap-2">
+          {/* In any status: a label binds nothing, so closing does not protect it (ADR-0055). */}
+          {campaign ? (
+            <Button variant="outline" onClick={() => setRenaming(true)}>
+              <Pencil className="h-4 w-4" /> Rename
+            </Button>
+          ) : null}
           {canAssign ? (
             <Button onClick={() => setAssigning(true)}>
               <Plus className="h-4 w-4" /> Assign
@@ -211,14 +222,25 @@ export default function CampaignDetailPage({
       </Card>
 
       {campaign ? (
-        <Dialog
-          open={assigning}
-          onClose={() => setAssigning(false)}
-          title="Assign a course"
-          description="Give an evaluator a course from this campaign."
-        >
-          <AssignForm campaign={campaign} onDone={() => setAssigning(false)} />
-        </Dialog>
+        <>
+          <Dialog
+            open={assigning}
+            onClose={() => setAssigning(false)}
+            title="Assign a course"
+            description="Give an evaluator a course from this campaign."
+          >
+            <AssignForm campaign={campaign} onDone={() => setAssigning(false)} />
+          </Dialog>
+
+          <Dialog
+            open={renaming}
+            onClose={() => setRenaming(false)}
+            title="Rename this campaign"
+            description="Only the label changes. Nothing about what the campaign measures moves."
+          >
+            <RenameCampaignForm campaign={campaign} onDone={() => setRenaming(false)} />
+          </Dialog>
+        </>
       ) : null}
     </div>
   );

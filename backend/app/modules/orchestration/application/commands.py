@@ -33,9 +33,11 @@ class ContentNotInCampaign(Exception): ...
 
 @dataclass(frozen=True)
 class OpenCampaignCommand:
+    name: str
     instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID]
+    description: str | None = None
     golden_coverage_threshold: float = 1.0
 
 
@@ -55,6 +57,8 @@ class OpenCampaign:
     def __call__(self, command: OpenCampaignCommand) -> EvaluationCampaign:
         campaign = EvaluationCampaign(
             id=new_id(),
+            name=command.name,
+            description=command.description,
             instrument_version_id=command.instrument_version_id,
             required_evaluations_per_content=command.required_evaluations_per_content,
             content_ids=list(command.content_ids),
@@ -64,6 +68,38 @@ class OpenCampaign:
 
         self._campaigns.add(campaign)
         self._publisher.publish(events.campaign_opened(campaign))
+        self._uow.commit()
+        return campaign
+
+
+@dataclass(frozen=True)
+class RenameCampaignCommand:
+    campaign_id: UUID
+    name: str
+    description: str | None = None
+
+
+class RenameCampaign:
+    """Replaces the label whole, in any status — a name binds nothing (ADR-0055)."""
+
+    def __init__(
+        self,
+        campaigns: CampaignRepositoryPort,
+        publisher: EventPublisherPort,
+        uow: UnitOfWorkPort,
+    ) -> None:
+        self._campaigns = campaigns
+        self._publisher = publisher
+        self._uow = uow
+
+    def __call__(self, command: RenameCampaignCommand) -> EvaluationCampaign:
+        campaign = self._campaigns.get(command.campaign_id)
+        if campaign is None:
+            raise CampaignNotFound(str(command.campaign_id))
+
+        campaign.rename(command.name, command.description)  # raises InvalidCampaign if blank
+        self._campaigns.update_label(campaign)
+        self._publisher.publish(events.campaign_renamed(campaign))
         self._uow.commit()
         return campaign
 
@@ -202,4 +238,6 @@ __all__ = [
     "OpenAssignment",
     "OpenCampaign",
     "OpenCampaignCommand",
+    "RenameCampaign",
+    "RenameCampaignCommand",
 ]

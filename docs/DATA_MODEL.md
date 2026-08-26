@@ -433,6 +433,8 @@ erDiagram
 
     campaigns {
         uuid id PK
+        text name
+        text description "nullable"
         text instrument_version_id
         int required_evaluations_per_content
         numeric golden_coverage_threshold

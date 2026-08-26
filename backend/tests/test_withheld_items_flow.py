@@ -96,6 +96,7 @@ def assignment(admin, evaluator, profiled_v1_course, cleanup):
     campaign = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Withheld items campaign",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [profiled_v1_course],

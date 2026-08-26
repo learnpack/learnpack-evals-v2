@@ -4,6 +4,8 @@
 populate its campaign list and its assign picker. Both require the admin role.
 """
 
+import uuid
+
 import pytest
 
 RUBRIC = "learnpack-pedagogical-v2"
@@ -52,6 +54,7 @@ def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, uniqu
     created = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Campaign in the admin list",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 2,
             "content_ids": [content],
@@ -63,6 +66,8 @@ def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, uniqu
     assert listing.status_code == 200
 
     row = next(c for c in listing.json() if c["campaign_id"] == created["campaign_id"])
+    assert row["name"] == "Campaign in the admin list"
+    assert row["description"] is None
     assert row["instrument_version_id"] == RUBRIC
     assert row["required_evaluations_per_content"] == 2
     assert row["content_ids"] == [content]
@@ -74,10 +79,86 @@ def test_list_campaigns_requires_admin(evaluator):
     assert client.get("/admin/campaigns").status_code == 403
 
 
+# --------------------------------------------------------------------- renaming (ADR-0055)
+
+
+@pytest.fixture
+def campaign(admin, cleanup, content):
+    """An open campaign, named at birth."""
+    body = admin.post(
+        "/admin/campaigns",
+        json={
+            "name": "First round",
+            "description": "The courses of the first round",
+            "instrument_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "content_ids": [content],
+        },
+    ).json()
+    cleanup["campaigns"].append(body["campaign_id"])
+    return body["campaign_id"]
+
+
+def test_a_campaign_is_named_when_it_opens(admin, campaign):
+    row = next(c for c in admin.get("/admin/campaigns").json() if c["campaign_id"] == campaign)
+    assert row["name"] == "First round"
+    assert row["description"] == "The courses of the first round"
+
+
+def test_a_campaign_cannot_open_without_a_name(admin, content):
+    response = admin.post(
+        "/admin/campaigns",
+        json={
+            "name": "   ",
+            "instrument_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "content_ids": [content],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_renaming_replaces_the_label_and_survives_the_round_trip(admin, campaign):
+    renamed = admin.patch(f"/admin/campaigns/{campaign}", json={"name": "Second round"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Second round"
+    # The description is not carried over: the label is replaced whole (ADR-0055 §4).
+    assert renamed.json()["description"] is None
+
+    row = next(c for c in admin.get("/admin/campaigns").json() if c["campaign_id"] == campaign)
+    assert row["name"] == "Second round"
+    assert row["description"] is None
+
+
+def test_renaming_refuses_a_blank_name(admin, campaign):
+    assert admin.patch(f"/admin/campaigns/{campaign}", json={"name": "  "}).status_code == 422
+
+
+def test_renaming_an_unknown_campaign_is_404(admin):
+    response = admin.patch(f"/admin/campaigns/{uuid.uuid4()}", json={"name": "Nowhere"})
+    assert response.status_code == 404
+
+
+def test_renaming_requires_admin(evaluator, campaign):
+    client, _ = evaluator("ada")
+    assert client.patch(f"/admin/campaigns/{campaign}", json={"name": "Mine"}).status_code == 403
+
+
+def test_a_closed_campaign_still_renames(admin, campaign):
+    """The decision, at the edge: a label binds nothing, so closing does not protect it."""
+    assert admin.post(f"/admin/campaigns/{campaign}/close").status_code == 200
+
+    renamed = admin.patch(f"/admin/campaigns/{campaign}", json={"name": "Closed and renamed"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Closed and renamed"
+    assert renamed.json()["status"] == "closed"
+
+
 def test_list_campaign_assignments_returns_the_roster(admin, evaluator, cleanup, content):
     campaign = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Campaign with a roster",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [content],
@@ -101,8 +182,6 @@ def test_list_campaign_assignments_returns_the_roster(admin, evaluator, cleanup,
 
 
 def test_list_campaign_assignments_unknown_campaign_is_404(admin):
-    import uuid
-
     assert admin.get(f"/admin/campaigns/{uuid.uuid4()}/assignments").status_code == 404
 
 
