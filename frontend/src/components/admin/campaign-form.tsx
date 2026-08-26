@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, Spinner } from "@/components/ui/states";
 import { useContents, useCreateCampaign } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
@@ -15,6 +16,8 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
   const { data: contents } = useContents();
   const createCampaign = useCreateCampaign();
 
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [required, setRequired] = useState(2);
   const [contentIds, setContentIds] = useState<string[]>([]);
 
@@ -24,12 +27,18 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!name.trim()) {
+      toast.error("Give the campaign a name.");
+      return;
+    }
     if (contentIds.length === 0) {
       toast.error("Select at least one course.");
       return;
     }
     createCampaign.mutate(
       {
+        name: name.trim(),
+        description: description.trim() || null,
         instrument_version_id: INSTRUMENT_VERSION_ID,
         required_evaluations_per_content: required,
         content_ids: contentIds,
@@ -49,6 +58,30 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="campaign-name">Name</Label>
+        <Input
+          id="campaign-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="First reference campaign"
+          autoFocus
+        />
+        <p className="text-xs text-muted-foreground">
+          How this campaign is told apart from the next one. It can be corrected later.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="campaign-description">Description (optional)</Label>
+        <Textarea
+          id="campaign-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+        />
+      </div>
+
       <div className="space-y-1.5">
         <Label>Evaluations required per course</Label>
         <Input
