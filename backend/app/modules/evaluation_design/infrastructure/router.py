@@ -169,6 +169,69 @@ def list_reference_instruments(admin: AdminAssessor, uow: Uow) -> list[Reference
     return [ReferenceInstrumentResponse(**s.__dict__) for s in summaries]
 
 
+class RubricCriterionResponse(BaseModel):
+    """One item of the reference instrument, whole — including what the form cannot show."""
+
+    criterion_id: str
+    order: int
+    dimension: str
+    prompt: str
+    guidance: str
+    anchor_low: str
+    anchor_high: str
+    # The quality this item elicits. Singular in practice (one item per quality, ADR-0052),
+    # a list because the column is one.
+    qualities: list[str]
+    grounded_in: list[str]
+    eligible_sources: list[str]
+    # Whether a course declares this decides if the item is put to a human at all (ADR-0053).
+    required_data: list[str]
+
+
+class RubricDetailResponse(BaseModel):
+    """The reference instrument whole: what it asks, on what grounds, and how it is answered."""
+
+    rubric_version_id: str
+    rubric_id: str
+    version: str
+    name: str
+    status: str
+    scope: str | None
+    scale_min: int
+    scale_max: int
+    response_format: str
+    criteria: list[RubricCriterionResponse]
+
+
+@reference_router.get("/instruments/{rubric_version_id}", response_model=RubricDetailResponse)
+def get_reference_instrument(
+    rubric_version_id: str, admin: AdminAssessor, uow: Uow
+) -> RubricDetailResponse:
+    """One reference instrument, with every item — the console reads its content from here.
+
+    Not filtered by status, unlike the list: reading what a version asks is not the same act
+    as opening a campaign against it, and the reason to read a draft is precisely that it is
+    still one.
+    """
+    snapshot = queries.get_rubric(SqlAlchemyRubricRepository(uow.session), rubric_version_id)
+    if snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="reference instrument not found"
+        )
+    return RubricDetailResponse(
+        rubric_version_id=snapshot.rubric_version_id,
+        rubric_id=snapshot.rubric_id,
+        version=snapshot.version,
+        name=snapshot.name,
+        status=snapshot.status,
+        scope=snapshot.scope,
+        scale_min=snapshot.scale_min,
+        scale_max=snapshot.scale_max,
+        response_format=snapshot.response_format,
+        criteria=[RubricCriterionResponse(**c.__dict__) for c in snapshot.criteria],
+    )
+
+
 class QualityReferenceResponse(BaseModel):
     quality_id: str
     # Null for a quality that groups under no dimension — it rolls up nowhere.
