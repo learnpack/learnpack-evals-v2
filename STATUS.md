@@ -1847,7 +1847,7 @@ any future rename carries the same two.
 display names as free text in `criteria.qualities` and reference no quality id at all, which
 is why a rename could not reach it. It now stores **the quality id itself**, one per item,
 and the item's own `criterion_id` is that same id — so renaming a quality that the reference
-elicits means editing `docs/seed/rubric-v2.json` and re-seeding, and the join a validity
+elicits means editing `docs/seed/rubric-2.0.0.json` and re-seeding, and the join a validity
 coefficient is computed over breaks silently if it is not. Check `criteria.qualities` and
 `criteria.criterion_id` alongside the other three before deleting a row.
 
@@ -1907,6 +1907,21 @@ the data in the package).
 
 ## Verified
 
+- **The reference instrument was renamed in place, references and all** (suite + migration
+  0029 over a populated database). `learnpack-pedagogical-v2` is now
+  `learnpack-pedagogical-2.0.0`, named *LearnPack Pedagogical Rubric*; the twelve items, their
+  ids and their text are untouched. Applied to the local dev store, its three campaigns came
+  across, the twelve criteria followed their version, and an evaluator's pending assignments
+  still resolve their instrument. `downgrade` puts the old id back and was run to prove it.
+  The window closes with the first reference campaign: after one, the id is answered data.
+- **A campaign chooses the reference instrument it pins** (suite + by hand over real HTTP,
+  ADR-0056). `GET /admin/reference/instruments` lists the published versions with their scale,
+  response format and item count; a **draft** is absent from it and `POST /admin/campaigns`
+  refuses it with 422. Exercised against a **second** version, not imagined: a copy of the
+  seed with six items instead of twelve, installed with `seed --file`, appears beside the
+  seeded one, and a campaign opens against it. `INSTRUMENT_VERSION_ID` is gone, so the class
+  of failure that killed the form after ADR-0052 cannot recur. The form and the detail page
+  compile and build; **nobody has seen them render**.
 - **A campaign is named, and the name is correctable** (suite + by hand over real HTTP,
   ADR-0055). The aggregate refuses a blank name on the way in and on a rename, and a
   **closed** campaign still renames — the decision, pinned at its edge. Over the running
@@ -1918,7 +1933,7 @@ the data in the package).
   followed by two runs of `task seed:demo` leaves one campaign, *Local demo campaign*, which
   is now the key of that idempotence. The two console pages compile and build; **nobody has
   seen them render** — the standing frontend gap, named here rather than implied.
-- **Backend suite green: 1265 tests, 1 skipped** against local Postgres (~82 s). Requires
+- **Backend suite green: 1269 tests, 1 skipped** against local Postgres (~87 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -2139,12 +2154,12 @@ the data in the package).
   do it to themselves.** The console stays reachable, which is the property the guards
   protect, but the store ends with one admin and no screen that can change it. `set-role` is
   the exit.
-- **The campaign form hardcodes the instrument version it opens against.** There is no
-  picker: `INSTRUMENT_VERSION_ID` in the console names one published human instrument, so a
-  second one is unreachable from the form and a seed that installs a different id breaks
-  "New campaign" outright — which is what ADR-0052 did when it replaced v1 with v2, leaving
-  the constant behind and every attempt answering `rubric version must exist and be
-  published`. The id is corrected; the assumption underneath it is not.
+- **Campaigns pinned to different reference versions are not comparable, and nothing says
+  so.** The console now chooses the version each campaign pins (ADR-0056) instead of naming
+  one in a constant, so two campaigns can legitimately sit side by side over different
+  versions of the reference instrument — different items, possibly a different scale and
+  response format. No report refuses to put them in one table, and no screen warns anybody.
+  ADR-0056 §5 states the question and deliberately does not answer it.
 - **Deactivating somebody leaves their open assignments open.** They will never be answered
   and nothing says so on the campaign screen; cancelling them is a manual act in Campaigns.
 - **The last-admin guards are not covered by API tests.** They read the whole store, and the

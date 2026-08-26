@@ -21,6 +21,7 @@ import {
   useCloseCampaign,
   useContents,
   useGoldenStatus,
+  useReferenceInstruments,
 } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 
@@ -36,6 +37,7 @@ export default function CampaignDetailPage({
   const assignments = useCampaignAssignments(campaignId);
   const contents = useContents();
   const assessors = useAssessors();
+  const instruments = useReferenceInstruments();
   const cancelAssignment = useCancelAssignment(campaignId);
   const closeCampaign = useCloseCampaign();
   const [assigning, setAssigning] = useState(false);
@@ -47,6 +49,15 @@ export default function CampaignDetailPage({
     const map = new Map((contents.data ?? []).map((c) => [c.content_id, c.external_id]));
     return (id: string) => map.get(id) ?? id.slice(0, 8);
   }, [contents.data]);
+
+  // The raw id while the list loads, and for a version the list no longer offers — a draft,
+  // or one dropped from the store. A campaign keeps pinning it either way (ADR-0056).
+  const instrumentName = useMemo(() => {
+    const match = (instruments.data ?? []).find(
+      (i) => i.rubric_version_id === progress.data?.instrument_version_id,
+    );
+    return match ? `${match.name} · ${match.version}` : progress.data?.instrument_version_id;
+  }, [instruments.data, progress.data]);
 
   const assessorName = useMemo(() => {
     const map = new Map(
@@ -102,7 +113,7 @@ export default function CampaignDetailPage({
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{campaign.description}</p>
           ) : null}
           <p className="mt-1 text-sm text-muted-foreground">
-            Instrument {p.instrument_version_id} · quorum {p.required_evaluations_per_content} · coverage{" "}
+            {instrumentName} · quorum {p.required_evaluations_per_content} · coverage{" "}
             {Math.round(p.coverage * 100)}%
           </p>
         </div>

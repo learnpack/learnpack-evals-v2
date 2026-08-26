@@ -80,7 +80,7 @@ Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 seri
 the current design and its code plan) · `research/`. See `design/README.md`.
 
 **Assets** (not documentation)
-- `seed/rubric-v2.json` + `seed/pedagogical-reference.yaml` — the human reference instrument
+- `seed/rubric-2.0.0.json` + `seed/pedagogical-reference.yaml` — the human reference instrument
   and the reference data; consumed by `app.cli seed`.
 - `seed/instruments/*.yaml` — authored instrument drafts; consumed by
   `app.cli import-instrument` (and by `seed-demo` in local mode).

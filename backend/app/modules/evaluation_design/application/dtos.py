@@ -3,7 +3,7 @@
 `RubricSnapshot` is what Evaluation and the evaluator UI consume. A published rubric version
 is immutable and locked, so a snapshot is safe to hand out as-is.
 
-Read-only module: the MVP seeds `LearnPack Pedagogical Reference v2` straight to `published`
+Read-only module: the MVP seeds `LearnPack Pedagogical Rubric` straight to `published`
 (08-code.md §9). Authoring commands — and the rich `Rubric` aggregate that guards their
 invariants — are `[futuro]`.
 """
@@ -100,6 +100,25 @@ class DataRequirementDTO:
     aliases: list[str]
     value_domain: dict[str, Any]  # mandatory since ADR-0020
     grounded_in: list[str]
+
+
+@dataclass(frozen=True)
+class RubricSummaryDTO:
+    """One published reference instrument version, as a chooser needs it (ADR-0056 §4).
+
+    Deliberately not a `RubricSnapshot`: what tells two versions apart is their identity,
+    their scale and how many items they ask, not the text of every item.
+    """
+
+    rubric_version_id: str
+    rubric_id: str
+    version: str
+    name: str
+    scope: str | None
+    scale_min: int
+    scale_max: int
+    response_format: str
+    criterion_count: int
 
 
 @dataclass(frozen=True)
