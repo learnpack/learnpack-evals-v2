@@ -1907,6 +1907,17 @@ the data in the package).
 
 ## Verified
 
+- **The rubric's content is on a screen, and the preview is the evaluator's own form.**
+  `GET /admin/reference/instruments/{id}` returns the whole snapshot — scope, scale, and each
+  item with the quality it elicits, what grounds it and the datum it needs — pinned by the
+  suite over the seeded rubric, including a 404, a 403, and a draft that reads even though the
+  list does not offer it. The preview is `ScoreForm` itself, not a copy: its props are a
+  discriminated union, and a preview passed `onSubmit` **fails to compile** (checked by
+  compiling one on purpose). It renders in a 460px column because that is the rail the
+  evaluator meets it in, not a full-width page. What the comparison already shows: the demo
+  assignment is served **8 items with 4 withheld**, against the preview's 12 — which is why
+  the preview says every item is shown and a real assignment may hide some. The two pages
+  compile and build; **nobody has seen them render** — the browser was not available.
 - **The reference instrument was renamed in place, references and all** (suite + migration
   0029 over a populated database). `learnpack-pedagogical-v2` is now
   `learnpack-pedagogical-2.0.0`, named *LearnPack Pedagogical Rubric*; the twelve items, their
@@ -1933,7 +1944,7 @@ the data in the package).
   followed by two runs of `task seed:demo` leaves one campaign, *Local demo campaign*, which
   is now the key of that idempotence. The two console pages compile and build; **nobody has
   seen them render** — the standing frontend gap, named here rather than implied.
-- **Backend suite green: 1269 tests, 1 skipped** against local Postgres (~87 s). Requires
+- **Backend suite green: 1273 tests, 1 skipped** against local Postgres (~87 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -2154,6 +2165,12 @@ the data in the package).
   do it to themselves.** The console stays reachable, which is the property the guards
   protect, but the store ends with one admin and no screen that can change it. `set-role` is
   the exit.
+- **A draft rubric version is readable but not discoverable.** `/admin/rubrics` lists the
+  published versions — it reuses the endpoint ADR-0056 defined as *what a campaign may pin* —
+  while the detail endpoint serves any id, draft included. So a draft can be read by typing
+  its URL and by no other route. It costs nothing today, because the only thing that writes
+  `rubric_versions` is the seed file and its status is `published`; it becomes a real gap the
+  moment anything authors a draft.
 - **Campaigns pinned to different reference versions are not comparable, and nothing says
   so.** The console now chooses the version each campaign pins (ADR-0056) instead of naming
   one in a constant, so two campaigns can legitimately sit side by side over different
