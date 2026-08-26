@@ -5,6 +5,7 @@ will react to) and the read side — `get_profile` returns the self-contained, c
 snapshot (ADR-0009), `get_capabilities` the supply side of the demand/supply matching.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Annotated, Any
 from uuid import UUID
@@ -80,6 +81,12 @@ class ContentProfilingQueries:
     def get_declared_data(self, content_id: UUID) -> dict[str, str]:
         """`{data_requirement_id: provenance}` over the most recent **ok** profile, or {}."""
         return _queries.get_declared_data(self._profiles, content_id)
+
+    def get_declared_values(
+        self, content_id: UUID, requirement_ids: Collection[str]
+    ) -> dict[str, Any]:
+        """What the content declares for those ids, readable as prose (ADR-0057)."""
+        return _queries.get_declared_values(self._profiles, content_id, requirement_ids)
 
     def list_profiles(self) -> list[ContentProfileSnapshot]:
         return _queries.list_profiles(self._profiles)

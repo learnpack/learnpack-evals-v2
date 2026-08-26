@@ -16,10 +16,26 @@ from conftest import fixture_artifact_rows
 from sqlalchemy import text
 from test_content_profiling_commands import profile_content_use_case
 
-from app.modules.content_profiling.application.profile_content import ProfileContentCommand
+from app.modules.content_profiling.application.profile_content import (
+    ProfileContent,
+    ProfileContentCommand,
+)
+from app.modules.content_profiling.infrastructure.adapters import ADAPTERS_BY_FORMAT
+from app.modules.content_profiling.infrastructure.fetchers import FilesystemPackageFetcher
+from app.modules.content_profiling.infrastructure.gateways import (
+    DesignNamespaceGateway,
+    RegistryContentGateway,
+)
+from app.modules.content_profiling.infrastructure.repository import (
+    SqlAlchemyProfileRepository,
+)
 from app.modules.evaluand_registry.application.register_content_version import (
     RegisterContentVersion,
     RegisterContentVersionCommand,
+)
+from app.modules.evaluand_registry.infrastructure.package_discovery import (
+    FilesystemPackageRoot,
+    LearnpackV2Discovery,
 )
 from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyBriefRepository,
@@ -33,6 +49,7 @@ from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRep
 from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
+from tests.format_cases import FORMAT_CASES
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE = "introduction-to-generative-ai"
@@ -274,3 +291,131 @@ def test_a_derived_score_can_carry_the_bottom_of_the_scale(requires_db, cleanup,
         "objectives-observable": "1:true",
         "coherence-reinforcement": "4:false",
     }
+
+
+# --------------------------------------------------------------------- ADR-0057
+
+
+@pytest.fixture
+def profiled_v2_course(cleanup, unique, namespace):
+    """A format that DOES declare objectives and audience — the other branch of ADR-0053,
+    and the only one where there is anything to show the rater."""
+    case = FORMAT_CASES["LearnpackV2"]
+    discovered = LearnpackV2Discovery().discover(
+        FilesystemPackageRoot(case.fixture_dir, locator_base=case.fixture_dir.name)
+    )
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        content = RegisterContentVersion(
+            contents=SqlAlchemyContentRepository(session),
+            briefs=SqlAlchemyBriefRepository(session),
+            generators=SqlAlchemyGeneratorVersionRepository(session),
+            publisher=uow.events,
+            uow=uow,
+        )(
+            RegisterContentVersionCommand(
+                package_format="LearnpackV2",
+                external_id=f"declared-{unique}",
+                consumable_url=f"https://declared-{unique}.learn-pack.com/",
+                artifacts=[
+                    {"kind": a.kind, "locator": a.locator, "format": a.format}
+                    for a in discovered.artifacts
+                ],
+                generator_version_id=None,
+            )
+        )
+    cleanup["contents"].append(content.id)
+    with SessionLocal() as session:
+        uow = UnitOfWork(session)
+        ProfileContent(
+            profiles=SqlAlchemyProfileRepository(session),
+            contents=RegistryContentGateway(session),
+            namespace=DesignNamespaceGateway(session),
+            adapters=ADAPTERS_BY_FORMAT,
+            fetcher=FilesystemPackageFetcher(case.fixture_dir.parent),
+            publisher=uow.events,
+            uow=uow,
+        )(ProfileContentCommand(content_id=content.id))
+    return str(content.id)
+
+
+@pytest.fixture
+def declared_assignment(admin, evaluator, profiled_v2_course, cleanup):
+    _, assessor_id = evaluator
+    campaign = admin.post(
+        "/admin/campaigns",
+        json={
+            "name": "Declared data campaign",
+            "instrument_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "content_ids": [profiled_v2_course],
+        },
+    ).json()
+    cleanup["campaigns"].append(campaign["campaign_id"])
+    created = admin.post(
+        f"/admin/campaigns/{campaign['campaign_id']}/assignments",
+        json={"content_id": profiled_v2_course, "assessor_id": assessor_id},
+    )
+    assert created.status_code == 201, created.text
+    return created.json()["assignment_id"]
+
+
+def test_the_rater_is_shown_the_data_their_items_rest_on(evaluator, declared_assignment):
+    client, _ = evaluator
+
+    detail = client.get(f"/assignments/{declared_assignment}").json()
+
+    assert {c["criterion_id"] for c in detail["criteria"]} >= DECLARATION_ITEMS
+    assert detail["withheld_count"] == 0
+
+    # Ordered by the first asked item that rests on each, so the block reads in the order
+    # the form does: objectives (item 1) before audience (item 2).
+    assert [d["requirement_id"] for d in detail["declared"]] == [
+        "learning_objectives",
+        "target_audience",
+    ]
+    objectives, audience = detail["declared"]
+    assert isinstance(objectives["value"], list) and objectives["value"]
+    assert all(isinstance(statement, str) for statement in objectives["value"])
+    assert isinstance(audience["value"], str) and audience["value"]
+
+    # The screen marks the items that rest on a datum from what the item itself declares.
+    by_id = {c["criterion_id"]: c for c in detail["criteria"]}
+    assert by_id["objectives-observable"]["required_data"] == ["learning_objectives"]
+    assert by_id["progression-starting-point"]["required_data"] == ["target_audience"]
+    assert by_id["coherence-logical-sequence"]["required_data"] == []
+
+
+def test_nothing_is_shown_for_a_question_nobody_was_asked(evaluator, assignment):
+    """The V1 course: those four items are withheld, so there is no datum to show and no
+    orphan value on screen (ADR-0057 §2)."""
+    client, _ = evaluator
+
+    detail = client.get(f"/assignments/{assignment}").json()
+
+    assert detail["declared"] == []
+    assert all(c["required_data"] == [] for c in detail["criteria"])
+
+
+def test_a_value_the_screen_cannot_read_is_not_sent(
+    evaluator, declared_assignment, profiled_v2_course, session
+):
+    """The contract is `str | list[str]` (ADR-0057 §4). A shape nobody designed for a reader
+    is left out — and its item is still asked, because the course did declare it."""
+    session.execute(
+        text(
+            """
+            UPDATE profile_entries SET value = '{"objectives": []}'::jsonb
+             WHERE data_requirement_id = 'learning_objectives'
+               AND profile_id IN (SELECT id FROM content_profiles WHERE content_id = :c)
+            """
+        ),
+        {"c": profiled_v2_course},
+    )
+    session.commit()
+
+    client, _ = evaluator
+    detail = client.get(f"/assignments/{declared_assignment}").json()
+
+    assert [d["requirement_id"] for d in detail["declared"]] == ["target_audience"]
+    assert "objectives-observable" in {c["criterion_id"] for c in detail["criteria"]}

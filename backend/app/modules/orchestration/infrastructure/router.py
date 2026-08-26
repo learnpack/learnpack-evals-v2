@@ -120,6 +120,20 @@ class CriterionResponse(BaseModel):
     guidance: str
     anchor_low: str
     anchor_high: str
+    # The data this item rests on. Non-empty means the course declared it and the screen is
+    # showing it, so the item can point at where (ADR-0057 §1).
+    required_data: list[str]
+
+
+class DeclaredDatumResponse(BaseModel):
+    """What the course says about itself, for a datum an asked item rests on (ADR-0057).
+
+    `str | list[str]` is the contract, not a convenience: a value of any other shape is left
+    out upstream rather than handed to a screen that would have to guess how to read it.
+    """
+
+    requirement_id: str
+    value: str | list[str]
 
 
 class AssignmentDetailResponse(BaseModel):
@@ -143,6 +157,9 @@ class AssignmentDetailResponse(BaseModel):
     # a course, and the count is not a property of one.
     withheld_count: int
     criteria: list[CriterionResponse]
+    # Only the data the asked items rest on, and only where the course declares it — never
+    # the profile at large, which also holds the whole course text (ADR-0057 §1).
+    declared: list[DeclaredDatumResponse]
 
 
 # --------------------------------------------------------------------------- helpers
@@ -411,6 +428,14 @@ def assignment_detail(
     # (ADR-0053). No profile, or one that failed, settles nothing — the mapping stays empty
     # and every item is asked, because an unknown fact is not an absent datum.
     declared = profiles.get_declared_data(assignment.content_id)
+    asked = rubric.asked(declared)
+
+    # Asked implies declared wherever a profile exists (ADR-0057 §2): withholding is what an
+    # absent or inexpressible datum produces, so nothing here can come back empty-handed for
+    # an item that IS being asked. Ordered by the first item that rests on each, so the block
+    # the rater reads runs in the same order as the form.
+    wanted = list(dict.fromkeys(datum for c in asked for datum in c.required_data))
+    values = profiles.get_declared_values(assignment.content_id, wanted)
 
     return AssignmentDetailResponse(
         assignment_id=assignment.assignment_id,
@@ -432,8 +457,14 @@ def assignment_detail(
                 guidance=c.guidance,
                 anchor_low=c.anchor_low,
                 anchor_high=c.anchor_high,
+                required_data=list(c.required_data),
             )
-            for c in rubric.asked(declared)
+            for c in asked
+        ],
+        declared=[
+            DeclaredDatumResponse(requirement_id=datum, value=values[datum])
+            for datum in wanted
+            if datum in values
         ],
     )
 

@@ -1,6 +1,7 @@
 """Read-only queries of Content Profiling (13-code-qa §3.4: getProfile, getCapabilities)."""
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
+from typing import Any
 from uuid import UUID
 
 from app.modules.content_profiling.application.dtos import (
@@ -71,6 +72,39 @@ def get_declared_data(profiles: ProfileRepositoryPort, content_id: UUID) -> dict
     if profile is None or profile.status != "ok":
         return {}
     return {entry.data_requirement_id: entry.provenance for entry in profile.entries}
+
+
+def get_declared_values(
+    profiles: ProfileRepositoryPort, content_id: UUID, requirement_ids: Collection[str]
+) -> dict[str, Any]:
+    """The declared values of the ids asked for, over the same profile `get_declared_data`
+    reads — so the two can never disagree about which profile is in play (ADR-0057).
+
+    Only what a person can read: a string or a list of strings. Anything else is omitted
+    rather than handed on for a screen to guess at (ADR-0057 §4). An `absent` entry yields
+    nothing either, which is the same statement its provenance already makes.
+
+    The ids are a parameter and not a filter applied afterwards, because `lesson_bodies`
+    carries the whole course text and has no business crossing this boundary to be dropped.
+    """
+    profile = profiles.get(content_id, None)
+    if profile is None or profile.status != "ok":
+        return {}
+    wanted = set(requirement_ids)
+    return {
+        entry.data_requirement_id: entry.value
+        for entry in profile.entries
+        if entry.data_requirement_id in wanted
+        and entry.provenance != "absent"
+        and _is_readable(entry.value)
+    }
+
+
+def _is_readable(value: Any) -> bool:
+    """A shape a rater can be shown as prose: one statement, or a list of them."""
+    if isinstance(value, str):
+        return True
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 def list_profiles(profiles: ProfileRepositoryPort) -> list[ContentProfileSnapshot]:
