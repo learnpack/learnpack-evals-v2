@@ -1847,7 +1847,7 @@ any future rename carries the same two.
 display names as free text in `criteria.qualities` and reference no quality id at all, which
 is why a rename could not reach it. It now stores **the quality id itself**, one per item,
 and the item's own `criterion_id` is that same id — so renaming a quality that the reference
-elicits means editing `docs/seed/rubric-v2.json` and re-seeding, and the join a validity
+elicits means editing `docs/seed/rubric-2.0.0.json` and re-seeding, and the join a validity
 coefficient is computed over breaks silently if it is not. Check `criteria.qualities` and
 `criteria.criterion_id` alongside the other three before deleting a row.
 
@@ -1907,6 +1907,13 @@ the data in the package).
 
 ## Verified
 
+- **The reference instrument was renamed in place, references and all** (suite + migration
+  0029 over a populated database). `learnpack-pedagogical-v2` is now
+  `learnpack-pedagogical-2.0.0`, named *LearnPack Pedagogical Rubric*; the twelve items, their
+  ids and their text are untouched. Applied to the local dev store, its three campaigns came
+  across, the twelve criteria followed their version, and an evaluator's pending assignments
+  still resolve their instrument. `downgrade` puts the old id back and was run to prove it.
+  The window closes with the first reference campaign: after one, the id is answered data.
 - **A campaign chooses the reference instrument it pins** (suite + by hand over real HTTP,
   ADR-0056). `GET /admin/reference/instruments` lists the published versions with their scale,
   response format and item count; a **draft** is absent from it and `POST /admin/campaigns`

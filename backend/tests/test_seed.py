@@ -20,7 +20,7 @@ from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRep
 from app.platform.db import SessionLocal
 from app.shared.domain.ids import new_id
 
-RUBRIC_VERSION_ID = "learnpack-pedagogical-v2"
+RUBRIC_VERSION_ID = "learnpack-pedagogical-2.0.0"
 
 
 def test_seed_is_idempotent(requires_db):

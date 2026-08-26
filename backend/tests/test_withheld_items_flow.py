@@ -34,7 +34,7 @@ from app.platform.db import SessionLocal
 from app.platform.uow import UnitOfWork
 from app.shared.domain.ids import new_id
 
-RUBRIC = "learnpack-pedagogical-v2"
+RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE = "introduction-to-generative-ai"
 
 # The four items that rest on a declaration, in the order the instrument lists them.

@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from app.platform.db import SessionLocal
 
-SEEDED = "learnpack-pedagogical-v2"
+SEEDED = "learnpack-pedagogical-2.0.0"
 ENDPOINT = "/admin/reference/instruments"
 
 

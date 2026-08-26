@@ -29,7 +29,7 @@ def make_campaign(**overrides) -> EvaluationCampaign:
     base = {
         "id": new_id(),
         "name": "A campaign",
-        "instrument_version_id": "learnpack-pedagogical-v2",
+        "instrument_version_id": "learnpack-pedagogical-2.0.0",
         "required_evaluations_per_content": 2,
         "content_ids": [new_id()],
     }

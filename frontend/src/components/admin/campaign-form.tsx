@@ -113,7 +113,7 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
             <option value="">Choose an instrument…</option>
             {instruments.map((i) => (
               <option key={i.rubric_version_id} value={i.rubric_version_id}>
-                {i.name} · v{i.version} · {i.criterion_count} items
+                {i.name} · {i.version} · {i.criterion_count} items
               </option>
             ))}
           </Select>

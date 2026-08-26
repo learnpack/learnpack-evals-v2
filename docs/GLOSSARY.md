@@ -119,7 +119,7 @@
   reference instrument of calibration — ADR-0015, ADR-0052.)
 - **Rubric** (aka `EvaluationInstrument`) — an ordered, **versioned** set of criteria.
   Interchangeable unit. The human reference instrument is
-  `LearnPack Pedagogical Reference v2` (12 items).
+  `LearnPack Pedagogical Rubric` (`learnpack-pedagogical-2.0.0`, 12 items).
   Genesis (ADR-0012): an instrument is born from **purpose + content type** (designed-for);
   frameworks **ground** (warrant), they do not originate. Reusing it on another type = a
   deliberate act, re-binding the task model.

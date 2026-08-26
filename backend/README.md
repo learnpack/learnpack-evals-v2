@@ -62,7 +62,7 @@ uv run uvicorn app.main:app --reload
 ```
 
 `seed` installs the two things nothing in the app can author, both idempotent: the **human
-reference instrument** (`../docs/seed/rubric-v2.json` — one Likert statement per quality, which
+reference instrument** (`../docs/seed/rubric-2.0.0.json` — one Likert statement per quality, which
 is how a panel of experts is asked, ADR-0052) and the **pedagogical reference data** — the
 qualities, dimensions and frameworks an instrument cites, without which publishing one refuses.
 

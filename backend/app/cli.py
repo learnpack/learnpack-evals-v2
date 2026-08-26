@@ -10,7 +10,7 @@ show-report | attribute-generator | register-generator | register-generator-vers
 The MVP has no rubric authoring UI: the human reference instrument is seeded straight
 into a `published`, locked version (07-define.md, "Realización MVP"; 08-code.md §9).
 
-`docs/seed/rubric-v2.json` stays the single source of truth — it is not duplicated inside
+`docs/seed/rubric-2.0.0.json` stays the single source of truth — it is not duplicated inside
 /backend. The seed therefore runs locally against Neon, never from the Render container.
 """
 
@@ -279,7 +279,7 @@ from app.shared.domain.ids import new_id
 from app.shared.infrastructure.fetchers import FetchError, FilesystemFetcher, HttpFetcher
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-v2.json"
+DEFAULT_SEED_FILE = REPO_ROOT / "docs" / "seed" / "rubric-2.0.0.json"
 DEFAULT_REFERENCE_FILE = REPO_ROOT / "docs" / "seed" / "pedagogical-reference.yaml"
 
 
@@ -3438,7 +3438,7 @@ def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
 # It goes through the real use cases instead of raw INSERTs, so the events are published and
 # the policies run exactly as they would in production.
 
-DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v2"
+DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-2.0.0"
 DEMO_CAMPAIGN_NAME = "Local demo campaign"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 

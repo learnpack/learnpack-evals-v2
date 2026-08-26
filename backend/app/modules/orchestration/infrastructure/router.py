@@ -58,7 +58,7 @@ evaluator_router = APIRouter(tags=["orchestration"])
 class OpenCampaignRequest(BaseModel):
     name: str = Field(min_length=1, examples=["First reference campaign"])
     description: str | None = None
-    instrument_version_id: str = Field(examples=["learnpack-pedagogical-v2"])
+    instrument_version_id: str = Field(examples=["learnpack-pedagogical-2.0.0"])
     required_evaluations_per_content: int = Field(ge=1, examples=[2])
     content_ids: list[UUID]
     golden_coverage_threshold: float = 1.0

@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.modules.orchestration.infrastructure.policies import on_evaluation_submitted
 from app.shared.domain.events import DomainEvent
 
-RUBRIC = "learnpack-pedagogical-v2"
+RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
 CRITERIA = [
     "objectives-observable",

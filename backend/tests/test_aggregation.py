@@ -24,7 +24,7 @@ class FakeScore:
 
 
 CONTENT = uuid4()
-RUBRIC = "learnpack-pedagogical-v2"
+RUBRIC = "learnpack-pedagogical-2.0.0"
 
 
 @dataclass

@@ -56,7 +56,7 @@ export default function CampaignDetailPage({
     const match = (instruments.data ?? []).find(
       (i) => i.rubric_version_id === progress.data?.instrument_version_id,
     );
-    return match ? `${match.name} · v${match.version}` : progress.data?.instrument_version_id;
+    return match ? `${match.name} · ${match.version}` : progress.data?.instrument_version_id;
   }, [instruments.data, progress.data]);
 
   const assessorName = useMemo(() => {

@@ -2,7 +2,7 @@
 
 Hand-mapped Core statements keep the domain free of SQLAlchemy (ARCHITECTURE.md §1).
 `SqlAlchemyRubricRepository` reads the human reference instrument, seeded from
-`docs/seed/rubric-v2.json`.
+`docs/seed/rubric-2.0.0.json`.
 """
 
 import json

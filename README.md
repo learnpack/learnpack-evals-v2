@@ -118,7 +118,7 @@ Switch users from the header menu. To wipe just that demo dataset and reload it:
 - `docs/seed/workbench.yaml` declares what a local workbench is built from — which instrument
   versions are published, which extractions are accepted, which generator lineages exist
   (ADR-0045). Edit it and re-run `uv run python -m app.cli seed-workbench` (idempotent).
-- `docs/seed/rubric-v2.json` + `docs/seed/pedagogical-reference.yaml` are the source of truth
+- `docs/seed/rubric-2.0.0.json` + `docs/seed/pedagogical-reference.yaml` are the source of truth
   for the human reference instrument and the reference data; edit and re-run
   `uv run python -m app.cli seed` (in-place, idempotent).
 - `docs/seed/instruments/*.yaml` are authored instrument drafts;
