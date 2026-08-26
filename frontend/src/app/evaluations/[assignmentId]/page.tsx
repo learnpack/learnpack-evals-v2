@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ConsumeContent } from "@/components/evaluator/consume-content";
+import { DeclaredData } from "@/components/evaluator/declared-data";
 import { ScoreForm } from "@/components/evaluator/score-form";
 import { useAssignment, useOpenAssignment, useSubmitEvaluation } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
@@ -141,6 +142,9 @@ export default function AssignmentPage({
 
               {!focus ? (
                 <div className="space-y-4">
+                  {/* Above the form, because it is read once as context before answering —
+                      the items that rest on it carry a pointer back up (ADR-0057). */}
+                  <DeclaredData declared={assignment.declared} />
                   <CollapsibleSection
                     title="Score"
                     badge={`${assignment.criteria.length} items`}

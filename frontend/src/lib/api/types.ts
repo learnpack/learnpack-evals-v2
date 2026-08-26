@@ -236,6 +236,15 @@ export interface Criterion {
   guidance: string;
   anchor_low: string;
   anchor_high: string;
+  /** The data this item rests on. Non-empty means the screen is showing it (ADR-0057). */
+  required_data: string[];
+}
+
+/** What the course declares for a datum an asked item rests on (ADR-0057). */
+export interface DeclaredDatum {
+  requirement_id: string;
+  /** Only shapes a person can read: one statement, or a list of them. */
+  value: string | string[];
 }
 
 export interface AssignmentDetail {
@@ -253,6 +262,8 @@ export interface AssignmentDetail {
    *  (ADR-0053). `criteria` already excludes them; this is only so the screen can say so. */
   withheld_count: number;
   criteria: Criterion[];
+  /** Only the data the asked items rest on, where the course declares it (ADR-0057). */
+  declared: DeclaredDatum[];
 }
 
 export interface ScoreInput {
@@ -304,7 +315,6 @@ export interface RubricCriterion extends Criterion {
   qualities: string[];
   grounded_in: string[];
   eligible_sources: string[];
-  required_data: string[];
 }
 
 /** `GET /admin/reference/instruments/{id}` — what the rubric asks and on what grounds. */

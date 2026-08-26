@@ -188,7 +188,9 @@ function PreviewView({
         </p>
         <p>
           Every item is shown. A real assignment hides the ones the course it is about declares
-          nothing for, so an expert may see fewer than these {items.length}.
+          nothing for, so an expert may see fewer than these {items.length} — and, for the ones
+          that rest on a declaration, it shows them what the course declares. There is no course
+          here, so neither happens.
         </p>
       </div>
 
