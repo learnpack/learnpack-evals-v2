@@ -181,9 +181,9 @@ def test_a_refusal_leaves_everything_in_place(register_content, session, cleanup
     cleanup["campaigns"].append(campaign_id)
     session.execute(
         text(
-            "INSERT INTO campaigns (id, instrument_version_id,"
+            "INSERT INTO campaigns (id, name, instrument_version_id,"
             " required_evaluations_per_content)"
-            " VALUES (:id, 'learnpack-course-qa-v1', 1)"
+            " VALUES (:id, 'Campaign holding a course', 'learnpack-course-qa-v1', 1)"
         ),
         {"id": campaign_id},
     )

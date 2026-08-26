@@ -3439,6 +3439,7 @@ def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
 # the policies run exactly as they would in production.
 
 DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-v2"
+DEMO_CAMPAIGN_NAME = "Local demo campaign"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 
 # (email, display name, role). The credential mirrors what auth_local builds from the header,
@@ -3609,22 +3610,22 @@ def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
 
 
 def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
-    """One open campaign over the demo courses. Reuses the existing one if it is still open."""
-    wanted = set(content_ids)
+    """One open campaign over the demo courses. Reuses the existing one if it is still open.
 
+    The name is the key of that reuse (ADR-0055): *the same campaign* is a truer statement
+    about a name somebody chose than about an instrument plus a set of contents, which two
+    unrelated campaigns can share.
+    """
     with SessionLocal() as session:
         campaigns = SqlAlchemyCampaignRepository(session)
         for campaign in campaigns.list_all():
-            if (
-                campaign.status == "open"
-                and campaign.instrument_version_id == DEMO_INSTRUMENT_VERSION_ID
-                and wanted.issubset(set(campaign.content_ids))
-            ):
+            if campaign.name == DEMO_CAMPAIGN_NAME and campaign.status == "open":
                 return campaign.id
 
         uow = UnitOfWork(session)
         campaign = OpenCampaign(campaigns, uow.events, uow)(
             OpenCampaignCommand(
+                name=DEMO_CAMPAIGN_NAME,
                 instrument_version_id=DEMO_INSTRUMENT_VERSION_ID,
                 required_evaluations_per_content=DEMO_REQUIRED_EVALUATIONS,
                 content_ids=content_ids,

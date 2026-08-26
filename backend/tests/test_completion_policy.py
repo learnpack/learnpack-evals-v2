@@ -57,6 +57,7 @@ def test_replaying_the_event_is_idempotent(admin, as_user, cleanup, unique, sess
     campaign_id = admin.post(
         "/admin/campaigns",
         json={
+            "name": "Completion policy campaign",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
             "content_ids": [content_id],

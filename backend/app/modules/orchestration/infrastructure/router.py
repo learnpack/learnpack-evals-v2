@@ -31,6 +31,8 @@ from app.modules.orchestration.application.commands import (
     OpenAssignment,
     OpenCampaign,
     OpenCampaignCommand,
+    RenameCampaign,
+    RenameCampaignCommand,
 )
 from app.modules.orchestration.domain.assignment import InvalidAssignmentTransition
 from app.modules.orchestration.infrastructure.repository import (
@@ -54,10 +56,20 @@ evaluator_router = APIRouter(tags=["orchestration"])
 
 
 class OpenCampaignRequest(BaseModel):
+    name: str = Field(min_length=1, examples=["First reference campaign"])
+    description: str | None = None
     instrument_version_id: str = Field(examples=["learnpack-pedagogical-v2"])
     required_evaluations_per_content: int = Field(ge=1, examples=[2])
     content_ids: list[UUID]
     golden_coverage_threshold: float = 1.0
+
+
+class RenameCampaignRequest(BaseModel):
+    """The label, replaced whole (ADR-0055): the console edits both fields in one dialog, so
+    an omitted description clears it rather than meaning anything subtler."""
+
+    name: str = Field(min_length=1, examples=["First reference campaign — round 2"])
+    description: str | None = None
 
 
 class AssignContentRequest(BaseModel):
@@ -67,6 +79,8 @@ class AssignContentRequest(BaseModel):
 
 class CampaignResponse(BaseModel):
     campaign_id: UUID
+    name: str
+    description: str | None
     instrument_version_id: str
     required_evaluations_per_content: int
     content_ids: list[UUID]
@@ -137,6 +151,8 @@ class AssignmentDetailResponse(BaseModel):
 def _campaign_response(campaign) -> CampaignResponse:  # noqa: ANN001 — domain aggregate
     return CampaignResponse(
         campaign_id=campaign.id,
+        name=campaign.name,
+        description=campaign.description,
         instrument_version_id=campaign.instrument_version_id,
         required_evaluations_per_content=campaign.required_evaluations_per_content,
         content_ids=campaign.content_ids,
@@ -184,12 +200,39 @@ def open_campaign(
     try:
         campaign = use_case(
             OpenCampaignCommand(
+                name=request.name,
+                description=request.description,
                 instrument_version_id=request.instrument_version_id,
                 required_evaluations_per_content=request.required_evaluations_per_content,
                 content_ids=request.content_ids,
                 golden_coverage_threshold=request.golden_coverage_threshold,
             )
         )
+    except InvalidCampaign as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return _campaign_response(campaign)
+
+
+@admin_router.patch("/campaigns/{campaign_id}", response_model=CampaignResponse)
+def rename_campaign(
+    campaign_id: UUID, request: RenameCampaignRequest, admin: AdminAssessor, uow: Uow
+) -> CampaignResponse:
+    """Correct the label, in any status — closed included (ADR-0055)."""
+    use_case = RenameCampaign(
+        campaigns=SqlAlchemyCampaignRepository(uow.session), publisher=uow.events, uow=uow
+    )
+    try:
+        campaign = use_case(
+            RenameCampaignCommand(
+                campaign_id=campaign_id, name=request.name, description=request.description
+            )
+        )
+    except CampaignNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found"
+        ) from exc
     except InvalidCampaign as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
