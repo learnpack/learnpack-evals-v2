@@ -2139,6 +2139,12 @@ the data in the package).
   do it to themselves.** The console stays reachable, which is the property the guards
   protect, but the store ends with one admin and no screen that can change it. `set-role` is
   the exit.
+- **The campaign form hardcodes the instrument version it opens against.** There is no
+  picker: `INSTRUMENT_VERSION_ID` in the console names one published human instrument, so a
+  second one is unreachable from the form and a seed that installs a different id breaks
+  "New campaign" outright — which is what ADR-0052 did when it replaced v1 with v2, leaving
+  the constant behind and every attempt answering `rubric version must exist and be
+  published`. The id is corrected; the assumption underneath it is not.
 - **Deactivating somebody leaves their open assignments open.** They will never be answered
   and nothing says so on the campaign screen; cancelling them is a manual act in Campaigns.
 - **The last-admin guards are not covered by API tests.** They read the whole store, and the
