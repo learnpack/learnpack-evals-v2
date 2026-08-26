@@ -5,7 +5,7 @@
   "status": "published",
   "locked": true,
   "responseFormat": "likert",
-  "scope": "The layer-1 human reference (ADR-0015): a panel of subject-matter experts judges qualities directly, by taking the course, outside instrument execution and without a profile. One item per Quality, so that each claim of an instrument can be correlated with the human score of its own quality (ADR-0015 §4, ADR-0026). Not subject to ADR-0010: this is another artifact, with other rules.",
+  "scope": "For a subject-matter expert judging a deployed LearnPack course by taking it as a learner would, end to end. What the course shows them is the whole of their evidence: they answer from the course itself, with no tooling and no extraction to lean on. Twelve statements, each about a single quality and chosen where validity is most at risk rather than sweeping every quality; each answered as agreement on the same five points. What it produces is the reference automated assessors are compared against — not a published verdict on a course, and not a score anyone reports.",
   "evaluatorMaterials": [
     "the deployed course, all lessons, taken as a learner would take it"
   ],
