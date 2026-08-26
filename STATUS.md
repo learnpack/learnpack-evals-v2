@@ -1907,6 +1907,17 @@ the data in the package).
 
 ## Verified
 
+- **The rater is served the data their items rest on** (suite + by hand over real HTTP,
+  ADR-0057). Pinned at all three branches: a **LearnpackV2** course registered and profiled
+  from the frozen fixture has its four declaration items asked and `declared` carrying the
+  objectives as a list and the audience as a statement, ordered by the first item that rests
+  on each; the **V1** demo course has those four withheld and `declared` empty — nothing on
+  screen for a question nobody was asked; and a value forced to a shape no screen can read is
+  omitted while its item stays asked. Checked end to end against the dev store: the V2 course
+  answers **12 asked, 0 withheld**, with three real objectives and "Complete beginners with no
+  prior web development experience" reaching the rater. Item 2 now asks what its quality asks
+  — the four items whose `required_data` is non-empty carry a pointer back to the block. The
+  panel compiles and builds; **nobody has seen it render**.
 - **The rubric's content is on a screen, and the preview is the evaluator's own form.**
   `GET /admin/reference/instruments/{id}` returns the whole snapshot — scope, scale, and each
   item with the quality it elicits, what grounds it and the datum it needs — pinned by the
@@ -1944,7 +1955,7 @@ the data in the package).
   followed by two runs of `task seed:demo` leaves one campaign, *Local demo campaign*, which
   is now the key of that idempotence. The two console pages compile and build; **nobody has
   seen them render** — the standing frontend gap, named here rather than implied.
-- **Backend suite green: 1273 tests, 1 skipped** against local Postgres (~87 s). Requires
+- **Backend suite green: 1276 tests, 1 skipped** against local Postgres (~90 s). Requires
   `docker compose up -d` in `backend/`; without the DB up, the suite errors, it does not skip.
 - **The frontend has no tests and no linter.** `npm run lint` is not runnable — ESLint is not
   installed and `next lint` drops into its interactive setup wizard — and CI runs `tsc
@@ -2165,6 +2176,12 @@ the data in the package).
   do it to themselves.** The console stays reachable, which is the property the guards
   protect, but the store ends with one admin and no screen that can change it. `set-role` is
   the exit.
+- **The declaration a rater reads may be one the learner never sees.** The profile reads the
+  package (ADR-0017) and the rater reads the deployment (ADR-0052 §6). ADR-0057 narrows the
+  gap — four items are answerable now — but it does not close it: a course whose package
+  declares nothing while its processed deliverable states its objectives is still withheld and
+  still derived, and a rater shown a declaration the pages never render is being told
+  something the learner is not. Both are deliberate; neither is visible on any screen.
 - **A draft rubric version is readable but not discoverable.** `/admin/rubrics` lists the
   published versions — it reuses the endpoint ADR-0056 defined as *what a campaign may pin* —
   while the detail endpoint serves any id, draft included. So a draft can be read by typing
