@@ -201,6 +201,15 @@ reloading the tab does stop it, which is what the browser's confirm is for — a
 lost when it does, because what was registered is in the course list and the same file run
 again asks for the rest.
 
+**The screen keeps what is running and asks for the rest again.** While a batch runs, what it
+was declared to be stops being a form and becomes a line above the table: a control nobody can
+use still asks to be used, and stating the fact once also answers *can I start another* by
+offering nothing to start. A batch that has **ended** is not work any more — arriving at the
+screen forgets it and offers a clean form, since the record that matters is `/admin/contents`
+and running the same file again reports the same thing. Before it is forgotten the refused
+URLs copy in one click, so leaving costs nothing. A declaration typed but never registered is
+forgotten too, which it would have to be anyway: no browser hands back a file it was given.
+
 ## Whether a course was read
 
 `/admin/contents` carries an **Extraction** column, because a course that was never read

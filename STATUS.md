@@ -166,6 +166,19 @@ it, guarded by a browser confirm and nothing else, because there is nothing to r
 course is its own transaction, the request in flight commits whether or not anyone is
 listening, and running the same file again finishes the rest.
 
+**And the screen keeps what is running and asks for the rest again**, which is the second half
+of holding the loop outside it. While a batch runs, what it was declared to be — generator,
+format, version, provenance, file — stops being a form and becomes a line above the table:
+those values became facts the moment Register was pressed, and a control nobody can use still
+asks to be used, so the two cards are stated rather than greyed out. It is also how the screen
+says an import is already running, by offering nothing to start. A batch that has **ended** is
+not work any more: arriving at the screen forgets it and offers a clean form, because the
+record that matters is `/admin/contents` and re-running the file reports the same verdicts.
+The one case that argues the other way — a handful of conflicts, a trip to `/admin/generators`
+to register the version they name, and back to no list of which ones — is answered by making
+the table cheap to abandon rather than by keeping it: while it is up, the refused URLs copy in
+one click.
+
 **ADR-0053 (an undeclared datum is not asked of a human) is decided and in, and it corrects
 ADR-0052 §7.** §7 said an item resting on a datum the course never declared is withheld and
 its value produced by the system — right — and then that the derived value *enters the fitness
@@ -1958,8 +1971,11 @@ the data in the package).
   and never during one, and a second run started over a live one is refused. The parser was
   run over the spreadsheet as it really arrives — a BOM glued to the first URL, a header row,
   notes in the columns beside it, a blank line, a row behind a `#`, a duplicate, a quoted
-  first field, CRLF — and over both refusals. The page compiles and builds; **nobody has seen
-  it render** — the browser was not available.
+  first field, CRLF — and over both refusals. **The screen has been used**: a real list
+  registered through it, and the inconsistency that use found — the batch surviving a trip to
+  another section while the declaration that named it did not — is what the receipt and the
+  forgetting answer. Those two compile and build; **nobody has seen them render** — the
+  browser was not available.
 - **The rater is served the data their items rest on** (suite + by hand over real HTTP,
   ADR-0057). Pinned at all three branches: a **LearnpackV2** course registered and profiled
   from the frozen fixture has its four declaration items asked and `declared` carrying the
