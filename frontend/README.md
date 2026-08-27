@@ -155,6 +155,16 @@ a round, and the **unknown generator** group can never be measured, since a roun
 versions it measures (ADR-0024, ADR-0044 §6). Its courses are attributed in the flat **List**
 view, which also keeps the format/generator/version filters.
 
+The List is where the two acts that change one course live, and they are not the same shape.
+A **generator** is attributed once and never replaced — a generator link is a discovery, so
+replacing one would overwrite history (ADR-0024). A **deployment** is declared from the URL
+column and may be **redeclared**, because it is a statement about the world right now: a
+course moves, and a declaration that could be made only once would leave a dead link with no
+repair (ADR-0054). Both states of the column carry the act — the void is filled from `none`,
+an existing URL is corrected from the pencil beside it — and declaring the URL a course
+already has is refused by the button rather than sent, since the server treats it as a no-op
+and writes nothing.
+
 ## Whether a course was read
 
 `/admin/contents` carries an **Extraction** column, because a course that was never read
@@ -263,7 +273,7 @@ they are invited and appear in the picker after their first sign-in.
    there is nothing to type by hand. With the extraction accepted, registering auto-profiles
    it, visible in `/admin/profiles`. A course registered from a local source declares no
    consumable URL (ADR-0028): it shows as *not deployed* and cannot be assigned for human
-   scoring, so use a real deployed course for this walkthrough.
+   scoring until one is declared from the URL column of the List view (ADR-0054).
 2. `/admin/campaigns`: new campaign (quorum, courses).
 3. Assign the course to two evaluators in `/admin/campaigns/[id]`.
 4. Log in as an evaluator → `/evaluations` → 3-step wizard → submit.
