@@ -36,6 +36,10 @@ export interface ImportRow {
   detail: string;
 }
 
+/** What a whole file declares about every course in it: one format, one course version, one
+ *  generator, one provenance — the same thing the CLI declares once for a whole run. */
+export type ImportDeclaration = Omit<RegisterBySourceRequest, "source_locator">;
+
 export interface ImportRun {
   rows: ImportRow[];
   /** Rows already decided — `rows.length` is the total. */
@@ -44,8 +48,12 @@ export interface ImportRun {
   /** True once the loop has ended, however it ended. */
   ended: boolean;
   stopped: boolean;
-  /** The format the whole lot declared; the summary reads extraction against it. */
-  format: string;
+  /** What this lot was declared to be, and the file its URLs came from. They live here and
+   *  not on the screen because they stop being form fields the moment the run starts: from
+   *  then on they are facts about the batch, and the batch outlives the page that started
+   *  it. `null` while there is no batch at all. */
+  declaration: ImportDeclaration | null;
+  fileName: string | null;
   /** Every course the lot touched, created or not: an already-registered course is as much
    *  part of the lot when the question is whether this lot came back readable. */
   contentIds: Uuid[];
@@ -60,7 +68,8 @@ const IDLE: ImportRun = {
   running: false,
   ended: false,
   stopped: false,
-  format: "",
+  declaration: null,
+  fileName: null,
   contentIds: [],
   created: 0,
   unchanged: 0,
@@ -123,9 +132,9 @@ function refusal(error: ApiError): string {
 
 export interface ImportRequest {
   urls: string[];
-  /** Declared once for the whole file, exactly as the CLI declares it once for the whole
-   *  run: one format, one version, one generator, one provenance. */
-  declaration: Omit<RegisterBySourceRequest, "source_locator">;
+  /** Named so the batch can say where its courses came from once the file input is gone. */
+  fileName: string;
+  declaration: ImportDeclaration;
   register: (request: RegisterBySourceRequest) => Promise<RegisterBySourceResponse>;
   /** Said when the loop ends, wherever the operator happens to be by then — which is why it
    *  is handed in here rather than watched for on the page. */
@@ -134,6 +143,7 @@ export interface ImportRequest {
 
 export async function start({
   urls,
+  fileName,
   declaration,
   register,
   announce,
@@ -143,7 +153,8 @@ export async function start({
   publish({
     ...IDLE,
     running: true,
-    format: declaration.package_format,
+    declaration,
+    fileName,
     rows: urls.map((url) => ({ url, status: "pending", detail: "" })),
   });
 
