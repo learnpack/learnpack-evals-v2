@@ -105,7 +105,12 @@ src/
     extraction.ts                  # whether a course was read, out of profiles+capabilities
     versions.ts                    # courses grouped by the version that made them, and
                                    # which versions a round has actually measured
-    constants.ts                   # rubric id, package format
+    generator-declaration.ts       # whether a package's own declaration agrees with the
+                                   # one the operator made for a batch
+    course-list.ts                 # the course URLs a .csv names, read as forgivingly as
+                                   # the CLI reads the same file
+    course-import-run.ts           # one import of a list of courses: the loop, held
+                                   # outside the page so leaving it does not blind the run
   middleware.ts                    # protects everything but /sign-in (Clerk or local cookie)
 ```
 
@@ -165,6 +170,46 @@ an existing URL is corrected from the pencil beside it — and declaring the URL
 already has is refused by the button rather than sent, since the server treats it as a no-op
 and writes nothing.
 
+## Registering a generation from a list of URLs
+
+*Add course* registers one, and a generation arrives as a list. `/admin/contents/import`
+takes a `.csv` of deployed course URLs and registers every row through the same act
+(ADR-0027): one format, one course version, one generator (ADR-0024) and one provenance
+declared for the whole file, with identity, artifact list and content hash discovered from
+each package.
+
+**Registering this way declares the deployment too.** For a LearnPack package the served root
+is the running course, so discovery supplies the consumable URL (ADR-0028) and the courses
+arrive assignable — which courses registered from a folder do not, since serving a package's
+bytes is not deploying it.
+
+**The file is read in the browser**, by the rules `register-package --from-csv` reads it
+with: the first column of each row and nothing else, with a header row, blank lines, rows
+behind a `#` and repeated URLs all skipped, and an entry that is not `http(s)` refused
+anywhere a header cannot be. Nothing is uploaded — what reaches the API is one ordinary
+registration per URL.
+
+**Everything that would fail identically for every row is refused once**, before the first
+course is fetched: the missing format, the undeclared generator, the file that names no
+course. After that a row that fails is one line of the table and the rest carry on, and
+running the same file again finishes it, because an unchanged package is a reported no-op.
+
+**The loop lives outside the page** (`lib/course-import-run.ts`). Each course is fetched,
+read and profiled inside its own request, so a long list takes minutes; navigating elsewhere
+in the console does not stop it, and coming back finds the same run still moving. Closing or
+reloading the tab does stop it, which is what the browser's confirm is for — and nothing is
+lost when it does, because what was registered is in the course list and the same file run
+again asks for the rest.
+
+**The screen keeps what is running and asks for the rest again.** While a batch runs, what it
+was declared to be stops being a form and becomes a line above the table: a control nobody can
+use still asks to be used, and stating the fact once also answers *can I start another* by
+offering nothing to start. A batch that has **ended** is not work any more — arriving at the
+screen forgets it and offers a clean form, since the record that matters is `/admin/contents`
+and running the same file again reports the same thing. Before it is forgotten the refused
+URLs copy in one click, so leaving costs nothing. A declaration typed but never registered is
+forgotten too, which it would have to be anyway: no browser hands back a file it was given.
+
 ## Whether a course was read
 
 `/admin/contents` carries an **Extraction** column, because a course that was never read
@@ -184,7 +229,8 @@ unaccepted format may well have been read. Acceptance only explains a *missing* 
 
 ## Declaring which generator version made something
 
-Every form that asks for one — *Add course*, *Import &amp; measure*, the attribution act — asks
+Every form that asks for one — *Add course*, *Import from a list*, *Import &amp; measure*, the
+attribution act — asks
 with the same control (`components/admin/generator-version-picker.tsx`): the lineage, then
 its version, with **New** beside it. Versions change often in early development, so
 registering one is done wherever it is needed rather than in a screen of its own.

@@ -334,6 +334,10 @@ path.
 behind a `#`, and duplicates. What is refused is an entry that is not `http(s)` — that is a course
 this path would register wrong, and a local one belongs to `--source` or `--all`.
 
+`/admin/contents/import` is the same act at the other door, reading the same file by the same
+rules — a list of URLs is what a console can take, since it needs nothing of the machine the API
+runs on. A tree of folders stays here.
+
 **The generator is declared once**, by id (`--generator <uuid|unknown>`) or by the friendlier pair
 `--generator-name <lineage> --generator-version <version>`. The lineage is **resolved, never
 created** (ADR-0031); the version **may** be created, but only with `--register-new-version`, and
@@ -388,8 +392,9 @@ logical course and the same string under two formats is two courses.
 never reads this field, so the evaluand keeps its identity, its `content_hash` and its profile —
 the only thing that changes is whether a human can be handed the course.
 
-The same act is `POST /admin/contents/{content_id}/consumable-url`. The console does not offer it
-yet: `/admin/contents` shows a declared URL as a link and nothing more, so the CLI is the way in.
+The same act is `POST /admin/contents/{content_id}/consumable-url`, which the URL column of
+`/admin/contents` performs in both of its states: the void is filled, and an existing URL is
+redeclared. The CLI is the way in for a spreadsheet of them.
 
 **Unlike `attribute-generator`, it may be repeated** (ADR-0054): an attribution is a discovery —
 the fact was always true — while a deployment is a statement about the world right now, and courses
