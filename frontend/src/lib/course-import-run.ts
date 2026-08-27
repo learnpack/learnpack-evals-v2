@@ -47,6 +47,9 @@ export interface ImportRun {
   running: boolean;
   /** True once the loop has ended, however it ended. */
   ended: boolean;
+  /** A stop has been asked for and the row in flight is still finishing. It is a state of
+   *  its own because the wait is long enough to look like nothing happened. */
+  stopping: boolean;
   stopped: boolean;
   /** What this lot was declared to be, and the file its URLs came from. They live here and
    *  not on the screen because they stop being form fields the moment the run starts: from
@@ -67,6 +70,7 @@ const IDLE: ImportRun = {
   done: 0,
   running: false,
   ended: false,
+  stopping: false,
   stopped: false,
   declaration: null,
   fileName: null,
@@ -116,7 +120,11 @@ export function reset(): void {
  * a course registered and this screen saying it was not.
  */
 export function stop(): void {
-  if (current.running) stopRequested = true;
+  // Idempotent: a second click has nothing new to ask for, and publishing again would only
+  // redraw the same sentence.
+  if (!current.running || current.stopping) return;
+  stopRequested = true;
+  publish({ ...current, stopping: true });
 }
 
 /** What a row says when the server refused it. */
@@ -194,7 +202,16 @@ export async function start({
     });
   }
 
-  publish({ ...current, running: false, ended: true, stopped: stopRequested });
+  publish({
+    ...current,
+    running: false,
+    stopping: false,
+    ended: true,
+    // Stopped only if something was actually left unasked. Asking for a stop while the last
+    // row is in flight stops nothing, and saying "the rest were never asked for" would name
+    // a rest that never existed.
+    stopped: stopRequested && current.done < urls.length,
+  });
   stopRequested = false;
   announce(current);
 }

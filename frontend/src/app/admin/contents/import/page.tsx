@@ -203,6 +203,9 @@ export default function ImportCourseListPage() {
 
   const refused = run.rows.filter((row) => REFUSED.includes(row.status)).map((row) => row.url);
 
+  /** Which course the loop is on — the one being registered, and the one a stop waits for. */
+  const at = Math.min(run.done + 1, run.rows.length);
+
   if (formats.isLoading) return <LoadingState />;
   if (formats.error) return <ErrorState message={(formats.error as Error).message} />;
 
@@ -387,15 +390,19 @@ export default function ImportCourseListPage() {
                   <>
                     <Button disabled>
                       <Spinner className="mr-2" />
-                      Registering {Math.min(run.done + 1, run.rows.length)} of {run.rows.length}
-                      …
+                      Registering {at} of {run.rows.length}…
                     </Button>
-                    <Button variant="outline" onClick={stop}>
-                      Stop after this course
+                    {/* The same button in the same place, because the act it offered has been
+                        consumed rather than moved: a control that vanishes under the cursor
+                        reads as a misclick. Disabled is right here, unlike on a form field —
+                        it is the very control whose state changed, and it is a moment long. */}
+                    <Button variant="outline" onClick={stop} disabled={run.stopping}>
+                      {run.stopping ? "Stopping after this one…" : "Stop after this course"}
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                      You can go elsewhere in the console without stopping this; closing or
-                      reloading the tab does stop it.
+                      {run.stopping
+                        ? `Finishing course ${at} first. Cutting it off would not undo it — the server commits it whether or not this page is listening — so the rest are left unasked once it lands.`
+                        : "You can go elsewhere in the console without stopping this; closing or reloading the tab does stop it."}
                     </p>
                   </>
                 ) : (
