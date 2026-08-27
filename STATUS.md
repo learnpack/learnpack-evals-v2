@@ -103,6 +103,17 @@ different URLs, and a slug registered at more than one version — `(format, ext
 logical content (ADR-0005) and which version is deployed is not something a slug settles. A
 failed row makes the run exit non-zero, so a fifty-row file cannot half-succeed quietly.
 
+**And the console now reaches the first gate.** The URL column of the flat **List** view on
+`/admin/contents` carries the act in both of its states: the `none` opens the dialog that
+fills the void, and an existing URL grows a pencil that redeclares it — because a console
+offering only the first would leave a moved deployment repairable nowhere but the CLI, which
+is the hole ADR-0054 closed, recreated one level up. Declaring the URL a course already has is
+refused by the button rather than sent, so the screen never promises an act the server treats
+as a no-op. The by-version card view deliberately does not carry it: it lists no individual
+course, and the act is per course. This closes the loop ADR-0052 §6 opened — the drafts
+registered from `courses/` are pointed at their deployments by the same person composing the
+campaign, on the screen that shows them blocked.
+
 **And the question it will be asked, answered by a test:** the act **fetches nothing**. A
 profile is built from artifact locators and `content_profiling` never reads this field; the
 only subscriber to a registry event is auto-profiling, which reacts to
@@ -2134,7 +2145,8 @@ the data in the package).
   `promptRecorded: false` per brief, `not_assessed` insufficiencies, the drift finding.
   `attribute-generator` then fills the unknown one and refuses the second attempt.
   `/admin/studies` drives the study acts with a confirm dialog on Publish; `/admin/contents`
-  shows brief and generator, offers the attribution on the unknown cell, and narrows the list
+  shows brief and generator, offers the attribution on the unknown cell and the deployment
+  declaration on the URL one, and narrows the list
   by format and by generator lineage → version (`unknown` being one of the choices) —
   client-side over the list the endpoint already returns whole.
 - **Local mode** (ADR-0008) tested end to end: `seed-demo` idempotent and with `--reset`
