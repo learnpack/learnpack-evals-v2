@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-24._
+_Last updated: 2026-08-27._
 
 ## Where we are
 
@@ -135,6 +135,36 @@ modules the same name stays legal, because the registry's `ContentNotFound` and 
 Profiling's mean different things and the CLI aliases one of them. The check was verified by
 reintroducing the duplicate and watching it name both files, which is the only way to know a
 guardrail is not decorative.
+
+**And the console registers a whole generation from a list of them.** ADR-0054 closed the
+hole for a course already registered; the one in front of it stayed open — an admin could
+register a generation one dialog at a time, or hand the file to somebody with a terminal.
+`/admin/contents/import` takes a `.csv` of deployed course URLs and registers each row through
+`register-by-source`, with one format, one course version, one generator (ADR-0024) and one
+provenance declared for the whole file, exactly as `register-package --from-csv` declares them
+for a whole run. The file is read **in the browser**, by the CLI's own rules — first column,
+header row, blank lines, rows behind a `#`, duplicates, and a non-`http(s)` entry refused
+anywhere a header cannot be — so two doors onto one act forgive and refuse the same things,
+and nothing is uploaded.
+
+**And this door never reaches the gate above it**, because for a LearnPack package the served
+root IS the running course: discovery supplies the `consumable_url` (ADR-0028), so a
+generation registered from its deployment URLs arrives assignable with no second act to
+perform. It answers ADR-0052 §6 from the other end — a draft registered from `courses/` is
+pointed at its deployment one course at a time, and a generation that was deployed before it
+was registered needs no pointing at all.
+
+**The loop is held in a module rather than in the page, and that is the decision worth
+arguing.** A batch is a loop over the same use case and not another endpoint (ADR-0027, and
+the reasoning ADR-0035 §5 already spent on reading a whole lot), and a file of forty takes
+minutes, since each course is fetched, read and profiled inside its own request. Client-side
+navigation never stopped such a loop — nothing ties it to a request the browser would abort —
+but it does unmount the screen, so a run whose progress lived in component state would carry
+on registering with nobody able to watch it. Outside the component the page is a window on
+it: leave, come back, and the same run is still moving. Reloading or closing the tab does end
+it, guarded by a browser confirm and nothing else, because there is nothing to repair — each
+course is its own transaction, the request in flight commits whether or not anyone is
+listening, and running the same file again finishes the rest.
 
 **ADR-0053 (an undeclared datum is not asked of a human) is decided and in, and it corrects
 ADR-0052 §7.** §7 said an item resting on a datum the course never declared is withheld and
@@ -1918,6 +1948,18 @@ the data in the package).
 
 ## Verified
 
+- **A list of course URLs registers, and running the same file again is a no-op** (the loop
+  driven headlessly against the dev API, the parser executed over its rules). All four
+  outcomes came back off the real endpoint: a course whose deployed bytes have moved on
+  answers `conflict` carrying the message that names the remedy, a URL that is not a package
+  answers `invalid`, a course nobody had registered answers `created` with 25 artifacts —
+  arriving with its `consumable_url` set from discovery and its commission minted, no second
+  act — and the same file run again answers `unchanged`. Stopping takes effect between rows
+  and never during one, and a second run started over a live one is refused. The parser was
+  run over the spreadsheet as it really arrives — a BOM glued to the first URL, a header row,
+  notes in the columns beside it, a blank line, a row behind a `#`, a duplicate, a quoted
+  first field, CRLF — and over both refusals. The page compiles and builds; **nobody has seen
+  it render** — the browser was not available.
 - **The rater is served the data their items rest on** (suite + by hand over real HTTP,
   ADR-0057). Pinned at all three branches: a **LearnpackV2** course registered and profiled
   from the frozen fixture has its four declaration items asked and `declared` carrying the
@@ -2171,6 +2213,13 @@ the data in the package).
 
 ## Open
 
+- **A list import ends when the tab does.** The loop that registers a `.csv` of course URLs
+  runs in the browser, so reloading or closing the tab stops it and a `beforeunload` confirm
+  is the whole guard. Nothing is left broken — each course is its own transaction and the
+  same file run again finishes the rest — except in the one corner the CLI has too: a course
+  interrupted between its commit and its auto-profiling stays unprofiled, and re-running the
+  file will not notice, since an unchanged package emits nothing. The repair on the console
+  is the lot summary's **Read N now**; on the CLI it is `profile-content --content-id`.
 - **Deploy**: backend to Render, frontend to Netlify, `ALLOWED_ORIGINS` crossed, and repeat the
   Clerk runbook on the production instance. The DB is already Neon.
 - **Clerk refuses an address that is already a Clerk user**, and that rule cannot be
@@ -2423,7 +2472,9 @@ the data in the package).
   `POST /admin/contents/register-by-source` (http(s) sources; 201 created / 200 unchanged /
   409 content-changed) and `GET /admin/contents/formats`; the admin form registers by
   package URL + generator + provenance — the hand-typed artifact rows are gone, and the
-  frontend no longer hardcodes `LearnpackV1`.
+  frontend no longer hardcodes `LearnpackV1`. **`/admin/contents/import`** registers a list
+  through that same endpoint, one request per row, reading the `.csv` in the browser and
+  declaring format, version, generator and provenance once for the whole file.
   Since **ADR-0035** a local tree no longer has to be `courses/`: `LOCAL_SOURCE_ROOTS`
   declares `key=path` roots, each served under `/sources/<key>` (`courses/` keeps `/packages`
   and its base URL, because the locators registered under it are never rewritten), and
