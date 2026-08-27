@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { Boxes, ExternalLink, HardDrive, Plus, Rows3 } from "lucide-react";
+import { Boxes, ExternalLink, HardDrive, Pencil, Plus, Rows3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { ContentForm } from "@/components/admin/content-form";
 import { CoursesByVersion } from "@/components/admin/courses-by-version";
 import { GeneratorVersionPicker } from "@/components/admin/generator-version-picker";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
@@ -21,6 +22,7 @@ import {
   useAttributeGenerator,
   useBriefs,
   useContents,
+  useDeclareConsumableUrl,
   useGeneratorVersions,
   useProfiles,
   useProfilingCapabilities,
@@ -352,23 +354,7 @@ export default function ContentsPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {c.consumable_url ? (
-                            <a
-                              href={c.consumable_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline"
-                            >
-                              Open <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          ) : (
-                            <span
-                              className="text-xs text-muted-foreground"
-                              title="No deployed instance declared: this course can be evaluated automatically, but not by a human."
-                            >
-                              none
-                            </span>
-                          )}
+                          <DeploymentCell content={c} />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -512,6 +498,134 @@ function AttributeGeneratorCell({ content }: { content: ContentResponse }) {
             {attribute.isPending ? <Spinner /> : null} Attribute
           </Button>
         </div>
+      </Dialog>
+    </>
+  );
+}
+
+/**
+ * What this course declares about its deployment — and the act that changes it (ADR-0054).
+ *
+ * Both states carry the act, and that is the whole point. Filling the void is what a course
+ * registered from a local source needs before a human can be put in front of it; redeclaring
+ * is what a course that moved needs, and a console offering only the first would leave a dead
+ * link repairable nowhere but the CLI — the hole ADR-0054 closed, recreated one level up.
+ *
+ * Unlike the generator next door, which is attributed once and never replaced: a generator
+ * link is a discovery, a deployment is a statement about the world right now.
+ */
+function DeploymentCell({ content }: { content: ContentResponse }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState("");
+  const declare = useDeclareConsumableUrl();
+
+  const current = content.consumable_url;
+  const typed = url.trim();
+  // Declaring the URL a course already has writes nothing and emits nothing (ADR-0054 §3),
+  // so the screen does not offer it: a button that promises an act must perform one.
+  const unchanged = typed === (current ?? "");
+
+  function start() {
+    setUrl(current ?? "");
+    setOpen(true);
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    declare.mutate(
+      { contentId: content.content_id, body: { consumable_url: typed } },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          toast.success(current ? "Deployment redeclared." : "Deployment declared.");
+        },
+        onError: (err) => {
+          const e = err as ApiError;
+          setOpen(false);
+          if (e.status === 404) {
+            toast.error("This course is no longer registered.");
+          } else if (e.status === 409) {
+            toast.error("Somebody declared a different URL first.", {
+              description: "The row has been refreshed — read it and declare again.",
+            });
+          } else if (e.status === 422) {
+            toast.error("A deployment must be an http(s) URL.");
+          } else {
+            toast.error("Could not declare.", { description: e.message });
+          }
+        },
+      },
+    );
+  }
+
+  return (
+    <>
+      {current ? (
+        <span className="inline-flex items-center gap-2">
+          <a
+            href={current}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            Open <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+          <button
+            type="button"
+            onClick={start}
+            className="text-muted-foreground hover:text-foreground"
+            title="Redeclare: a deployment that moved otherwise keeps a dead link."
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="sr-only">Redeclare the deployment</span>
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={start}
+          className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+          title="No deployed instance declared: this course can be evaluated automatically, but not by a human. Declare one if it exists."
+        >
+          none
+        </button>
+      )}
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`${current ? "Redeclare" : "Declare"} the deployment of ${content.external_id}`}
+        description={
+          current
+            ? "Points this course at where it is deployed now. The URL it is moving from is recorded with it, so a judgement made against the old one stays reconstructible."
+            : "Points this course at a deployed, human-consumable instance of it. Without one it can be evaluated automatically, but never by a person."
+        }
+      >
+        <form onSubmit={submit} className="space-y-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="consumable-url">Deployed instance</Label>
+            <Input
+              id="consumable-url"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://…"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={declare.isPending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!typed || unchanged || declare.isPending}>
+              {declare.isPending ? <Spinner /> : null} {current ? "Redeclare" : "Declare"}
+            </Button>
+          </div>
+        </form>
       </Dialog>
     </>
   );

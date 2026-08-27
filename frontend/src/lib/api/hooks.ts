@@ -28,6 +28,7 @@ import type {
 
   ContentResponse,
   CriterionOutcomes,
+  DeclareConsumableUrlRequest,
   DeclareStudyRequest,
   EvaluationResponse,
   GeneratorResponse,
@@ -292,6 +293,29 @@ export function useAttributeGenerator() {
     mutationFn: ({ contentId, body }: { contentId: Uuid; body: AttributeGeneratorRequest }) =>
       api<ContentResponse>(`/admin/contents/${contentId}/generator`, { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
+  });
+}
+
+/**
+ * Points a registered course at its deployment (ADR-0054).
+ *
+ * Shaped like its neighbour above with one deliberate difference: this act **may be
+ * repeated**. A generator link is a discovery — always true, merely learnt late — while a
+ * deployment is a statement about the world right now, and a course that moves needs a
+ * repair. Invalidating the contents is enough: the assign picker and the campaign form read
+ * that same query to decide whether a course can be put in front of a human.
+ *
+ * On settle rather than on success, unlike its neighbour: the write is conditional on the
+ * value that was read (ADR-0054 §4), so a refusal is itself evidence that the row on screen
+ * is stale — refetching is the repair, not noise.
+ */
+export function useDeclareConsumableUrl() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ contentId, body }: { contentId: Uuid; body: DeclareConsumableUrlRequest }) =>
+      api<ContentResponse>(`/admin/contents/${contentId}/consumable-url`, { method: "POST", body }),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.contents }),
   });
 }
 

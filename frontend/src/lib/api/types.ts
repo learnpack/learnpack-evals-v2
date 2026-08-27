@@ -33,6 +33,11 @@ export interface AttributeGeneratorRequest {
   generator_version_id: Uuid;
 }
 
+export interface DeclareConsumableUrlRequest {
+  /** Not nullable: clearing a declaration is a different act, refused for now (ADR-0054 §5). */
+  consumable_url: string;
+}
+
 export interface PackageArtifact {
   kind: string;
   locator: string;
