@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { Boxes, ExternalLink, HardDrive, Pencil, Plus, Rows3 } from "lucide-react";
+import { Boxes, ExternalLink, FileUp, HardDrive, Pencil, Plus, Rows3 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -165,6 +165,11 @@ export default function ContentsPage() {
               <HardDrive className="h-4 w-4" /> Import &amp; measure
             </Link>
           ) : null}
+          {/* The other door onto the same act. A generation arrives as a list of the URLs
+              it was deployed to, and the dialog beside this would be forty visits to it. */}
+          <Link href="/admin/contents/import" className={buttonVariants({ variant: "outline" })}>
+            <FileUp className="h-4 w-4" /> Import from a list
+          </Link>
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" /> Add course
           </Button>
