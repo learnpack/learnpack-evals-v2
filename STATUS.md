@@ -1971,11 +1971,14 @@ the data in the package).
   and never during one, and a second run started over a live one is refused. The parser was
   run over the spreadsheet as it really arrives — a BOM glued to the first URL, a header row,
   notes in the columns beside it, a blank line, a row behind a `#`, a duplicate, a quoted
-  first field, CRLF — and over both refusals. **The screen has been used**: a real list
-  registered through it, and the inconsistency that use found — the batch surviving a trip to
-  another section while the declaration that named it did not — is what the receipt and the
-  forgetting answer. Those two compile and build; **nobody has seen them render** — the
-  browser was not available.
+  first field, CRLF — and over both refusals. **The screen has been used, and twice it was
+  use that found the defect.** A batch survived a trip to another section while the
+  declaration that named it did not, which is what the receipt and the forgetting answer;
+  both were then used and work. And asking a run to stop changed nothing on screen for as
+  long as the course in flight took, because the request lived outside the snapshot — the
+  button now answers with it, and the correction that came with it is pinned: a stop asked
+  for while the last row is in flight leaves nothing unasked, so it is no longer reported as
+  a stop over a rest that never existed.
 - **The rater is served the data their items rest on** (suite + by hand over real HTTP,
   ADR-0057). Pinned at all three branches: a **LearnpackV2** course registered and profiled
   from the frozen fixture has its four declaration items asked and `declared` carrying the
