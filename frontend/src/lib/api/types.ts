@@ -336,6 +336,32 @@ export interface RubricDetailResponse {
   criteria: RubricCriterion[];
 }
 
+// --- Datasets (ADR-0058) ---------------------------------------------------
+
+/** A frozen membership. Immutable: changing the set mints the next ordinal. */
+export interface DatasetVersionResponse {
+  version_id: Uuid;
+  /** 1-based, per dataset — what a person says out loud ("v2"). */
+  ordinal: number;
+  /** Why this version exists. Required, and what keeps earlier rounds readable. */
+  note: string;
+  /** sha256 over the sorted, de-duplicated members: what makes a no-op detectable. */
+  member_set_hash: string;
+  content_ids: Uuid[];
+  created_by: Uuid;
+  created_at: string | null;
+}
+
+export interface DatasetResponse {
+  dataset_id: Uuid;
+  name: string;
+  description: string | null;
+  created_by: Uuid;
+  created_at: string | null;
+  /** Oldest first: the ordinals read as the line they are. */
+  versions: DatasetVersionResponse[];
+}
+
 export interface CampaignResponse {
   campaign_id: Uuid;
   name: string;
@@ -930,6 +956,27 @@ export interface RegisterBySourceResponse {
   /** False when the same content (by hash) was already registered — a no-op, not an error. */
   created: boolean;
   artifact_count: number;
+}
+
+/** `POST /admin/datasets` — names the set and freezes its first version, in one act. */
+export interface DeclareDatasetRequest {
+  name: string;
+  description?: string | null;
+  note: string;
+  content_ids: Uuid[];
+}
+
+/** `POST /admin/datasets/{id}/versions` — the WHOLE membership of the new version, not what
+ *  is being added: a version is a set, not a patch. An unchanged one answers 409. */
+export interface MintDatasetVersionRequest {
+  note: string;
+  content_ids: Uuid[];
+}
+
+/** `PATCH /admin/datasets/{id}` — the label, replaced whole. Mints no version (ADR-0058 §2). */
+export interface RenameDatasetRequest {
+  name: string;
+  description: string | null;
 }
 
 export interface OpenCampaignRequest {

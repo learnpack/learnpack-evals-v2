@@ -22,8 +22,8 @@ the frozen row) and ADR-0042 (a judgment names its author, and a study's result 
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
 **ADR-0058 (a dataset is a named set, and changing it is a new version) is decided, and its
-backend is in. There is no console for it yet, and no campaign is bound to a version yet** —
-those are the two blocks that follow. A campaign's scope was chosen inside the act that opened
+backend and console are in. No campaign is bound to a version yet** — that is the block that
+follows. A campaign's scope was chosen inside the act that opened
 it and ended there: no name, no reuse, no way to say that two rounds ran on the same set.
 Reproducibility was never the gap — ADR-0002 already fixes the scope at open — **identity**
 was, and it is what the correlation ADR-0015 §4 depends on, since the campaign picks its
@@ -1981,10 +1981,24 @@ the data in the package).
 
 ## Verified
 
+- **A dataset is built from the console, and `/admin/datasets` is where sets live.** The list
+  shows each set at its current version with the note of its latest change; the detail page
+  shows the **version line newest-first, each entry carrying what entered and what left**,
+  computed in `lib/datasets.ts` rather than in the component. Two things the screens say that
+  the API only enforces: the new-version form is **prefilled with the current membership**,
+  because a version is a set and not a patch — starting empty would make "add one course"
+  read as "replace the set with one course" — and it counts the change before the act
+  (`3 added · 1 removed`), turning the identical membership into a **disabled button with the
+  reason next to it** instead of a refusal after the fact. A 409 that arrives anyway is
+  reported as what it is: *nothing changed, so no version was created*. The first version is
+  labelled as the set arriving, never as N courses "added" to something that did not exist.
+  Both pages compile and build; **nobody has seen them render** — no browser was available.
 - **A dataset is declared, versioned and refused when nothing changed** (29 tests over the
-  aggregate and the admin surface, **plus the CLI driven by hand against the dev store**; the
-  HTTP surface has been exercised only by the suite, and there is no screen for it yet).
-  Pinned: the declaring act freezes v1; a new membership
+  aggregate and the admin surface, **plus the CLI and the HTTP API both driven by hand
+  against the dev store**). Over the running backend: declaring answered `201` at v1; the
+  same two courses posted **in the other order** answered `409` with *"this membership is
+  already version 1"*; a third course bumped to v2; renaming answered `200` and left the line
+  at two versions. Pinned in the suite: the declaring act freezes v1; a new membership
   becomes v2; the *same* membership answers 409 and leaves the line at one version; a note of
   spaces is refused; a member the registry never heard of is refused **by name**; renaming
   changes the label and mints nothing. The event was read out of the outbox, not assumed —
@@ -2268,13 +2282,12 @@ the data in the package).
 
 ## Open
 
-- **A dataset exists and nothing consumes it.** The tables, the acts and the CLI are in, but a
-  campaign still takes `content_ids` and no screen builds a set — so today the feature is
-  reachable only from a terminal, and the reuse it exists for is not yet available anywhere.
-  The two blocks that close this are the console (`/admin/datasets`, with the diff between
-  versions) and the binding (`campaigns.dataset_version_id`, the picker replacing the checkbox
-  list). Until the second lands, nothing enforces that a campaign's scope came from a set
-  anybody named.
+- **A dataset can be built and nothing consumes it.** A set can be declared, versioned and
+  read from `/admin/datasets`, but a campaign still takes a plain `content_ids` list — so the
+  reuse the whole thing exists for is still not available where it is needed. The block that
+  closes it is the binding: `campaigns.dataset_version_id`, and the picker replacing the
+  checkbox list in the campaign form. Until it lands, nothing says that a campaign's scope
+  came from a set anybody named.
 - **A list import ends when the tab does.** The loop that registers a `.csv` of course URLs
   runs in the browser, so reloading or closing the tab stops it and a `beforeunload` confirm
   is the whole guard. Nothing is left broken — each course is its own transaction and the
