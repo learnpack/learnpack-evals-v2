@@ -24,7 +24,13 @@ services:
     ports:
       - "15433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d learnpack_evals_test"]
+      # `-h 127.0.0.1` and not the default socket: during initdb the entrypoint runs a
+      # TEMPORARY server that listens on the Unix socket only, and a socket probe calls it
+      # ready. `up -d --wait` then returns, the temporary server shuts down, and whatever
+      # connected over TCP in that window gets "server closed the connection unexpectedly".
+      # Over TCP the probe fails until the real server is listening, which is the fact
+      # anything outside the container actually needs.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d learnpack_evals_test"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -42,7 +48,10 @@ services:
       # Unlike the test database, this one keeps its data between restarts.
       - learnpack-evals-dev-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d learnpack_evals_dev"]
+      # Over TCP, for the reason given above. This one is where it bit: the dev database
+      # keeps a volume, so it only runs initdb after `db:reset` destroys it — which is
+      # exactly when `db:reset` goes on to migrate.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d learnpack_evals_dev"]
       interval: 2s
       timeout: 3s
       retries: 15
