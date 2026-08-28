@@ -21,9 +21,11 @@ is readable before it is signed, and the evidence behind every criterion lives o
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
-**ADR-0058 (a dataset is a named set, and changing it is a new version) is decided, and its
-backend and console are in. No campaign is bound to a version yet** — that is the block that
-follows. A campaign's scope was chosen inside the act that opened
+**ADR-0058 (a dataset is a named set, and changing it is a new version) is decided and in,
+end to end.** A campaign's scope is now **named, not listed**: `POST /admin/campaigns` takes a
+`dataset_version_id`, the use case reads that version's courses and copies them, and the
+hand-picking path is gone — there is one way to compose a campaign's scope, which is the
+defect the whole thing existed to close. A campaign's scope was chosen inside the act that opened
 it and ended there: no name, no reuse, no way to say that two rounds ran on the same set.
 Reproducibility was never the gap — ADR-0002 already fixes the scope at open — **identity**
 was, and it is what the correlation ADR-0015 §4 depends on, since the campaign picks its
@@ -1981,6 +1983,20 @@ the data in the package).
 
 ## Verified
 
+- **A campaign runs on a dataset version** (suite + by hand over real HTTP against the dev
+  store). Opening one against a version materialized **exactly its two courses** and recorded
+  which version they came from; a version id nobody declared answered `422` with *"dataset
+  version must exist"* — the only gate there is, since no foreign key can say it across
+  modules. Pinned in the suite, and it is the clause worth pinning: **a later version of the
+  same set does not move a campaign that already opened.** `campaign_contents` stays what was
+  judged and the version records how it was chosen, so the two never have to agree again.
+  Migration `0031` applied and downgraded. Six test files opened campaigns by listing course
+  ids; they now go through one helper that performs both acts, and the two that check a
+  campaign is *refused* still declare a real version — otherwise they would pass for the
+  wrong reason. **`seed-demo` seeds a `Local demo set`** and opens the demo campaign against
+  it; run twice, the second run minted no version, because the membership had not moved.
+  A campaign that already exists is still reused by name, so the demo campaign in a store
+  that predates this keeps its null — which is what null is for.
 - **A dataset is built from the console, and `/admin/datasets` is where sets live.** The list
   shows each set at its current version with the note of its latest change; the detail page
   shows the **version line newest-first, each entry carrying what entered and what left**,
@@ -2282,12 +2298,13 @@ the data in the package).
 
 ## Open
 
-- **A dataset can be built and nothing consumes it.** A set can be declared, versioned and
-  read from `/admin/datasets`, but a campaign still takes a plain `content_ids` list — so the
-  reuse the whole thing exists for is still not available where it is needed. The block that
-  closes it is the binding: `campaigns.dataset_version_id`, and the picker replacing the
-  checkbox list in the campaign form. Until it lands, nothing says that a campaign's scope
-  came from a set anybody named.
+- **Nothing reads a dataset except a campaign.** The version leg of the comparability gate
+  waits on `CompareStudies`, which does not exist; the **sample** — the courses that came back
+  with both a human reference and an automated judgment, and the thing a validity coefficient
+  actually belongs to — is decided as a derived read (ADR-0058 §9) and not built; and minting
+  a version from what a study measured, the one direction ADR-0044 permits, is written down
+  and unbuilt. Until the sample read exists, "the panel and the instrument judged the same
+  courses" is still checked by comparing two lists.
 - **A list import ends when the tab does.** The loop that registers a `.csv` of course URLs
   runs in the browser, so reloading or closing the tab stops it and a `beforeunload` confirm
   is the whole guard. Nothing is left broken — each course is its own transaction and the
