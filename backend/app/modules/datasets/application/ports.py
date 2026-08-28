@@ -11,6 +11,10 @@ class DatasetRepositoryPort(Protocol):
 
     def list_all(self) -> list[Dataset]: ...
 
+    def find_dataset_of_version(self, version_id: UUID) -> Dataset | None:
+        """The dataset a version belongs to — a version is reached through its root."""
+        ...
+
     def add(self, dataset: Dataset) -> None:
         """Write the dataset and the version it was declared with, in one act."""
         ...

@@ -281,6 +281,7 @@ from app.modules.orchestration.application.commands import (
     OpenCampaign,
     OpenCampaignCommand,
 )
+from app.modules.orchestration.infrastructure.gateways import DatasetsGateway
 from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
@@ -3608,6 +3609,7 @@ def run_seed_workbench(manifest_file: Path = WORKBENCH_MANIFEST) -> int:
 
 DEMO_INSTRUMENT_VERSION_ID = "learnpack-pedagogical-2.0.0"
 DEMO_CAMPAIGN_NAME = "Local demo campaign"
+DEMO_DATASET_NAME = "Local demo set"
 DEMO_REQUIRED_EVALUATIONS = 2  # two raters per content: the minimum that yields inter-rater
 
 # (email, display name, role). The credential mirrors what auth_local builds from the header,
@@ -3777,8 +3779,51 @@ def _seed_demo_contents(generator_id: UUID) -> dict[str, UUID]:
     return ids
 
 
-def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
-    """One open campaign over the demo courses. Reuses the existing one if it is still open.
+def _seed_demo_dataset(content_ids: list[UUID], assessor_id: UUID) -> UUID:
+    """The demo courses as a named set, and the id of the version to open a campaign against.
+
+    Reused by name, like the campaign below. If the set already exists and the demo courses
+    have moved on, this mints the version that says so — and if they have not, the no-op
+    refusal is the expected answer and not a failure (ADR-0058 §4).
+    """
+    with SessionLocal() as session:
+        datasets = SqlAlchemyDatasetRepository(session)
+        existing = next((d for d in datasets.list_all() if d.name == DEMO_DATASET_NAME), None)
+
+        if existing is None:
+            uow = UnitOfWork(session)
+            dataset = DeclareDataset(datasets=datasets, publisher=uow.events, uow=uow)(
+                DeclareDatasetCommand(
+                    name=DEMO_DATASET_NAME,
+                    description="The courses the local demo campaign runs on.",
+                    note="The demo courses, as the local setup seeds them",
+                    members=content_ids,
+                    declared_by=assessor_id,
+                )
+            )
+            latest = dataset.latest_version
+            assert latest is not None  # declaring freezes v1
+            return latest.id
+
+        uow = UnitOfWork(session)
+        try:
+            _, version = MintDatasetVersion(datasets=datasets, publisher=uow.events, uow=uow)(
+                MintDatasetVersionCommand(
+                    dataset_id=existing.id,
+                    note="The demo courses, as the local setup seeds them now",
+                    members=content_ids,
+                    created_by=assessor_id,
+                )
+            )
+            return version.id
+        except UnchangedMembership:
+            latest = existing.latest_version
+            assert latest is not None  # a stored dataset always has one
+            return latest.id
+
+
+def _seed_demo_campaign(dataset_version_id: UUID) -> UUID:
+    """One open campaign over the demo set. Reuses the existing one if it is still open.
 
     The name is the key of that reuse (ADR-0055): *the same campaign* is a truer statement
     about a name somebody chose than about an instrument plus a set of contents, which two
@@ -3791,12 +3836,17 @@ def _seed_demo_campaign(content_ids: list[UUID]) -> UUID:
                 return campaign.id
 
         uow = UnitOfWork(session)
-        campaign = OpenCampaign(campaigns, uow.events, uow)(
+        campaign = OpenCampaign(
+            campaigns=campaigns,
+            datasets=DatasetsGateway(session),
+            publisher=uow.events,
+            uow=uow,
+        )(
             OpenCampaignCommand(
                 name=DEMO_CAMPAIGN_NAME,
                 instrument_version_id=DEMO_INSTRUMENT_VERSION_ID,
                 required_evaluations_per_content=DEMO_REQUIRED_EVALUATIONS,
-                content_ids=content_ids,
+                dataset_version_id=dataset_version_id,
             )
         )
         return campaign.id
@@ -3970,7 +4020,10 @@ def run_seed_demo(reset: bool) -> int:
     # tree, and it fetches over http only (ADR-0029 §2). Hence the explicit step below.
     content_ids = _seed_demo_contents(generator_id)
     profiled = _seed_demo_profiles(content_ids)
-    campaign_id = _seed_demo_campaign(list(content_ids.values()))
+    dataset_version_id = _seed_demo_dataset(
+        list(content_ids.values()), assessor_ids["admin@local.dev"]
+    )
+    campaign_id = _seed_demo_campaign(dataset_version_id)
     evaluator_ids = [
         assessor_ids[email] for email, _, role in DEMO_ASSESSORS if role is Role.EVALUATOR
     ]

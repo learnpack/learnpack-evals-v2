@@ -10,6 +10,7 @@ from uuid import UUID
 from app.modules.orchestration.application.ports import (
     AssignmentRepositoryPort,
     CampaignRepositoryPort,
+    DatasetsGatewayPort,
 )
 from app.modules.orchestration.domain import events
 from app.modules.orchestration.domain.assignment import Assignment
@@ -31,37 +32,57 @@ class DuplicateAssignment(Exception):
 class ContentNotInCampaign(Exception): ...
 
 
+class UnknownDatasetVersion(Exception):
+    """The campaign names a dataset version this store cannot resolve (ADR-0058 §5).
+
+    There is no foreign key to say it — `dataset_versions` belongs to another module — so this
+    is the gate, and it runs before anything is written.
+    """
+
+
 @dataclass(frozen=True)
 class OpenCampaignCommand:
     name: str
     instrument_version_id: str
     required_evaluations_per_content: int
-    content_ids: list[UUID]
+    dataset_version_id: UUID
     description: str | None = None
     golden_coverage_threshold: float = 1.0
 
 
 class OpenCampaign:
-    """Creates the campaign already open (MVP exposes no draft step)."""
+    """Creates the campaign already open (MVP exposes no draft step).
+
+    The scope is **not** passed in: it is read off the dataset version the campaign names, and
+    copied (ADR-0058 §5). The copy is what the assignment path reads and what makes the scope
+    survive whatever happens to the set afterwards; the version records how it was chosen.
+    """
 
     def __init__(
         self,
         campaigns: CampaignRepositoryPort,
+        datasets: DatasetsGatewayPort,
         publisher: EventPublisherPort,
         uow: UnitOfWorkPort,
     ) -> None:
         self._campaigns = campaigns
+        self._datasets = datasets
         self._publisher = publisher
         self._uow = uow
 
     def __call__(self, command: OpenCampaignCommand) -> EvaluationCampaign:
+        content_ids = self._datasets.get_version_members(command.dataset_version_id)
+        if content_ids is None:
+            raise UnknownDatasetVersion(str(command.dataset_version_id))
+
         campaign = EvaluationCampaign(
             id=new_id(),
             name=command.name,
             description=command.description,
             instrument_version_id=command.instrument_version_id,
             required_evaluations_per_content=command.required_evaluations_per_content,
-            content_ids=list(command.content_ids),
+            dataset_version_id=command.dataset_version_id,
+            content_ids=list(content_ids),
             golden_coverage_threshold=command.golden_coverage_threshold,
         )
         campaign.open()

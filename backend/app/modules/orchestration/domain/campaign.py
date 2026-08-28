@@ -31,6 +31,10 @@ class EvaluationCampaign:
     required_evaluations_per_content: int
     # Optional, and never derived from the name: an absent description is absent (ADR-0055).
     description: str | None = None
+    # Where the scope came from (ADR-0058 §5). Null on campaigns opened before the decision:
+    # they were typed into a form, and claiming a version for them would invent how a past
+    # round was composed. `content_ids` stays what the campaign judged, either way.
+    dataset_version_id: UUID | None = None
     content_ids: list[UUID] = field(default_factory=list)
     golden_coverage_threshold: float = 1.0
     status: CampaignStatus = CampaignStatus.DRAFT
