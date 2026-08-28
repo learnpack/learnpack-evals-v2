@@ -43,6 +43,9 @@ const NAV = [
       { href: "/admin/assessors", label: "Assessors" },
       { href: "/admin/generators", label: "Generators" },
       { href: "/admin/briefs", label: "Briefs" },
+      // A set of courses is set up once and reused by the rounds that come after, which is
+      // what this group is for — the campaign that consumes it lives one group down.
+      { href: "/admin/datasets", label: "Datasets" },
       { href: "/admin/profiles", label: "Profiles" },
     ],
   },
