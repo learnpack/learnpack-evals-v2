@@ -1,6 +1,7 @@
 """Admin CLI: `python -m app.cli seed | seed-workbench | measure | set-role |
 invite-assessor | list-invitations |
 import-learnpack | register-package | declare-deployment |
+create-dataset | add-dataset-version | list-datasets |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
 accept-extraction | reprofile | ratify-assessor | evaluate |
 dump-concept-touches | dump-concept-map | declare-study | update-study | open-study |
@@ -62,6 +63,21 @@ from app.modules.content_profiling.infrastructure.repository import (
     SqlAlchemyProfileRepository,
 )
 from app.modules.content_profiling.public import ContentProfilingQueries
+from app.modules.datasets.application.declare_dataset import (
+    DeclareDataset,
+    DeclareDatasetCommand,
+)
+from app.modules.datasets.application.mint_dataset_version import (
+    MintDatasetVersion,
+    MintDatasetVersionCommand,
+)
+from app.modules.datasets.domain.dataset import (
+    DatasetNotFound,
+    EmptyMembership,
+    InvalidDataset,
+    UnchangedMembership,
+)
+from app.modules.datasets.infrastructure.repository import SqlAlchemyDatasetRepository
 from app.modules.evaluand_registry.application.attribute_generator import (
     AttributeGenerator,
     AttributeGeneratorCommand,
@@ -1523,6 +1539,158 @@ def run_declare_deployment(package_format: str, email: str, entries: list[tuple[
 
     print(f"{len(entries) - failures}/{len(entries)} declared (by {email})")
     return 1 if failures else 0
+
+
+# --------------------------------------------------------------------------- datasets
+
+
+class _UnusableMemberList(Exception):
+    """The file cannot be read as a list of courses."""
+
+
+def _members_from_csv(path: Path) -> list[str]:
+    """The courses a file names: the FIRST column of each row, and nothing else.
+
+    Same posture as `register-package --from-csv`, for the same reason: what arrives is a
+    spreadsheet somebody exported, so a header, a blank line, a `#` on a course they decided
+    not to include and a name in the column beside the slug are all things that do not change
+    which courses are meant. A file naming no course is refused — an empty dataset is not a
+    thing this command should invent.
+    """
+    try:
+        rows = csv.reader(path.read_text(encoding="utf-8-sig").splitlines())
+        entries = [row[0].strip() for row in rows if row and row[0].strip()]
+    except OSError as exc:
+        raise _UnusableMemberList(f"could not read '{path.as_posix()}': {exc}") from exc
+
+    named = [entry for entry in entries if not entry.startswith("#")]
+    unique = list(dict.fromkeys(named))
+    if not unique:
+        raise _UnusableMemberList(f"'{path.as_posix()}' names no course")
+    if len(unique) != len(named):
+        print(f"  {len(named) - len(unique)} duplicate row(s) ignored", file=sys.stderr)
+    return unique
+
+
+def _resolve_members(
+    contents: SqlAlchemyContentRepository, package_format: str, external_ids: list[str]
+) -> list[UUID] | None:
+    """Slugs to content ids, refusing rather than guessing.
+
+    A slug registered at more than one version is ambiguous, and which one belongs in the set
+    is not this command's to decide — the same refusal `declare-deployment` makes. `None`
+    means the caller should stop: every failure has already been named on stderr.
+    """
+    resolved: list[UUID] = []
+    failures = 0
+    for external_id in external_ids:
+        versions = contents.list_versions(package_format, external_id)
+        if not versions:
+            print(f"  not found   {external_id}", file=sys.stderr)
+            failures += 1
+        elif len(versions) > 1:
+            named = ", ".join(v.version for v in versions)
+            print(
+                f"  ambiguous   {external_id} is registered at versions {named} — "
+                "name the courses by content id instead",
+                file=sys.stderr,
+            )
+            failures += 1
+        else:
+            resolved.append(versions[0].id)
+    return None if failures else resolved
+
+
+def run_create_dataset(
+    name: str,
+    description: str | None,
+    note: str,
+    package_format: str,
+    email: str,
+    external_ids: list[str],
+) -> int:
+    """Declare a named set and freeze its first version, in one act (ADR-0058 §1)."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+
+        members = _resolve_members(
+            SqlAlchemyContentRepository(session), package_format, external_ids
+        )
+        if members is None:
+            return 1
+
+        uow = UnitOfWork(session)
+        try:
+            dataset = DeclareDataset(
+                datasets=SqlAlchemyDatasetRepository(session), publisher=uow.events, uow=uow
+            )(
+                DeclareDatasetCommand(
+                    name=name,
+                    description=description,
+                    note=note,
+                    members=members,
+                    declared_by=assessor.id,
+                )
+            )
+        except (InvalidDataset, EmptyMembership) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"declared dataset {dataset.id} '{dataset.name}' v1 with {len(members)} course(s)")
+    return 0
+
+
+def run_add_dataset_version(
+    dataset_id: UUID, note: str, package_format: str, email: str, external_ids: list[str]
+) -> int:
+    """Freeze the next membership. A membership equal to the current one is refused."""
+    with SessionLocal() as session:
+        assessor = SqlAlchemyAssessorRepository(session).get_by_email(email)
+        if assessor is None:
+            print(f"no assessor with email {email!r}", file=sys.stderr)
+            return 1
+
+        members = _resolve_members(
+            SqlAlchemyContentRepository(session), package_format, external_ids
+        )
+        if members is None:
+            return 1
+
+        uow = UnitOfWork(session)
+        try:
+            _, version = MintDatasetVersion(
+                datasets=SqlAlchemyDatasetRepository(session), publisher=uow.events, uow=uow
+            )(
+                MintDatasetVersionCommand(
+                    dataset_id=dataset_id,
+                    note=note,
+                    members=members,
+                    created_by=assessor.id,
+                )
+            )
+        except (DatasetNotFound, UnchangedMembership, InvalidDataset, EmptyMembership) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(
+        f"dataset {dataset_id} is now at v{version.ordinal} with {len(version.members)} course(s)"
+    )
+    return 0
+
+
+def run_list_datasets() -> int:
+    with SessionLocal() as session:
+        datasets = SqlAlchemyDatasetRepository(session).list_all()
+
+    for dataset in datasets:
+        latest = dataset.latest_version
+        at = f"v{latest.ordinal}, {len(latest.members)} course(s)" if latest else "no version"
+        print(f"{dataset.id}  {dataset.name} ({at})")
+    print(f"{len(datasets)} dataset(s)")
+    return 0
 
 
 # ------------------------------------------------------------------- delete-content
@@ -4305,6 +4473,64 @@ def main(argv: list[str] | None = None) -> int:
         "--email", required=True, help="the admin performing the act (declared_by)"
     )
 
+    dataset_parser = subparsers.add_parser(
+        "create-dataset",
+        help="name a set of courses and freeze its first version (ADR-0058)",
+    )
+    dataset_parser.add_argument("--name", required=True, help="what this set is called")
+    dataset_parser.add_argument("--description", help="optional; an absent one is absent")
+    dataset_parser.add_argument(
+        "--note",
+        required=True,
+        help="why this version exists — required, and what makes earlier rounds readable",
+    )
+    dataset_parser.add_argument(
+        "--from-csv",
+        dest="from_csv",
+        type=Path,
+        help="a file whose first column names the courses — a header, blank lines, `#` rows "
+        "and exact duplicates are ignored",
+    )
+    dataset_parser.add_argument(
+        "--external-id",
+        dest="external_ids",
+        action="append",
+        help="one course; repeatable",
+    )
+    dataset_parser.add_argument(
+        "--format",
+        dest="package_format",
+        default=LEARNPACK_FORMAT,
+        help="the PackageFormat the slugs belong to; a slug is namespaced by it (ADR-0005)",
+    )
+    dataset_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (created_by)"
+    )
+
+    dataset_version_parser = subparsers.add_parser(
+        "add-dataset-version",
+        help="freeze the next membership of a dataset; an unchanged one is refused (ADR-0058)",
+    )
+    dataset_version_parser.add_argument("--dataset-id", required=True)
+    dataset_version_parser.add_argument(
+        "--note", required=True, help="what changed about the set, and why"
+    )
+    dataset_version_parser.add_argument(
+        "--from-csv",
+        dest="from_csv",
+        type=Path,
+        help="the whole membership of the new version, not only what is being added",
+    )
+    dataset_version_parser.add_argument(
+        "--external-id", dest="external_ids", action="append", help="one course; repeatable"
+    )
+    dataset_version_parser.add_argument("--format", dest="package_format", default=LEARNPACK_FORMAT)
+    dataset_version_parser.add_argument(
+        "--email", required=True, help="the admin performing the act (created_by)"
+    )
+
+    subparsers.add_parser("list-datasets", help="the declared sets and the version each is at")
+
     attribute_parser = subparsers.add_parser(
         "attribute-generator",
         help="record a generator learnt after registration (once, one way — ADR-0024)",
@@ -4519,6 +4745,35 @@ def main(argv: list[str] | None = None) -> int:
             print(str(exc), file=sys.stderr)
             return 1
         return run_declare_deployment(args.package_format, args.email, entries)
+    elif args.command in ("create-dataset", "add-dataset-version"):
+        # argparse cannot express "one of these two, but not both".
+        if bool(args.from_csv) == bool(args.external_ids):
+            print(
+                "name the courses one way: --from-csv <file>, or --external-id (repeatable)",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            external_ids = (
+                _members_from_csv(args.from_csv) if args.from_csv else list(args.external_ids)
+            )
+        except _UnusableMemberList as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        if args.command == "create-dataset":
+            return run_create_dataset(
+                args.name,
+                args.description,
+                args.note,
+                args.package_format,
+                args.email,
+                external_ids,
+            )
+        return run_add_dataset_version(
+            UUID(args.dataset_id), args.note, args.package_format, args.email, external_ids
+        )
+    elif args.command == "list-datasets":
+        return run_list_datasets()
     elif args.command == "attribute-generator":
         return run_attribute_generator(
             UUID(args.content_id), UUID(args.generator_version_id), args.email
