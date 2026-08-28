@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-27._
+_Last updated: 2026-08-28._
 
 ## Where we are
 
@@ -20,6 +20,26 @@ ADR-0041 (the frozen report is the record, not the reading surface — a study's
 is readable before it is signed, and the evidence behind every criterion lives outside
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
+
+**ADR-0058 (a dataset is a named set, and changing it is a new version) is decided, and its
+backend is in. There is no console for it yet, and no campaign is bound to a version yet** —
+those are the two blocks that follow. A campaign's scope was chosen inside the act that opened
+it and ended there: no name, no reuse, no way to say that two rounds ran on the same set.
+Reproducibility was never the gap — ADR-0002 already fixes the scope at open — **identity**
+was, and it is what the correlation ADR-0015 §4 depends on, since the campaign picks its
+courses by hand while a study composes its own by recipe and nothing could state the relation.
+The new `datasets` module owns three tables: the **concept**, its **frozen versions**
+(immutable, numbered per dataset, each carrying a **required note**), and their membership.
+The note is the clause that earns the explicit act: without it a version leaves every earlier
+number invalid *and* unexplained. A membership equal to the current one is **refused, not
+recorded** (409), detected by `member_set_hash` — the rule ADR-0050 and ADR-0054 already
+state, and the hash doubles as the portable key ADR-0039 §4 wanted for the brief. Renaming
+mints nothing. `create-dataset`, `add-dataset-version` and `list-datasets` do the same from
+the console-less side. **Deliberately not built, and written down instead:** minting a version
+from what a study measured (the only permitted direction — a hand-picked list is inadmissible
+as a study's dataset, ADR-0044 §9), the dataset-version leg of the comparability gate (there
+is no `CompareStudies` yet), the **sample** as a derived read, the study-side rename to that
+word, and anchor courses.
 
 **ADR-0044 (a study's recipe declares which generators it measures) is decided and its
 backend + minimal console are in — see below.**
@@ -1961,6 +1981,22 @@ the data in the package).
 
 ## Verified
 
+- **A dataset is declared, versioned and refused when nothing changed** (29 tests over the
+  aggregate and the admin surface, **plus the CLI driven by hand against the dev store**; the
+  HTTP surface has been exercised only by the suite, and there is no screen for it yet).
+  Pinned: the declaring act freezes v1; a new membership
+  becomes v2; the *same* membership answers 409 and leaves the line at one version; a note of
+  spaces is refused; a member the registry never heard of is refused **by name**; renaming
+  changes the label and mints nothing. The event was read out of the outbox, not assumed —
+  `DatasetVersionCreated` carries `added` and `removed`, so swapping one course for another
+  says so rather than restating the membership. Order and repetition are pinned as *not* a
+  change, at the aggregate — and that is the one the CLI run confirmed for real: naming the
+  same two courses in the other order answered *"this membership is already version 1"*,
+  adding a third bumped to v2, and a slug nobody registered stopped the act instead of
+  freezing a set with a hole in it. Migration `0030` applied and downgraded against the dev
+  store. One defect the tests found, in the writing of it: the create response carried the
+  application's clock and the row the server's `now()`, so a POST and the GET after it
+  answered two times for one fact.
 - **A list of course URLs registers, and running the same file again is a no-op** (the loop
   driven headlessly against the dev API, the parser executed over its rules). All four
   outcomes came back off the real endpoint: a course whose deployed bytes have moved on
@@ -2232,6 +2268,13 @@ the data in the package).
 
 ## Open
 
+- **A dataset exists and nothing consumes it.** The tables, the acts and the CLI are in, but a
+  campaign still takes `content_ids` and no screen builds a set — so today the feature is
+  reachable only from a terminal, and the reuse it exists for is not yet available anywhere.
+  The two blocks that close this are the console (`/admin/datasets`, with the diff between
+  versions) and the binding (`campaigns.dataset_version_id`, the picker replacing the checkbox
+  list). Until the second lands, nothing enforces that a campaign's scope came from a set
+  anybody named.
 - **A list import ends when the tab does.** The loop that registers a `.csv` of course URLs
   runs in the browser, so reloading or closing the tab stops it and a `beforeunload` confirm
   is the whole guard. Nothing is left broken — each course is its own transaction and the

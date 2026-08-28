@@ -20,6 +20,7 @@ erDiagram
     EVALUAND_REGISTRY ||--o{ CONTENT_PROFILING : "profiles"
     EVALUAND_REGISTRY ||--o{ EVALUATION : "contents"
     EVALUAND_REGISTRY ||--o{ EVALUATION_STUDIES : "briefs / contents"
+    EVALUAND_REGISTRY ||--o{ DATASETS : "members"
     EVALUATION_DESIGN ||--o{ ORCHESTRATION : "instrument pin"
     EVALUATION_DESIGN ||--o{ EVALUATION : "instrument pin"
     EVALUATION_DESIGN ||--o{ CONTENT_PROFILING : "data requirement ids"
@@ -38,6 +39,7 @@ erDiagram
 | evaluation | `evaluations`, `criterion_scores`, `criterion_outcomes`, `computed_metrics`, `quality_judgments`, `judgment_claims`, `findings`, `assessor_ratifications` |
 | orchestration | `campaigns`, `campaign_contents`, `assignments`, `content_evaluation_completions` |
 | golden_dataset | `golden_references` |
+| datasets | `datasets`, `dataset_versions`, `dataset_version_members` |
 | evaluation_studies | `studies`, `study_recipe`, `study_recipe_generators`, `study_dataset`, `study_reports` |
 | platform | `events` |
 
@@ -530,7 +532,50 @@ code (`SCHEMA_VERSION` inside the payload), not by a migration, so a report writ
 older version keeps the shape it was written with and readers must treat new fields as
 optional (ADR-0041).
 
-## 9. platform — events outbox
+## 9. datasets
+
+```mermaid
+erDiagram
+    datasets ||--o{ dataset_versions : "versions"
+    dataset_versions ||--o{ dataset_version_members : "membership"
+    contents ||--o{ dataset_version_members : "member"
+
+    datasets {
+        uuid id PK
+        text name
+        text description "nullable"
+        uuid created_by
+        timestamptz created_at
+    }
+
+    dataset_versions {
+        uuid id PK
+        uuid dataset_id FK
+        int ordinal "1-based, per dataset"
+        text note "why this version exists"
+        text member_set_hash
+        uuid created_by
+        timestamptz created_at
+    }
+
+    dataset_version_members {
+        uuid dataset_version_id PK_FK
+        uuid content_id PK
+    }
+```
+
+A dataset is the concept and a version is the frozen membership (ADR-0058). Versions are
+immutable and appended, never rewritten: a new membership is the next ordinal, and a membership
+equal to the current one is refused rather than recorded — `member_set_hash` (sha256 over the
+sorted, de-duplicated member ids) is what makes that detectable, and what keeps a set joinable
+across a rebuilt database. `note` is `NOT NULL`: a version whose reason nobody wrote down
+leaves earlier rounds invalid and uninterpretable at once.
+
+`dataset_version_members.content_id` carries **no foreign key** — a cross-module reference,
+validated in the application like every other (§8). Within the aggregate both cascades are
+real: a version belongs to its dataset, a member to its version.
+
+## 10. platform — events outbox
 
 ```mermaid
 erDiagram
@@ -548,7 +593,7 @@ erDiagram
 Append-only outbox (ADR-0003): each use case writes aggregate state and an `events` row in
 the same transaction; post-commit dispatch delivers to in-process policies.
 
-## 10. End-to-end spine (logical)
+## 11. End-to-end spine (logical)
 
 The automated QA path, omitting campaign/human and study report composition:
 

@@ -286,8 +286,9 @@ def register_generator_version(cleanup):
 def cleanup(requires_db) -> Iterator[dict[str, list]]:
     """Collect rows created by a test and remove them afterwards.
 
-    Deletion follows the FK order: evaluations/completions → assignments → campaigns →
-    profiles → contents → generators/briefs → generator lineages → invitations → assessors.
+    Deletion follows the FK order: studies → datasets → evaluations/completions → assignments →
+    campaigns → profiles → contents → generators/briefs → generator lineages → invitations →
+    assessors.
     Outbox rows are
     keyed by the aggregate id that produced them. `acceptances` holds (package_format,
     adapter_version) tuples — an acceptance is global, so any test that creates one MUST
@@ -309,6 +310,7 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         "data_requirements": [],
         "acceptances": [],
         "studies": [],
+        "datasets": [],
     }
     yield created
 
@@ -320,6 +322,12 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         for study_id in created["studies"]:
             s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(study_id)})
             s.execute(text("DELETE FROM studies WHERE id = :id"), {"id": study_id})
+
+        # Datasets before contents: their members reference contents with no FK, so nothing
+        # would stop the rows going stale. Versions and members cascade with the dataset row.
+        for dataset_id in created["datasets"]:
+            s.execute(text("DELETE FROM events WHERE aggregate_id = :id"), {"id": str(dataset_id)})
+            s.execute(text("DELETE FROM datasets WHERE id = :id"), {"id": dataset_id})
 
         for content_id in created["contents"]:
             s.execute(

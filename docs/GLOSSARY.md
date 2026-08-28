@@ -206,6 +206,20 @@
   module, ADR-0013). Its items are contents, with no *expected output* (that is supplied by the
   human reference, ADR-0015). Distinct from the `GoldenDataset` (which is made of *human
   results*).
+- **Dataset** *(ADR-0058)* — a **named, reusable set of evaluands**, and an aggregate of its
+  own. It is the concept people refer to ("the SME reference set"); its name is a label and
+  binds nothing, so renaming it changes nothing any round measured. Distinct from the
+  `EvaluationDataset` above, which is a study's own composed set — the two are told apart by
+  who composes them: a `Dataset` is enumerated by a person, a study's is derived from its
+  recipe, and a hand-enumerated one is **not admissible** as a study's (ADR-0044 §9,
+  ADR-0058 §7). What a round *actually* measured is neither: that is the **sample**, a derived
+  read, and the thing a validity coefficient belongs to (ADR-0058 §9).
+- **DatasetVersion** — a `Dataset`'s **frozen membership**, numbered from 1 per dataset and
+  immutable: editing means minting the next one. It carries a **required note** saying why it
+  exists — without it, earlier rounds become invalid and uninterpretable at the same time —
+  and a `memberSetHash`, which detects the no-op (a membership equal to the current one is
+  refused, not recorded) and keeps the set joinable across a rebuilt database, the way
+  `briefHash` does for a commission.
 - **GeneratorScope** — the recipe's second axis: which generator versions the round measures,
   either **every one the briefs bring** or **exactly these** (a non-empty list). **Declared,
   never defaulted** (ADR-0044 §1, ADR-0024's rule at the other end of the same axis): without
@@ -406,6 +420,9 @@
 | `EvaluationStudy` | *experiment* (LangSmith/Braintrust/Phoenix/Langfuse offline) · *evaluation run* (MLflow) | "experiment" is ambiguous across ecosystems (unit vs. **container** in MLflow); the study is richer: purpose, gate, publication, human path, generator level |
 | line of studies | *internal benchmark* / history vs. baseline | comparison valid only within the line (pinning) |
 | `EvaluationDataset` | *dataset* | adopted — universal term |
+| `Dataset` + `DatasetVersion` | *dataset* + *dataset version* (LangSmith/Langfuse/Braintrust/Phoenix) | the two-level shape is universal; the **trigger is not ours** — all four mint a version implicitly on every mutation, keyed by timestamp or transaction id, and none records *why*. Ours is an explicit act with a **required note**, the `lm-evaluation-harness` pattern, because the set is curated deliberately and rarely (ADR-0058 §3) |
+| `memberSetHash` | content digest (MLflow) · change detection on upload (Phoenix) | ours detects the **no-op** and travels as a portable key; it is never the version's identity, because two purposes may hold the same courses (ADR-0058 §4, §6) |
+| dataset-version comparability gate | *(no analogue)* | the four tools allow comparing runs across versions of one dataset **without warning**; ours joins the instrument version in `CompareStudies`' gate (ADR-0058 §8) |
 | `GoldenDataset` | *golden dataset* | already aligned (human reference) |
 | `Criterion` **+** `Assessor` executing it | *scorer* (Braintrust/MLflow) · *evaluator* (LangSmith/Azure) · *metric* (DeepEval/Ragas) · *grader* (OpenAI) · *assertion* (promptfoo) | **five names, no standard** — and all of them fuse the *what* with the *who*; our separation is the precision we do not concede |
 | Automated `Assessor` (ADR-0016) | *LLM-as-judge* · automated *scorer/evaluator* · our former `LLMJudge`/`DeterministicVerifier`/`HybridVerifier` | the mechanism (with or without an LLM) is an internal detail of the assessor; `Assessor` (versioned instance with a target instrument) is more precise — the industry does not version judges |
