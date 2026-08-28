@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,12 +9,19 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, Spinner } from "@/components/ui/states";
-import { useContents, useCreateCampaign, useReferenceInstruments } from "@/lib/api/hooks";
+import {
+  useContents,
+  useCreateCampaign,
+  useDatasets,
+  useReferenceInstruments,
+} from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
+import { latestVersion } from "@/lib/datasets";
+import type { Uuid } from "@/lib/api/types";
 
 export function CampaignForm({ onDone }: { onDone: () => void }) {
   const { data: contents } = useContents();
+  const { data: datasets, isLoading: loadingDatasets } = useDatasets();
   const { data: instruments, isLoading: loadingInstruments } = useReferenceInstruments();
   const createCampaign = useCreateCampaign();
 
@@ -21,7 +29,8 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
   const [description, setDescription] = useState("");
   const [instrument, setInstrument] = useState("");
   const [required, setRequired] = useState(2);
-  const [contentIds, setContentIds] = useState<string[]>([]);
+  const [datasetId, setDatasetId] = useState("");
+  const [versionId, setVersionId] = useState("");
 
   // Preselected only when there is nothing to choose between. With several, the field stays
   // empty and submit refuses: a campaign opened against a default nobody looked at is the
@@ -30,9 +39,23 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
     if (instruments?.length === 1) setInstrument(instruments[0].rubric_version_id);
   }, [instruments]);
 
-  function toggle(list: string[], setList: (v: string[]) => void, value: string) {
-    setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
-  }
+  const dataset = datasets?.find((d) => d.dataset_id === datasetId);
+
+  // The latest version is a convenience, and it is **resolved here**: what the campaign
+  // records is the id, never "whichever was newest at the time" (ADR-0058 §5).
+  useEffect(() => {
+    if (!dataset) {
+      setVersionId("");
+      return;
+    }
+    setVersionId(latestVersion(dataset)?.version_id ?? "");
+  }, [dataset]);
+
+  const version = dataset?.versions.find((v) => v.version_id === versionId);
+  const courseLabel = (id: Uuid) => {
+    const course = contents?.find((c) => c.content_id === id);
+    return course ? `${course.external_id} · v${course.version}` : id.slice(0, 8);
+  };
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,8 +67,8 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
       toast.error("Choose the instrument this campaign evaluates against.");
       return;
     }
-    if (contentIds.length === 0) {
-      toast.error("Select at least one course.");
+    if (!versionId) {
+      toast.error("Choose the dataset version this campaign runs on.");
       return;
     }
     createCampaign.mutate(
@@ -54,7 +77,7 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
         description: description.trim() || null,
         instrument_version_id: instrument,
         required_evaluations_per_content: required,
-        content_ids: contentIds,
+        dataset_version_id: versionId,
       },
       {
         onSuccess: () => {
@@ -120,7 +143,7 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
         )}
         <p className="text-xs text-muted-foreground">
           Fixed when the campaign opens: the answers it collects are answers to this
-          version's items.
+          version&apos;s items.
         </p>
       </div>
 
@@ -138,64 +161,99 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
         </p>
       </div>
 
-      <div className="space-y-2">
-        <Label>Courses in this campaign</Label>
-        {!contents || contents.length === 0 ? (
-          <EmptyState title="No courses" hint="Register a course first." />
+      <div className="space-y-1.5">
+        <Label htmlFor="campaign-dataset">Courses</Label>
+        {loadingDatasets ? (
+          <Spinner />
+        ) : !datasets || datasets.length === 0 ? (
+          <EmptyState
+            title="No datasets yet"
+            hint="A campaign runs on a named set of courses. Declare one first."
+          />
         ) : (
-          <div className="max-h-52 space-y-1 overflow-y-auto rounded-md border p-2">
-            {contents.map((c) => (
-              // Marked, never hidden (ADR-0028): a campaign is a set of evaluands, and a
-              // course with no deployed instance is still one for the automated path. What
-              // it cannot take is a human assignment — that refusal lives in AssignForm.
-              <CheckRow
-                key={c.content_id}
-                checked={contentIds.includes(c.content_id)}
-                onChange={() => toggle(contentIds, setContentIds, c.content_id)}
-                label={`${c.external_id} · v${c.version}`}
-                hint={c.consumable_url ? undefined : "not deployed"}
-              />
-            ))}
+          <div className="space-y-2">
+            <Select
+              id="campaign-dataset"
+              value={datasetId}
+              onChange={(e) => setDatasetId(e.target.value)}
+            >
+              <option value="">Choose a dataset…</option>
+              {datasets.map((d) => (
+                <option key={d.dataset_id} value={d.dataset_id}>
+                  {d.name} · {latestVersion(d)?.content_ids.length ?? 0} courses
+                </option>
+              ))}
+            </Select>
+
+            {dataset ? (
+              <Select
+                aria-label="Dataset version"
+                value={versionId}
+                onChange={(e) => setVersionId(e.target.value)}
+              >
+                {[...dataset.versions].reverse().map((v) => (
+                  <option key={v.version_id} value={v.version_id}>
+                    v{v.ordinal} · {v.content_ids.length} courses · {v.note}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
           </div>
         )}
+        <p className="text-xs text-muted-foreground">
+          The version is copied when the campaign opens, so editing the set afterwards leaves
+          this campaign where it is.{" "}
+          <Link href="/admin/datasets" className="underline">
+            Manage datasets
+          </Link>
+        </p>
       </div>
 
+      {version ? (
+        <div className="space-y-1.5">
+          <Label>These {version.content_ids.length} courses</Label>
+          <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-md border p-2 text-sm">
+            {version.content_ids.map((id) => {
+              const course = contents?.find((c) => c.content_id === id);
+              return (
+                // Marked, never hidden (ADR-0028): a course with no deployed instance is
+                // still an evaluand. What it cannot take is a human assignment, and that
+                // refusal lives in AssignForm.
+                <li key={id} className="truncate">
+                  {courseLabel(id)}
+                  {course && !course.consumable_url ? (
+                    <span className="text-xs text-muted-foreground"> · not deployed</span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="outline" onClick={onDone} disabled={createCampaign.isPending}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onDone}
+          disabled={createCampaign.isPending}
+        >
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={createCampaign.isPending || !instruments || instruments.length === 0}
+          disabled={
+            createCampaign.isPending ||
+            !instruments ||
+            instruments.length === 0 ||
+            !datasets ||
+            datasets.length === 0
+          }
         >
           {createCampaign.isPending ? <Spinner /> : null}
           Open campaign
         </Button>
       </div>
     </form>
-  );
-}
-
-function CheckRow({
-  checked,
-  onChange,
-  label,
-  hint,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-  hint?: string;
-}) {
-  return (
-    <label
-      className={cn(
-        "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent",
-      )}
-    >
-      <input type="checkbox" checked={checked} onChange={onChange} className="h-4 w-4" />
-      {label}
-      {hint ? <span className="text-xs text-muted-foreground">· {hint}</span> : null}
-    </label>
   );
 }

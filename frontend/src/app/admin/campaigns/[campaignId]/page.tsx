@@ -21,6 +21,7 @@ import {
   useCloseCampaign,
   useContents,
   useGoldenStatus,
+  useDatasets,
   useReferenceInstruments,
 } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
@@ -38,6 +39,7 @@ export default function CampaignDetailPage({
   const contents = useContents();
   const assessors = useAssessors();
   const instruments = useReferenceInstruments();
+  const datasets = useDatasets();
   const cancelAssignment = useCancelAssignment(campaignId);
   const closeCampaign = useCloseCampaign();
   const [assigning, setAssigning] = useState(false);
@@ -58,6 +60,19 @@ export default function CampaignDetailPage({
     );
     return match ? `${match.name} · ${match.version}` : progress.data?.instrument_version_id;
   }, [instruments.data, progress.data]);
+
+  /** Where this campaign's scope came from (ADR-0058 §5). Null on campaigns opened before
+   *  the decision — they were typed into a form, and the line says so rather than guessing. */
+  const scopeOrigin = useMemo(() => {
+    if (!campaign?.dataset_version_id) return null;
+    for (const dataset of datasets.data ?? []) {
+      const version = dataset.versions.find(
+        (v) => v.version_id === campaign.dataset_version_id,
+      );
+      if (version) return { dataset, version };
+    }
+    return null;
+  }, [campaign, datasets.data]);
 
   const assessorName = useMemo(() => {
     const map = new Map(
@@ -115,6 +130,22 @@ export default function CampaignDetailPage({
           <p className="mt-1 text-sm text-muted-foreground">
             {instrumentName} · quorum {p.required_evaluations_per_content} · coverage{" "}
             {Math.round(p.coverage * 100)}%
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {scopeOrigin ? (
+              <>
+                {p.contents.length} courses from{" "}
+                <Link
+                  href={`/admin/datasets/${scopeOrigin.dataset.dataset_id}`}
+                  className="underline"
+                >
+                  {scopeOrigin.dataset.name}
+                </Link>{" "}
+                v{scopeOrigin.version.ordinal}
+              </>
+            ) : (
+              `${p.contents.length} courses, chosen before sets were named`
+            )}
           </p>
         </div>
         <div className="flex gap-2">

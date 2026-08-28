@@ -368,6 +368,10 @@ export interface CampaignResponse {
   description: string | null;
   instrument_version_id: string;
   required_evaluations_per_content: number;
+  /** Where the scope came from. Null on campaigns opened before ADR-0058 — they were typed
+   *  into a form, and every read of them behaves as it did. */
+  dataset_version_id: Uuid | null;
+  /** What the campaign judged: the version's membership, copied when it opened. */
   content_ids: Uuid[];
   status: string; // draft | open | closed
 }
@@ -984,7 +988,8 @@ export interface OpenCampaignRequest {
   description?: string | null;
   instrument_version_id: string;
   required_evaluations_per_content: number;
-  content_ids: Uuid[];
+  /** The scope is named, not listed: it is read off the version and copied (ADR-0058 §5). */
+  dataset_version_id: Uuid;
   golden_coverage_threshold?: number;
 }
 
