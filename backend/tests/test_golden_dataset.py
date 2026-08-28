@@ -6,6 +6,7 @@ The chain is the MVP's finish line (02-discover.md, bridge):
 """
 
 import pytest
+from conftest import open_campaign_over
 from sqlalchemy import text
 
 from app.modules.golden_dataset.domain.golden_dataset import (
@@ -102,18 +103,15 @@ def evaluator(as_user, cleanup, unique):
 
 
 def open_campaign(admin, cleanup, content_ids, required=1, threshold=1.0):
-    body = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Golden dataset campaign",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": required,
-            "content_ids": content_ids,
-            "golden_coverage_threshold": threshold,
-        },
-    ).json()
-    cleanup["campaigns"].append(body["campaign_id"])
-    return body["campaign_id"]
+    return open_campaign_over(
+        admin,
+        cleanup,
+        content_ids,
+        name="Golden dataset campaign",
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=required,
+        golden_coverage_threshold=threshold,
+    )["campaign_id"]
 
 
 def submit(admin, client, campaign_id, content_id, assessor_id, value=4):

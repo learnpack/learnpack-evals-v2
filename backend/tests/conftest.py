@@ -184,6 +184,53 @@ def _explain_unreachable_database(error: Exception) -> str:
     return f"The test database at {where} could not be reached.\n\n{detail}"
 
 
+def declare_dataset_over(admin, cleanup, content_ids, name="a campaign under test"):
+    """A dataset over these courses, tracked for cleanup, returning its version id.
+
+    Its own helper because the tests that check a campaign is *refused* still need a version
+    the store can resolve — otherwise they would pass for the wrong reason.
+    """
+    declared = admin.post(
+        "/admin/datasets",
+        json={
+            "name": f"Set for {name}",
+            "note": "the courses this test runs on",
+            "content_ids": list(content_ids),
+        },
+    )
+    assert declared.status_code == 201, declared.text
+    dataset = declared.json()
+    cleanup["datasets"].append(dataset["dataset_id"])
+    return dataset["versions"][-1]["version_id"]
+
+
+def open_campaign_over(admin, cleanup, content_ids, **overrides):
+    """Declare a dataset over these courses and open a campaign against its version.
+
+    A campaign's scope is **named, not listed** (ADR-0058 §5), so opening one is two acts.
+    One helper rather than the same six lines in six files — and it returns the campaign body
+    whole, because half the callers want the id and half want a field off it.
+
+    `overrides` go to the campaign; everything about the set is this helper's business,
+    since no test is about how the set was named.
+    """
+    version_id = declare_dataset_over(
+        admin, cleanup, content_ids, overrides.get("name", "a campaign under test")
+    )
+
+    payload = {
+        "name": "Campaign under test",
+        "instrument_version_id": "learnpack-pedagogical-2.0.0",
+        "required_evaluations_per_content": 1,
+        "dataset_version_id": version_id,
+    } | overrides
+    opened = admin.post("/admin/campaigns", json=payload)
+    assert opened.status_code == 201, opened.text
+    campaign = opened.json()
+    cleanup["campaigns"].append(campaign["campaign_id"])
+    return campaign
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _prepare_database() -> None:
     """Bring the local test database up to date once per session.

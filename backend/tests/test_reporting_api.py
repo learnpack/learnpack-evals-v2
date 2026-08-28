@@ -4,6 +4,7 @@ Averages are checked against numbers computed by hand, so a wrong aggregation ca
 """
 
 import pytest
+from conftest import open_campaign_over
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
@@ -67,17 +68,14 @@ def content(admin, cleanup, unique):
 
 @pytest.fixture
 def campaign(admin, cleanup, content):
-    body = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Reporting campaign",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 2,
-            "content_ids": [content],
-        },
-    ).json()
-    cleanup["campaigns"].append(body["campaign_id"])
-    return body["campaign_id"]
+    return open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        name="Reporting campaign",
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=2,
+    )["campaign_id"]
 
 
 def assign(admin, campaign_id, content_id, assessor_id) -> str:
@@ -257,16 +255,13 @@ def test_an_evaluator_counts_on_every_course_they_evaluated(
     ).json()["content_id"]
     cleanup["contents"].append(second)
 
-    both = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Campaign over two courses",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [content, second],
-        },
-    ).json()["campaign_id"]
-    cleanup["campaigns"].append(both)
+    both = open_campaign_over(
+        admin,
+        cleanup,
+        [content, second],
+        name="Campaign over two courses",
+        instrument_version_id=RUBRIC,
+    )["campaign_id"]
 
     ada, ada_id = evaluator("ada")
     ada.post(

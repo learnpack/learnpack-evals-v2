@@ -7,6 +7,7 @@ populate its campaign list and its assign picker. Both require the admin role.
 import uuid
 
 import pytest
+from conftest import declare_dataset_over, open_campaign_over
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
@@ -51,16 +52,14 @@ def content(admin, cleanup, unique):
 
 
 def test_list_campaigns_returns_created_campaigns(admin, cleanup, content, unique):
-    created = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Campaign in the admin list",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 2,
-            "content_ids": [content],
-        },
-    ).json()
-    cleanup["campaigns"].append(created["campaign_id"])
+    created = open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        name="Campaign in the admin list",
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=2,
+    )
 
     listing = admin.get("/admin/campaigns")
     assert listing.status_code == 200
@@ -85,18 +84,14 @@ def test_list_campaigns_requires_admin(evaluator):
 @pytest.fixture
 def campaign(admin, cleanup, content):
     """An open campaign, named at birth."""
-    body = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "First round",
-            "description": "The courses of the first round",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [content],
-        },
-    ).json()
-    cleanup["campaigns"].append(body["campaign_id"])
-    return body["campaign_id"]
+    return open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        name="First round",
+        description="The courses of the first round",
+        instrument_version_id=RUBRIC,
+    )["campaign_id"]
 
 
 def test_a_campaign_is_named_when_it_opens(admin, campaign):
@@ -105,14 +100,14 @@ def test_a_campaign_is_named_when_it_opens(admin, campaign):
     assert row["description"] == "The courses of the first round"
 
 
-def test_a_campaign_cannot_open_without_a_name(admin, content):
+def test_a_campaign_cannot_open_without_a_name(admin, content, cleanup):
     response = admin.post(
         "/admin/campaigns",
         json={
             "name": "   ",
             "instrument_version_id": RUBRIC,
             "required_evaluations_per_content": 1,
-            "content_ids": [content],
+            "dataset_version_id": declare_dataset_over(admin, cleanup, [content]),
         },
     )
     assert response.status_code == 422
@@ -155,16 +150,13 @@ def test_a_closed_campaign_still_renames(admin, campaign):
 
 
 def test_list_campaign_assignments_returns_the_roster(admin, evaluator, cleanup, content):
-    campaign = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Campaign with a roster",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [content],
-        },
-    ).json()["campaign_id"]
-    cleanup["campaigns"].append(campaign)
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        name="Campaign with a roster",
+        instrument_version_id=RUBRIC,
+    )["campaign_id"]
 
     _, ada_id = evaluator("ada")
     created = admin.post(
@@ -239,3 +231,79 @@ def test_list_assessors_names_the_automated_kind(admin, cleanup, session, unique
 def test_list_assessors_requires_admin(evaluator):
     client, _ = evaluator("ada")
     assert client.get("/admin/assessors").status_code == 403
+
+
+# ------------------------------------------------- the scope comes from a set (ADR-0058)
+
+
+def test_a_campaign_takes_its_scope_from_the_version_it_names(admin, cleanup, content, unique):
+    """The version is *how* the scope was chosen; the copy is *what* was judged (§5)."""
+    version_id = declare_dataset_over(admin, cleanup, [content], f"scope-{unique}")
+
+    campaign = admin.post(
+        "/admin/campaigns",
+        json={
+            "name": "Campaign over a named set",
+            "instrument_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "dataset_version_id": version_id,
+        },
+    )
+
+    assert campaign.status_code == 201, campaign.text
+    body = campaign.json()
+    cleanup["campaigns"].append(body["campaign_id"])
+    assert body["dataset_version_id"] == version_id
+    assert body["content_ids"] == [content]
+
+
+def test_a_campaign_naming_a_version_nobody_declared_is_refused(admin):
+    response = admin.post(
+        "/admin/campaigns",
+        json={
+            "name": "Campaign over nothing",
+            "instrument_version_id": RUBRIC,
+            "required_evaluations_per_content": 1,
+            "dataset_version_id": str(uuid.uuid4()),
+        },
+    )
+
+    assert response.status_code == 422
+    assert "dataset version" in response.json()["detail"]
+
+
+def test_the_campaign_keeps_the_courses_the_version_had_when_it_opened(
+    admin, cleanup, content, unique
+):
+    """A later version of the same set does not move a campaign that already opened."""
+    second = admin.post(
+        "/admin/contents",
+        json={
+            "package_format": "LearnpackV1",
+            "external_id": f"course-later-{unique}",
+            "consumable_url": COURSE_URL,
+            "generator_version_id": None,
+        },
+    ).json()["content_id"]
+    cleanup["contents"].append(second)
+
+    campaign = open_campaign_over(
+        admin, cleanup, [content], name=f"Frozen scope {unique}", instrument_version_id=RUBRIC
+    )
+    dataset_id = next(
+        d["dataset_id"]
+        for d in admin.get("/admin/datasets").json()
+        if any(v["version_id"] == campaign["dataset_version_id"] for v in d["versions"])
+    )
+    admin.post(
+        f"/admin/datasets/{dataset_id}/versions",
+        json={"note": "added one after the campaign opened", "content_ids": [content, second]},
+    )
+
+    row = next(
+        c
+        for c in admin.get("/admin/campaigns").json()
+        if c["campaign_id"] == campaign["campaign_id"]
+    )
+    assert row["content_ids"] == [content]
+    assert row["dataset_version_id"] == campaign["dataset_version_id"]

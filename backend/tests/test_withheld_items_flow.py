@@ -12,7 +12,7 @@ frozen package in the repo produces one.
 """
 
 import pytest
-from conftest import fixture_artifact_rows
+from conftest import fixture_artifact_rows, open_campaign_over
 from sqlalchemy import text
 from test_content_profiling_commands import profile_content_use_case
 
@@ -110,16 +110,13 @@ def profiled_v1_course(cleanup, unique, namespace):
 @pytest.fixture
 def assignment(admin, evaluator, profiled_v1_course, cleanup):
     _, assessor_id = evaluator
-    campaign = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Withheld items campaign",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [profiled_v1_course],
-        },
-    ).json()
-    cleanup["campaigns"].append(campaign["campaign_id"])
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [profiled_v1_course],
+        name="Withheld items campaign",
+        instrument_version_id=RUBRIC,
+    )
     created = admin.post(
         f"/admin/campaigns/{campaign['campaign_id']}/assignments",
         json={"content_id": profiled_v1_course, "assessor_id": assessor_id},
@@ -342,16 +339,13 @@ def profiled_v2_course(cleanup, unique, namespace):
 @pytest.fixture
 def declared_assignment(admin, evaluator, profiled_v2_course, cleanup):
     _, assessor_id = evaluator
-    campaign = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Declared data campaign",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [profiled_v2_course],
-        },
-    ).json()
-    cleanup["campaigns"].append(campaign["campaign_id"])
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [profiled_v2_course],
+        name="Declared data campaign",
+        instrument_version_id=RUBRIC,
+    )
     created = admin.post(
         f"/admin/campaigns/{campaign['campaign_id']}/assignments",
         json={"content_id": profiled_v2_course, "assessor_id": assessor_id},
