@@ -54,6 +54,7 @@ files = [
     "app/modules/evaluand_registry",
     "app/modules/evaluation_design",
     "app/modules/content_profiling",
+    "app/modules/datasets",
     "app/modules/evaluation",
     "app/modules/evaluation_studies",
 ]

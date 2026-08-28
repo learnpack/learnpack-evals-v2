@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.modules.content_profiling.infrastructure.router import router as content_profiling_router
+from app.modules.datasets.infrastructure.router import admin_router as datasets_admin_router
 from app.modules.evaluand_registry.infrastructure import local_sources
 from app.modules.evaluand_registry.infrastructure.dev_router import (
     router as local_courses_dev_router,
@@ -118,6 +119,7 @@ app.include_router(evaluation_studies_router)
 app.include_router(studies_matching_router)
 app.include_router(content_profiling_router)
 app.include_router(identity_admin_router)
+app.include_router(datasets_admin_router)
 app.include_router(orchestration_admin_router)
 app.include_router(orchestration_evaluator_router)
 app.include_router(evaluation_router)
