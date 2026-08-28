@@ -25,10 +25,12 @@ import type {
   BrowseResponse,
   CampaignProgress,
   CampaignResponse,
+  DatasetResponse,
 
   ContentResponse,
   CriterionOutcomes,
   DeclareConsumableUrlRequest,
+  DeclareDatasetRequest,
   DeclareStudyRequest,
   EvaluationResponse,
   GeneratorResponse,
@@ -38,6 +40,7 @@ import type {
   InvitationResponse,
   InviteAssessorRequest,
   Me,
+  MintDatasetVersionRequest,
   OpenCampaignRequest,
   UpdateStudyDraftRequest,
   PreviewEvaluationRequest,
@@ -52,6 +55,7 @@ import type {
   RatifyAssessorResponse,
   ReferenceInstrumentResponse,
   RenameCampaignRequest,
+  RenameDatasetRequest,
   RubricDetailResponse,
   RegisterBriefRequest,
   RegisterBySourceRequest,
@@ -99,6 +103,8 @@ export const queryKeys = {
   instruments: ["admin", "instruments"] as const,
   profiles: ["admin", "profiles"] as const,
   profilingCapabilities: ["admin", "profiling", "capabilities"] as const,
+  datasets: ["admin", "datasets"] as const,
+  dataset: (id: Uuid) => ["admin", "datasets", id] as const,
   campaigns: ["admin", "campaigns"] as const,
   referenceInstruments: ["admin", "reference", "instruments"] as const,
   referenceInstrument: (id: string) => ["admin", "reference", "instruments", id] as const,
@@ -469,6 +475,66 @@ export function useReferenceInstrument(id: string) {
   return useQuery({
     queryKey: queryKeys.referenceInstrument(id),
     queryFn: () => api<RubricDetailResponse>(`/admin/reference/instruments/${id}`),
+  });
+}
+
+// ---- datasets (ADR-0058) ----------------------------------------------------
+
+/** Every write moves both reads: the list carries each dataset's whole version line. */
+function invalidateDatasets(qc: ReturnType<typeof useQueryClient>, id: Uuid) {
+  qc.invalidateQueries({ queryKey: queryKeys.datasets, exact: true });
+  qc.invalidateQueries({ queryKey: queryKeys.dataset(id) });
+}
+
+export function useDatasets() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.datasets,
+    queryFn: () => api<DatasetResponse[]>("/admin/datasets"),
+  });
+}
+
+export function useDataset(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.dataset(id),
+    queryFn: () => api<DatasetResponse>(`/admin/datasets/${id}`),
+  });
+}
+
+export function useDeclareDataset() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DeclareDatasetRequest) =>
+      api<DatasetResponse>("/admin/datasets", { method: "POST", body }),
+    onSuccess: (created) => {
+      invalidateDatasets(qc, created.dataset_id);
+      // Seed the detail cache: the list sends the reader straight there.
+      qc.setQueryData(queryKeys.dataset(created.dataset_id), created);
+    },
+  });
+}
+
+/** Freezes the next membership. A membership equal to the current one answers 409, which
+ *  the caller reports as the fact it is rather than as a failure. */
+export function useMintDatasetVersion(id: Uuid) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: MintDatasetVersionRequest) =>
+      api<DatasetResponse>(`/admin/datasets/${id}/versions`, { method: "POST", body }),
+    onSuccess: () => invalidateDatasets(qc, id),
+  });
+}
+
+export function useRenameDataset(id: Uuid) {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenameDatasetRequest) =>
+      api<DatasetResponse>(`/admin/datasets/${id}`, { method: "PATCH", body }),
+    onSuccess: () => invalidateDatasets(qc, id),
   });
 }
 
