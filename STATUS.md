@@ -1997,6 +1997,19 @@ the data in the package).
   it; run twice, the second run minted no version, because the membership had not moved.
   A campaign that already exists is still reused by name, so the demo campaign in a store
   that predates this keeps its null — which is what null is for.
+- **A dataset says what its courses are, and for which version** (checked against the dev
+  store by composing a deliberately uneven set: three courses, one undeployed, one with no
+  brief, one with no generator, then a second version adding a fourth). The version rows are
+  now the selector, so **an older membership is readable** — a campaign may still be running
+  on one, and until now the page could only show the latest. Each course carries what
+  `/admin/contents` carries **minus Extraction**: that column is mutable operational state of
+  the automated path, it moves without the set moving, and it is not a property of the set.
+  Above the table, the readiness line (`4 courses · 1 not deployed · 1 without a brief · 1
+  generator version`) and, when any member declares no deployment, the amber caveat saying
+  they cannot be handed to a human — the one fact on the page that blocks the next step.
+  Both were read off the real API against both versions and match the rows. The summary
+  **returns nothing while the courses are still loading**, so "0 not deployed" can never
+  stand in for "not known yet". The page compiles and builds; **nobody has seen it render**.
 - **A dataset is built from the console, and `/admin/datasets` is where sets live.** The list
   shows each set at its current version with the note of its latest change; the detail page
   shows the **version line newest-first, each entry carrying what entered and what left**,

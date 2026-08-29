@@ -2,30 +2,66 @@
 
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { ErrorState, LoadingState } from "@/components/ui/states";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { DatasetVersionForm } from "@/components/admin/dataset-version-form";
 import { RenameDatasetForm } from "@/components/admin/rename-dataset-form";
-import { useContents, useDataset } from "@/lib/api/hooks";
-import { latestVersion, versionHistory, type MembershipDiff } from "@/lib/datasets";
-import type { DatasetVersionResponse, Uuid } from "@/lib/api/types";
+import { useBriefs, useContents, useDataset, useGeneratorVersions } from "@/lib/api/hooks";
+import {
+  latestVersion,
+  summarizeMembership,
+  versionHistory,
+  type MembershipDiff,
+  type MembershipSummary,
+} from "@/lib/datasets";
+import type {
+  ContentResponse,
+  DatasetVersionResponse,
+  GeneratorVersionResponse,
+  Uuid,
+} from "@/lib/api/types";
+import { cn } from "@/lib/utils";
+
+/** A version is identified as "<lineage> <version>" everywhere it is named. */
+const generatorName = (g?: GeneratorVersionResponse) => (g ? `${g.name} ${g.version}` : undefined);
 
 export default function DatasetPage({ params }: { params: Promise<{ datasetId: string }> }) {
   const { datasetId } = use(params);
   const { data: dataset, isLoading, error } = useDataset(datasetId);
   const { data: courses } = useContents();
+  // The two facts that decide what can be done with a course: the commission it shares (the
+  // pairing key) and the generator that made it. Neither is required for the rest of the
+  // table — while they load, those cells read as unresolved rather than as a problem.
+  const { data: briefs } = useBriefs();
+  const { data: generators } = useGeneratorVersions();
 
   const [renaming, setRenaming] = useState(false);
   const [versioning, setVersioning] = useState(false);
+  // Null means "whichever is latest", so a new version selects itself instead of leaving the
+  // page pointing at the one that was newest when it loaded.
+  const [selectedId, setSelectedId] = useState<Uuid | null>(null);
 
-  const courseName = useMemo(() => {
-    const byId = new Map((courses ?? []).map((c) => [c.content_id, c.external_id]));
-    return (id: Uuid) => byId.get(id) ?? id.slice(0, 8);
-  }, [courses]);
+  const courseById = useMemo(
+    () => new Map((courses ?? []).map((c) => [c.content_id, c])),
+    [courses],
+  );
+  const briefById = useMemo(() => new Map((briefs ?? []).map((b) => [b.brief_id, b])), [briefs]);
+  const generatorById = useMemo(
+    () => new Map((generators ?? []).map((g) => [g.generator_version_id, g])),
+    [generators],
+  );
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={(error as Error).message} />;
@@ -33,6 +69,15 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
 
   const latest = latestVersion(dataset);
   const history = versionHistory(dataset);
+  const selected = dataset.versions.find((v) => v.version_id === selectedId) ?? latest;
+  const summary = summarizeMembership(selected?.content_ids ?? [], courses);
+
+  const courseName = (id: Uuid) => courseById.get(id)?.external_id ?? id.slice(0, 8);
+  // Sorted by the name a person reads. The API returns the canonical (uuid) order, which is
+  // what makes two memberships comparable and what makes forty rows unreadable.
+  const members = [...(selected?.content_ids ?? [])].sort((a, b) =>
+    courseName(a).localeCompare(courseName(b)),
+  );
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -80,6 +125,8 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
               version={version}
               diff={diff}
               isLatest={version.version_id === latest?.version_id}
+              isSelected={version.version_id === selected?.version_id}
+              onSelect={() => setSelectedId(version.version_id)}
               courseName={courseName}
             />
           ))}
@@ -88,16 +135,46 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
 
       <Card>
         <CardHeader>
-          <CardTitle>Courses in v{latest?.ordinal ?? "?"}</CardTitle>
+          <CardTitle>Courses in v{selected?.ordinal ?? "?"}</CardTitle>
+          {/* Suppressed entirely until the courses load: "0 not deployed" and "not known
+              yet" must never look the same. */}
+          {summary ? <ReadinessLine summary={summary} /> : null}
         </CardHeader>
-        <CardContent>
-          <ul className="grid gap-1 text-sm sm:grid-cols-2">
-            {(latest?.content_ids ?? []).map((id) => (
-              <li key={id} className="truncate text-muted-foreground">
-                {courseName(id)}
-              </li>
-            ))}
-          </ul>
+        <CardContent className="space-y-3">
+          {summary && summary.undeployed > 0 ? (
+            <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
+              {summary.undeployed} of these courses{" "}
+              {summary.undeployed === 1 ? "declares" : "declare"} no deployed instance, so{" "}
+              {summary.undeployed === 1 ? "it" : "they"} cannot be handed to a human evaluator.
+              A campaign over this version will still open; the assignment is what refuses.
+            </p>
+          ) : null}
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Course</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Format</TableHead>
+                  <TableHead>Brief</TableHead>
+                  <TableHead>Generator</TableHead>
+                  <TableHead>Deployment</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {members.map((id) => (
+                  <CourseRow
+                    key={id}
+                    contentId={id}
+                    course={courseById.get(id)}
+                    briefText={(briefId) => briefById.get(briefId)?.brief}
+                    generatorLabel={(versionId) => generatorName(generatorById.get(versionId))}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -123,21 +200,135 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
   );
 }
 
-/** One version, with what entered and what left since the one before it. */
+/** What this membership is made of, in one line: totals first, then only what is missing. */
+function ReadinessLine({ summary }: { summary: MembershipSummary }) {
+  const facts = [
+    `${summary.total} ${summary.total === 1 ? "course" : "courses"}`,
+    summary.undeployed ? `${summary.undeployed} not deployed` : null,
+    summary.withoutBrief ? `${summary.withoutBrief} without a brief` : null,
+    summary.generatorVersions
+      ? `${summary.generatorVersions} generator ${summary.generatorVersions === 1 ? "version" : "versions"}`
+      : null,
+    summary.withoutGenerator ? `${summary.withoutGenerator} without a generator` : null,
+    summary.formats.length > 1 ? summary.formats.join(" + ") : null,
+  ].filter(Boolean);
+
+  return <p className="text-sm text-muted-foreground">{facts.join(" · ")}</p>;
+}
+
+/** One member, read-only. Declaring a deployment or attributing a generator are acts of
+ *  `/admin/contents`: this page reads a set, it does not administer courses. */
+function CourseRow({
+  contentId,
+  course,
+  briefText,
+  generatorLabel,
+}: {
+  contentId: Uuid;
+  course: ContentResponse | undefined;
+  briefText: (briefId: Uuid) => string | undefined;
+  generatorLabel: (versionId: Uuid) => string | undefined;
+}) {
+  if (!course) {
+    // Not expected — content is never retired (ADR-0033) — so it reads as unresolved rather
+    // than as a course that is missing something.
+    return (
+      <TableRow>
+        <TableCell className="font-medium">{contentId.slice(0, 8)}</TableCell>
+        <TableCell colSpan={5} className="text-xs text-muted-foreground">
+          not in the course list
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{course.external_id}</TableCell>
+      <TableCell>{course.version}</TableCell>
+      <TableCell className="text-muted-foreground">{course.package_format}</TableCell>
+      <TableCell className="max-w-xs">
+        {course.brief_id ? (
+          <span className="line-clamp-2 text-xs" title={course.brief_id}>
+            {briefText(course.brief_id) ?? course.brief_id}
+          </span>
+        ) : (
+          <span
+            className="text-xs text-muted-foreground"
+            title="No brief recorded: this course cannot enter a brief-paired dataset."
+          >
+            absent
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="text-xs">
+        {course.generator_version_id ? (
+          <span title={course.generator_version_id}>
+            {generatorLabel(course.generator_version_id) ?? course.generator_version_id}
+            {course.generator_attributed_at ? (
+              <span className="ml-1 text-muted-foreground">(attributed later)</span>
+            ) : null}
+          </span>
+        ) : (
+          <span
+            className="text-muted-foreground"
+            title="No generator declared: this course is outside anything measured at generator grain (ADR-0024)."
+          >
+            unknown
+          </span>
+        )}
+      </TableCell>
+      <TableCell>
+        {course.consumable_url ? (
+          <a
+            href={course.consumable_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            Open <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : (
+          <span
+            className="text-xs text-muted-foreground"
+            title="No deployed instance declared: this course can be evaluated automatically, but not by a human. Declare one in Courses."
+          >
+            none
+          </span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** One version, with what entered and what left since the one before it. Selecting it is what
+ *  makes an older membership readable — a campaign may still be running on one. */
 function VersionRow({
   version,
   diff,
   isLatest,
+  isSelected,
+  onSelect,
   courseName,
 }: {
   version: DatasetVersionResponse;
   diff: MembershipDiff;
   isLatest: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
   courseName: (id: Uuid) => string;
 }) {
   const isFirst = version.ordinal === 1;
   return (
-    <div className="rounded-md border p-3">
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      className={cn(
+        "w-full rounded-md border p-3 text-left transition-colors hover:bg-accent",
+        isSelected ? "border-primary bg-accent/50" : null,
+      )}
+    >
       <div className="flex items-center gap-2">
         <Badge variant={isLatest ? "success" : "secondary"}>v{version.ordinal}</Badge>
         <span className="text-sm font-medium">{version.note}</span>
@@ -168,6 +359,6 @@ function VersionRow({
           </>
         )}
       </div>
-    </div>
+    </button>
   );
 }
