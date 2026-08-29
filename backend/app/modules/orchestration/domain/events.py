@@ -22,6 +22,11 @@ def campaign_opened(campaign: EvaluationCampaign) -> DomainEvent:
             "description": campaign.description,
             "instrumentVersionId": campaign.instrument_version_id,
             "requiredEvaluationsPerContent": campaign.required_evaluations_per_content,
+            # Both, because they answer different questions: the version says how the scope
+            # was chosen, the ids say what it turned out to be (ADR-0058 §5).
+            "datasetVersionId": (
+                str(campaign.dataset_version_id) if campaign.dataset_version_id else None
+            ),
             "contentIds": [str(c) for c in campaign.content_ids],
         },
     )

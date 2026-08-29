@@ -5,6 +5,7 @@ The dispatcher may re-deliver an event, and a failed policy can be reprocessed f
 """
 
 import pytest
+from conftest import open_campaign_over
 from sqlalchemy import text
 
 from app.modules.orchestration.infrastructure.policies import on_evaluation_submitted
@@ -54,16 +55,13 @@ def test_replaying_the_event_is_idempotent(admin, as_user, cleanup, unique, sess
     ).json()["content_id"]
     cleanup["contents"].append(content_id)
 
-    campaign_id = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Completion policy campaign",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [content_id],
-        },
-    ).json()["campaign_id"]
-    cleanup["campaigns"].append(campaign_id)
+    campaign_id = open_campaign_over(
+        admin,
+        cleanup,
+        [content_id],
+        name="Completion policy campaign",
+        instrument_version_id=RUBRIC,
+    )["campaign_id"]
 
     ada = as_user(f"user_ada_{unique}", f"ada-{unique}@example.com", "Ada")
     ada_id = ada.get("/me").json()["assessor_id"]

@@ -94,6 +94,18 @@ class SqlAlchemyDatasetRepository:
             return None
         return self._hydrate([row])[0]
 
+    def find_dataset_of_version(self, version_id: UUID) -> Dataset | None:
+        """The dataset a version belongs to, hydrated whole.
+
+        A version is a child of the aggregate, so it is reached through its root rather than
+        read on its own — and the root is what carries the name a consumer wants to show.
+        """
+        dataset_id = self._session.execute(
+            text("SELECT dataset_id FROM dataset_versions WHERE id = :id"),
+            {"id": version_id},
+        ).scalar()
+        return None if dataset_id is None else self.get(dataset_id)
+
     def list_all(self) -> list[Dataset]:
         rows = (
             self._session.execute(

@@ -21,6 +21,7 @@ erDiagram
     EVALUAND_REGISTRY ||--o{ EVALUATION : "contents"
     EVALUAND_REGISTRY ||--o{ EVALUATION_STUDIES : "briefs / contents"
     EVALUAND_REGISTRY ||--o{ DATASETS : "members"
+    DATASETS ||--o{ ORCHESTRATION : "campaign scope"
     EVALUATION_DESIGN ||--o{ ORCHESTRATION : "instrument pin"
     EVALUATION_DESIGN ||--o{ EVALUATION : "instrument pin"
     EVALUATION_DESIGN ||--o{ CONTENT_PROFILING : "data requirement ids"
@@ -438,6 +439,7 @@ erDiagram
         text name
         text description "nullable"
         text instrument_version_id
+        uuid dataset_version_id "nullable, no FK"
         int required_evaluations_per_content
         numeric golden_coverage_threshold
         text status "draft | open | closed"
@@ -476,6 +478,12 @@ erDiagram
 
 At most one **active** assignment per `(campaign, content, assessor)` (partial unique where
 status ≠ `cancelled`). Campaigns do not own evaluations; the assignment is the link.
+
+`dataset_version_id` records **how the scope was chosen** and `campaign_contents` stays **what
+was judged** (ADR-0058 §5): the copy is what the assignment path reads, and it is what makes a
+campaign's scope independent of anything that happens to the set afterwards. Nullable and
+without a foreign key — the version belongs to another module (§9) and is validated by the use
+case, and a null means the campaign was opened before sets could be named.
 
 ## 8. evaluation_studies
 

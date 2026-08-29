@@ -33,8 +33,10 @@ from app.modules.orchestration.application.commands import (
     OpenCampaignCommand,
     RenameCampaign,
     RenameCampaignCommand,
+    UnknownDatasetVersion,
 )
 from app.modules.orchestration.domain.assignment import InvalidAssignmentTransition
+from app.modules.orchestration.infrastructure.gateways import DatasetsGateway
 from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
@@ -60,7 +62,8 @@ class OpenCampaignRequest(BaseModel):
     description: str | None = None
     instrument_version_id: str = Field(examples=["learnpack-pedagogical-2.0.0"])
     required_evaluations_per_content: int = Field(ge=1, examples=[2])
-    content_ids: list[UUID]
+    # The scope is named, not listed: it is read off the version and copied (ADR-0058 §5).
+    dataset_version_id: UUID
     golden_coverage_threshold: float = 1.0
 
 
@@ -83,6 +86,9 @@ class CampaignResponse(BaseModel):
     description: str | None
     instrument_version_id: str
     required_evaluations_per_content: int
+    # Null on campaigns opened before ADR-0058: they were typed into a form, and every read
+    # of them behaves as it did.
+    dataset_version_id: UUID | None
     content_ids: list[UUID]
     status: str
 
@@ -172,6 +178,7 @@ def _campaign_response(campaign) -> CampaignResponse:  # noqa: ANN001 — domain
         description=campaign.description,
         instrument_version_id=campaign.instrument_version_id,
         required_evaluations_per_content=campaign.required_evaluations_per_content,
+        dataset_version_id=campaign.dataset_version_id,
         content_ids=campaign.content_ids,
         status=str(campaign.status),
     )
@@ -212,7 +219,10 @@ def open_campaign(
         )
 
     use_case = OpenCampaign(
-        campaigns=SqlAlchemyCampaignRepository(uow.session), publisher=uow.events, uow=uow
+        campaigns=SqlAlchemyCampaignRepository(uow.session),
+        datasets=DatasetsGateway(uow.session),
+        publisher=uow.events,
+        uow=uow,
     )
     try:
         campaign = use_case(
@@ -221,10 +231,15 @@ def open_campaign(
                 description=request.description,
                 instrument_version_id=request.instrument_version_id,
                 required_evaluations_per_content=request.required_evaluations_per_content,
-                content_ids=request.content_ids,
+                dataset_version_id=request.dataset_version_id,
                 golden_coverage_threshold=request.golden_coverage_threshold,
             )
         )
+    except UnknownDatasetVersion as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="dataset version must exist",
+        ) from exc
     except InvalidCampaign as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

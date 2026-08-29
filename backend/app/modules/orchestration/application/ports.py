@@ -21,6 +21,18 @@ class CampaignRepositoryPort(Protocol):
     def list_all(self) -> list[EvaluationCampaign]: ...
 
 
+class DatasetsGatewayPort(Protocol):
+    """The courses a dataset version holds (ADR-0058 §5).
+
+    Declared in terms of ids alone, so the application layer keeps knowing nothing about the
+    module on the other side of it (ARCHITECTURE.md §3). `None` means the store cannot resolve
+    that version — which is not the same as a version that holds nothing, an impossibility the
+    dataset's own invariants already refuse.
+    """
+
+    def get_version_members(self, version_id: UUID) -> list[UUID] | None: ...
+
+
 class AssignmentRepositoryPort(Protocol):
     def get(self, assignment_id: UUID) -> Assignment | None: ...
 

@@ -30,6 +30,7 @@ class SqlAlchemyCampaignRepository:
             description=row["description"],
             instrument_version_id=row["instrument_version_id"],
             required_evaluations_per_content=row["required_evaluations_per_content"],
+            dataset_version_id=row["dataset_version_id"],
             content_ids=list(content_ids),
             golden_coverage_threshold=float(row["golden_coverage_threshold"]),
             status=row["status"],
@@ -41,7 +42,8 @@ class SqlAlchemyCampaignRepository:
                 text(
                     """
                     SELECT id, name, description, instrument_version_id,
-                           required_evaluations_per_content, golden_coverage_threshold, status
+                           required_evaluations_per_content, golden_coverage_threshold, status,
+                           dataset_version_id
                       FROM campaigns WHERE id = :id
                     """
                 ),
@@ -58,8 +60,10 @@ class SqlAlchemyCampaignRepository:
                 """
                 INSERT INTO campaigns
                     (id, name, description, instrument_version_id,
-                     required_evaluations_per_content, golden_coverage_threshold, status)
-                VALUES (:id, :name, :description, :rubric, :required, :threshold, :status)
+                     required_evaluations_per_content, golden_coverage_threshold, status,
+                     dataset_version_id)
+                VALUES (:id, :name, :description, :rubric, :required, :threshold, :status,
+                        :dataset_version_id)
                 """
             ),
             {
@@ -70,6 +74,7 @@ class SqlAlchemyCampaignRepository:
                 "required": campaign.required_evaluations_per_content,
                 "threshold": campaign.golden_coverage_threshold,
                 "status": str(campaign.status),
+                "dataset_version_id": campaign.dataset_version_id,
             },
         )
         for content_id in campaign.content_ids:
@@ -102,7 +107,8 @@ class SqlAlchemyCampaignRepository:
                 text(
                     """
                     SELECT id, name, description, instrument_version_id,
-                           required_evaluations_per_content, golden_coverage_threshold, status
+                           required_evaluations_per_content, golden_coverage_threshold, status,
+                           dataset_version_id
                       FROM campaigns ORDER BY created_at
                     """
                 )

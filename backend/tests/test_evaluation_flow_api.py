@@ -5,6 +5,7 @@ satisfying two campaigns.
 """
 
 import pytest
+from conftest import declare_dataset_over, open_campaign_over
 from sqlalchemy import text
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
@@ -69,17 +70,14 @@ def content(admin, cleanup, unique):
 @pytest.fixture
 def make_campaign(admin, cleanup, content):
     def _make(required: int = 2):
-        body = admin.post(
-            "/admin/campaigns",
-            json={
-                "name": "Evaluation flow campaign",
-                "instrument_version_id": RUBRIC,
-                "required_evaluations_per_content": required,
-                "content_ids": [content],
-            },
-        ).json()
-        cleanup["campaigns"].append(body["campaign_id"])
-        return body["campaign_id"]
+        return open_campaign_over(
+            admin,
+            cleanup,
+            [content],
+            name="Evaluation flow campaign",
+            instrument_version_id=RUBRIC,
+            required_evaluations_per_content=required,
+        )["campaign_id"]
 
     return _make
 
@@ -344,7 +342,7 @@ def test_campaign_requires_a_published_rubric(admin, content, cleanup):
             "name": "Campaign over an unpublished instrument",
             "instrument_version_id": "does-not-exist",
             "required_evaluations_per_content": 1,
-            "content_ids": [content],
+            "dataset_version_id": declare_dataset_over(admin, cleanup, [content]),
         },
     )
     assert response.status_code == 422
@@ -390,16 +388,13 @@ def test_an_assignment_for_a_content_with_no_deployed_instance_carries_null(
     ).json()
     cleanup["contents"].append(undeployed["content_id"])
 
-    campaign = admin.post(
-        "/admin/campaigns",
-        json={
-            "name": "Campaign over an undeployed course",
-            "instrument_version_id": RUBRIC,
-            "required_evaluations_per_content": 1,
-            "content_ids": [undeployed["content_id"]],
-        },
-    ).json()
-    cleanup["campaigns"].append(campaign["campaign_id"])
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [undeployed["content_id"]],
+        name="Campaign over an undeployed course",
+        instrument_version_id=RUBRIC,
+    )
     client, assessor_id = evaluator("ada")
     assignment_id = assign(admin, campaign["campaign_id"], undeployed["content_id"], assessor_id)
 
