@@ -1,4 +1,9 @@
-import type { DatasetResponse, DatasetVersionResponse, Uuid } from "@/lib/api/types";
+import type {
+  ContentResponse,
+  DatasetResponse,
+  DatasetVersionResponse,
+  Uuid,
+} from "@/lib/api/types";
 
 /**
  * Set math over a dataset's version line (ADR-0058).
@@ -33,6 +38,50 @@ export function diffMembership(
   return {
     added: current.content_ids.filter((id) => !was.has(id)),
     removed: [...was].filter((id) => !now.has(id)),
+  };
+}
+
+export type MembershipSummary = {
+  total: number;
+  /** Cannot be handed to a human evaluator: no deployed instance is declared (ADR-0028). */
+  undeployed: number;
+  /** Cannot enter a brief-paired dataset: the commission is the pairing key (ADR-0039). */
+  withoutBrief: number;
+  /** How many distinct generator versions the set spans — what a reference set exists to mix. */
+  generatorVersions: number;
+  withoutGenerator: number;
+  /** More than one means members whose declared data differs, so different items are asked
+   *  of an evaluator (ADR-0053). */
+  formats: string[];
+};
+
+/**
+ * What a version's membership is made of — the facts that decide whether it is fit to put in
+ * front of people.
+ *
+ * **Returns `null` until the courses have loaded**, and that is the reason it lives here
+ * rather than in the component: a summary computed over a half-loaded list would report "0
+ * not deployed" where it means "not known yet", which is the one thing a readiness line must
+ * never do.
+ */
+export function summarizeMembership(
+  contentIds: Uuid[],
+  contents: ContentResponse[] | undefined,
+): MembershipSummary | null {
+  if (!contents) return null;
+
+  const byId = new Map(contents.map((course) => [course.content_id, course]));
+  const members = contentIds.map((id) => byId.get(id)).filter((c) => c !== undefined);
+
+  return {
+    total: contentIds.length,
+    undeployed: members.filter((course) => !course.consumable_url).length,
+    withoutBrief: members.filter((course) => course.brief_id === null).length,
+    generatorVersions: new Set(
+      members.map((course) => course.generator_version_id).filter((id) => id !== null),
+    ).size,
+    withoutGenerator: members.filter((course) => course.generator_version_id === null).length,
+    formats: [...new Set(members.map((course) => course.package_format))].sort(),
   };
 }
 
