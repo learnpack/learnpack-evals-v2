@@ -214,7 +214,7 @@ Dependencies point inwards only. The full rules are `../docs/ARCHITECTURE.md`; t
 | `app/modules/*/domain` | Domain | no framework — **pure Python** |
 | `app/modules/*/application` | Application | its own domain + `shared`; **defines the ports** |
 | `app/modules/*/infrastructure` | Adapters | application + domain (repos, routers, ACLs, extraction adapters) |
-| `app/platform`, `app/main.py` | Frameworks | everything; injects the dependencies |
+| `app/platform`, `app/main.py`, `app/cli.py` | Frameworks | everything; injects the dependencies |
 
 **A module's public surface** (ARCHITECTURE.md §3). Each module exposes its contract in
 `modules/<m>/public.py`: query DTOs, its event names, and a `get_<m>_queries` provider for
@@ -720,9 +720,13 @@ migrations, deploy and the final smoke check.
 ## Modules
 
 identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·
-evaluation_studies · orchestration · golden_dataset · reporting. Each with `domain/`,
-`application/` and `infrastructure/`; the ones another module reads from also expose their
-contract in `public.py` (`reporting` and `evaluation_studies` do not — nothing reads from them).
+evaluation_studies · orchestration · datasets · golden_dataset · reporting.
 
-The plans that originated them are frozen in `../docs/design/08-code.md` (slice 1) and
-`../docs/design/13-code-qa.md` (slice 2); progress lives in `../STATUS.md`.
+Each has `application/` and `infrastructure/`, and each owns a `domain/` — except `reporting`,
+which owns no aggregate at all: it is the read side, and having nothing of its own to protect
+is the point of it. The ones another module reads from also expose their contract in
+`public.py`; `reporting` and `evaluation_studies` do not, because nothing reads from them.
+
+The plans that originated them are frozen in `../docs/design/08-code.md` (the human evaluation
+path) and `../docs/design/13-code-qa.md` (the generator QA engine). Both are snapshots: where
+one disagrees with an ADR the ADR wins. Progress lives in `../STATUS.md`.
