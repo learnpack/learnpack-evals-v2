@@ -1,152 +1,33 @@
-"""Report builders — Reporting's read side (CQRS query side).
+"""The cross-campaign workload report — Reporting's read side (CQRS query side).
 
 Composes the other modules through their **public query surfaces** and aggregates in Python
 (ADR-0006): no cross-module JOINs, no read-model tables. Reads are batched, so the cost is
-two or three queries per report regardless of how many courses there are.
+two or three queries regardless of how many courses there are.
+
+**Who evaluated what is the only question this file still answers across campaigns.** It is a
+question about people — who is overloaded, who abandoned, who has not opened anything — and 25
+experts over several rounds is exactly when it needs asking without a campaign in the way.
+*What a course scored* is not that kind of question: it is a measurement, and it has no answer
+outside the campaign that fixed the instrument, the scope and the panel. That report lives in
+`campaign_report.py` (ADR-0060 §6).
 
 This lives in `infrastructure` on purpose: consuming another module's published contract is
 an outbound concern, which keeps `reporting/application` (the pure aggregation) free of any
-dependency on other modules. The builders take their collaborators as parameters, so they
-stay unit-testable with fakes.
+dependency on other modules. The builder takes its collaborators as parameters, so it stays
+unit-testable with fakes.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from uuid import UUID
 
 from app.modules.evaluand_registry.public import EvaluandRegistryQueries
-from app.modules.evaluation.public import EvaluationDTO, EvaluationQueries
 from app.modules.identity.public import IdentityQueries
 from app.modules.orchestration.public import OrchestrationQueries
-from app.modules.reporting.application import aggregation
-from app.modules.reporting.application.aggregation import Dispersion
-
-
-@dataclass(frozen=True)
-class ScoreDetailDTO:
-    criterion_id: str
-    # Null is this assessor's abstention on this criterion (ADR-0052 §4). Kept visible in
-    # the individual evaluation: what a rater could not judge is part of what they answered.
-    score: int | None
-    comment: str | None
-    derived: bool = False
-
-
-@dataclass(frozen=True)
-class IndividualEvaluationDTO:
-    evaluation_id: UUID
-    assessor_id: UUID
-    assessor_name: str | None
-    submitted_at: datetime | None
-    superseded: bool
-    scores: list[ScoreDetailDTO]
-
-
-@dataclass(frozen=True)
-class CriterionSummaryDTO:
-    criterion_id: str
-    # Null when nobody scored this criterion. Not 0: a zero would read as the worst possible
-    # score, when nobody scored it at all. Two different things produce it, and `withheld`
-    # is what tells them apart — every assessor abstained (ADR-0052 §4), or nobody was asked
-    # because the content declares nothing the item could be about (ADR-0053).
-    average: float | None
-    withheld: bool
-    dispersion: Dispersion
-
-
-@dataclass(frozen=True)
-class ContentScoresDTO:
-    content_id: UUID
-    external_id: str
-    package_format: str
-    version: str
-    evaluator_count: int
-    criteria: list[CriterionSummaryDTO]
-    evaluations: list[IndividualEvaluationDTO]
-
-
-@dataclass(frozen=True)
-class ScoresReportDTO:
-    """A per-criterion profile per content — never a score across criteria (ADR-0011)."""
-
-    contents: list[ContentScoresDTO]
-
-
-def build_scores_report(
-    contents: EvaluandRegistryQueries,
-    evaluations: EvaluationQueries,
-    identity: IdentityQueries,
-) -> ScoresReportDTO:
-    snapshots = contents.list_content_snapshots()
-    content_ids = [s.content_id for s in snapshots]
-    all_evaluations = evaluations.list_for_contents(content_ids)
-
-    by_content: dict[UUID, list[EvaluationDTO]] = {cid: [] for cid in content_ids}
-    for evaluation in all_evaluations:
-        by_content.setdefault(evaluation.content_id, []).append(evaluation)
-
-    assessor_names = identity.list_assessors(list({e.assessor_id for e in all_evaluations}))
-
-    content_reports = []
-
-    for snapshot in snapshots:
-        found = by_content.get(snapshot.content_id, [])
-        # Repetitions are corrections: only the latest per assessor counts (ADR-0006).
-        counted = aggregation.collapse_latest_per_assessor(found)
-        counted_ids = {e.evaluation_id for e in counted}
-
-        averages = aggregation.average_by_criterion(found)
-        dispersions = aggregation.dispersion_by_criterion(found)
-        withheld = aggregation.withheld_criteria(found)
-
-        content_reports.append(
-            ContentScoresDTO(
-                content_id=snapshot.content_id,
-                external_id=snapshot.external_id,
-                package_format=snapshot.package_format,
-                version=snapshot.version,
-                evaluator_count=len(counted),
-                criteria=[
-                    CriterionSummaryDTO(
-                        criterion_id=criterion_id,
-                        average=averages[criterion_id],
-                        withheld=criterion_id in withheld,
-                        dispersion=dispersions[criterion_id],
-                    )
-                    for criterion_id in sorted(averages)
-                ],
-                evaluations=[
-                    IndividualEvaluationDTO(
-                        evaluation_id=e.evaluation_id,
-                        assessor_id=e.assessor_id,
-                        assessor_name=_name_of(assessor_names, e.assessor_id),
-                        submitted_at=e.submitted_at,
-                        # Kept visible, but excluded from every average.
-                        superseded=e.evaluation_id not in counted_ids,
-                        scores=[
-                            ScoreDetailDTO(
-                                criterion_id=s.criterion_id,
-                                score=s.score,
-                                comment=s.comment,
-                                derived=s.derived,
-                            )
-                            for s in e.scores
-                        ],
-                    )
-                    for e in found
-                ],
-            )
-        )
-
-    return ScoresReportDTO(contents=content_reports)
 
 
 def _name_of(names: dict, assessor_id: UUID) -> str | None:
     dto = names.get(assessor_id)
     return None if dto is None else (dto.display_name or dto.email)
-
-
-# --------------------------------------------------------------------------- progress
 
 
 @dataclass(frozen=True)

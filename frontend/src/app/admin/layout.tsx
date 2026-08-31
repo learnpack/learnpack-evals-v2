@@ -54,7 +54,10 @@ const NAV = [
     items: [
       { href: "/admin/campaigns", label: "Campaigns" },
       { href: "/admin/calibration", label: "Calibration" },
-      { href: "/admin/reports", label: "Reports" },
+      // Not "Reports": a result belongs to the campaign that produced it and is read there
+      // (ADR-0060). What is left here is the one cross-campaign question — who is carrying
+      // what — and it is about people, not about measurements.
+      { href: "/admin/workload", label: "Evaluator workload" },
     ],
   },
 ];

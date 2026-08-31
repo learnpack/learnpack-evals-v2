@@ -1,6 +1,7 @@
-"""Reporting read models (08-code.md §7, ADR-0006), against Neon.
+"""The cross-campaign workload report (ADR-0006, ADR-0060 §6), against Neon.
 
-Averages are checked against numbers computed by hand, so a wrong aggregation cannot pass.
+Who evaluated what, across campaigns — the one question Reporting still answers without a
+campaign. What a course scored is read inside its campaign; see `test_campaign_report.py`.
 """
 
 import pytest
@@ -85,210 +86,6 @@ def assign(admin, campaign_id, content_id, assessor_id) -> str:
     ).json()["assignment_id"]
 
 
-def find_content(report: dict, content_id: str) -> dict:
-    return next(c for c in report["contents"] if c["content_id"] == content_id)
-
-
-# --------------------------------------------------------------------------- scores
-
-
-def test_scores_report_averages_across_evaluators(admin, evaluator, content, campaign):
-    ada, ada_id = evaluator("ada")
-    bob, bob_id = evaluator("bob")
-
-    # Ada gives all 4s except objectives-observable = 2; Bob gives all 4s.
-    ada.post(
-        "/evaluations",
-        json={
-            "assignment_id": assign(admin, campaign, content, ada_id),
-            "scores": scores(4, **{"objectives-observable": 2}),
-        },
-    )
-    bob.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, bob_id), "scores": scores(4)},
-    )
-
-    report = admin.get("/admin/reports/scores").json()
-    course = find_content(report, content)
-
-    assert course["evaluator_count"] == 2
-    criteria = {c["criterion_id"]: c for c in course["criteria"]}
-    # (2 + 4) / 2 = 3.0
-    assert criteria["objectives-observable"]["average"] == 3.0
-    assert criteria["instruction-demonstration"]["average"] == 4.0
-
-
-def test_dispersion_reflects_the_disagreement(admin, evaluator, content, campaign):
-    ada, ada_id = evaluator("ada")
-    bob, bob_id = evaluator("bob")
-
-    ada.post(
-        "/evaluations",
-        json={
-            "assignment_id": assign(admin, campaign, content, ada_id),
-            "scores": scores(4, **{"objectives-observable": 1}),
-        },
-    )
-    bob.post(
-        "/evaluations",
-        json={
-            "assignment_id": assign(admin, campaign, content, bob_id),
-            "scores": scores(4, **{"objectives-observable": 5}),
-        },
-    )
-
-    report = admin.get("/admin/reports/scores").json()
-    criteria = {c["criterion_id"]: c for c in find_content(report, content)["criteria"]}
-
-    contested = criteria["objectives-observable"]["dispersion"]
-    assert contested["mean_pairwise_abs_diff"] == 4.0
-    assert contested["exact_agreement_pct"] == 0.0
-    assert contested["rater_count"] == 2
-
-    agreed = criteria["instruction-demonstration"]["dispersion"]
-    assert agreed["exact_agreement_pct"] == 100.0
-    assert agreed["stdev"] == 0.0
-
-
-def test_single_evaluator_has_null_dispersion(admin, evaluator, content, campaign):
-    ada, ada_id = evaluator("ada")
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, ada_id), "scores": scores(4)},
-    )
-
-    report = admin.get("/admin/reports/scores").json()
-    dispersion = find_content(report, content)["criteria"][0]["dispersion"]
-    assert dispersion["stdev"] is None
-    assert dispersion["exact_agreement_pct"] is None
-    assert dispersion["rater_count"] == 1
-
-
-def test_comments_and_evaluator_names_reach_the_report(admin, evaluator, content, campaign, unique):
-    ada, ada_id = evaluator("ada")
-    payload = scores(4)
-    payload[0] = {
-        "criterion_id": "objectives-observable",
-        "score": 2,
-        "comment": "verbs are not observable",
-    }
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, ada_id), "scores": payload},
-    )
-
-    course = find_content(admin.get("/admin/reports/scores").json(), content)
-    individual = course["evaluations"][0]
-    assert individual["assessor_name"] == "ada"
-    assert individual["superseded"] is False
-    comment = next(
-        s["comment"] for s in individual["scores"] if s["criterion_id"] == "objectives-observable"
-    )
-    assert comment == "verbs are not observable"
-
-
-def test_a_repeated_assessor_does_not_weigh_twice(admin, evaluator, content, campaign, session):
-    """ADR-0005 allows repetitions; ADR-0006 says the latest supersedes the earlier one.
-
-    The HTTP guard lives in the assignment, so the repetition is written through the
-    repository — exactly the shape an `LLMJudge` would produce `[futuro]`.
-    """
-    from app.modules.evaluation.domain.evaluation import CriterionScore, Evaluation
-    from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
-    from app.shared.domain.ids import new_id
-
-    ada, ada_id = evaluator("ada")
-    bob, bob_id = evaluator("bob")
-
-    # Ada's first pass: all 1s. Bob: all 5s.
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, ada_id), "scores": scores(1)},
-    )
-    bob.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, bob_id), "scores": scores(5)},
-    )
-    # Without collapsing: (1 + 5) / 2 = 3.0 on every criterion
-    before = find_content(admin.get("/admin/reports/scores").json(), content)
-    assert all(c["average"] == 3.0 for c in before["criteria"])
-
-    # Ada corrects herself: all 3s, submitted later.
-    import uuid as _uuid
-
-    correction = Evaluation.submit(
-        evaluation_id=new_id(),
-        assessor_id=_uuid.UUID(ada_id),
-        content_id=_uuid.UUID(content),
-        instrument_version_id=RUBRIC,
-        scores=[CriterionScore(criterion_id=c, score=3) for c in CRITERIA],
-        rubric_criterion_ids=CRITERIA,
-        attempt=2,
-    )
-    SqlAlchemyEvaluationRepository(session).add(correction)
-    session.commit()
-
-    course = find_content(admin.get("/admin/reports/scores").json(), content)
-    # Ada's 1s are superseded → (3 + 5) / 2 = 4.0 per criterion, not (1 + 3 + 5) / 3 = 3.0
-    assert all(c["average"] == 4.0 for c in course["criteria"])
-    assert course["evaluator_count"] == 2
-    assert len(course["evaluations"]) == 3  # all three stay visible
-    assert sum(1 for e in course["evaluations"] if e["superseded"]) == 1
-
-
-def test_an_evaluator_counts_on_every_course_they_evaluated(
-    admin, evaluator, content, cleanup, unique
-):
-    """Regression: every other test had a single course, so a collapse keyed only on the
-    assessor looked correct. With two courses it silently dropped one (ADR-0005/0006).
-    """
-    second = admin.post(
-        "/admin/contents",
-        json={
-            "package_format": "LearnpackV1",
-            "external_id": f"second-{unique}",
-            "consumable_url": COURSE_URL,
-            "generator_version_id": None,
-            "metadata": {"learningObjectives": ["x"], "targetAudience": "y"},
-        },
-    ).json()["content_id"]
-    cleanup["contents"].append(second)
-
-    both = open_campaign_over(
-        admin,
-        cleanup,
-        [content, second],
-        name="Campaign over two courses",
-        instrument_version_id=RUBRIC,
-    )["campaign_id"]
-
-    ada, ada_id = evaluator("ada")
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, both, content, ada_id), "scores": scores(2)},
-    )
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, both, second, ada_id), "scores": scores(5)},
-    )
-
-    report = admin.get("/admin/reports/scores").json()
-    first = find_content(report, content)
-    second_course = find_content(report, second)
-    # If the collapse keyed on the assessor alone, one course would have lost its evaluation.
-    assert first["evaluator_count"] == 1
-    assert second_course["evaluator_count"] == 1
-    assert all(c["average"] == 2.0 for c in first["criteria"])
-    assert all(c["average"] == 5.0 for c in second_course["criteria"])
-
-
-def test_content_without_evaluations_reports_empty_profile(admin, content):
-    course = find_content(admin.get("/admin/reports/scores").json(), content)
-    assert course["evaluator_count"] == 0
-    assert course["criteria"] == []
-
-
 # --------------------------------------------------------------------------- progress
 
 
@@ -322,39 +119,14 @@ def test_progress_counts_per_evaluator_and_per_course(admin, evaluator, content,
     assert course["external_id"] == f"course-{unique}"
 
 
-def test_reports_require_admin(as_user, cleanup, unique):
+def test_the_workload_report_requires_admin(as_user, cleanup, unique):
     client = as_user(f"user_{unique}", f"{unique}@example.com", "Ada")
     cleanup["assessors"].append(client.get("/me").json()["assessor_id"])
 
-    assert client.get("/admin/reports/scores").status_code == 403
     assert client.get("/admin/progress").status_code == 403
 
 
-def test_scores_report_issues_a_bounded_number_of_queries(admin, evaluator, content, campaign):
-    """ADR-0006 requires batch reads: the query count must not grow with the data."""
-    ada, ada_id = evaluator("ada")
-    ada.post(
-        "/evaluations",
-        json={"assignment_id": assign(admin, campaign, content, ada_id), "scores": scores(4)},
-    )
-
-    from sqlalchemy import event
-
-    from app.platform.db import get_engine
-
-    statements: list[str] = []
-
-    def record(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
-        statements.append(statement)
-
-    engine = get_engine()
-    event.listen(engine, "before_cursor_execute", record)
-    try:
-        assert admin.get("/admin/reports/scores").status_code == 200
-    finally:
-        event.remove(engine, "before_cursor_execute", record)
-
-    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
-    # assessor lookup + contents + metadata schema + evaluations + criterion_scores, plus
-    # the auth round-trip. A per-content N+1 would blow well past this.
-    assert len(selects) <= 8, "\n".join(selects)
+def test_there_is_no_cross_campaign_scores_report(admin):
+    """Retired by ADR-0060 §6: a score has no meaning outside the campaign that fixed the
+    instrument, and a filtered version would be a second way to ask the same question."""
+    assert admin.get("/admin/reports/scores").status_code == 404

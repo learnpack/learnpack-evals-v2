@@ -27,15 +27,6 @@ Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_querie
 Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
 
 
-class DispersionResponse(BaseModel):
-    """Inter-rater spread. Null with a single rater — nothing to agree on (ADR-0006)."""
-
-    stdev: float | None
-    mean_pairwise_abs_diff: float | None
-    exact_agreement_pct: float | None
-    rater_count: int
-
-
 class ScoreDetailResponse(BaseModel):
     criterion_id: str
     # Null is an abstention — see `ScoreDetailDTO`.
@@ -51,32 +42,6 @@ class IndividualEvaluationResponse(BaseModel):
     submitted_at: datetime | None
     superseded: bool
     scores: list[ScoreDetailResponse]
-
-
-class CriterionSummaryResponse(BaseModel):
-    criterion_id: str
-    # Null when nobody scored it — see `CriterionSummaryDTO`.
-    average: float | None
-    # True when nobody was ASKED: the content declares nothing this item could be about
-    # (ADR-0053). Without it, that reads the same as everybody abstaining.
-    withheld: bool
-    dispersion: DispersionResponse
-
-
-class ContentScoresResponse(BaseModel):
-    content_id: UUID
-    external_id: str
-    package_format: str
-    version: str
-    evaluator_count: int
-    criteria: list[CriterionSummaryResponse]
-    evaluations: list[IndividualEvaluationResponse]
-
-
-class ScoresReportResponse(BaseModel):
-    """Per-criterion profile per content; no aggregate across criteria (ADR-0011)."""
-
-    contents: list[ContentScoresResponse]
 
 
 class AssignmentCountsResponse(BaseModel):
@@ -111,62 +76,6 @@ def _counts(counts) -> AssignmentCountsResponse:  # noqa: ANN001 — internal DT
         submitted=counts.submitted,
         cancelled=counts.cancelled,
         pending=counts.pending,
-    )
-
-
-@router.get("/reports/scores", response_model=ScoresReportResponse)
-def scores_report(
-    admin: AdminAssessor,
-    contents: Contents,
-    evaluations: Evaluations,
-    identity: Identity,
-) -> ScoresReportResponse:
-    """Per-course criterion profile (averages per criterion, inter-rater dispersion)."""
-    report = reports.build_scores_report(contents, evaluations, identity)
-    return ScoresReportResponse(
-        contents=[
-            ContentScoresResponse(
-                content_id=c.content_id,
-                external_id=c.external_id,
-                package_format=c.package_format,
-                version=c.version,
-                evaluator_count=c.evaluator_count,
-                criteria=[
-                    CriterionSummaryResponse(
-                        criterion_id=criterion.criterion_id,
-                        average=criterion.average,
-                        withheld=criterion.withheld,
-                        dispersion=DispersionResponse(
-                            stdev=criterion.dispersion.stdev,
-                            mean_pairwise_abs_diff=criterion.dispersion.mean_pairwise_abs_diff,
-                            exact_agreement_pct=criterion.dispersion.exact_agreement_pct,
-                            rater_count=criterion.dispersion.rater_count,
-                        ),
-                    )
-                    for criterion in c.criteria
-                ],
-                evaluations=[
-                    IndividualEvaluationResponse(
-                        evaluation_id=e.evaluation_id,
-                        assessor_id=e.assessor_id,
-                        assessor_name=e.assessor_name,
-                        submitted_at=e.submitted_at,
-                        superseded=e.superseded,
-                        scores=[
-                            ScoreDetailResponse(
-                                criterion_id=s.criterion_id,
-                                score=s.score,
-                                comment=s.comment,
-                                derived=s.derived,
-                            )
-                            for s in e.scores
-                        ],
-                    )
-                    for e in c.evaluations
-                ],
-            )
-            for c in report.contents
-        ],
     )
 
 

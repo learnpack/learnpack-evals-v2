@@ -108,17 +108,22 @@ def profiled_v1_course(cleanup, unique, namespace):
 
 
 @pytest.fixture
-def assignment(admin, evaluator, profiled_v1_course, cleanup):
-    _, assessor_id = evaluator
-    campaign = open_campaign_over(
+def withheld_campaign(admin, profiled_v1_course, cleanup):
+    """A campaign of its own, because a result is read inside one (ADR-0060)."""
+    return open_campaign_over(
         admin,
         cleanup,
         [profiled_v1_course],
         name="Withheld items campaign",
         instrument_version_id=RUBRIC,
-    )
+    )["campaign_id"]
+
+
+@pytest.fixture
+def assignment(admin, evaluator, profiled_v1_course, withheld_campaign):
+    _, assessor_id = evaluator
     created = admin.post(
-        f"/admin/campaigns/{campaign['campaign_id']}/assignments",
+        f"/admin/campaigns/{withheld_campaign}/assignments",
         json={"content_id": profiled_v1_course, "assessor_id": assessor_id},
     )
     assert created.status_code == 201, created.text
@@ -198,9 +203,13 @@ def test_a_client_cannot_answer_a_withheld_item(evaluator, assignment, session):
     assert all(stored[cid] is None for cid in DECLARATION_ITEMS)
 
 
-def test_the_report_tells_withheld_apart_from_abstained(admin, evaluator, assignment, session):
-    """Both come back with no average. Only `withheld` says which is which — a result
-    without its coverage misleads (ADR-0011 §3)."""
+def test_the_report_tells_withheld_apart_from_abstained(
+    admin, evaluator, assignment, withheld_campaign
+):
+    """Both come back with no average, and the report keeps them apart (ADR-0060 §4).
+
+    `abstentions` is what somebody was asked and could not judge; `withheld_contents` is what
+    nobody was asked at all. A result without its coverage misleads (ADR-0011 §3)."""
     client, _ = evaluator
     detail = client.get(f"/assignments/{assignment}").json()
     client.post(f"/assignments/{assignment}/open")
@@ -211,28 +220,20 @@ def test_the_report_tells_withheld_apart_from_abstained(admin, evaluator, assign
     submitted = client.post("/evaluations", json={"assignment_id": assignment, "scores": scores})
     assert submitted.status_code == 201, submitted.text
 
-    content_id = str(
-        session.execute(
-            text("SELECT content_id FROM evaluations WHERE id = :e"),
-            {"e": submitted.json()["evaluation_id"]},
-        ).scalar_one()
-    )
-    report = admin.get("/admin/reports/scores").json()
-    summaries = {
-        c["criterion_id"]: c
-        for entry in report["contents"]
-        if entry["content_id"] == content_id
-        for c in entry["criteria"]
-    }
+    report = admin.get(f"/admin/campaigns/{withheld_campaign}/report").json()
+    items = {i["criterion_id"]: i["summary"] for i in report["items"]}
 
-    withheld = summaries["objectives-observable"]
-    assert withheld["average"] is None and withheld["withheld"] is True
+    withheld = items["objectives-observable"]
+    assert withheld["average"] is None
+    assert withheld["withheld_contents"] == 1 and withheld["abstentions"] == 0
 
-    abstained = summaries[asked[0]]
-    assert abstained["average"] is None and abstained["withheld"] is False
+    abstained = items[asked[0]]
+    assert abstained["average"] is None
+    assert abstained["abstentions"] == 1 and abstained["withheld_contents"] == 0
 
-    answered = summaries[asked[1]]
-    assert answered["average"] == 4.0 and answered["withheld"] is False
+    answered = items[asked[1]]
+    assert answered["average"] == 4.0
+    assert answered["withheld_contents"] == 0 and answered["abstentions"] == 0
 
 
 def test_a_derived_score_can_carry_the_bottom_of_the_scale(requires_db, cleanup, unique):
