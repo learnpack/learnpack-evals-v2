@@ -479,6 +479,103 @@ export interface ProgressReport {
   by_content: ContentProgressRow[];
 }
 
+// --- The campaign report (ADR-0060) ----------------------------------------
+
+/** How the panel agreed on one item, pooled over the courses of the campaign.
+ *
+ *  Pairs are formed inside a single course — the only place two answers are about the same
+ *  thing — so two courses with one assessor each contribute nothing. Everything is null
+ *  below one pair: `0` would read as perfect agreement. */
+export interface ItemAgreement {
+  pair_count: number;
+  /** Courses that produced at least one pair — this row's own denominator. */
+  content_count: number;
+  mean_abs_diff: number | null;
+  exact_pct: number | null;
+  /** On a Likert scale, "agree" beside "strongly agree" is not a disagreement. */
+  within_one_pct: number | null;
+}
+
+export interface ItemSummary {
+  /** Keyed by point of the scale, every point present including the ones nobody chose. */
+  distribution: Record<string, number>;
+  /** Null when nobody scored it — never 0, which reads as the worst answer on the scale. */
+  average: number | null;
+  scored_count: number;
+  /** Asked, and the assessor answered "I could not judge this" (ADR-0052 §4). */
+  abstentions: number;
+  /** Not asked at all: the course declares nothing the item is about (ADR-0053). A
+   *  different fact from an abstention, which is why it travels in its own field. */
+  withheld_contents: number;
+  answered_contents: number;
+  agreement: ItemAgreement;
+}
+
+export interface CampaignReportItem {
+  criterion_id: string;
+  order: number;
+  dimension: string;
+  /** The statement the assessor agreed or disagreed with. An id is not a question. */
+  prompt: string;
+  /** What the course must declare for this item to be put to anybody (ADR-0053). */
+  required_data: string[];
+  summary: ItemSummary;
+}
+
+export interface ContentDisagreement {
+  mean_abs_diff: number | null;
+  max_abs_diff: number | null;
+  contested_items: number;
+}
+
+export interface CampaignReportContent {
+  content_id: Uuid;
+  external_id: string;
+  title: string | null;
+  submitted_count: number;
+  required: number;
+  completed: boolean;
+  disagreement: ContentDisagreement;
+  evaluations: IndividualEvaluation[];
+}
+
+export interface CampaignReportInstrument {
+  instrument_version_id: string;
+  name: string;
+  version: string;
+  response_format: string;
+  scale_min: number;
+  scale_max: number;
+}
+
+export interface CampaignReportQuorum {
+  contents_in_scope: number;
+  contents_complete: number;
+  coverage: number;
+  required_per_content: number;
+  /** Distinct submissions this campaign counts — superseded corrections excluded. */
+  evaluations_counted: number;
+  evaluations_expected: number;
+  superseded_count: number;
+  assessor_count: number;
+}
+
+/** `GET /admin/campaigns/{id}/report` — one campaign's result, read item-first.
+ *
+ *  Composed on read and never frozen: a campaign's record is the golden reference its own
+ *  policy establishes, so `status` is what tells a reader whether the round is finished. */
+export interface CampaignReport {
+  campaign_id: Uuid;
+  name: string;
+  description: string | null;
+  status: string;
+  dataset_version_id: Uuid | null;
+  instrument: CampaignReportInstrument;
+  quorum: CampaignReportQuorum;
+  items: CampaignReportItem[];
+  contents: CampaignReportContent[];
+}
+
 // --- Evaluation studies (13-code §3.6/§6) ----------------------------------
 
 export type StudyStatus = "declared" | "prepared" | "open" | "signed_off";
