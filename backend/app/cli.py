@@ -3,7 +3,7 @@ invite-assessor | list-invitations |
 import-learnpack | register-package | declare-deployment |
 create-dataset | add-dataset-version | list-datasets |
 seed-demo | import-instrument | publish-instrument | bump-instrument | profile-content |
-accept-extraction | reprofile | ratify-assessor | evaluate |
+accept-extraction | reprofile | backfill-content-titles | ratify-assessor | evaluate |
 dump-concept-touches | dump-concept-map | declare-study | update-study | open-study |
 sign-off-study | show-preview |
 show-report | attribute-generator | register-generator | register-generator-version`.
@@ -62,7 +62,10 @@ from app.modules.content_profiling.infrastructure.repository import (
     SqlAlchemyAcceptanceRepository,
     SqlAlchemyProfileRepository,
 )
-from app.modules.content_profiling.public import ContentProfilingQueries
+from app.modules.content_profiling.public import (
+    ContentProfileSnapshot,
+    ContentProfilingQueries,
+)
 from app.modules.datasets.application.declare_dataset import (
     DeclareDataset,
     DeclareDatasetCommand,
@@ -93,6 +96,10 @@ from app.modules.evaluand_registry.application.errors import (
     ContentNotFound as UnregisteredContent,
 )
 from app.modules.evaluand_registry.application.ports import PackageDiscoveryError
+from app.modules.evaluand_registry.application.record_content_title import (
+    RecordContentTitle,
+    RecordContentTitleCommand,
+)
 from app.modules.evaluand_registry.application.register_content_version import (
     DuplicateContent,
     RegisterContentVersion,
@@ -121,6 +128,7 @@ from app.modules.evaluand_registry.domain.content import (
     EDIT_PROVENANCES,
     GeneratorAlreadyAttributed,
     InvalidContent,
+    TitleAlreadyRecorded,
 )
 from app.modules.evaluand_registry.domain.generator import Generator, normalized_name
 from app.modules.evaluand_registry.infrastructure import local_sources
@@ -1396,6 +1404,75 @@ def run_reprofile(
     print(
         f"reprofiled {package_format}: {profiled} ok, {failed} failed, "
         f"{skipped} skipped, {errors} errors"
+    )
+    return 0 if errors == 0 else 1
+
+
+# --------------------------------------------------------- backfill-content-titles
+
+
+def _declared_title(profile: ContentProfileSnapshot | None) -> str | None:
+    """The name inside the profile's `course_descriptor` — the same string discovery reads
+    off the package, and the only place it survives for a course registered before the
+    registry kept it (ADR-0059).
+
+    An extraction that failed, a descriptor recorded absent, or a manifest that declares no
+    title all name nothing, and that is a legitimate answer rather than an error.
+    """
+    if profile is None or profile.status != "ok":
+        return None
+    for entry in profile.entries:
+        if entry.data_requirement_id != "course_descriptor" or entry.provenance == "absent":
+            continue
+        title = entry.value.get("title") if isinstance(entry.value, dict) else None
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+    return None
+
+
+def run_backfill_content_titles(raw_content_ids: list[str] | None) -> int:
+    """Recover the name of courses registered before the title was kept (ADR-0059).
+
+    A migration that happens to need a profile: it has no author, writes no event and can
+    be run again for a course profiled later. A course that already carries a title is left
+    alone — the repository's `WHERE title IS NULL` says so a second time — so running this
+    twice fills nothing the second time.
+    """
+    try:
+        selected = {UUID(raw) for raw in raw_content_ids or []}
+    except ValueError as exc:
+        print(f"not a content id: {exc}", file=sys.stderr)
+        return 1
+
+    with SessionLocal() as session:
+        snapshots = EvaluandRegistryQueries(session).list_content_snapshots()
+    if selected:
+        snapshots = [s for s in snapshots if s.content_id in selected]
+    targets = [s for s in snapshots if s.title is None]
+
+    filled = undeclared = errors = 0
+    for snapshot in targets:
+        with SessionLocal() as session:
+            title = _declared_title(
+                ContentProfilingQueries(session).get_profile(snapshot.content_id)
+            )
+            if title is None:
+                undeclared += 1
+                continue
+            uow = UnitOfWork(session)
+            use_case = RecordContentTitle(SqlAlchemyContentRepository(session), uow)
+            try:
+                use_case(RecordContentTitleCommand(content_id=snapshot.content_id, title=title))
+            except (UnregisteredContent, TitleAlreadyRecorded, InvalidContent) as exc:
+                print(f"  ERROR {snapshot.content_id}: {exc}", file=sys.stderr)
+                errors += 1
+                continue
+        print(f"  {snapshot.external_id}: {title}")
+        filled += 1
+
+    print(
+        f"backfilled titles: {filled} filled, {undeclared} with no declared title, "
+        f"{len(snapshots) - len(targets)} already named, {errors} errors"
     )
     return 0 if errors == 0 else 1
 
@@ -4298,6 +4375,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     reprofile_parser.add_argument("--base-dir", type=Path)
 
+    backfill_titles_parser = subparsers.add_parser(
+        "backfill-content-titles",
+        help="recover the name of courses registered before the title was kept (ADR-0059)",
+    )
+    backfill_titles_parser.add_argument(
+        "--content-id", action="append", dest="content_ids", help="repeatable; default: all"
+    )
+
     ratify_parser = subparsers.add_parser(
         "ratify-assessor",
         help="make an instrument version evaluable by an automated assessor (ADR-0019)",
@@ -4723,6 +4808,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_accept_extraction(args.package_format, args.email)
     elif args.command == "reprofile":
         return run_reprofile(args.package_format, args.content_ids, args.base_dir)
+    elif args.command == "backfill-content-titles":
+        return run_backfill_content_titles(args.content_ids)
     elif args.command == "ratify-assessor":
         return run_ratify_assessor(
             args.name, args.version, args.instrument_version_id, args.email, args.confirmed

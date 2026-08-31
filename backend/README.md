@@ -183,6 +183,7 @@ any of them is authoritative. What each one is *for*:
 | `register-package` | register a content version by discovering a package source |
 | `import-learnpack` | hand-composed batches that carry their own artifact lists |
 | `attribute-generator` · `declare-deployment` | a generator learnt after registration (once) · where a version is deployed (repeatable) |
+| `backfill-content-titles` | recover the name of courses registered before the title was kept — reads the profile, writes once, safe to repeat |
 | `delete-content` | remove a content version nothing has used — local development only |
 | `create-dataset` · `add-dataset-version` · `list-datasets` | name a set of courses and freeze its first version · freeze the next membership · what is declared and where each set is |
 | `profile-content` · `accept-extraction` · `reprofile` | read one package by hand · arm auto-profiling for a format · re-profile a format in batch |
