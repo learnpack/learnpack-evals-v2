@@ -3,9 +3,9 @@
 > These rules are **hard**. All generated code must respect them. If a Define/Code decision
 > contradicts them, this doc wins (or this doc is explicitly changed first).
 
-**Four of them are executable**: `backend/tests/test_architecture.py` runs on every `pytest`,
+**Five of them are executable**: `backend/tests/test_architecture.py` runs on every `pytest`,
 needs no database, and fails with the file and line that broke the rule. Where a rule below is
-one of those four, it says so.
+one of those five, it says so.
 
 ## 1. The Dependency Rule (Clean Architecture)
 
@@ -17,8 +17,8 @@ the code of the inner ones.
         outer  ───────────────►  inner      (dependencies point INWARDS)
 ┌──────────────────────────────────────────────────────────────┐
 │ Frameworks & Drivers                                          │
-│  FastAPI · Postgres/pgvector (Neon) · Clerk · httpx (LLM      │
-│  transport) · Next.js/Tailwind/shadcn · event bus             │
+│  FastAPI · Postgres (Neon) · Clerk · httpx (LLM               │
+│  transport) · Next.js/Tailwind · event bus                    │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ Interface Adapters                                      │  │
 │  │  controllers · repository impls · automated             │  │
@@ -46,8 +46,8 @@ Mandatory consequences:
   (interfaces/Protocols) it needs.
 - **Interface Adapters** depend on Application + Domain. They implement the ports (repos, source
   adapters, event bus, gateways, ACLs) and translate between the external world and the model.
-- **Frameworks & Drivers** is the outermost layer (FastAPI, Postgres/pgvector, Clerk, httpx,
-  Next). Nothing internal imports them.
+- **Frameworks & Drivers** is the outermost layer (FastAPI, Postgres, Clerk, httpx, Next).
+  Nothing internal imports them.
 
 `app/shared/` holds what every module needs and nobody owns, split by the same layers:
 `domain` (ids, the base event, value domains), `application` (`EventPublisherPort`,
@@ -82,8 +82,9 @@ the same way, one per `PackageFormat`.
 
 ## 3. Module isolation (horizontal rule, in addition to the vertical one)
 
-Each subdomain (see `design/10-decompose-strategize-qa.md`) is a **module** with its own
-domain. Between modules:
+Each subdomain (see `design/10-decompose-strategize-qa.md`) is a **module** that owns its own
+domain — where it has one: a supporting read-only module such as Reporting owns no aggregate
+and is `application` + `infrastructure` only. Between modules:
 - They communicate via **published domain events + query DTOs** (each module's Published
   Language; see `design/11-connect-qa.md`).
 - **Module public surface:** a module publishes its read contract (*query interface + DTOs*),
@@ -115,10 +116,17 @@ The rules above say a module never reaches into another's internals. Two stronge
   written against its own module's ports and nothing else, so it can be read, tested and moved
   without a second module in scope. **Executable:**
   `test_application_layer_does_not_depend_on_other_modules`.
-- **The crossing lives in an adapter: a gateway.** `modules/<m>/infrastructure/gateways.py`
-  implements that module's own `…GatewayPort` by calling another module's `public.py` and
-  translating the answer into local DTOs. The use case sees its port; the other module's
-  vocabulary stops at the gateway.
+- **The crossing lives in an adapter, never in an application layer.** It takes three shapes,
+  and which one is right follows from who needs the other module:
+  - **a use case needs it → a gateway.** `modules/<m>/infrastructure/gateways.py` implements
+    that module's own `…GatewayPort` by calling another module's `public.py` and translating
+    the answer into local DTOs. The use case sees its port; the other module's vocabulary stops
+    at the gateway.
+  - **an endpoint needs it → the router composes.** A router is already the outermost layer, so
+    it injects the other modules' query surfaces with `Depends` and nothing is inverted for it.
+  - **a read model needs it → an infrastructure builder composes.** It takes the foreign query
+    surfaces as parameters and aggregates in Python (ADR-0006). This is why Reporting's builders
+    sit in `infrastructure/` rather than beside the pure aggregation they call.
 - **The composition root is `platform/`, `main.py` and `cli.py`** — the three places allowed to
   name concrete adapters, because wiring them into ports is their whole job. The rules above
   are checked everywhere else.
@@ -145,7 +153,10 @@ The rules above say a module never reaches into another's internals. Two stronge
   raw entities through the API.
 
 ## References
-`backend/tests/test_architecture.py` (the four executable rules), `GLOSSARY.md` (language),
+`backend/tests/test_architecture.py` (the five executable rules), `GLOSSARY.md` (language),
 `design/10-decompose-strategize-qa.md` (modules), `design/11-connect-qa.md` (contracts between
-modules), `design/12-define-qa.md` (aggregates and invariants per context). Historical series
-of slice 1: `design/01…08` (with banner).
+modules), `design/12-define-qa.md` (aggregates and invariants per context).
+
+Everything under `design/` is a **frozen snapshot**: read one with `adr/` beside it, because
+where the two disagree the ADR wins and the snapshot is not corrected. `design/01…08` are older
+still — the series that produced the human evaluation path, each carrying a banner that says so.

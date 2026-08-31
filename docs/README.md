@@ -13,7 +13,7 @@ Every document carries a **maintenance contract**, declared by its location:
 | `docs/adr/` | decision | **Immutable.** An ADR is never edited: a new one supersedes it. Sole exception: the superseded ADR's **Estado** line is updated to point at its successor. |
 | `docs/design/` | snapshot | **Frozen.** What we thought and why, at the time. Not maintained. |
 | `../backend/README.md`, `../frontend/README.md` | reference | Operational runbook, next to the code it operates. `backend/ENVIRONMENT.md` (deploying an instance for an SME campaign) and `backend/TUNING.md` (throughput and its ceilings) are the same class. |
-| `../STATUS.md` | status | **The only place with dated status.** Rewritten whole. |
+| `../STATUS.md` | status | **The only place with dated status.** Budgeted: every entry names the event that deletes it, and it is never a log. |
 | `notes/` (gitignored) | working | Ephemeral. When the task closes: promoted or deleted. |
 
 Rule for admitting something into the `docs/` root: *will it still be true six months from now
@@ -95,8 +95,9 @@ the current design and its code plan) · `research/`. See `design/README.md`.
 
 ## MVP stack (confirmed)
 
-Next.js/Tailwind/shadcn on **Netlify** · **FastAPI** on **Render Starter** · Postgres/pgvector
-on **Neon** · **Clerk** (invite-only) as identity. Details in `design/08-code.md`.
+Next.js/Tailwind with an in-house shadcn-style kit on **Netlify** · **FastAPI** on
+**Render Starter** · Postgres on **Neon** · **Clerk** (invite-only) as identity.
+Details in `design/08-code.md`.
 
 ## The north star, in two sentences
 

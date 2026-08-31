@@ -181,11 +181,15 @@ anyone signs in.
 > evaluator.
 
 1. **Render:** `ADMIN_EMAILS=<the admin's email>` (and wait for the redeploy to finish).
-2. **Clerk:** create the **JWT template** with the `email` claim (above) and invite both
-   accounts. **Nobody signs in yet.**
+2. **Clerk:** create the **JWT template** with [all three claims](#clerk-adr-0004) — `email`
+   decides this step, `email_verified` decides step 4, and a template written once is written
+   right — and invite the admin's account. **Nobody signs in yet.**
 3. **Only now:** the admin signs in. Verify with `GET /me` that it says `"role": "admin"`.
-4. The admin invites the evaluators from `/admin/assessors` (and, until that adapter exists,
-   in Clerk too). They sign in → their role and expertise come from the invitation.
+4. The admin invites the evaluators from `/admin/assessors`. **That is the whole act**: with
+   `CLERK_SECRET_KEY` set, it creates the Clerk invitation too, so do **not** also invite them
+   in Clerk by hand — Clerk refuses an address that is already one of its users, and the
+   second invitation is the one that comes back `delivered: false`. They sign in → their role
+   and expertise come from the invitation.
 5. Register the generator and its courses (see [Registering courses](README.md#registering-courses))
    and open the campaign from the admin UI.
 

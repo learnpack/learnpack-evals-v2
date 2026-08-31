@@ -47,6 +47,11 @@ request is a 401 whose message says so. The list comes from
 `GET /dev/identities`, which only exists in that mode, and calls identify themselves with
 the `X-Dev-User` header instead of `Authorization: Bearer`.
 
+The list also offers the addresses that were **invited and have never signed in**, badged
+`invited` (ADR-0049). Nothing delivers an invitation in local mode, so picking one is how the
+registration flow is walked end to end with no accounts and no cloud: the `Assessor` is born
+at that first login, already carrying the role and expertise the invitation named.
+
 Any other value — or none — uses Clerk. The seam is in `src/lib/auth/`: `mode.ts` decides
 and the `clerk.tsx` / `local.tsx` adapters expose the same interface (`AuthProvider`,
 `useAuthHeaders`, `UserMenu`, `SignInScreen`). **No component imports `@clerk/nextjs`
@@ -58,18 +63,27 @@ code.
 This configuration happens **once per environment** (one Clerk instance = one environment),
 before the first login.
 
-Clerk's **default session token carries neither `email` nor `name`**, and the backend needs
-them to populate the `Assessor` and decide the first admin's role (`ADMIN_EMAILS`,
-ADR-0007). Therefore:
+Clerk's **default session token carries none of the three claims the backend needs**: `email`
+and `name` populate the `Assessor` and decide the first admin's role (`ADMIN_EMAILS`,
+ADR-0007), and `email_verified` gates redeeming an invitation (ADR-0049) — matching on an
+address the provider never vouched for is a known account-takeover shape. Therefore:
 
 1. In the Clerk dashboard create a **JWT template** (e.g. `learnpack-evals`) with:
    ```json
-   { "email": "{{user.primary_email_address}}", "name": "{{user.full_name}}" }
+   {
+     "email": "{{user.primary_email_address}}",
+     "name": "{{user.full_name}}",
+     "email_verified": "{{user.email_verified}}"
+   }
    ```
 2. Put that name in `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`. The frontend requests the token with
    `getToken({ template })` (see `src/lib/api/hooks.ts`).
 3. **The template must exist BEFORE the admin's first login** — otherwise they are born
-   `evaluator` and the allowlist does not rescue them (see `../backend/ENVIRONMENT.md`).
+   `evaluator` and the allowlist does not rescue them.
+
+A template missing `email_verified` does not fail loudly: the login works and the invitation
+simply is not redeemed, with a warning in the backend log naming the template.
+`../backend/ENVIRONMENT.md` is the whole job, including which spellings Clerk accepts.
 
 Access is **invite-only**: configured in Clerk (Restrictions → Allowlist / invitations).
 Evaluators appear in the assignment picker **after their first sign-in**.
@@ -81,28 +95,39 @@ src/
   app/
     page.tsx                       # redirects by role (admin → /admin, else → /evaluations)
     sign-in/[[...sign-in]]/        # <SignInScreen/> of the active adapter
+    accept-invitation/[[...]]/     # the second door — see above
     evaluations/                   # evaluator flow (list + 3-step wizard)
     admin/                         # admin console. page.tsx is the loop (versions nobody
                                    # measured + last rounds), and layout.tsx groups the
                                    # destinations by how often they are needed:
                                    #   Measure           contents, studies
-                                   #   Definitions       instruments (with Publish),
-                                   #                     assessors (with Ratify),
-                                   #                     generators, briefs, profiles
-                                   #   Human evaluation  campaigns, calibration, reports
+                                   #   Definitions       instruments (with Publish), rubrics,
+                                   #                     assessors (with Ratify), generators,
+                                   #                     briefs, datasets, profiles
+                                   #   Human evaluation  campaigns, calibration,
+                                   #                     evaluator workload
   components/
     ui/                            # UI kit (button, card, table, dialog, select,
                                    # collapsible-section…)
-    evaluator/                     # consume-content (iframe+fallback), score-form
+    evaluator/                     # consume-content (iframe+fallback), score-form,
+                                   # declared-data (what the course says about itself, for
+                                   # the items resting on it — ADR-0057)
     admin/                         # forms (content, campaign, assign), the shared badges
                                    # and palettes (study-status, outcome-badge,
                                    # claim-status), the quote/copy/distribution
-                                   # primitives, and study-report/ — the report renderer
+                                   # primitives, and the two report renderers —
+                                   # study-report/ (a study's) and campaign-report/ (a
+                                   # campaign's, ADR-0060)
   lib/
     auth/                          # identity seam: mode.ts + clerk.tsx / local.tsx
     api/                           # client.ts (fetch+headers), types.ts, hooks.ts (TanStack)
     locator.ts                     # decodes an adapter's locator shape into a sentence
     extraction.ts                  # whether a course was read, out of profiles+capabilities
+    courses.ts                     # how a course is written wherever one is read: the admin
+                                   # sees the name + the id, the evaluator never the id
+                                   # (ADR-0059)
+    datasets.ts                    # set math over a dataset's version line (ADR-0058)
+    csv.ts                         # the console's one download: quoting, BOM, filename
     versions.ts                    # courses grouped by the version that made them, and
                                    # which versions a round has actually measured
     generator-declaration.ts       # whether a package's own declaration agrees with the
@@ -111,7 +136,8 @@ src/
                                    # the CLI reads the same file
     course-import-run.ts           # one import of a list of courses: the loop, held
                                    # outside the page so leaving it does not blind the run
-  middleware.ts                    # protects everything but /sign-in (Clerk or local cookie)
+  middleware.ts                    # protects everything but the two doors (Clerk or the
+                                   # local cookie)
 ```
 
 `src/lib/api/types.ts` mirrors the FastAPI contract. Most of it is snake_case, 1:1 with the
@@ -316,7 +342,7 @@ realizes. That is not a formality: changing an executor is a new assessor versio
 `../docs/RUNBOOK-measuring.md`. In the console it is one page — `/admin/measure` — and the result is
 read on `/admin/studies/[id]`.
 
-**Human evaluation** is the other, and it needs raters. In local mode
+**Human evaluation** is the other, and it needs evaluators. In local mode
 `task seed:demo` installs them with two courses and an open campaign to work on; with Clerk
 they are invited and appear in the picker after their first sign-in.
 
@@ -329,5 +355,8 @@ they are invited and appear in the picker after their first sign-in.
 2. `/admin/campaigns`: new campaign (quorum, courses).
 3. Assign the course to two evaluators in `/admin/campaigns/[id]`.
 4. Log in as an evaluator → `/evaluations` → 3-step wizard → submit.
-5. Back to admin → progress `1/1` + golden `usable` in the campaign detail; scores and
-   inter-rater in `/admin/reports`.
+5. Back to admin → progress `1/1` in the campaign detail, then **Report** for what the round
+   found (ADR-0060): agreement per item, the panel's profile per dimension, each expert's
+   answers side by side, and golden `usable`. A result is read inside its own campaign, so
+   there is no cross-campaign scores page; `/admin/workload` answers the one question that
+   does span rounds — who is carrying what.
