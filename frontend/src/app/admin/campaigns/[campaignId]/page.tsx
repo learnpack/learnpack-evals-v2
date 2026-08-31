@@ -3,9 +3,9 @@
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, BarChart3, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -20,7 +20,6 @@ import {
   useCancelAssignment,
   useCloseCampaign,
   useContents,
-  useGoldenStatus,
   useDatasets,
   useReferenceInstruments,
 } from "@/lib/api/hooks";
@@ -35,7 +34,6 @@ export default function CampaignDetailPage({
   const { campaignId } = use(params);
   const campaigns = useCampaigns();
   const progress = useCampaignProgress(campaignId);
-  const golden = useGoldenStatus(campaignId);
   const assignments = useCampaignAssignments(campaignId);
   const contents = useContents();
   const assessors = useAssessors();
@@ -150,6 +148,12 @@ export default function CampaignDetailPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href={`/admin/campaigns/${campaignId}/report`}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <BarChart3 className="h-4 w-4" /> View report
+          </Link>
           {/* In any status: a label binds nothing, so closing does not protect it (ADR-0055). */}
           {campaign ? (
             <Button variant="outline" onClick={() => setRenaming(true)}>
@@ -168,11 +172,6 @@ export default function CampaignDetailPage({
           ) : null}
         </div>
       </div>
-
-      <GoldenBadge
-        loading={golden.isLoading}
-        data={golden.data}
-      />
 
       <Card className="mt-6">
         <CardHeader>
@@ -286,34 +285,5 @@ export default function CampaignDetailPage({
         </>
       ) : null}
     </div>
-  );
-}
-
-function GoldenBadge({
-  loading,
-  data,
-}: {
-  loading: boolean;
-  data: ReturnType<typeof useGoldenStatus>["data"];
-}) {
-  if (loading || !data) return null;
-  return (
-    <Card>
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-        <div>
-          <p className="text-sm font-medium">Golden reference</p>
-          <p className="text-xs text-muted-foreground">
-            Coverage {Math.round(data.coverage * 100)}% · threshold{" "}
-            {Math.round(data.threshold * 100)}%
-            {data.established_at ? ` · established ${new Date(data.established_at).toLocaleDateString()}` : ""}
-          </p>
-        </div>
-        {data.usable ? (
-          <Badge variant="success">usable</Badge>
-        ) : (
-          <Badge variant="outline">not yet</Badge>
-        )}
-      </CardContent>
-    </Card>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, BarChart3, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,6 +52,10 @@ export default function CampaignsPage() {
                   <TableHead>Courses</TableHead>
                   <TableHead>Quorum</TableHead>
                   <TableHead>Status</TableHead>
+                  {/* Two different acts, so two links rather than one row that guesses:
+                      assigning and cancelling is one job, reading what the round found is
+                      another, and the second is the reason the campaign exists (ADR-0060). */}
+                  <TableHead className="text-right">Result</TableHead>
                   <TableHead className="text-right">Manage</TableHead>
                 </TableRow>
               </TableHeader>
@@ -70,6 +74,14 @@ export default function CampaignsPage() {
                     <TableCell>{c.required_evaluations_per_content}</TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        href={`/admin/campaigns/${c.campaign_id}/report`}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" /> Report
+                      </Link>
                     </TableCell>
                     <TableCell className="text-right">
                       <Link
