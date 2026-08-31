@@ -270,9 +270,13 @@ score, ADR-0052 §4) and not submitted yet — are carried separately, because t
 different acts. Nothing here is frozen: a campaign's record is the golden reference its own
 policy establishes, and the report is composed on read (ADR-0060 §7).
 
-`GET /admin/reports/scores` gives each course's per-criterion profile across every campaign at
-once (average across assessors plus dispersion; **no aggregate score across criteria**,
-ADR-0011), and `GET /admin/progress` who evaluated what, cross-campaign.
+`GET /admin/progress` is the **only** thing Reporting still answers across campaigns: who
+evaluated what, per evaluator and per course. It is a question about people — who is
+overloaded, who abandoned — and it is legitimately asked without a campaign in the way. There
+is no cross-campaign scores report: a score is a measurement, and it has no meaning outside the
+campaign that fixed the instrument, the scope and the panel (ADR-0060 §6). Nothing is hidden by
+that, because a human evaluation can only be submitted against an assignment, so every one of
+them already sits inside a campaign report.
 
 ## Registering courses
 

@@ -475,17 +475,14 @@ def test_an_abstention_travels_as_a_null_score(admin, evaluator, content, make_c
     ).scalar_one()
     assert stored is None
 
-    report = admin.get("/admin/reports/scores").json()
-    summaries = {
-        c["criterion_id"]: c
-        for content_report in report["contents"]
-        if content_report["content_id"] == content
-        for c in content_report["criteria"]
-    }
-    # Still reported — the criterion was asked — but with no average and no rater.
-    assert summaries[CRITERIA[0]]["average"] is None
-    assert summaries[CRITERIA[0]]["dispersion"]["rater_count"] == 0
-    assert summaries[CRITERIA[1]]["average"] == 4.0
+    report = admin.get(f"/admin/campaigns/{campaign_id}/report").json()
+    items = {i["criterion_id"]: i["summary"] for i in report["items"]}
+    # Still reported — the criterion WAS asked — but with no average, and counted as the
+    # abstention it is rather than as an item nobody was put in front of (ADR-0060 §4).
+    assert items[CRITERIA[0]]["average"] is None
+    assert items[CRITERIA[0]]["abstentions"] == 1
+    assert items[CRITERIA[0]]["withheld_contents"] == 0
+    assert items[CRITERIA[1]]["average"] == 4.0
 
 
 def test_an_omitted_score_field_is_refused(admin, evaluator, content, make_campaign):
