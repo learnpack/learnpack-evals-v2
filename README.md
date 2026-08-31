@@ -68,7 +68,7 @@ The documentation is the source of truth, and each kind of document makes a diff
 | `docs/GLOSSARY.md` | the vocabulary; **code names come from here** |
 | `docs/adr/` | the decisions, **immutable** — one is superseded by a new one, never edited |
 | `docs/design/` | frozen snapshots, **not maintained** — an ADR that contradicts one wins |
-| `STATUS.md` | the only dated status in the repo, rewritten whole |
+| `STATUS.md` | the only dated status in the repo — short on purpose, and never a log |
 
 Everything else — the two READMEs above, `docs/DATA_MODEL.md`, `docs/MEASUREMENT.md`, the
 runbooks — is **reference**: true of `main`, and updated in the same commit as the code that

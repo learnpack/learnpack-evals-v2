@@ -48,7 +48,15 @@ Non-negotiable rules:
 1. **No status outside `STATUS.md`.** No "already done", no "X missing", no "N tests
    green", no "✔ verified on 30-Jul", no dates of when something was tested. A reference doc
    states **how it works and why**, in the present tense and undated. Status goes to
-   `STATUS.md`, which is rewritten whole.
+   `STATUS.md`.
+   **And `STATUS.md` has a budget.** Nothing enters it that has a home in an ADR, a test or a
+   PR, and every entry names the event that deletes it — a section that never deletes is a
+   section that grows without bound. It is **not** a log: what was true and stopped being true
+   is dropped, because `git log`, the ADR series and the commit messages already hold the
+   history and hold it better. Writing a paragraph here that restates its ADR is the specific
+   mistake to avoid: the ADR is immutable, dated and better written, so `STATUS.md` says
+   *"in, end to end"* and links. Verifying something by hand is evidence for the PR that
+   changes it, never an entry here.
 2. **Every analysis, plan or investigation is born in `notes/`** — not in `docs/`. Including
    what you generate (implementation plans, audits, comparisons).
 3. **When the task ends, each note has four exits and only four:** it was a *decision with
