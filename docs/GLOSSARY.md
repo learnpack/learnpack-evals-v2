@@ -19,8 +19,8 @@
   itself, read by discovery and never typed by hand (ADR-0059). The title *describes*, the
   `externalId` *identifies*: nothing is ever looked up by name, and a course whose package
   declares none simply has none.
-- **PackageFormat** *(formerly `GeneratingSystem`; slice 1 code keeps
-  `generating_system` until its migration)* — the **package convention** that an extraction
+- **PackageFormat** *(formerly `GeneratingSystem`; the column was renamed in migration 0002
+  and no code carries the old name)* — the **package convention** that an extraction
   adapter knows how to read (e.g. `LearnpackV1`). The *format* axis: it selects the adapter and
   acts as the namespace of the `externalId` (ADR-0005). Distinct from the *examinee* axis
   (`GeneratorVersion`); they can diverge — generator v2.3 and v2.4 may both emit `LearnpackV1`
@@ -143,7 +143,7 @@
   atomic and **human**. `Published` ⇒ immutable — any change ⇒ new version; `claimId`/`criterionId`
   stable across versions (lineage). **It is "the composite"**: with the instrument owning
   claims + criteria + sufficiency + bindings, the old "rubric preset" needs no name of its
-  own (DP28). Relationship to `Rubric`: a slice 1 term that the Instrument supersedes; the
+  own (DP28). Relationship to `Rubric`: an earlier term the Instrument supersedes; the
   human reference instrument survives under it (ADR-0015, ADR-0052).
 - **Claim** — an assessable, **one-sentence** assertion about **exactly one `Quality`**
   (ADR-0026, checked at publish), with: required evidence,
@@ -306,11 +306,11 @@
   part of the evidence rule). Computed by the **assessor**, never by the extraction adapter —
   see `MEASUREMENT.md` for why, for what each measure means, and for the evidence behind each
   threshold.
-- **ScoringPolicy** — **dissolved** (Define slice 2): its "map `ComputedMetric` →
+- **ScoringPolicy** — **dissolved** (the 09–13 design series): its "map `ComputedMetric` →
   outcome" half now lives in the **criterion's pass condition** (thresholds are part of the
   evidence rule, ADR-0010); its "aggregate/compose" half lives in the per-claim
-  **sufficiency** (ADR-0013), under the prohibition of ADR-0011. The entry is kept as
-  traceability; slice 1 code may refer to it until its migration.
+  **sufficiency** (ADR-0013), under the prohibition of ADR-0011. Nothing in the code carries
+  the name any more; the entry is kept so the concept is not rebuilt under it.
 - **CriterionScore** — the outcome of a criterion on a content (+ optional `Comment`).
   ADR-0010 + ADR-0018 + ADR-0037 shape: `scored (pass/fail) | not_applicable | no_evidence |
   not_assessed | execution_error`, **with the quote that sustains it** (only executed `scored`
@@ -362,10 +362,10 @@
 
 ## Orchestration & calibration (supporting)
 
-- **EvaluationRun** — **merged into `EvaluationStudy`** (Define slice 2, DP28): the run was the
-  mechanism without a why; the study is the why with a mechanism. `EvaluationRunStarted` dies;
-  the study events replace it. Entry kept as traceability; slice 1 code may refer to it until
-  its migration.
+- **EvaluationRun** — **merged into `EvaluationStudy`** (DP28): the run was the mechanism
+  without a why; the study is the why with a mechanism. `EvaluationRunStarted` dies; the study
+  events replace it. Nothing in the code carries the name any more, beyond one comment that
+  records the merge; the entry is kept so the concept is not reintroduced.
 - **EvaluationCampaign** — the human realization of an `EvaluationRun`, **open and incremental**
   (config + scope): it pins `instrumentVersion` (formerly `rubricVersion`) — chosen when it
   opens, from the published versions, and never afterwards — and
@@ -402,17 +402,27 @@
 ## Cross-cutting
 
 - **DomainEvent** — a past fact of the domain; the means by which state evolves
-  (events-first). E.g. (slice 2 model): `GeneratorRegistered` · `GeneratorVersionRegistered` ·
-  `BriefRegistered` ·
-  `ContentVersionRegistered` · `ContentProfiled` / `ContentProfilingFailed` ·
-  `ExtractionAccepted` · `InstrumentVersionPublished` · `InstrumentDefectIdentified` ·
-  `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` · `FindingRaised` ·
-  `FindingDisputed` · `DisagreementDetected` · `StudyOpened` / `StudySignedOff` /
-  `StudiesCompared` · human path: `AssessorInvited`/`InvitationResent`/`InvitationRevoked`/
-  `InvitationAccepted` · `AssessorRoleChanged` ·
-  `AssessorExpertiseChanged` · `AssessorDeactivated`/`AssessorReactivated`, `AssignmentCreated`/`AssignmentCancelled`,
-  `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` · `SourceCalibrated`
-  `[future]`. Killed by Define: `EvaluationRunStarted` (DP28) · `MetricComputed` as an event
+  (events-first). What is **published today**, by axis:
+  - *evaluand* — `GeneratorRegistered` · `GeneratorVersionRegistered` · `BriefRegistered` ·
+    `ContentVersionRegistered` · `GeneratorAttributed` (ADR-0024) · `ConsumableUrlDeclared`
+    (ADR-0054).
+  - *profiling* — `ContentProfiled` / `ContentProfilingFailed` · `ExtractionAccepted`.
+  - *design* — `InstrumentVersionPublished`.
+  - *evaluation* — `EvaluationCompleted` / `EvaluationSubmitted` · `QualityJudgmentPublished` ·
+    `FindingRaised`.
+  - *studies and sets* — `StudyDeclared` / `StudyOpened` / `StudySignedOff` ·
+    `DatasetDeclared` / `DatasetVersionCreated` / `DatasetRenamed` (ADR-0058).
+  - *human path* — `AssessorInvited` / `InvitationResent` / `InvitationRevoked` /
+    `InvitationAccepted` · `AssessorRoleChanged` · `AssessorExpertiseChanged` ·
+    `AssessorDeactivated` / `AssessorReactivated` · `CampaignOpened` / `CampaignRenamed` /
+    `CampaignClosed` · `AssignmentCreated` / `AssignmentOpened` / `AssignmentCancelled` ·
+    `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished`.
+
+  **Named, not built** `[future]` — `InstrumentDefectIdentified` · `FindingDisputed` ·
+  `DisagreementDetected` · `StudiesCompared` · `SourceCalibrated`. The words are reserved and
+  nothing publishes one, so no policy may be written as though one arrives.
+
+  **Killed by Define** — `EvaluationRunStarted` (DP28) · `MetricComputed` as an event
   (DP19: it is a row, not an event) · `RubricPublished` → `InstrumentVersionPublished`.
 - **Localization** — UI i18n (EN/ES). A concern of the target model; MVP = EN.
 
@@ -449,7 +459,7 @@
 - **Design-time synthesis** — an instrument whose claims/criteria are `grounded_in` several
   frameworks (the case of the human reference instrument: 12 statements distill 6 frameworks;
   in the claims model, each claim's warrant cites its frameworks).
-- **Runtime composition** — *(superseded by Define slice 2)*: the "composite of rubrics/lenses"
+- **Runtime composition** — *(superseded by the 09–13 design series)*: the "composite of rubrics/lenses"
   no longer exists as a separate concept — **the `Instrument` is the composite** (it owns
   claims + criteria + sufficiency + bindings, DP28), and aggregation is set by its
   **sufficiency**, never by a `ScoringPolicy` (dissolved) nor by a single score (ADR-0011).
