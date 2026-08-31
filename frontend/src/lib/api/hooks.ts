@@ -24,6 +24,7 @@ import type {
   BriefResponse,
   BrowseResponse,
   CampaignProgress,
+  CampaignReport,
   CampaignResponse,
   DatasetResponse,
 
@@ -111,6 +112,7 @@ export const queryKeys = {
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
+  campaignReport: (id: Uuid) => ["admin", "campaigns", id, "report"] as const,
   assessors: ["admin", "assessors"] as const,
   invitations: ["admin", "invitations"] as const,
   assessorPackages: ["admin", "assessor-packages"] as const,
@@ -587,6 +589,17 @@ export function useGoldenStatus(id: Uuid) {
   return useQuery({
     queryKey: queryKeys.golden(id),
     queryFn: () => api<GoldenStatus>(`/admin/campaigns/${id}/golden`),
+  });
+}
+
+/** One campaign's result (ADR-0060). The whole round in one payload — items, courses and
+ *  every individual answer — because it is one reading of one campaign, and paging it would
+ *  invite reading a part of it as the whole. */
+export function useCampaignReport(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.campaignReport(id),
+    queryFn: () => api<CampaignReport>(`/admin/campaigns/${id}/report`),
   });
 }
 
