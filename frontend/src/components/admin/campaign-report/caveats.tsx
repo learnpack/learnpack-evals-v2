@@ -3,9 +3,16 @@ import type { CampaignReport } from "@/lib/api/types";
 
 /** What is missing from the numbers above, and why — said here rather than left to the ADRs.
  *
- *  Two of these are decisions somebody already took and wrote down as a cost (ADR-0052), and
- *  a report that does not repeat them relies on its reader remembering an ADR while looking
- *  at a chart. That is not a reasonable thing to rely on.
+ *  One of these is a cost somebody already accepted and wrote down (ADR-0052's
+ *  declaration-bound items), and a report that does not repeat it relies on its reader
+ *  remembering an ADR while looking at a chart. That is not a reasonable thing to rely on.
+ *
+ *  Every row here is **derived from this campaign's own data**. ADR-0052 §6's processing
+ *  confound is deliberately NOT among them: it holds where the deployed course differs from
+ *  the draft the instrument reads, which is a property of the package format and of what was
+ *  actually deployed — not something a campaign report can see. Printed unconditionally it
+ *  was false for part of the scope, and a caveat that is sometimes untrue is worse than one
+ *  the reader has to look up. It comes back when the report can tell the two cases apart.
  */
 export function Caveats({ report }: { report: CampaignReport }) {
   const gaps = silences(report);
@@ -58,17 +65,6 @@ export function Caveats({ report }: { report: CampaignReport }) {
           </li>
         ) : null}
 
-        <li className="px-4 py-3">
-          <p className="font-medium">The panel and the instrument did not read the same
-            artefact</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            The experts judged the deployed, processed course; the automated instrument reads
-            the draft. The lesson prose is the same text, so most items are unaffected — but
-            the assessment item is not: a delivered challenge was read on one side and a
-            proposal on the other. Any comparison of that item across the two sides carries
-            this as a declared alternative explanation.
-          </p>
-        </li>
       </ul>
     </section>
   );
