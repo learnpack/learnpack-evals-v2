@@ -228,6 +228,10 @@ export interface AssignmentResponse {
   assignment_id: Uuid;
   campaign_id: Uuid;
   content_id: Uuid;
+  /** What the course calls itself (ADR-0059). Null when its package declares nothing, and
+   *  then the screen falls back to the short reference — never to the `external_id`, which
+   *  the evaluator is never shown. */
+  content_title: string | null;
   assessor_id: Uuid;
   status: string; // assigned | opened | submitted | cancelled
   instrument_version_id: string;
@@ -256,6 +260,8 @@ export interface AssignmentDetail {
   assignment_id: Uuid;
   status: string;
   content_id: Uuid;
+  /** The name the course declares about itself (ADR-0059); null when it declares none. */
+  content_title: string | null;
   consumable_url: string | null;
   instrument_version_id: string;
   scale_min: number;

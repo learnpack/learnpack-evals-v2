@@ -97,6 +97,10 @@ class AssignmentResponse(BaseModel):
     assignment_id: UUID
     campaign_id: UUID
     content_id: UUID
+    # What the course calls itself (ADR-0059). Null when its package declares nothing, and
+    # then the evaluator's screen falls back to the opaque reference — never to the
+    # `external_id`, which can name the generator the panel is blind to.
+    content_title: str | None = None
     assessor_id: UUID
     status: str
     instrument_version_id: str
@@ -148,6 +152,9 @@ class AssignmentDetailResponse(BaseModel):
     assignment_id: UUID
     status: str
     content_id: UUID
+    # The name the course declares about itself (ADR-0059), so the screen that asks somebody
+    # to judge a course can say which one it is.
+    content_title: str | None
     # Null when the content declares no deployed instance (ADR-0028): the evaluator screen
     # states the absence. Nothing here refuses the assignment yet — the console prevents it
     # and the enforced guard is deferred (STATUS).
@@ -392,7 +399,11 @@ def campaign_progress(
 
 
 @evaluator_router.get("/me/assignments", response_model=list[AssignmentResponse])
-def my_assignments(assessor: CurrentAssessor, uow: Uow) -> list[AssignmentResponse]:
+def my_assignments(
+    assessor: CurrentAssessor, uow: Uow, contents: Contents
+) -> list[AssignmentResponse]:
+    """The registry is asked one course at a time, and that is the size of the list: what a
+    person still owes is a handful of rows, never the store."""
     pending = queries.get_pending_assignments(
         SqlAlchemyAssignmentRepository(uow.session),
         SqlAlchemyCampaignRepository(uow.session),
@@ -403,12 +414,21 @@ def my_assignments(assessor: CurrentAssessor, uow: Uow) -> list[AssignmentRespon
             assignment_id=a.assignment_id,
             campaign_id=a.campaign_id,
             content_id=a.content_id,
+            content_title=_content_title(contents, a.content_id),
             assessor_id=a.assessor_id,
             status=a.status,
             instrument_version_id=a.instrument_version_id,
         )
         for a in pending
     ]
+
+
+def _content_title(contents: EvaluandRegistryQueries, content_id: UUID) -> str | None:
+    """A course whose registration vanished is not this endpoint's problem to report — the
+    assignment still exists and still names its content id, which is what the screen falls
+    back to."""
+    snapshot = contents.get_content_snapshot(content_id)
+    return snapshot.title if snapshot is not None else None
 
 
 @evaluator_router.get("/assignments/{assignment_id}", response_model=AssignmentDetailResponse)
@@ -456,6 +476,7 @@ def assignment_detail(
         assignment_id=assignment.assignment_id,
         status=assignment.status,
         content_id=snapshot.content_id,
+        content_title=snapshot.title,
         consumable_url=snapshot.consumable_url,
         # RubricSnapshot keeps the slice 1 name (ADR-0015); the public JSON speaks instrument.
         instrument_version_id=rubric.rubric_version_id,

@@ -94,6 +94,40 @@ def assign(admin, campaign_id, content_id, assessor_id):
 # --------------------------------------------------------------------------- flow
 
 
+def test_the_evaluator_reads_the_course_by_name(admin, evaluator, content, make_campaign, session):
+    """ADR-0059 §5: the name the package declares, and nothing that could say who generated
+    the course. The row is named directly here — the fixture registers by hand, and a hand
+    path never names a course (§1)."""
+    session.execute(
+        text("UPDATE contents SET title = :title WHERE id = :id"),
+        {"title": "Introduction to Generative AI", "id": content},
+    )
+    session.commit()
+
+    campaign_id = make_campaign(required=1)
+    client, assessor_id = evaluator("grace")
+    assignment_id = assign(admin, campaign_id, content, assessor_id)
+
+    listed = client.get("/me/assignments").json()[0]
+    assert listed["content_title"] == "Introduction to Generative AI"
+    assert "external_id" not in listed
+
+    detail = client.get(f"/assignments/{assignment_id}").json()
+    assert detail["content_title"] == "Introduction to Generative AI"
+    assert "external_id" not in detail
+
+
+def test_a_course_with_no_declared_name_says_so(admin, evaluator, content, make_campaign):
+    """Null travels rather than being papered over with the external id, which is what the
+    screen would otherwise fall back to and must not."""
+    campaign_id = make_campaign(required=1)
+    client, assessor_id = evaluator("hopper")
+    assignment_id = assign(admin, campaign_id, content, assessor_id)
+
+    assert client.get("/me/assignments").json()[0]["content_title"] is None
+    assert client.get(f"/assignments/{assignment_id}").json()["content_title"] is None
+
+
 def test_full_evaluator_flow(admin, evaluator, content, make_campaign, session):
     campaign_id = make_campaign(required=1)
     client, assessor_id = evaluator("ada")
