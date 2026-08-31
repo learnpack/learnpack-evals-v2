@@ -33,6 +33,7 @@ import {
   useQualityReference,
   useStartPreviewRun,
 } from "@/lib/api/hooks";
+import { courseLabel } from "@/lib/courses";
 import type {
   AssessorPackageResponse,
   InstrumentCriterion,
@@ -235,7 +236,7 @@ function CalibrationConsole() {
                             onChange={() => setContentId(content.content_id)}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{content.external_id}</TableCell>
+                        <TableCell className="font-medium">{courseLabel(content)}</TableCell>
                         <TableCell>{content.version}</TableCell>
                         <TableCell>{content.package_format}</TableCell>
                         <TableCell>

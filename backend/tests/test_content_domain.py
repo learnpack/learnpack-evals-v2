@@ -90,3 +90,37 @@ def test_package_kind_is_an_open_vocabulary():
         [{"kind": "knowledge-graph", "locator": "https://x/kg.json", "format": "json"}]
     )
     assert package.artifacts[0].kind == "knowledge-graph"
+
+
+# ------------------------------------------------------------------ the declared title
+
+
+def test_a_course_has_no_title_until_its_package_declares_one():
+    """Null is the honest value (ADR-0059 §3): nothing derives a name from the slug."""
+    assert make_content().title is None
+
+
+def test_a_blank_declared_title_is_no_title():
+    assert make_content(title="   ").title is None
+
+
+def test_recording_a_title_fills_a_void():
+    content = make_content()
+    content.record_discovered_title("  Introduction to Generative AI  ")
+    assert content.title == "Introduction to Generative AI"
+
+
+def test_a_recorded_title_is_never_replaced():
+    """One-way, like the generator link: the fact was always true and merely arrived late,
+    so a second write would be a rename — the act ADR-0059 §1 refuses."""
+    from app.modules.evaluand_registry.domain.content import TitleAlreadyRecorded
+
+    content = make_content(title="Introduction to Generative AI")
+    with pytest.raises(TitleAlreadyRecorded):
+        content.record_discovered_title("Something Else")
+    assert content.title == "Introduction to Generative AI"
+
+
+def test_recording_a_blank_title_is_refused():
+    with pytest.raises(InvalidContent, match="blank"):
+        make_content().record_discovered_title("   ")

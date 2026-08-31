@@ -30,6 +30,7 @@ def _to_snapshot(content: EducationalContent) -> ContentSnapshot:
         content_id=content.id,
         package_format=content.package_format,
         external_id=content.external_id,
+        title=content.title,
         version=content.version,
         consumable_url=content.consumable_url,
         brief_id=content.brief_id,

@@ -19,6 +19,7 @@ import {
 import { DatasetVersionForm } from "@/components/admin/dataset-version-form";
 import { RenameDatasetForm } from "@/components/admin/rename-dataset-form";
 import { useBriefs, useContents, useDataset, useGeneratorVersions } from "@/lib/api/hooks";
+import { courseLabel, courseRef } from "@/lib/courses";
 import {
   latestVersion,
   summarizeMembership,
@@ -72,7 +73,7 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
   const selected = dataset.versions.find((v) => v.version_id === selectedId) ?? latest;
   const summary = summarizeMembership(selected?.content_ids ?? [], courses);
 
-  const courseName = (id: Uuid) => courseById.get(id)?.external_id ?? id.slice(0, 8);
+  const courseName = (id: Uuid) => courseLabel(courseById.get(id), id);
   // Sorted by the name a person reads. The API returns the canonical (uuid) order, which is
   // what makes two memberships comparable and what makes forty rows unreadable.
   const members = [...(selected?.content_ids ?? [])].sort((a, b) =>
@@ -234,7 +235,7 @@ function CourseRow({
     // than as a course that is missing something.
     return (
       <TableRow>
-        <TableCell className="font-medium">{contentId.slice(0, 8)}</TableCell>
+        <TableCell className="font-mono font-medium">{courseRef(contentId)}</TableCell>
         <TableCell colSpan={5} className="text-xs text-muted-foreground">
           not in the course list
         </TableCell>
@@ -244,7 +245,20 @@ function CourseRow({
 
   return (
     <TableRow>
-      <TableCell className="font-medium">{course.external_id}</TableCell>
+      {/* The name, with the identity under it: this page is read to decide what is in a
+          set, and typed back into a command afterwards (ADR-0059 §2). */}
+      <TableCell className="font-medium">
+        {course.title ? (
+          <>
+            {course.title}
+            <span className="mt-0.5 block font-mono text-xs font-normal text-muted-foreground">
+              {course.external_id}
+            </span>
+          </>
+        ) : (
+          course.external_id
+        )}
+      </TableCell>
       <TableCell>{course.version}</TableCell>
       <TableCell className="text-muted-foreground">{course.package_format}</TableCell>
       <TableCell className="max-w-xs">

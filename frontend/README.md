@@ -160,12 +160,18 @@ a round, and the **unknown generator** group can never be measured, since a roun
 versions it measures (ADR-0024, ADR-0044 §6). Its courses are attributed in the flat **List**
 view, which also keeps the format/generator/version filters.
 
+Every view calls a course by the name its package declares, with the `external_id` under it —
+the name is what a reader recognises, the id is what they type into a command (ADR-0059). A
+course whose package declares no name, or one registered before the name was kept, shows the
+id alone until `backfill-content-titles` recovers it.
+
 The List is where the two acts that change one course live, and they are not the same shape.
 A **generator** is attributed once and never replaced — a generator link is a discovery, so
 replacing one would overwrite history (ADR-0024). A **deployment** is declared from the URL
 column and may be **redeclared**, because it is a statement about the world right now: a
 course moves, and a declaration that could be made only once would leave a dead link with no
-repair (ADR-0054). Both states of the column carry the act — the void is filled from `none`,
+repair (ADR-0054). The name is neither act: nobody declares it, discovery reads it, and no
+screen can edit it. Both states of the URL column carry the act — the void is filled from `none`,
 an existing URL is corrected from the pencil beside it — and declaring the URL a course
 already has is refused by the button rather than sent, since the server treats it as a no-op
 and writes nothing.

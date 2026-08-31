@@ -98,6 +98,10 @@ def content_version_registered(content: EducationalContent) -> DomainEvent:
             "contentId": str(content.id),
             "packageFormat": content.package_format,
             "externalId": content.external_id,
+            # What the package calls itself (ADR-0059); null when it declares nothing. Carried
+            # here for the reason stated at the top of this file: a label a reader has to join
+            # against current state to recover makes a worse record.
+            "title": content.title,
             "version": content.version,
             # Null when no deployed, human-consumable instance is declared (ADR-0028).
             "consumableUrl": content.consumable_url,

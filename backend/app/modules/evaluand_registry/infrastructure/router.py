@@ -114,6 +114,9 @@ class ContentResponse(BaseModel):
     content_id: UUID
     package_format: str
     external_id: str
+    # The name the package declares (ADR-0059). Always present, null when it declares none —
+    # a console falls back to `external_id`, which is what it showed before there was a name.
+    title: str | None
     version: str
     # Always present in the JSON, null when no deployed instance is declared (ADR-0028).
     consumable_url: str | None
@@ -130,6 +133,7 @@ class ContentResponse(BaseModel):
             content_id=snapshot.content_id,
             package_format=snapshot.package_format,
             external_id=snapshot.external_id,
+            title=snapshot.title,
             version=snapshot.version,
             consumable_url=snapshot.consumable_url,
             brief_id=snapshot.brief_id,

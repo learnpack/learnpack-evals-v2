@@ -127,6 +127,7 @@ erDiagram
         uuid id PK
         text package_format
         text external_id
+        text title "nullable; what the package calls itself"
         text version
         text content_hash "nullable"
         text consumable_url "nullable; deployment"
@@ -153,7 +154,8 @@ Logical content identity: `(package_format, external_id, version)` unique.
 Generator identity in two grains (ADR-0031): a lineage is unique on `lower(btrim(name))` — an
 expression index, so casing and padding cannot make two — and a version is unique on
 `(generator_id, version)`. `content_hash` supports discovery dedupe; `consumable_url` declares a
-deployment, not package bytes.
+deployment, not package bytes; `title` names the course for a reader and identifies nothing
+(ADR-0059) — null where the package declares none or the row predates the column.
 
 ## 4. evaluation_design
 

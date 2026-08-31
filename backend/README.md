@@ -183,6 +183,7 @@ any of them is authoritative. What each one is *for*:
 | `register-package` | register a content version by discovering a package source |
 | `import-learnpack` | hand-composed batches that carry their own artifact lists |
 | `attribute-generator` · `declare-deployment` | a generator learnt after registration (once) · where a version is deployed (repeatable) |
+| `backfill-content-titles` | recover the name of courses registered before the title was kept — reads the profile, writes once, safe to repeat |
 | `delete-content` | remove a content version nothing has used — local development only |
 | `create-dataset` · `add-dataset-version` · `list-datasets` | name a set of courses and freeze its first version · freeze the next membership · what is declared and where each set is |
 | `profile-content` · `accept-extraction` · `reprofile` | read one package by hand · arm auto-profiling for a format · re-profile a format in batch |
@@ -399,7 +400,7 @@ uv run python -m app.cli declare-deployment --from-csv ./deployments.csv --email
 ```
 
 **Which `external_id`.** It is the identity the package declares about itself, read off it by
-discovery and never typed by hand — `/admin/contents` lists it in the first column, and
+discovery and never typed by hand — `/admin/contents` shows it beside the course's name, and
 `register-package` prints it. What it is made of is the format's business:
 
 | Format | `external_id` | From |
@@ -413,6 +414,15 @@ nothing about what was asked. Both are the run's own declarations, so the id sur
 being moved, renamed or served from somewhere else — which the directory name, the other obvious
 candidate, would not. It is namespaced by the format (ADR-0005), so `(format, external_id)` is the
 logical course and the same string under two formats is two courses.
+
+**Which name.** Discovery reads one too — `title` in `learn.json` for `LearnpackV1`, the lesson
+plan's `course_title` for `LearnpackV2` — and it is what every screen calls the course
+(ADR-0059). It describes where the `external_id` identifies: nothing is looked up by it, two
+courses from one commission may declare the same one, and no act can edit it, because the
+package is the author of its own name. A course registered by hand, or one whose package
+declares no title, has none: the console falls back to the `external_id`, and
+`backfill-content-titles` recovers the name of anything registered before the field was kept,
+reading it from the profile that same package produced.
 
 **It fetches nothing.** A `ContentProfile` is built from artifact locators and Content Profiling
 never reads this field, so the evaluand keeps its identity, its `content_hash` and its profile —

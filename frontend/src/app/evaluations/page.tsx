@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useMyAssignments } from "@/lib/api/hooks";
+import { assignedCourseLabel, courseRef } from "@/lib/courses";
 import { cn } from "@/lib/utils";
 
 export default function EvaluationsPage() {
@@ -39,9 +40,15 @@ export default function EvaluationsPage() {
               <Card key={a.assignment_id}>
                 <CardContent className="flex items-center justify-between gap-4 py-4">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">Course {a.content_id.slice(0, 8)}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Instrument {a.instrument_version_id}
+                    <p className="truncate font-medium">
+                      {assignedCourseLabel(a.content_title, a.content_id)}
+                    </p>
+                    {/* The reference stays even when the course has a name: two courses of
+                        one commission declare the same title, and this is what an evaluator
+                        quotes when one of them will not load. What is NOT here is the
+                        external id or the instrument version — see ADR-0059 §5. */}
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                      Ref {courseRef(a.content_id)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

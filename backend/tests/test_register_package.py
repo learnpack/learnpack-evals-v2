@@ -84,6 +84,8 @@ def test_registers_the_discovered_package(cleanup, session):
 
     assert registration.created
     assert content.external_id == "bare-course"  # identity comes from the package, not a form
+    # The name is the package's, kept beside the identity rather than dropped (ADR-0059).
+    assert content.title == "Bare Course"
     assert content.consumable_url == CONSUMABLE
     assert content.content_hash
     # learn.json, package-manifest, two lesson bodies, one exercise file — no syllabus.
@@ -93,6 +95,17 @@ def test_registers_the_discovered_package(cleanup, session):
         {"id": content.id},
     ).scalar()
     assert persisted == 5
+
+
+def test_the_declared_title_is_persisted(cleanup, session):
+    """ADR-0059: what discovery read off `learn.json` survives the registration, and is
+    read back from the row rather than from the object the use case returned."""
+    content = register_bare(cleanup).content
+
+    stored = session.execute(
+        text("SELECT title FROM contents WHERE id = :id"), {"id": content.id}
+    ).scalar()
+    assert stored == "Bare Course"
 
 
 def test_reimporting_unchanged_content_is_a_noop(cleanup, session):

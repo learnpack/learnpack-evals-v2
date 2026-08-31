@@ -14,6 +14,7 @@ import { ConsumeContent } from "@/components/evaluator/consume-content";
 import { DeclaredData } from "@/components/evaluator/declared-data";
 import { ScoreForm } from "@/components/evaluator/score-form";
 import { useAssignment, useOpenAssignment, useSubmitEvaluation } from "@/lib/api/hooks";
+import { assignedCourseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -92,12 +93,19 @@ export default function AssignmentPage({
         ) : (
           <>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <Link
-                href="/evaluations"
-                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" /> Back to your evaluations
-              </Link>
+              <div className="min-w-0">
+                <Link
+                  href="/evaluations"
+                  className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Back to your evaluations
+                </Link>
+                {/* The screen says which course it is asking about (ADR-0059 §5): the name
+                    the course declares, and the reference to quote if it will not load. */}
+                <h1 className="mt-1 truncate text-lg font-semibold tracking-tight">
+                  {assignedCourseLabel(assignment.content_title, assignment.content_id)}
+                </h1>
+              </div>
               <div className="flex items-center gap-2">
                 {/* No URL, no button: an anchor with no href would navigate to this page. */}
                 {assignment.consumable_url ? (

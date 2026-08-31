@@ -5,7 +5,7 @@ changes; history is not stacked here (that is what git is for). If you find stat
 document — "already done", "X missing", "N tests green", "verified on such-and-such day" — it is
 in the wrong file and belongs here.
 
-_Last updated: 2026-08-28._
+_Last updated: 2026-08-31._
 
 ## Where we are
 
@@ -20,6 +20,24 @@ ADR-0041 (the frozen report is the record, not the reading surface — a study's
 is readable before it is signed, and the evidence behind every criterion lives outside
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
+
+**ADR-0059 (a course carries the name its package declares) is decided and in, end to end.**
+The name was never missing: discovery has always read it — `learn.json`'s title, the lesson
+plan's `course_title` — carried it on `DiscoveredPackage`, shown it in the local scan preview,
+and then the registration dropped it. `contents.title` keeps it, and it travels to the
+snapshot, to `ContentResponse` and to the two screens an evaluator sees, which called a course
+`Course 3f9a1c02` and printed the instrument version id underneath. Those screens now carry the
+**name and an opaque reference and nothing else**: no `external_id`, since a LearnpackV1 slug
+can name the generator and a LearnpackV2 id names a run, and no campaign name, which ADR-0055 §6
+already keeps out. The console shows the name over the identity, because both are used — one is
+recognised, the other is typed into a command. **Discovered, never authored:** the registration
+endpoint has no field for a title and ignores one sent anyway, which is what keeps ADR-0017's
+metadata channel closed; there is no `RenameContent`. `backfill-content-titles` recovers the
+name of anything registered earlier, reading `course_descriptor` from the profile that same
+package produced — no author, no event, safe to repeat. **Deliberately not built, and written
+down instead:** the title in the frozen report bodies and in the reporting and profiling read
+models (each carries its own `externalId` for its own reason), and the multilingual question —
+the English string is stored, because `_english()` already picked one long before this.
 
 **ADR-0058 (a dataset is a named set, and changing it is a new version) is decided and in,
 end to end.** A campaign's scope is now **named, not listed**: `POST /admin/campaigns` takes a
@@ -1983,6 +2001,18 @@ the data in the package).
 
 ## Verified
 
+- **A course carries the name its package declares** (suite + by hand over real HTTP against
+  the dev store). Migration `0032` applied and downgraded. `backfill-content-titles` named
+  **all seven courses** of the dev store from their profiles — *Introduction to Generative AI
+  for Beginners*, *Object Representation in Python*, *HTML Fundamentals: Building Web
+  Structure* among them — and the second run reported `0 filled, 7 already named`, which is
+  the only claim of idempotence worth making. `GET /admin/contents` serves the title beside
+  the `external_id`; `GET /me/assignments` and `GET /assignments/{id}` serve `content_title`
+  and **no `external_id` anywhere in the payload** — checked by reading the whole JSON, not
+  one field. The suite pins that a hand-registered course comes back with a null title even
+  when the request body carries one, and that `record_discovered_title` refuses to replace a
+  name. **The console and the two evaluator screens were read in the browser** against the dev
+  store, which is what closes this one: the payloads were never the part in doubt.
 - **A campaign runs on a dataset version** (suite + by hand over real HTTP against the dev
   store). Opening one against a version materialized **exactly its two courses** and recorded
   which version they came from; a version id nobody declared answered `422` with *"dataset
@@ -2311,6 +2341,17 @@ the data in the package).
 
 ## Open
 
+- **Half the console still reads a course by its identifier.** The frozen study report, the
+  reporting read model behind `/admin/reports` and the profiles page each carry their own copy
+  of `external_id`, and each would need its own column to show a name. The report is deliberate
+  — a frozen record is not a reading surface (ADR-0041) — the other two are simply not done,
+  and a reader moving between screens meets the same course under two labels.
+- **A course whose package cannot be read stays unnamed, and nobody may name it.** Registering
+  by hand types the identity, never a name; the profile is what fills it afterwards, so a
+  version registered through `POST /admin/contents` with a real artifact list *is* named by
+  `backfill-content-titles`. One registered with no artifacts, one whose extraction fails, and
+  one whose format declares no title are not, and there is no act that can — ADR-0059 §1
+  working as decided, and still the thing somebody will ask for.
 - **Nothing reads a dataset except a campaign.** The version leg of the comparability gate
   waits on `CompareStudies`, which does not exist; the **sample** — the courses that came back
   with both a human reference and an automated judgment, and the thing a validity coefficient

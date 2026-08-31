@@ -761,6 +761,11 @@ function CandidateTable({
                 )}
               </TableCell>
               <TableCell className="text-xs">
+                {/* The scan has read the package's own name all along (ADR-0059); the id
+                    below it is what the registration will key on. */}
+                {candidate.title ? (
+                  <span className="block font-medium">{candidate.title}</span>
+                ) : null}
                 {candidate.external_id ?? "—"}
                 {candidate.artifact_count ? (
                   <span className="ml-1 text-muted-foreground">
