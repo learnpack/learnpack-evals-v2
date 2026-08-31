@@ -15,6 +15,7 @@ from app.modules.orchestration.application import queries as _queries
 from app.modules.orchestration.application.dtos import (
     AssignmentDTO,
     CampaignProgressDTO,
+    CampaignSummaryDTO,
     ContentProgressDTO,
 )
 from app.modules.orchestration.infrastructure.repository import (
@@ -40,6 +41,7 @@ __all__ = [
     "CONTENT_EVALUATION_COMPLETED",
     "AssignmentDTO",
     "CampaignProgressDTO",
+    "CampaignSummaryDTO",
     "ContentProgressDTO",
     "OrchestrationQueries",
     "get_orchestration_queries",
@@ -65,6 +67,16 @@ class OrchestrationQueries:
     def list_assignments(self) -> list[AssignmentDTO]:
         """Every assignment across campaigns — input of the cross-campaign admin report."""
         return _queries.list_assignments(self._assignments, self._campaigns)
+
+    def list_assignments_for_campaign(self, campaign_id: UUID) -> list[AssignmentDTO]:
+        """One campaign's assignments, cancelled ones included — see the query's docstring."""
+        return _queries.list_assignments_for_campaign(
+            self._assignments, self._campaigns, campaign_id
+        )
+
+    def get_campaign(self, campaign_id: UUID) -> CampaignSummaryDTO | None:
+        """What the campaign is — its label, its pin, its scope (ADR-0060 §1)."""
+        return _queries.get_campaign(self._campaigns, campaign_id)
 
 
 def get_orchestration_queries(

@@ -210,6 +210,20 @@ class SqlAlchemyAssignmentRepository:
             {"c": campaign_id, "co": content_id},
         ).scalar_one()
 
+    def count_submitted_by_content(self, campaign_id: UUID) -> dict[UUID, int]:
+        rows = self._session.execute(
+            text(
+                """
+                SELECT content_id, count(*) AS submitted
+                  FROM assignments
+                 WHERE campaign_id = :c AND status = 'submitted'
+                 GROUP BY content_id
+                """
+            ),
+            {"c": campaign_id},
+        ).all()
+        return {row.content_id: row.submitted for row in rows}
+
 
 class SqlAlchemyCompletionRepository:
     def __init__(self, session: Session) -> None:
