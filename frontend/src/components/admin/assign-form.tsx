@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
 import { useAssessors, useAssignContent, useContents } from "@/lib/api/hooks";
+import { courseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
 import type { CampaignResponse } from "@/lib/api/types";
 
@@ -97,7 +98,7 @@ export function AssignForm({
           <option value="">Select a course…</option>
           {courses.map((c) => (
             <option key={c.content_id} value={c.content_id} disabled={!c.consumable_url}>
-              {c.external_id} · v{c.version}
+              {courseLabel(c)} · v{c.version}
               {c.consumable_url ? "" : " — not deployed"}
             </option>
           ))}

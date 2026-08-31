@@ -15,6 +15,7 @@ import {
   useDatasets,
   useReferenceInstruments,
 } from "@/lib/api/hooks";
+import { courseLabel, courseRef } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
 import { latestVersion } from "@/lib/datasets";
 import type { Uuid } from "@/lib/api/types";
@@ -52,9 +53,9 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
   }, [dataset]);
 
   const version = dataset?.versions.find((v) => v.version_id === versionId);
-  const courseLabel = (id: Uuid) => {
+  const courseLine = (id: Uuid) => {
     const course = contents?.find((c) => c.content_id === id);
-    return course ? `${course.external_id} · v${course.version}` : id.slice(0, 8);
+    return course ? `${courseLabel(course)} · v${course.version}` : `Course ${courseRef(id)}`;
   };
 
   function submit(e: React.FormEvent) {
@@ -220,7 +221,7 @@ export function CampaignForm({ onDone }: { onDone: () => void }) {
                 // still an evaluand. What it cannot take is a human assignment, and that
                 // refusal lives in AssignForm.
                 <li key={id} className="truncate">
-                  {courseLabel(id)}
+                  {courseLine(id)}
                   {course && !course.consumable_url ? (
                     <span className="text-xs text-muted-foreground"> · not deployed</span>
                   ) : null}

@@ -18,6 +18,9 @@ export interface ContentResponse {
   content_id: Uuid;
   package_format: string;
   external_id: string;
+  /** The name the package declares (ADR-0059). Null when it declares none, and then the
+   *  console shows the `external_id`, which is what it showed before there were names. */
+  title: string | null;
   version: string;
   /** Null when no deployed, human-consumable instance is declared (ADR-0028). */
   consumable_url: string | null;

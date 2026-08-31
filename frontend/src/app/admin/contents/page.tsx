@@ -29,6 +29,7 @@ import {
 } from "@/lib/api/hooks";
 import type { ContentResponse, GeneratorVersionResponse } from "@/lib/api/types";
 import { IS_LOCAL_AUTH } from "@/lib/auth";
+import { courseLabel } from "@/lib/courses";
 import {
   extractionStateOf,
   indexCapabilities,
@@ -317,7 +318,22 @@ export default function ContentsPage() {
                   <TableBody>
                     {visible.map((c) => (
                       <TableRow key={c.content_id}>
-                        <TableCell className="font-medium">{c.external_id}</TableCell>
+                        {/* The name over the identity: the title is what a reader
+                            recognises, the external id is what they type into a command
+                            (ADR-0059 §2). A course whose package declares no name shows the
+                            identity alone, which is what this column held before. */}
+                        <TableCell className="font-medium">
+                          {c.title ? (
+                            <>
+                              {c.title}
+                              <span className="mt-0.5 block font-mono text-xs font-normal text-muted-foreground">
+                                {c.external_id}
+                              </span>
+                            </>
+                          ) : (
+                            c.external_id
+                          )}
+                        </TableCell>
                         <TableCell>{c.version}</TableCell>
                         <TableCell className="text-muted-foreground">{c.package_format}</TableCell>
                         <TableCell>
@@ -484,7 +500,7 @@ function AttributeGeneratorCell({ content }: { content: ContentResponse }) {
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title={`Attribute a generator to ${content.external_id}`}
+        title={`Attribute a generator to ${courseLabel(content)}`}
         description="Records a generator learnt after registration. It fills the declared unknown once and cannot be changed afterwards."
       >
         {/* No unknown option: attributing IS naming the version, so the answer this act
@@ -598,7 +614,7 @@ function DeploymentCell({ content }: { content: ContentResponse }) {
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title={`${current ? "Redeclare" : "Declare"} the deployment of ${content.external_id}`}
+        title={`${current ? "Redeclare" : "Declare"} the deployment of ${courseLabel(content)}`}
         description={
           current
             ? "Points this course at where it is deployed now. The URL it is moving from is recorded with it, so a judgement made against the old one stays reconstructible."

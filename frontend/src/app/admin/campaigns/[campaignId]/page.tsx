@@ -24,6 +24,7 @@ import {
   useDatasets,
   useReferenceInstruments,
 } from "@/lib/api/hooks";
+import { courseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
 
 export default function CampaignDetailPage({
@@ -48,8 +49,8 @@ export default function CampaignDetailPage({
   const campaign = campaigns.data?.find((c) => c.campaign_id === campaignId);
 
   const contentName = useMemo(() => {
-    const map = new Map((contents.data ?? []).map((c) => [c.content_id, c.external_id]));
-    return (id: string) => map.get(id) ?? id.slice(0, 8);
+    const map = new Map((contents.data ?? []).map((c) => [c.content_id, c]));
+    return (id: string) => courseLabel(map.get(id), id);
   }, [contents.data]);
 
   // The raw id while the list loads, and for a version the list no longer offers — a draft,

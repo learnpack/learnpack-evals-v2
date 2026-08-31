@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/states";
 import type { ContentResponse } from "@/lib/api/types";
+import { courseLabel } from "@/lib/courses";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,8 +32,10 @@ export function CoursePicker({
   const shown = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     if (!needle) return courses ?? [];
+    // Both, because both are typed: the name is what somebody remembers a course by, the
+    // external id is what they paste out of a spreadsheet (ADR-0059 §2).
     return (courses ?? []).filter((course) =>
-      course.external_id.toLowerCase().includes(needle),
+      `${course.title ?? ""} ${course.external_id}`.toLowerCase().includes(needle),
     );
   }, [courses, filter]);
 
@@ -67,7 +70,7 @@ export function CoursePicker({
                 onChange={() => onToggle(course.content_id)}
                 className="h-4 w-4"
               />
-              {course.external_id} · v{course.version}
+              {courseLabel(course)} · v{course.version}
               {course.consumable_url ? null : (
                 <span className="text-xs text-muted-foreground">· not deployed</span>
               )}
