@@ -85,8 +85,8 @@ Non-negotiable rules:
   new decision contradicts the design, an ADR is written first.
 
 ## Stack
-**MVP (confirmed):** Next/Tailwind/shadcn on Netlify · FastAPI on Render Starter ·
-Postgres/pgvector on Neon · Clerk (invite-only). See `docs/design/08-code.md`, ADR-0003 and
-ADR-0004.
+**MVP (confirmed):** Next/Tailwind + an in-house shadcn-style kit on Netlify · FastAPI on
+Render Starter · Postgres on Neon · Clerk (invite-only). See `docs/design/08-code.md`,
+ADR-0003 and ADR-0004.
 **Target `[future]`:** LiteLLM/OpenRouter and LangGraph (only if orchestrating agents becomes
 necessary) — not used in the MVP.

@@ -95,8 +95,9 @@ the current design and its code plan) · `research/`. See `design/README.md`.
 
 ## MVP stack (confirmed)
 
-Next.js/Tailwind/shadcn on **Netlify** · **FastAPI** on **Render Starter** · Postgres/pgvector
-on **Neon** · **Clerk** (invite-only) as identity. Details in `design/08-code.md`.
+Next.js/Tailwind with an in-house shadcn-style kit on **Netlify** · **FastAPI** on
+**Render Starter** · Postgres on **Neon** · **Clerk** (invite-only) as identity.
+Details in `design/08-code.md`.
 
 ## The north star, in two sentences
 

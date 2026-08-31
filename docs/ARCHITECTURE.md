@@ -46,8 +46,8 @@ Mandatory consequences:
   (interfaces/Protocols) it needs.
 - **Interface Adapters** depend on Application + Domain. They implement the ports (repos, source
   adapters, event bus, gateways, ACLs) and translate between the external world and the model.
-- **Frameworks & Drivers** is the outermost layer (FastAPI, Postgres/pgvector, Clerk, httpx,
-  Next). Nothing internal imports them.
+- **Frameworks & Drivers** is the outermost layer (FastAPI, Postgres, Clerk, httpx, Next).
+  Nothing internal imports them.
 
 `app/shared/` holds what every module needs and nobody owns, split by the same layers:
 `domain` (ids, the base event, value domains), `application` (`EventPublisherPort`,
