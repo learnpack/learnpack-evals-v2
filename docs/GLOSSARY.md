@@ -368,11 +368,13 @@
   its migration.
 - **EvaluationCampaign** — the human realization of an `EvaluationRun`, **open and incremental**
   (config + scope): it pins `instrumentVersion` (formerly `rubricVersion`) — chosen when it
-  opens, from the published versions, and never afterwards —, `requiredEvaluationsPerContent`
-  (completeness threshold, not provisioning) and `metadataView`. It opens with whatever
-  assessors exist and adds more; it does **not own the assignments transactionally**. It also
-  carries a **name** (required, not unique) and an optional description — the label a campaign
-  is read by, which identifies nothing and is correctable in any status. **Its result is read
+  opens, from the published versions, and never afterwards — and
+  `requiredEvaluationsPerContent` (completeness threshold, not provisioning). It no longer
+  pins a `metadataView`: that was the human evaluator's context panel, retired with
+  `contents.metadata` by ADR-0017 and dropped from the table in migration 0007. It opens with
+  whatever assessors exist and adds more; it does **not own the assignments transactionally**.
+  It also carries a **name** (required, not unique) and an optional description — the label a
+  campaign is read by, which identifies nothing and is correctable in any status. **Its result is read
   inside it**, at the grain of the item: what a course scored has no meaning outside the
   campaign that fixed the instrument, the scope and the panel. See ADR-0002, ADR-0055,
   ADR-0056 and ADR-0060.

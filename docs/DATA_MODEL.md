@@ -1,7 +1,7 @@
 # DATA_MODEL — logical Postgres schema
 
 Logical model of the tables the system persists today. Source of truth for shape:
-Alembic migrations under `backend/alembic/versions/` (head = `0024`). Names follow
+Alembic migrations under `backend/alembic/versions/` (head = `0032`). Names follow
 `GLOSSARY.md`. Module boundaries follow `ARCHITECTURE.md`: intra-module foreign keys
 are real; many cross-module identifiers are **app-validated references** (no DB FK),
 shown below as dashed links.
