@@ -86,10 +86,11 @@ src/
                                    # measured + last rounds), and layout.tsx groups the
                                    # destinations by how often they are needed:
                                    #   Measure           contents, studies
-                                   #   Definitions       instruments (with Publish),
-                                   #                     assessors (with Ratify),
-                                   #                     generators, briefs, profiles
-                                   #   Human evaluation  campaigns, calibration, reports
+                                   #   Definitions       instruments (with Publish), rubrics,
+                                   #                     assessors (with Ratify), generators,
+                                   #                     briefs, datasets, profiles
+                                   #   Human evaluation  campaigns, calibration,
+                                   #                     evaluator workload
   components/
     ui/                            # UI kit (button, card, table, dialog, select,
                                    # collapsible-section…)
@@ -97,7 +98,9 @@ src/
     admin/                         # forms (content, campaign, assign), the shared badges
                                    # and palettes (study-status, outcome-badge,
                                    # claim-status), the quote/copy/distribution
-                                   # primitives, and study-report/ — the report renderer
+                                   # primitives, and the two report renderers —
+                                   # study-report/ (a study's) and campaign-report/ (a
+                                   # campaign's, ADR-0060)
   lib/
     auth/                          # identity seam: mode.ts + clerk.tsx / local.tsx
     api/                           # client.ts (fetch+headers), types.ts, hooks.ts (TanStack)
@@ -316,7 +319,7 @@ realizes. That is not a formality: changing an executor is a new assessor versio
 `../docs/RUNBOOK-measuring.md`. In the console it is one page — `/admin/measure` — and the result is
 read on `/admin/studies/[id]`.
 
-**Human evaluation** is the other, and it needs raters. In local mode
+**Human evaluation** is the other, and it needs evaluators. In local mode
 `task seed:demo` installs them with two courses and an open campaign to work on; with Clerk
 they are invited and appear in the picker after their first sign-in.
 
@@ -329,5 +332,8 @@ they are invited and appear in the picker after their first sign-in.
 2. `/admin/campaigns`: new campaign (quorum, courses).
 3. Assign the course to two evaluators in `/admin/campaigns/[id]`.
 4. Log in as an evaluator → `/evaluations` → 3-step wizard → submit.
-5. Back to admin → progress `1/1` + golden `usable` in the campaign detail; scores and
-   inter-rater in `/admin/reports`.
+5. Back to admin → progress `1/1` in the campaign detail, then **Report** for what the round
+   found (ADR-0060): agreement per item, the panel's profile per dimension, each expert's
+   answers side by side, and golden `usable`. A result is read inside its own campaign, so
+   there is no cross-campaign scores page; `/admin/workload` answers the one question that
+   does span rounds — who is carrying what.

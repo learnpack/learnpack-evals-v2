@@ -327,7 +327,7 @@
   datum it is about (null, derived — ADR-0053) · an item the course **could have declared and
   did not** (the scale minimum, derived). The bottom of the scale is an answer, never an
   abstention wearing a number, and nothing that reports what humans said averages a derived
-  row. Which items a rater is asked at all is decided from the content's profile by
+  row. Which items an assessor is asked at all is decided from the content's profile by
   `RubricSnapshot.withheld`, the one definition both the screen and the submit path read.)
 - **EvaluationResult** — the set of `CriterionScore`s (+ comments) of an `Evaluation`.
 - **QualityJudgment** — the published quality judgment on a content: a **per-criterion
@@ -367,11 +367,15 @@
   the study events replace it. Entry kept as traceability; slice 1 code may refer to it until
   its migration.
 - **EvaluationCampaign** — the human realization of an `EvaluationRun`, **open and incremental**
-  (config + scope): it pins `rubricVersion`, `requiredEvaluationsPerContent` (completeness
-  threshold, not provisioning) and `metadataView`. It opens with whatever assessors exist and
-  adds more; it does **not own the assignments transactionally**. It also carries a **name**
-  (required, not unique) and an optional description — the label a campaign is read by, which
-  identifies nothing and is correctable in any status. See ADR-0002 and ADR-0055.
+  (config + scope): it pins `instrumentVersion` (formerly `rubricVersion`) — chosen when it
+  opens, from the published versions, and never afterwards —, `requiredEvaluationsPerContent`
+  (completeness threshold, not provisioning) and `metadataView`. It opens with whatever
+  assessors exist and adds more; it does **not own the assignments transactionally**. It also
+  carries a **name** (required, not unique) and an optional description — the label a campaign
+  is read by, which identifies nothing and is correctable in any status. **Its result is read
+  inside it**, at the grain of the item: what a course scored has no meaning outside the
+  campaign that fixed the instrument, the scope and the panel. See ADR-0002, ADR-0055,
+  ADR-0056 and ADR-0060.
 - **Assignment** — an invitation to an `Assessor` to evaluate a `Content` in a campaign; a small
   aggregate with lifecycle `Assigned → Opened → Submitted | Cancelled`. Reassign = cancel + new
   one. **It is the unit of human anti-duplication:** ≤1 active assignment per

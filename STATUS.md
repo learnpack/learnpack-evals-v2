@@ -2372,11 +2372,13 @@ the data in the package).
 
 ## Open
 
-- **Half the console still reads a course by its identifier.** The frozen study report, the
-  reporting read model behind `/admin/reports` and the profiles page each carry their own copy
-  of `external_id`, and each would need its own column to show a name. The report is deliberate
-  — a frozen record is not a reading surface (ADR-0041) — the other two are simply not done,
-  and a reader moving between screens meets the same course under two labels.
+- **Two console surfaces still read a course by its identifier.** The frozen study report and
+  the profiles page each carry their own copy of `external_id` and would need their own column
+  to show a name. The first is deliberate — a frozen record is not a reading surface
+  (ADR-0041) — the second is simply not done, and a reader moving between screens meets the
+  same course under two labels. The third surface this listed, the reporting read model, is
+  **closed**: ADR-0060's campaign report carries the title and its console writes courses with
+  `courseLabel`.
 - **A course whose package cannot be read stays unnamed, and nobody may name it.** Registering
   by hand types the identity, never a name; the profile is what fills it afterwards, so a
   version registered through `POST /admin/contents` with a real artifact list *is* named by
