@@ -412,24 +412,6 @@ export interface GoldenStatus {
 
 // --- Reporting -------------------------------------------------------------
 
-export interface Dispersion {
-  stdev: number | null;
-  mean_pairwise_abs_diff: number | null;
-  exact_agreement_pct: number | null;
-  rater_count: number;
-}
-
-export interface CriterionSummary {
-  criterion_id: string;
-  /** Null when nobody scored this criterion — never 0, which would read as the worst
-   *  possible score. Two things produce it, and `withheld` tells them apart. */
-  average: number | null;
-  /** True when nobody was *asked*: the course declares nothing this item could be about
-   *  (ADR-0053). False when they were asked and abstained (ADR-0052 §4). */
-  withheld: boolean;
-  dispersion: Dispersion;
-}
-
 export interface IndividualEvaluation {
   evaluation_id: Uuid;
   assessor_id: Uuid;
@@ -437,21 +419,6 @@ export interface IndividualEvaluation {
   submitted_at: string | null;
   superseded: boolean;
   scores: ScoreDetail[];
-}
-
-export interface ContentScores {
-  content_id: Uuid;
-  external_id: string;
-  package_format: string;
-  version: string;
-  evaluator_count: number;
-  criteria: CriterionSummary[];
-  evaluations: IndividualEvaluation[];
-}
-
-/** Per-criterion profile per content — never a score across criteria (ADR-0011). */
-export interface ScoresReport {
-  contents: ContentScores[];
 }
 
 export interface AssignmentCounts {

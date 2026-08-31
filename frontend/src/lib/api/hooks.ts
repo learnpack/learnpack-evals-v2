@@ -67,7 +67,6 @@ import type {
   RegisterLocalResponse,
   ScanRequest,
   ScanResponse,
-  ScoresReport,
   SourceRootResponse,
   StartBatchRequest,
   MatchingResponse,
@@ -120,7 +119,6 @@ export const queryKeys = {
   previewRunTrace: (id: Uuid | string) =>
     ["admin", "evaluations", "preview", id, "trace"] as const,
   qualityReference: ["admin", "reference", "qualities"] as const,
-  scores: ["admin", "reports", "scores"] as const,
   progress: ["admin", "progress"] as const,
   studies: ["admin", "studies"] as const,
   study: (id: Uuid) => ["admin", "studies", id] as const,
@@ -1109,14 +1107,6 @@ export function useStudyFitness(id: Uuid) {
   return useQuery({
     queryKey: queryKeys.studyFitness(id),
     queryFn: () => api<StudyFitness>(`/admin/studies/${id}/fitness`),
-  });
-}
-
-export function useScoresReport() {
-  const api = useApi();
-  return useQuery({
-    queryKey: queryKeys.scores,
-    queryFn: () => api<ScoresReport>("/admin/reports/scores"),
   });
 }
 
