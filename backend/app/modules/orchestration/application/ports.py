@@ -54,6 +54,15 @@ class AssignmentRepositoryPort(Protocol):
 
     def count_submitted(self, campaign_id: UUID, content_id: UUID) -> int: ...
 
+    def count_submitted_by_content(self, campaign_id: UUID) -> dict[UUID, int]:
+        """The same count as `count_submitted`, for every content of the campaign at once.
+
+        Asking per content is one query per course in scope, which a demo campaign never felt
+        and forty courses do. A content with no submission is simply absent from the mapping;
+        the caller iterates the campaign's scope, not this.
+        """
+        ...
+
 
 class CompletionRepositoryPort(Protocol):
     def record_completion(

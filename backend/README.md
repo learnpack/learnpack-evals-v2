@@ -249,13 +249,30 @@ invariant. Golden keeps no count of its own; it asks orchestration for coverage 
 port and applies `coverage ≥ threshold`.
 
 **Reporting** (ADR-0006) composes the other modules through their `public.py` and aggregates in
-Python — no cross-module JOINs and no read-model tables. `GET /admin/reports/scores` gives each
-course's per-criterion profile (average across assessors, plus inter-rater dispersion; **no
-aggregate score across criteria**, ADR-0011) and `GET /admin/progress` who evaluated what,
-cross-campaign. Two rules not to confuse: a **repetition** is the same assessor on the same
-`(content, instrumentVersion)` and collapses to the most recent because it is a correction
-(evaluating two different courses is not one); and dispersion with a single rater is `null`, not
-`0`, because there is no agreement to measure.
+Python — no cross-module JOINs and no read-model tables. Two rules not to confuse: a
+**repetition** is the same assessor on the same `(content, instrumentVersion)` and collapses to
+the most recent because it is a correction (evaluating two different courses is not one); and
+agreement measured over a single assessor is `null`, not `0`, because there is no agreement to
+measure.
+
+`GET /admin/campaigns/{id}/report` is where a human result is read (ADR-0060). It is scoped by
+the **assignment**, not by the content: an evaluation counts for a campaign when a non-cancelled
+assignment `(campaign, content, assessor)` exists and the evaluation's `instrumentVersion` is the
+campaign's — the completion policy's own rule, so the report counts what the quorum counts. Two
+things follow. The report **filters rather than partitions**, so one evaluation may appear in two
+campaigns' reports, exactly as one submission may satisfy two quorums. And an automated
+evaluation appears in none, because no assignment ever names one — which is why nothing in the
+read model tests an assessor's kind. Its primary axis is the **item across the campaign**, not
+the course: every item of the pinned instrument is listed, in its own order and dimension,
+including the ones nobody answered, and agreement is pooled from pairs formed inside a single
+course. The three ways a cell can be empty — not asked (`derived`, ADR-0053), abstained (null
+score, ADR-0052 §4) and not submitted yet — are carried separately, because they lead to
+different acts. Nothing here is frozen: a campaign's record is the golden reference its own
+policy establishes, and the report is composed on read (ADR-0060 §7).
+
+`GET /admin/reports/scores` gives each course's per-criterion profile across every campaign at
+once (average across assessors plus dispersion; **no aggregate score across criteria**,
+ADR-0011), and `GET /admin/progress` who evaluated what, cross-campaign.
 
 ## Registering courses
 

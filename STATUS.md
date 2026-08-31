@@ -21,6 +21,30 @@ is readable before it is signed, and the evidence behind every criterion lives o
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
+**ADR-0060 (a campaign's result is read inside the campaign that produced it) is decided; its
+backend is in and the console is pending.** The human report was global and pooled four things
+that are not the same: `build_scores_report` began at the whole registry and averaged every
+evaluation it found per content — across campaigns (an evaluation is campaign-agnostic by
+design, ADR-0005), across courses no campaign ever touched, across instrument versions
+(`scores_by_criterion` drops the pin, and since ADR-0052 made `criterionId` **be** the
+`qualityId`, a v2→v3 bump would collide the ids by construction), and across human and
+automated — the latter counting an LLM's runs in `evaluatorCount`, since ADR-0034's assessors
+write into `evaluations` too. `GET /admin/campaigns/{id}/report` is scoped by the **assignment**
+— the completion policy's own rule — so it counts what the quorum counts, filters rather than
+partitions (one evaluation may appear in two campaigns' reports) and admits no automated
+evaluation without testing for one. Its **primary axis is the item across the campaign**, not
+the course: with two assessors per course a content-level cell holds one pair and an item holds
+forty, which is what makes ADR-0052 §5's question — *which items are answerable* — arithmetically
+available at all. Every item of the pinned instrument is listed in its own order and dimension
+(ADR-0052 §1's grouping gets its first reader), the **three silences** are carried apart (not
+asked / abstained / not submitted), and agreement adds **% within one point** to ADR-0006's
+family, because on a Likert scale two adjacent answers are not the disagreement exact agreement
+reports them to be. Krippendorff's α stays deferred where ADR-0006 put it. **Deliberately not
+built, and written down instead:** the console (next), ADR-0015 §4's validity coefficients (they
+cross campaign × study, and nothing computes a correlation yet) and assessor severity. The
+cross-campaign `GET /admin/reports/scores` is retired by the same decision and still stands
+until the console lands.
+
 **ADR-0059 (a course carries the name its package declares) is decided and in, end to end.**
 The name was never missing: discovery has always read it — `learn.json`'s title, the lesson
 plan's `course_title` — carried it on `DiscoveredPackage`, shown it in the local scan preview,

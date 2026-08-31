@@ -27,6 +27,27 @@ class AssignmentDTO:
 
 
 @dataclass(frozen=True)
+class CampaignSummaryDTO:
+    """What a campaign *is*, for a consumer that has to name it (ADR-0060 §1).
+
+    A sibling of `CampaignProgressDTO`, not an extension of it. That one is Orchestration's
+    published language towards Golden Dataset, and ADR-0055 §6 keeps the label out of it
+    because a label is not progress. A report has the opposite need: it must say which round
+    produced the numbers on the screen.
+    """
+
+    campaign_id: UUID
+    name: str
+    description: str | None
+    status: str
+    instrument_version_id: str
+    required_evaluations_per_content: int
+    # Null on campaigns opened before ADR-0058 — their scope was typed into a form.
+    dataset_version_id: UUID | None
+    content_ids: list[UUID]
+
+
+@dataclass(frozen=True)
 class ContentProgressDTO:
     content_id: UUID
     submitted_count: int
