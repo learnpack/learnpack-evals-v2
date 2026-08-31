@@ -21,8 +21,8 @@ is readable before it is signed, and the evidence behind every criterion lives o
 the frozen row) and ADR-0042 (a judgment names its author, and a study's result is a
 triple — dataset × instrument version × assessor, realized end to end) on top of it.**
 
-**ADR-0060 (a campaign's result is read inside the campaign that produced it) is decided; its
-backend is in and the console is pending.** The human report was global and pooled four things
+**ADR-0060 (a campaign's result is read inside the campaign that produced it) is decided and
+in, end to end.** The human report was global and pooled four things
 that are not the same: `build_scores_report` began at the whole registry and averaged every
 evaluation it found per content — across campaigns (an evaluation is campaign-agnostic by
 design, ADR-0005), across courses no campaign ever touched, across instrument versions
@@ -39,11 +39,18 @@ available at all. Every item of the pinned instrument is listed in its own order
 (ADR-0052 §1's grouping gets its first reader), the **three silences** are carried apart (not
 asked / abstained / not submitted), and agreement adds **% within one point** to ADR-0006's
 family, because on a Likert scale two adjacent answers are not the disagreement exact agreement
-reports them to be. Krippendorff's α stays deferred where ADR-0006 put it. **Deliberately not
-built, and written down instead:** the console (next), ADR-0015 §4's validity coefficients (they
-cross campaign × study, and nothing computes a correlation yet) and assessor severity. The
-cross-campaign `GET /admin/reports/scores` is retired by the same decision and still stands
-until the console lands.
+reports them to be. Krippendorff's α stays deferred where ADR-0006 put it. The console is
+`/admin/campaigns/{id}/report`, linked from the campaign list and from the campaign's own
+header, and it finally renders the individual answers and their comments — data the old screen
+downloaded on every request and threw away. The golden badge moved there with it, because
+whether a round can serve as the reference is the campaign's **output**, not a control. The
+cross-campaign `GET /admin/reports/scores` is **gone**, and `/admin/progress` survives as
+**Evaluator workload** — who is carrying what is a question about people, which is legitimately
+asked across rounds. Nothing is lost by the removal: a human evaluation can only be submitted
+against an assignment, so every one of them already sits inside a campaign report.
+**Deliberately not built, and written down instead:** ADR-0015 §4's validity coefficients (they
+cross campaign × study, and nothing computes a correlation yet) and assessor severity — the
+first suspect if the first campaign's results come out strange.
 
 **ADR-0059 (a course carries the name its package declares) is decided and in, end to end.**
 The name was never missing: discovery has always read it — `learn.json`'s title, the lesson
