@@ -73,7 +73,14 @@ the reading surface · `0042` a judgment names its author, and a study's result 
 which generator versions it measures · `0045` the local setup replays decided acts · `0046` what
 a draft proposes to assess with is evidence of alignment · `0047` two answers about one quality
 are two claims, and the bar for building is wide · `0048` the derivation declares what is
-independent; the mechanism is injected.
+independent; the mechanism is injected · `0049` registering a human evaluator is an invitation,
+not an account · `0050` granting a role is an act of the console, with guardrails · `0051` an
+assessor leaves without being erased · `0052` the human reference is elicited per quality, as
+agreement with a statement · `0053` an undeclared datum is not asked of a human · `0054` a
+deployment is declared when it exists, and redeclared when it moves · `0055` a campaign is named
+· `0056` a campaign declares the reference instrument it pins · `0057` a declared datum is shown
+to the human it is asked of · `0058` a dataset is a named set, and changing it is a new version ·
+`0059` a course carries the name its package declares.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
