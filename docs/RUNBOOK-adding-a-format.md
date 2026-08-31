@@ -64,10 +64,14 @@ Rules that are easy to miss:
 - Never mint a `consumable_url` yourself: ask the root (`root.consumable_url`). A
   filesystem root never declares one (ADR-0028 — serving bytes is transport, not
   deployment).
+- The `title` is **persisted** and becomes the name every screen calls the course by
+  (ADR-0059), so it must be the package's own words about itself — never composed out of the
+  external id, the folder or the slug. `None` is a legitimate answer for a format that
+  declares no name, and it costs nothing but a fallback in the console.
 
 **You can stop here and ship.** After this step: the format appears in
 `GET /admin/contents/formats` and in the admin form's selector; `register-package --format
-<name>` works; re-imports dedupe by content hash; the brief registers absent; profiles are
+<name>` works; a registered course shows its name in `/admin/contents`; re-imports dedupe by content hash; the brief registers absent; profiles are
 simply not built yet. In your `FormatCase`, `expected_capabilities=None` says exactly this —
 the extraction tests skip instead of failing.
 

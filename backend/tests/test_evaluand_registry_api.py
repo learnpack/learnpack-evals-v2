@@ -46,6 +46,26 @@ def test_register_content_writes_aggregate_and_event(admin_client, cleanup, sess
     assert event_type == "ContentVersionRegistered"
 
 
+def test_a_hand_registered_course_has_no_name_and_cannot_be_given_one(
+    admin_client, cleanup, unique
+):
+    """ADR-0059 §1: the title is discovery's to read. The registration endpoint has no
+    field for it, and a body that invents one changes nothing — which is what keeps the
+    metadata channel ADR-0017 closed."""
+    response = admin_client.post(
+        "/admin/contents", json=payload(unique) | {"title": "A Name Somebody Typed"}
+    )
+    assert response.status_code == 201, response.text
+
+    body = response.json()
+    cleanup["contents"].append(body["content_id"])
+    assert body["title"] is None
+
+    listed = admin_client.get("/admin/contents").json()
+    row = next(c for c in listed if c["content_id"] == body["content_id"])
+    assert row["title"] is None
+
+
 def test_duplicate_version_is_rejected(admin_client, cleanup, unique):
     first = admin_client.post("/admin/contents", json=payload(unique))
     cleanup["contents"].append(first.json()["content_id"])

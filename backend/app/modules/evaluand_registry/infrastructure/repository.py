@@ -15,7 +15,7 @@ from app.modules.evaluand_registry.domain.generator import Generator, GeneratorV
 from app.modules.evaluand_registry.domain.package import ContentPackage, PackageArtifact
 
 _COLUMNS = (
-    "id, package_format, external_id, version, consumable_url, "
+    "id, package_format, external_id, title, version, consumable_url, "
     "brief_id, generator_version_id, edit_provenance, content_hash, "
     "generator_attributed_by, generator_attributed_at, "
     "consumable_url_declared_by, consumable_url_declared_at"
@@ -32,6 +32,7 @@ class SqlAlchemyContentRepository:
             id=row["id"],
             package_format=row["package_format"],
             external_id=row["external_id"],
+            title=row["title"],
             version=row["version"],
             consumable_url=row["consumable_url"],
             package=package,
@@ -166,9 +167,9 @@ class SqlAlchemyContentRepository:
             text(
                 """
                 INSERT INTO contents
-                    (id, package_format, external_id, version, consumable_url,
+                    (id, package_format, external_id, title, version, consumable_url,
                      brief_id, generator_version_id, edit_provenance, content_hash)
-                VALUES (:id, :gs, :eid, :v, :url,
+                VALUES (:id, :gs, :eid, :title, :v, :url,
                         :brief_id, :gvid, :provenance, :content_hash)
                 """
             ),
@@ -176,6 +177,7 @@ class SqlAlchemyContentRepository:
                 "id": content.id,
                 "gs": content.package_format,
                 "eid": content.external_id,
+                "title": content.title,
                 "v": content.version,
                 "url": content.consumable_url,
                 "brief_id": content.brief_id,
@@ -233,6 +235,26 @@ class SqlAlchemyContentRepository:
                 "by": content.generator_attributed_by,
                 "at": content.generator_attributed_at,
             },
+        ).scalar()
+        return applied is not None
+
+    def record_title(self, content: EducationalContent) -> bool:
+        """Write the name a package declares onto a row that has none (ADR-0059). The
+        `IS NULL` is the one-way rule of the aggregate, held in the database — the same shape
+        `attribute_generator` uses, and for the same reason. False = it already had one.
+
+        No `_by`/`_at` columns to write: this is a discovery arriving late, not an act.
+        """
+        applied = self._session.execute(
+            text(
+                """
+                UPDATE contents
+                   SET title = :title
+                 WHERE id = :id AND title IS NULL
+                RETURNING 1
+                """
+            ),
+            {"id": content.id, "title": content.title},
         ).scalar()
         return applied is not None
 

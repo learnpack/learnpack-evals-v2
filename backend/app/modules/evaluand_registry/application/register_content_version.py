@@ -69,6 +69,9 @@ class RegisterContentVersionCommand:
     # Set by mechanical discovery (ADR-0027); None on the hand-registered path, which then
     # dedupes by declared identity only.
     content_hash: str | None = None
+    # Read off the package by discovery (ADR-0059 §1). There is deliberately no way for a
+    # caller to type one: a hand-registered course has no name until it is discovered.
+    title: str | None = None
 
 
 class RegisterContentVersion:
@@ -121,6 +124,7 @@ class RegisterContentVersion:
             id=new_id(),
             package_format=command.package_format,
             external_id=command.external_id,
+            title=command.title,
             consumable_url=command.consumable_url,
             version=command.version,
             package=ContentPackage.validated(command.artifacts),

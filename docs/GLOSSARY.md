@@ -14,8 +14,11 @@
   `v2`… (improvement/regression). Logical uniqueness: `(PackageFormat, externalId, version)`. MVP:
   default `"1"`. It references `generatorVersionId` (nullable → `unknown`, but **declared**:
   registration demands a generator version or an explicit `unknown`, ADR-0024) and `briefId`,
-  carries **edit provenance** (`pure | human_edited | unknown`) and an optional
-  `consumableUrl` (below).
+  carries **edit provenance** (`pure | human_edited | unknown`), an optional
+  `consumableUrl` (below) and an optional **`title`** — the name the package declares about
+  itself, read by discovery and never typed by hand (ADR-0059). The title *describes*, the
+  `externalId` *identifies*: nothing is ever looked up by name, and a course whose package
+  declares none simply has none.
 - **PackageFormat** *(formerly `GeneratingSystem`; slice 1 code keeps
   `generating_system` until its migration)* — the **package convention** that an extraction
   adapter knows how to read (e.g. `LearnpackV1`). The *format* axis: it selects the adapter and

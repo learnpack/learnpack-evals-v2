@@ -117,6 +117,9 @@ class RegisterPackageFromSource:
                 RegisterContentVersionCommand(
                     package_format=discovered.package_format,
                     external_id=discovered.external_id,
+                    # Straight from discovery, like the hash: not something a caller may
+                    # override, because the package is the author of its own name (ADR-0059).
+                    title=discovered.title,
                     consumable_url=consumable_url,
                     version=command.version,
                     artifacts=[

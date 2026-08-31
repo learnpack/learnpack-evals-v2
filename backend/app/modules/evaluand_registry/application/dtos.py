@@ -61,6 +61,9 @@ class ContentSnapshot:
     content_id: UUID
     package_format: str
     external_id: str
+    # What the package calls itself (ADR-0059): the name a reader is shown, where
+    # `external_id` is the identity everything else keys on. Null when none was declared.
+    title: str | None
     version: str
     # None when no deployed, human-consumable instance is declared (ADR-0028): the content is
     # a complete evaluand for the automated path, and cannot be handed to a human evaluator.

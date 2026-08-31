@@ -130,6 +130,10 @@ class ContentRepositoryPort(Protocol):
 
     def attribute_generator(self, content: EducationalContent) -> bool: ...
 
+    def record_title(self, content: EducationalContent) -> bool:
+        """False when the row already carries a title (ADR-0059)."""
+        ...
+
     def declare_consumable_url(self, content: EducationalContent, previous: str | None) -> bool:
         """False when somebody declared a different URL meanwhile (ADR-0054 §4)."""
         ...

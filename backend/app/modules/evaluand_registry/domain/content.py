@@ -26,6 +26,11 @@ class GeneratorAlreadyAttributed(Exception):
     `known → other known` would rewrite what was declared (ADR-0024)."""
 
 
+class TitleAlreadyRecorded(Exception):
+    """The course already carries the name its package declares (ADR-0059 §1): there is no
+    act that replaces it, because nobody authored it in the first place."""
+
+
 @dataclass
 class EducationalContent:
     """Aggregate root. Owns its `ContentPackage` — the declared surface of the evaluand
@@ -41,11 +46,17 @@ class EducationalContent:
     outside this system, which no discovery can produce. Without it the version is still a
     complete evaluand: the profile is built from the artifact locators, never from this URL.
     What a null closes is the human path.
+
+    `title` is what the package calls itself, read by discovery like the external id and the
+    hash (ADR-0059). It describes; `external_id` identifies. Null where the package declares
+    none, or where the version predates the column — never derived from the slug, since a name
+    made out of an identifier is the defect the field exists to close.
     """
 
     id: UUID
     package_format: str
     external_id: str
+    title: str | None = None
     consumable_url: str | None = None
     version: str = DEFAULT_VERSION
     package: ContentPackage = field(default_factory=ContentPackage)
@@ -72,6 +83,10 @@ class EducationalContent:
             raise InvalidContent("external_id is required")
         if not self.version or not self.version.strip():
             raise InvalidContent("version is required")
+        # A blank title is not a title. Normalized rather than refused: a package that
+        # declares an empty string has declared nothing, and that is what null says.
+        if self.title is not None:
+            self.title = self.title.strip() or None
         # A declaration that a deployed, human-consumable instance exists (ADR-0028) — not a
         # way to reach the package's bytes; those are the artifact locators. None declares
         # none; a blank is never coerced into one, so a caller that means "none" says so.
@@ -95,6 +110,23 @@ class EducationalContent:
         self.generator_version_id = generator_version_id
         self.generator_attributed_by = attributed_by
         self.generator_attributed_at = at
+
+    def record_discovered_title(self, title: str) -> None:
+        """Keep the name a package declares, for a version registered before the field was
+        kept (ADR-0059). One-way, like `attribute_generator` and for the same reason: the
+        fact was always true and merely arrived late, so a second write would be somebody
+        renaming a course — the act §1 refuses.
+
+        No author and no timestamp, which is where this parts from the two acts around it.
+        Nothing about the content changed; the row is catching up with what its package
+        always said, and there is no decision to attribute to anyone.
+        """
+        cleaned = title.strip()
+        if not cleaned:
+            raise InvalidContent("a recorded title cannot be blank")
+        if self.title is not None:
+            raise TitleAlreadyRecorded(f"content {self.id} already carries a title")
+        self.title = cleaned
 
     def declare_consumable_url(self, url: str, declared_by: UUID, at: datetime) -> bool:
         """Declare the deployment of an already-registered version (ADR-0054).
