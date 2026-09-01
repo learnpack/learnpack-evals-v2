@@ -57,6 +57,7 @@ files = [
     "app/modules/datasets",
     "app/modules/evaluation",
     "app/modules/evaluation_studies",
+    "app/modules/course_session",
 ]
 
 [build-system]
