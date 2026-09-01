@@ -145,6 +145,7 @@ export default function AssignmentPage({
               {/* Pinned to the viewport on desktop, so the course stays visible while scoring. */}
               <ConsumeContent
                 url={assignment.consumable_url}
+                assignmentId={assignmentId}
                 className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-6.5rem)]"
               />
 
