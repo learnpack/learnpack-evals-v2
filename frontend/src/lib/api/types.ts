@@ -280,6 +280,24 @@ export interface AssignmentDetail {
   declared: DeclaredDatum[];
 }
 
+/**
+ * What the evaluator's page needs to embed the course, session included (ADR-0061).
+ *
+ * The AI inside a LearnPack course refuses to grade an open question or run an exercise
+ * without a session belonging to a real person on that platform, so the backend holds one
+ * synthetic identity per evaluator and mints a short-lived session for it. The evaluator
+ * never sees any of that.
+ */
+export interface CourseSession {
+  /** The course URL with the session in it, or null when no instance is deployed
+   *  (ADR-0028) — a different absence from having no session. */
+  url: string | null;
+  /** False means the course loads and its AI will refuse. Never a reason to hide it. */
+  ai_session: boolean;
+  /** Why there is no session, in the provider's own words. Null when there is one. */
+  reason: string | null;
+}
+
 export interface ScoreInput {
   criterion_id: string;
   /** Null is an abstention — "I couldn't see enough of this course to judge this"

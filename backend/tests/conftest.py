@@ -483,6 +483,17 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
             )
 
         for assessor_id in created["assessors"]:
+            # A course seat has no bucket of its own because no test creates one: it appears
+            # when an evaluator opens a course, keyed by the assessor, so it is deleted with
+            # them. Its outbox rows are keyed by the seat's id, which only the row knows.
+            s.execute(
+                text(
+                    "DELETE FROM events WHERE aggregate_id IN "
+                    "(SELECT id::text FROM course_seats WHERE assessor_id = :id)"
+                ),
+                {"id": assessor_id},
+            )
+            s.execute(text("DELETE FROM course_seats WHERE assessor_id = :id"), {"id": assessor_id})
             # Ratifications usually cascade with the tracked instrument versions above;
             # this covers the assessor-as-ratifier side (ratified_by has no cascade).
             s.execute(

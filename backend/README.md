@@ -719,8 +719,8 @@ migrations, deploy and the final smoke check.
 
 ## Modules
 
-identity · evaluand_registry · evaluation_design · content_profiling · evaluation ·
-evaluation_studies · orchestration · datasets · golden_dataset · reporting.
+identity · course_session · evaluand_registry · evaluation_design · content_profiling ·
+evaluation · evaluation_studies · orchestration · datasets · golden_dataset · reporting.
 
 Each has `application/` and `infrastructure/`, and each owns a `domain/` — except `reporting`,
 which owns no aggregate at all: it is the read side, and having nothing of its own to protect

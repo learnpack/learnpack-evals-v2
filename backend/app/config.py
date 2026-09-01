@@ -99,6 +99,40 @@ class Settings(BaseSettings):
     # the frontend origin is already declared for CORS.
     clerk_invitation_redirect_url: str = ""
 
+    # Course sessions (ADR-0061): the credentials that let an evaluator use the AI inside
+    # the embedded course. ACCESS only, never identity — the seat's own address is derived
+    # from the assessor's id, and which evaluator a judgment belongs to is decided here, by
+    # Clerk, not over there.
+    #
+    # All of them unset is a valid deployment: the console, the roster and every evaluation
+    # screen work, and the course loads without its AI. `get_seat_provider()` says so in a
+    # warning rather than refusing to boot, because a missing credential must not take down
+    # the half of the product that never needed it.
+    breathecode_api_url: str = "https://breathecode.herokuapp.com"
+    # A `permanent` token of a service account whose role carries exactly three capabilities:
+    # `crud_student`, `crud_cohort` and `generate_temporal_token`. Permanent because the
+    # login token of that account expires weekly and nothing here could renew it without
+    # storing its password.
+    breathecode_service_token: str = ""
+    # The academy the seats are created in. Its own, separate from any real one: seats are
+    # synthetic identities and a shared academy would mix them with actual students.
+    breathecode_academy_id: str = ""
+    # The cohort inside that academy. Not decoration — the AI allowance the course page
+    # checks is granted to up-to-date students of a non-SaaS cohort, so a seat outside one
+    # opens the course and is refused the moment it asks the AI to run anything.
+    breathecode_cohort_id: str = ""
+    # The AI service, and the organisation seats are registered under. That organisation is
+    # deliberately one WITHOUT model credentials of its own: the token reaches the
+    # evaluator's browser, and an endpoint over there hands out the caller's organisation
+    # credentials in the clear. Nothing to hand out is the containment.
+    rigobot_api_url: str = "https://rigobot.herokuapp.com"
+    rigobot_organization: str = "learnpack"
+    # The address pattern for a seat, with `{slug}` standing for a short hash of the
+    # assessor's id — e.g. `you+sme-{slug}@example.com`. One mailbox is enough: the
+    # addresses only have to be distinct and deliverable, and what arrives at them is
+    # noise nobody reads. It must contain `{slug}`, or every seat would share one address.
+    seat_email_template: str = ""
+
     # Comma-separated. Kept as a plain string because pydantic-settings would otherwise
     # expect JSON for a list field.
     allowed_origins: str = "http://localhost:3000"

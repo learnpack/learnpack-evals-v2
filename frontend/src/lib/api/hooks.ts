@@ -29,6 +29,7 @@ import type {
   DatasetResponse,
 
   ContentResponse,
+  CourseSession,
   CriterionOutcomes,
   DeclareConsumableUrlRequest,
   DeclareDatasetRequest,
@@ -95,6 +96,7 @@ export const queryKeys = {
   me: ["me"] as const,
   myAssignments: ["me", "assignments"] as const,
   assignment: (id: Uuid) => ["assignments", id] as const,
+  courseSession: (id: Uuid) => ["assignments", id, "course-session"] as const,
   contents: ["admin", "contents"] as const,
   packageFormats: ["admin", "contents", "formats"] as const,
   generators: ["admin", "generators"] as const,
@@ -168,6 +170,27 @@ export function useAssignment(id: Uuid) {
   return useQuery({
     queryKey: queryKeys.assignment(id),
     queryFn: () => api<AssignmentDetail>(`/assignments/${id}`),
+  });
+}
+
+/**
+ * The course URL with its session in it (ADR-0061).
+ *
+ * Its own request rather than a field on the assignment: a session is minted and
+ * short-lived, and the assignment detail is a description any refetch may serve from cache.
+ *
+ * `retry: false` because a failure here is not a blip — minting reaches two external
+ * services, and retrying would provision again while the evaluator waits. `staleTime` keeps
+ * a re-render from asking for a second session; the page holds the URL only as long as the
+ * evaluator is on it.
+ */
+export function useCourseSession(id: Uuid) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.courseSession(id),
+    queryFn: () => api<CourseSession>(`/assignments/${id}/course-session`),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
