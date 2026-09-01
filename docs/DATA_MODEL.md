@@ -1,7 +1,7 @@
 # DATA_MODEL — logical Postgres schema
 
 Logical model of the tables the system persists today. Source of truth for shape:
-Alembic migrations under `backend/alembic/versions/` (head = `0032`). Names follow
+Alembic migrations under `backend/alembic/versions/` (head = `0033`). Names follow
 `GLOSSARY.md`. Module boundaries follow `ARCHITECTURE.md`: intra-module foreign keys
 are real; many cross-module identifiers are **app-validated references** (no DB FK),
 shown below as dashed links.
@@ -15,6 +15,7 @@ declares reference data about itself, not artifacts).
 ```mermaid
 erDiagram
     IDENTITY ||--o{ ORCHESTRATION : "assignments"
+    IDENTITY ||--o{ COURSE_SESSION : "seats"
     IDENTITY ||--o{ EVALUATION : "evaluations"
     EVALUAND_REGISTRY ||--o{ ORCHESTRATION : "campaign contents"
     EVALUAND_REGISTRY ||--o{ CONTENT_PROFILING : "profiles"
@@ -34,6 +35,7 @@ erDiagram
 | Module | Tables |
 |---|---|
 | identity | `assessors`, `assessor_invitations` |
+| course_session | `course_seats` |
 | evaluand_registry | `contents`, `content_package_artifacts`, `generators`, `generator_versions`, `generation_briefs` |
 | evaluation_design | `pedagogical_frameworks`, `pedagogical_dimensions`, `qualities`, `data_requirements`, `instrument_versions`, `instrument_claims`, `instrument_criteria`, `instrument_bindings`, `rubric_versions`, `criteria` |
 | content_profiling | `content_profiles`, `profile_entries`, `profile_extras`, `extraction_acceptances` |
@@ -585,7 +587,41 @@ leaves earlier rounds invalid and uninterpretable at once.
 validated in the application like every other (§8). Within the aggregate both cascades are
 real: a version belongs to its dataset, a member to its version.
 
-## 10. platform — events outbox
+## 10. course_session
+
+```mermaid
+erDiagram
+    course_seats {
+        uuid id PK
+        uuid assessor_id UK
+        text provider
+        text external_subject
+        text external_user_id
+        text email
+        text status
+        timestamptz enrolled_at
+        timestamptz ai_enrolled_at
+        timestamptz created_at
+    }
+```
+
+One row per evaluator, holding the **synthetic credential** this backend created for them on
+the platform that serves the course (ADR-0061). It is not an identity in this product: who an
+evaluator is stays `assessors`, and a seat is only how their browser reaches the course's AI.
+
+The credential is the pair `(provider, external_subject)`, unique — the shape §2's
+`assessors` uses, for the same reason. `assessor_id` is unique too and carries **no foreign
+key**: a cross-module reference, validated in the application like every other (§8).
+
+`enrolled_at` and `ai_enrolled_at` are **progress, not decoration**. Provisioning is four
+calls to two external services and nothing rolls them back, so the row is written as soon as
+the first one answers and these record the rest as it happens. Null means that half has not
+happened yet and can be retried; an interrupted provisioning is finished, never restarted.
+
+`status` is `active | revoked`: a seat leaves use without being deleted, because the row is
+the only record of which external identity was created for whom.
+
+## 11. platform — events outbox
 
 ```mermaid
 erDiagram
@@ -603,7 +639,7 @@ erDiagram
 Append-only outbox (ADR-0003): each use case writes aggregate state and an `events` row in
 the same transaction; post-commit dispatch delivers to in-process policies.
 
-## 11. End-to-end spine (logical)
+## 12. End-to-end spine (logical)
 
 The automated QA path, omitting campaign/human and study report composition:
 

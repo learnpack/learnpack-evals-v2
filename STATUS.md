@@ -1,6 +1,6 @@
 # STATUS
 
-_Last updated: 2026-08-31._
+_Last updated: 2026-09-01._
 
 **The only place in the repo with dated status**, and the shortest document that can carry it.
 It has a **budget**: nothing enters that has a home in an ADR, a test or a PR, and every entry
@@ -26,6 +26,12 @@ the grain of the item, and the golden reference is established from coverage. Re
 evaluator, granting a role and retiring somebody are acts of the console. Exercised end to end
 locally; the deploy is the one thing between it and a real panel.
 
+**The course an evaluator opens carries its AI** (ADR-0061), in end to end. The backend holds a
+synthetic seat per evaluator on the platform that serves the course and mints a short-lived
+session into the frame, so an SME signs in once with Clerk and the exercises and open questions
+inside the iframe actually answer. Without the credentials configured the course still loads and
+the screen says the AI is unavailable.
+
 **Generator QA.** A study measures the generator versions its recipe names, over a dataset
 composed from commissions: each package is discovered and profiled, an instrument's criteria
 are judged by an assessor ratified against the pinned version, and the round is signed off into
@@ -36,13 +42,13 @@ same outcomes and never enters that report.
 
 | | |
 |---|---|
-| Migration head | `0032` |
+| Migration head | `0033` |
 | Reference instrument | `learnpack-pedagogical-2.0.0` — 12 Likert items, one per quality |
 | Instruments published | `learnpack-course-qa-v1` · `course-drafts-qa-v9` |
 | Assessors registered | `structural:1` · `drafts-structural:1` · `drafts-hybrid:13` |
 | Extractions accepted | `LearnpackV1` · `LearnpackV2` |
 
-**ADRs 0001–0060 are the decision record** and `docs/README.md` rolls them. The default is that
+**ADRs 0001–0061 are the decision record** and `docs/README.md` rolls them. The default is that
 a decision is realized in the code, so what this file carries is the **exceptions**, below.
 
 ## Not built on purpose
@@ -69,3 +75,8 @@ Decided, deferred deliberately, and named here so nobody counts on them:
 
 - **The deploy.** Render + Netlify + Neon + Clerk, once per instance, in the order
   `backend/ENVIRONMENT.md` fixes. It is what stands between the human path and a real panel.
+- **The course-session infrastructure** (ADR-0061): an academy, a cohort, a service account and
+  its role on the course platform, created once by hand. `backend/.env.example` names the
+  variables. Until it exists the evaluator's frame loads the course without its AI.
+- **A console for seats.** Provisioning is lazy and needs no screen, but nothing lists which
+  evaluators have one, revokes it, or reaps them when a campaign ends.

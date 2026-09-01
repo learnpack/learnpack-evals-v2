@@ -276,6 +276,17 @@
   Lifecycle `Pending → Accepted | Revoked`; **`expired` is derived** from `expiresAt`, never a
   stored state. At most one pending invitation per address. Only `human` assessors are
   invitable: an automated one has no credential to arrive with (ADR-0016).
+- **CourseSeat** — the credential this system holds for a human `Assessor` **on the platform
+  that serves the course** (ADR-0061). Not an identity in this product and never confused with
+  one: who an evaluator is stays the `Assessor`, and a seat is only how their browser reaches
+  the AI inside the embedded course, which refuses to grade or run anything for a session that
+  names no real account over there. It is synthetic and disposable — its address is derived
+  from the assessor's id, never from the person — so a campaign ends without touching anybody's
+  real account. Status `active | revoked`; revoking withdraws its use and keeps the row, which
+  is the only record of which external identity was created for whom.
+- **course session** — the short-lived credential minted from a `CourseSeat` and handed to the
+  evaluator's frame. Minted per request, never stored, never logged, and never part of the
+  assignment it opens.
 - **SourceConfiguration** — the config that defines an automated `Assessor` (ADR-0016).
   Any change — code, mapping, model, prompt, internal threshold — ⇒ *another* `Assessor`
   (calibration does not transfer: invalidation by identity).
@@ -416,7 +427,8 @@
     `InvitationAccepted` · `AssessorRoleChanged` · `AssessorExpertiseChanged` ·
     `AssessorDeactivated` / `AssessorReactivated` · `CampaignOpened` / `CampaignRenamed` /
     `CampaignClosed` · `AssignmentCreated` / `AssignmentOpened` / `AssignmentCancelled` ·
-    `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished`.
+    `ContentEvaluationCompleted` (quorum) · `GoldenReferenceEstablished` ·
+    `CourseSeatProvisioned` / `CourseSeatRevoked` (ADR-0061).
 
   **Named, not built** `[future]` — `InstrumentDefectIdentified` · `FindingDisputed` ·
   `DisagreementDetected` · `StudiesCompared` · `SourceCalibrated`. The words are reserved and
