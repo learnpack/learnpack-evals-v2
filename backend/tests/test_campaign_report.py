@@ -10,13 +10,13 @@ import uuid as _uuid
 import pytest
 from conftest import open_campaign_over
 
-from app.modules.evaluation.domain.evaluation import CriterionScore, Evaluation
+from app.modules.evaluation.domain.evaluation import Evaluation, ItemScore
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
 from app.shared.domain.ids import new_id
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
-CRITERIA = [
+QUALITIES = [
     "objectives-observable",
     "progression-starting-point",
     "alignment-coverage",
@@ -33,9 +33,7 @@ CRITERIA = [
 
 
 def scores(value: int = 4, **overrides) -> list[dict]:
-    return [
-        {"criterion_id": c, "score": overrides.get(c, value), "comment": None} for c in CRITERIA
-    ]
+    return [{"quality_id": c, "score": overrides.get(c, value), "comment": None} for c in QUALITIES]
 
 
 @pytest.fixture
@@ -117,8 +115,8 @@ def report_of(admin, campaign_id) -> dict:
     return response.json()
 
 
-def item(report: dict, criterion_id: str) -> dict:
-    return next(i for i in report["items"] if i["criterion_id"] == criterion_id)
+def item(report: dict, quality_id: str) -> dict:
+    return next(i for i in report["items"] if i["quality_id"] == quality_id)
 
 
 def course(report: dict, content_id: str) -> dict:
@@ -160,7 +158,7 @@ def test_every_item_of_the_pinned_instrument_is_listed(admin, campaign):
     lie (ADR-0060 §3)."""
     report = report_of(admin, campaign)
 
-    assert {i["criterion_id"] for i in report["items"]} == set(CRITERIA)
+    assert {i["quality_id"] for i in report["items"]} == set(QUALITIES)
     assert all(i["prompt"] for i in report["items"]), "an id is not a question"
     assert all(i["dimension"] for i in report["items"])
 
@@ -197,8 +195,8 @@ def test_two_campaigns_over_the_same_course_do_not_pool(
         required_evaluations_per_content=1,
     )["campaign_id"]
 
-    submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(CRITERIA, 2))
-    submit(bob, admin, second, content, bob_id, **dict.fromkeys(CRITERIA, 5))
+    submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(QUALITIES, 2))
+    submit(bob, admin, second, content, bob_id, **dict.fromkeys(QUALITIES, 5))
 
     first_report = report_of(admin, campaign)
     second_report = report_of(admin, second)
@@ -247,15 +245,15 @@ def test_an_evaluation_this_campaign_never_asked_for_is_not_counted(
     ada, ada_id = evaluator("ada")
     _, stranger_id = evaluator("stranger")
 
-    submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(CRITERIA, 4))
+    submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(QUALITIES, 4))
 
     unasked = Evaluation.submit(
         evaluation_id=new_id(),
         assessor_id=_uuid.UUID(stranger_id),
         content_id=_uuid.UUID(content),
         instrument_version_id=RUBRIC,
-        scores=[CriterionScore(criterion_id=c, score=1) for c in CRITERIA],
-        rubric_criterion_ids=CRITERIA,
+        scores=[ItemScore(quality_id=c, score=1) for c in QUALITIES],
+        rubric_quality_ids=QUALITIES,
     )
     SqlAlchemyEvaluationRepository(session).add(unasked)
     session.commit()
@@ -306,16 +304,16 @@ def test_a_repetition_is_shown_and_not_counted(admin, evaluator, content, campai
     ada, ada_id = evaluator("ada")
     bob, bob_id = evaluator("bob")
 
-    submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(CRITERIA, 1))
-    submit(bob, admin, campaign, content, bob_id, **dict.fromkeys(CRITERIA, 5))
+    submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(QUALITIES, 1))
+    submit(bob, admin, campaign, content, bob_id, **dict.fromkeys(QUALITIES, 5))
 
     correction = Evaluation.submit(
         evaluation_id=new_id(),
         assessor_id=_uuid.UUID(ada_id),
         content_id=_uuid.UUID(content),
         instrument_version_id=RUBRIC,
-        scores=[CriterionScore(criterion_id=c, score=3) for c in CRITERIA],
-        rubric_criterion_ids=CRITERIA,
+        scores=[ItemScore(quality_id=c, score=3) for c in QUALITIES],
+        rubric_quality_ids=QUALITIES,
         attempt=2,
     )
     SqlAlchemyEvaluationRepository(session).add(correction)
@@ -370,10 +368,10 @@ def test_the_three_silences_are_told_apart(admin, evaluator, make_content, clean
             content_id=_uuid.UUID(untouched),
             instrument_version_id=RUBRIC,
             scores=[
-                CriterionScore(criterion_id=c, score=1, derived=c == "objectives-observable")
-                for c in CRITERIA
+                ItemScore(quality_id=c, score=1, derived=c == "objectives-observable")
+                for c in QUALITIES
             ],
-            rubric_criterion_ids=CRITERIA,
+            rubric_quality_ids=QUALITIES,
         )
     )
     session.commit()
@@ -434,13 +432,13 @@ def test_the_individual_answers_and_their_comments_reach_the_report(
             "assignment_id": assign(admin, campaign, content, ada_id),
             "scores": [
                 {
-                    "criterion_id": c,
+                    "quality_id": c,
                     "score": 4,
                     "comment": "the objectives are not observable"
                     if c == "objectives-observable"
                     else None,
                 }
-                for c in CRITERIA
+                for c in QUALITIES
             ],
         },
     )
@@ -450,7 +448,7 @@ def test_the_individual_answers_and_their_comments_reach_the_report(
     assert individual["assessor_name"] == "ada"
     assert individual["superseded"] is False
     comment = next(
-        s["comment"] for s in individual["scores"] if s["criterion_id"] == "objectives-observable"
+        s["comment"] for s in individual["scores"] if s["quality_id"] == "objectives-observable"
     )
     assert comment == "the objectives are not observable"
 

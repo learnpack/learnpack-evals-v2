@@ -42,7 +42,7 @@ from app.modules.evaluand_registry.infrastructure.repository import (
     SqlAlchemyContentRepository,
     SqlAlchemyGeneratorVersionRepository,
 )
-from app.modules.evaluation.domain.evaluation import CriterionScore, Evaluation
+from app.modules.evaluation.domain.evaluation import Evaluation, ItemScore
 from app.modules.evaluation.infrastructure.repository import SqlAlchemyEvaluationRepository
 from app.modules.identity.domain.assessor import Assessor
 from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
@@ -135,7 +135,7 @@ def test_a_format_that_cannot_declare_the_datum_does_not_get_asked(evaluator, as
 
     detail = client.get(f"/assignments/{assignment}").json()
 
-    asked = {c["criterion_id"] for c in detail["criteria"]}
+    asked = {c["quality_id"] for c in detail["items"]}
     assert len(asked) == 8
     assert asked.isdisjoint(DECLARATION_ITEMS)
     assert detail["withheld_count"] == 4
@@ -153,8 +153,8 @@ def test_the_withheld_items_are_recorded_without_a_score(evaluator, assignment, 
         json={
             "assignment_id": assignment,
             "scores": [
-                {"criterion_id": c["criterion_id"], "score": 4, "comment": None}
-                for c in detail["criteria"]
+                {"quality_id": c["quality_id"], "score": 4, "comment": None}
+                for c in detail["items"]
             ],
         },
     )
@@ -162,7 +162,7 @@ def test_the_withheld_items_are_recorded_without_a_score(evaluator, assignment, 
 
     rows = dict(
         session.execute(
-            text("SELECT criterion_id, derived FROM criterion_scores WHERE evaluation_id = :e"),
+            text("SELECT quality_id, derived FROM item_scores WHERE evaluation_id = :e"),
             {"e": submitted.json()["evaluation_id"]},
         ).all()
     )
@@ -171,7 +171,7 @@ def test_the_withheld_items_are_recorded_without_a_score(evaluator, assignment, 
 
     scores = dict(
         session.execute(
-            text("SELECT criterion_id, score FROM criterion_scores WHERE evaluation_id = :e"),
+            text("SELECT quality_id, score FROM item_scores WHERE evaluation_id = :e"),
             {"e": submitted.json()["evaluation_id"]},
         ).all()
     )
@@ -186,8 +186,8 @@ def test_a_client_cannot_answer_a_withheld_item(evaluator, assignment, session):
     client.post(f"/assignments/{assignment}/open")
     detail = client.get(f"/assignments/{assignment}").json()
 
-    every_item = [{"criterion_id": c["criterion_id"], "score": 5} for c in detail["criteria"]] + [
-        {"criterion_id": cid, "score": 5} for cid in sorted(DECLARATION_ITEMS)
+    every_item = [{"quality_id": c["quality_id"], "score": 5} for c in detail["items"]] + [
+        {"quality_id": cid, "score": 5} for cid in sorted(DECLARATION_ITEMS)
     ]
     submitted = client.post(
         "/evaluations", json={"assignment_id": assignment, "scores": every_item}
@@ -196,7 +196,7 @@ def test_a_client_cannot_answer_a_withheld_item(evaluator, assignment, session):
 
     stored = dict(
         session.execute(
-            text("SELECT criterion_id, score FROM criterion_scores WHERE evaluation_id = :e"),
+            text("SELECT quality_id, score FROM item_scores WHERE evaluation_id = :e"),
             {"e": submitted.json()["evaluation_id"]},
         ).all()
     )
@@ -213,15 +213,15 @@ def test_the_report_tells_withheld_apart_from_abstained(
     client, _ = evaluator
     detail = client.get(f"/assignments/{assignment}").json()
     client.post(f"/assignments/{assignment}/open")
-    asked = [c["criterion_id"] for c in detail["criteria"]]
+    asked = [c["quality_id"] for c in detail["items"]]
 
-    scores = [{"criterion_id": cid, "score": 4, "comment": None} for cid in asked]
-    scores[0] = {"criterion_id": asked[0], "score": None, "comment": None}  # an abstention
+    scores = [{"quality_id": cid, "score": 4, "comment": None} for cid in asked]
+    scores[0] = {"quality_id": asked[0], "score": None, "comment": None}  # an abstention
     submitted = client.post("/evaluations", json={"assignment_id": assignment, "scores": scores})
     assert submitted.status_code == 201, submitted.text
 
     report = admin.get(f"/admin/campaigns/{withheld_campaign}/report").json()
-    items = {i["criterion_id"]: i["summary"] for i in report["items"]}
+    items = {i["quality_id"]: i["summary"] for i in report["items"]}
 
     withheld = items["objectives-observable"]
     assert withheld["average"] is None
@@ -268,10 +268,10 @@ def test_a_derived_score_can_carry_the_bottom_of_the_scale(requires_db, cleanup,
             content_id=content_id,
             instrument_version_id=RUBRIC,
             scores=[
-                CriterionScore(criterion_id="objectives-observable", score=1, derived=True),
-                CriterionScore(criterion_id="coherence-reinforcement", score=4),
+                ItemScore(quality_id="objectives-observable", score=1, derived=True),
+                ItemScore(quality_id="coherence-reinforcement", score=4),
             ],
-            rubric_criterion_ids=["objectives-observable", "coherence-reinforcement"],
+            rubric_quality_ids=["objectives-observable", "coherence-reinforcement"],
         )
         SqlAlchemyEvaluationRepository(session).add(evaluation)
         session.commit()
@@ -279,7 +279,7 @@ def test_a_derived_score_can_carry_the_bottom_of_the_scale(requires_db, cleanup,
         stored = dict(
             session.execute(
                 text(
-                    "SELECT criterion_id, score || ':' || derived FROM criterion_scores"
+                    "SELECT quality_id, score || ':' || derived FROM item_scores"
                     " WHERE evaluation_id = :e"
                 ),
                 {"e": evaluation_id},
@@ -360,7 +360,7 @@ def test_the_rater_is_shown_the_data_their_items_rest_on(evaluator, declared_ass
 
     detail = client.get(f"/assignments/{declared_assignment}").json()
 
-    assert {c["criterion_id"] for c in detail["criteria"]} >= DECLARATION_ITEMS
+    assert {c["quality_id"] for c in detail["items"]} >= DECLARATION_ITEMS
     assert detail["withheld_count"] == 0
 
     # Ordered by the first asked item that rests on each, so the block reads in the order
@@ -375,7 +375,7 @@ def test_the_rater_is_shown_the_data_their_items_rest_on(evaluator, declared_ass
     assert isinstance(audience["value"], str) and audience["value"]
 
     # The screen marks the items that rest on a datum from what the item itself declares.
-    by_id = {c["criterion_id"]: c for c in detail["criteria"]}
+    by_id = {c["quality_id"]: c for c in detail["items"]}
     assert by_id["objectives-observable"]["required_data"] == ["learning_objectives"]
     assert by_id["progression-starting-point"]["required_data"] == ["target_audience"]
     assert by_id["coherence-logical-sequence"]["required_data"] == []
@@ -389,7 +389,7 @@ def test_nothing_is_shown_for_a_question_nobody_was_asked(evaluator, assignment)
     detail = client.get(f"/assignments/{assignment}").json()
 
     assert detail["declared"] == []
-    assert all(c["required_data"] == [] for c in detail["criteria"])
+    assert all(c["required_data"] == [] for c in detail["items"])
 
 
 def test_a_value_the_screen_cannot_read_is_not_sent(
@@ -413,4 +413,4 @@ def test_a_value_the_screen_cannot_read_is_not_sent(
     detail = client.get(f"/assignments/{declared_assignment}").json()
 
     assert [d["requirement_id"] for d in detail["declared"]] == ["target_audience"]
-    assert "objectives-observable" in {c["criterion_id"] for c in detail["criteria"]}
+    assert "objectives-observable" in {c["quality_id"] for c in detail["items"]}

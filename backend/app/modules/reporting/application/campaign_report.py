@@ -1,6 +1,6 @@
 """Campaign-grain aggregation — pure functions, zero imports from other modules.
 
-ADR-0060 moves the primary axis of the human report from `content × criterion` to
+ADR-0060 moves the primary axis of the human report from `content × item` to
 `item × campaign`. The arithmetic reason is here: with two assessors per course, a
 content-level cell holds exactly one pair of answers, and forty of those pairs are what says
 whether an item is answerable at all (ADR-0052 §5).

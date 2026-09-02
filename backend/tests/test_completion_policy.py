@@ -13,7 +13,7 @@ from app.shared.domain.events import DomainEvent
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
-CRITERIA = [
+QUALITIES = [
     "objectives-observable",
     "progression-starting-point",
     "alignment-coverage",
@@ -76,7 +76,7 @@ def test_replaying_the_event_is_idempotent(admin, as_user, cleanup, unique, sess
         "/evaluations",
         json={
             "assignment_id": assignment_id,
-            "scores": [{"criterion_id": c, "score": 4} for c in CRITERIA],
+            "scores": [{"quality_id": c, "score": 4} for c in QUALITIES],
         },
     )
 

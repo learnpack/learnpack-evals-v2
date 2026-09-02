@@ -11,7 +11,7 @@ from sqlalchemy import RowMapping, text
 from sqlalchemy.orm import Session
 
 from app.modules.evaluation_design.application.dtos import (
-    CriterionDTO,
+    RubricItemDTO,
     RubricSnapshot,
     RubricSummaryDTO,
 )
@@ -48,14 +48,13 @@ class SqlAlchemyRubricRepository:
         if version is None:
             return None
 
-        criteria = (
+        items = (
             self._session.execute(
                 text(
                     """
-                    SELECT criterion_id, ord, dimension, prompt, guidance, anchor_low,
-                           anchor_high, qualities, grounded_in, eligible_sources,
-                           required_data
-                      FROM criteria
+                    SELECT quality_id, ord, dimension, prompt, guidance, anchor_low,
+                           anchor_high, grounded_in, eligible_sources, required_data
+                      FROM rubric_items
                      WHERE rubric_version_id = :id
                      ORDER BY ord
                     """
@@ -76,21 +75,20 @@ class SqlAlchemyRubricRepository:
             scale_min=version["scale_min"],
             scale_max=version["scale_max"],
             response_format=version["response_format"],
-            criteria=[
-                CriterionDTO(
-                    criterion_id=row["criterion_id"],
+            items=[
+                RubricItemDTO(
+                    quality_id=row["quality_id"],
                     order=row["ord"],
                     dimension=row["dimension"],
                     prompt=row["prompt"],
                     guidance=row["guidance"],
                     anchor_low=row["anchor_low"],
                     anchor_high=row["anchor_high"],
-                    qualities=row["qualities"] or [],
                     grounded_in=row["grounded_in"] or [],
                     eligible_sources=row["eligible_sources"] or [],
                     required_data=row["required_data"] or [],
                 )
-                for row in criteria
+                for row in items
             ],
         )
 
@@ -101,8 +99,8 @@ class SqlAlchemyRubricRepository:
                     """
                     SELECT v.id, v.rubric_id, v.version, v.name, v.scope, v.scale_min,
                            v.scale_max, v.response_format,
-                           (SELECT count(*) FROM criteria c
-                             WHERE c.rubric_version_id = v.id) AS criterion_count
+                           (SELECT count(*) FROM rubric_items i
+                             WHERE i.rubric_version_id = v.id) AS item_count
                       FROM rubric_versions v
                      WHERE v.status = 'published'
                      ORDER BY v.rubric_id, v.version
@@ -122,7 +120,7 @@ class SqlAlchemyRubricRepository:
                 scale_min=row["scale_min"],
                 scale_max=row["scale_max"],
                 response_format=row["response_format"],
-                criterion_count=row["criterion_count"],
+                item_count=row["item_count"],
             )
             for row in rows
         ]

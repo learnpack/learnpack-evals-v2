@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
-CRITERIA = [
+QUALITIES = [
     "objectives-observable",
     "progression-starting-point",
     "alignment-coverage",
@@ -27,7 +27,7 @@ CRITERIA = [
 
 
 def scores(**overrides) -> list[dict]:
-    return [{"criterion_id": c, "score": overrides.get(c, 4)} for c in CRITERIA]
+    return [{"quality_id": c, "score": overrides.get(c, 4)} for c in QUALITIES]
 
 
 @pytest.fixture
@@ -140,7 +140,7 @@ def test_full_evaluator_flow(admin, evaluator, content, make_campaign, session):
     # 2. the detail carries everything the 3-step UI needs
     detail = client.get(f"/assignments/{assignment_id}").json()
     assert detail["consumable_url"] == COURSE_URL
-    assert [c["criterion_id"] for c in detail["criteria"]] == CRITERIA
+    assert [c["quality_id"] for c in detail["items"]] == QUALITIES
     assert detail["scale_min"] == 1 and detail["scale_max"] == 5
     assert detail["response_format"] == "likert"
 
@@ -453,7 +453,7 @@ def test_closed_campaign_rejects_new_assignments(admin, evaluator, content, make
 
 
 def test_an_abstention_travels_as_a_null_score(admin, evaluator, content, make_campaign, session):
-    """The off-scale answer of ADR-0052 §4, end to end: it covers its criterion, it
+    """The off-scale answer of ADR-0052 §4, end to end: it covers its item, it
     persists as a null, and the report does not average it into anything."""
     campaign_id = make_campaign(required=1)
     client, assessor_id = evaluator("ada")
@@ -464,25 +464,25 @@ def test_an_abstention_travels_as_a_null_score(admin, evaluator, content, make_c
         "/evaluations",
         json={
             "assignment_id": assignment_id,
-            "scores": scores(**{CRITERIA[0]: None}),
+            "scores": scores(**{QUALITIES[0]: None}),
         },
     )
     assert submitted.status_code == 201, submitted.text
 
     stored = session.execute(
-        text("SELECT score FROM criterion_scores WHERE evaluation_id = :id AND criterion_id = :c"),
-        {"id": submitted.json()["evaluation_id"], "c": CRITERIA[0]},
+        text("SELECT score FROM item_scores WHERE evaluation_id = :id AND quality_id = :c"),
+        {"id": submitted.json()["evaluation_id"], "c": QUALITIES[0]},
     ).scalar_one()
     assert stored is None
 
     report = admin.get(f"/admin/campaigns/{campaign_id}/report").json()
-    items = {i["criterion_id"]: i["summary"] for i in report["items"]}
-    # Still reported — the criterion WAS asked — but with no average, and counted as the
+    items = {i["quality_id"]: i["summary"] for i in report["items"]}
+    # Still reported — the item WAS asked — but with no average, and counted as the
     # abstention it is rather than as an item nobody was put in front of (ADR-0060 §4).
-    assert items[CRITERIA[0]]["average"] is None
-    assert items[CRITERIA[0]]["abstentions"] == 1
-    assert items[CRITERIA[0]]["withheld_contents"] == 0
-    assert items[CRITERIA[1]]["average"] == 4.0
+    assert items[QUALITIES[0]]["average"] is None
+    assert items[QUALITIES[0]]["abstentions"] == 1
+    assert items[QUALITIES[0]]["withheld_contents"] == 0
+    assert items[QUALITIES[1]]["average"] == 4.0
 
 
 def test_an_omitted_score_field_is_refused(admin, evaluator, content, make_campaign):

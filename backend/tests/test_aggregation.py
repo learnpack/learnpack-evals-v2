@@ -17,7 +17,7 @@ NOW = datetime(2026, 7, 21, 12, 0, tzinfo=UTC)
 
 @dataclass
 class FakeScore:
-    criterion_id: str
+    quality_id: str
     score: int | None
     comment: str | None = None
     derived: bool = False
@@ -48,7 +48,7 @@ def evaluation(
         assessor_id=assessor_id,
         content_id=content_id,
         submitted_at=submitted_at,
-        scores=[FakeScore(criterion_id=c, score=s) for c, s in scores.items()],
+        scores=[FakeScore(quality_id=c, score=s) for c, s in scores.items()],
     )
 
 
@@ -149,7 +149,7 @@ def test_an_assessor_counts_once_per_course():
         evaluation(ada, content_id=CONTENT, q=4),
         evaluation(ada, content_id=uuid4(), q=5),
     ]
-    assert aggregation.average_by_criterion(evaluations) == {"q": 4.5}
+    assert aggregation.average_by_quality(evaluations) == {"q": 4.5}
 
 
 def test_repetitions_still_collapse_within_one_content():
@@ -161,7 +161,7 @@ def test_repetitions_still_collapse_within_one_content():
         evaluation(ada, content_id=other_content, q=5),
     ]
     # The superseded 1 is dropped; the two courses both count → (4 + 5) / 2
-    assert aggregation.average_by_criterion(evaluations) == {"q": 4.5}
+    assert aggregation.average_by_quality(evaluations) == {"q": 4.5}
 
 
 def test_missing_timestamps_do_not_crash():
@@ -176,11 +176,11 @@ def test_missing_timestamps_do_not_crash():
 # --------------------------------------------------------------------------- averages
 
 
-def test_average_by_criterion_across_assessors():
+def test_average_by_quality_across_assessors():
     ada, bob = uuid4(), uuid4()
     evaluations = [evaluation(ada, a=4, b=2), evaluation(bob, a=5, b=3)]
 
-    assert aggregation.average_by_criterion(evaluations) == {"a": 4.5, "b": 2.5}
+    assert aggregation.average_by_quality(evaluations) == {"a": 4.5, "b": 2.5}
 
 
 def test_a_repeated_assessor_does_not_weigh_twice():
@@ -192,17 +192,17 @@ def test_a_repeated_assessor_does_not_weigh_twice():
         evaluation(bob, a=3),
     ]
     # Without collapsing this would be (1+5+3)/3 = 3.0; correct is (5+3)/2 = 4.0
-    assert aggregation.average_by_criterion(evaluations) == {"a": 4.0}
+    assert aggregation.average_by_quality(evaluations) == {"a": 4.0}
 
 
-def test_dispersion_by_criterion_uses_one_score_per_assessor():
+def test_dispersion_by_quality_uses_one_score_per_assessor():
     ada, bob = uuid4(), uuid4()
     evaluations = [
         evaluation(ada, submitted_at=NOW - timedelta(hours=1), a=1),
         evaluation(ada, submitted_at=NOW, a=3),
         evaluation(bob, a=3),
     ]
-    result = aggregation.dispersion_by_criterion(evaluations)["a"]
+    result = aggregation.dispersion_by_quality(evaluations)["a"]
     assert result.rater_count == 2
     assert result.exact_agreement_pct == 100.0
 
@@ -215,30 +215,30 @@ def test_an_abstention_is_not_averaged():
     ada, bob = uuid4(), uuid4()
     evaluations = [evaluation(ada, a=4), evaluation(bob, a=None)]
 
-    assert aggregation.average_by_criterion(evaluations) == {"a": 4.0}
-    assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 1
+    assert aggregation.average_by_quality(evaluations) == {"a": 4.0}
+    assert aggregation.dispersion_by_quality(evaluations)["a"].rater_count == 1
 
 
-def test_a_criterion_everyone_abstained_on_stays_visible_with_no_average():
+def test_a_quality_everyone_abstained_on_stays_visible_with_no_average():
     """Dropping the key would make "nobody could judge this" look like "never asked" —
     the coverage lie ADR-0011 §3 forbids. And it is None, never 0: a zero would read as
     the worst possible score."""
     ada, bob = uuid4(), uuid4()
     evaluations = [evaluation(ada, a=None), evaluation(bob, a=None)]
 
-    averages = aggregation.average_by_criterion(evaluations)
+    averages = aggregation.average_by_quality(evaluations)
     assert averages == {"a": None}
-    assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 0
+    assert aggregation.dispersion_by_quality(evaluations)["a"].rater_count == 0
 
 
 # --------------------------------------------------------------------------- withheld
 
 
 def derived_evaluation(assessor_id: UUID, /, **scores):
-    """An evaluation whose named criteria were never asked of anybody (ADR-0053)."""
+    """An evaluation whose named items were never asked of anybody (ADR-0053)."""
     return FakeEvaluation(
         assessor_id=assessor_id,
-        scores=[FakeScore(criterion_id=c, score=s, derived=True) for c, s in scores.items()],
+        scores=[FakeScore(quality_id=c, score=s, derived=True) for c, s in scores.items()],
     )
 
 
@@ -247,19 +247,19 @@ def test_a_derived_row_is_not_something_a_human_said():
     ada = uuid4()
     evaluations = [derived_evaluation(ada, a=1)]
 
-    assert aggregation.average_by_criterion(evaluations) == {"a": None}
-    assert aggregation.dispersion_by_criterion(evaluations)["a"].rater_count == 0
-    assert aggregation.withheld_criteria(evaluations) == {"a"}
+    assert aggregation.average_by_quality(evaluations) == {"a": None}
+    assert aggregation.dispersion_by_quality(evaluations)["a"].rater_count == 0
+    assert aggregation.withheld_items(evaluations) == {"a"}
 
 
 def test_withheld_needs_every_row_derived_not_just_one():
     """If one assessor was asked and another was not — a content re-profiled between two
-    submissions — the criterion is still one somebody judged."""
+    submissions — the item is still one somebody judged."""
     ada, bob = uuid4(), uuid4()
     evaluations = [evaluation(ada, a=4), derived_evaluation(bob, a=1)]
 
-    assert aggregation.withheld_criteria(evaluations) == set()
-    assert aggregation.average_by_criterion(evaluations) == {"a": 4.0}
+    assert aggregation.withheld_items(evaluations) == set()
+    assert aggregation.average_by_quality(evaluations) == {"a": 4.0}
 
 
 def test_an_abstention_is_not_withheld():
@@ -267,5 +267,5 @@ def test_an_abstention_is_not_withheld():
     ada = uuid4()
     evaluations = [evaluation(ada, a=None)]
 
-    assert aggregation.average_by_criterion(evaluations) == {"a": None}
-    assert aggregation.withheld_criteria(evaluations) == set()
+    assert aggregation.average_by_quality(evaluations) == {"a": None}
+    assert aggregation.withheld_items(evaluations) == set()

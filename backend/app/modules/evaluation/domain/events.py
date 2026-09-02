@@ -37,7 +37,7 @@ def evaluation_submitted(evaluation: Evaluation) -> DomainEvent:
             "mode": MODE_HUMAN,
             "attempt": evaluation.attempt,
             "scores": [
-                {"criterionId": s.criterion_id, "score": s.score, "comment": s.comment}
+                {"qualityId": s.quality_id, "score": s.score, "comment": s.comment}
                 for s in evaluation.result.scores
             ],
         },

@@ -7,9 +7,9 @@ assessors; inter-rater is simple dispersion.
 Everything here works structurally on anything shaped like an evaluation, so it stays
 independent of the Evaluation module and is unit-testable with trivial fakes.
 
-Only the *same* criterion is ever aggregated across assessors. Collapsing distinct criteria
-into one number is forbidden (ADR-0011): the result of evaluating a content is a
-per-criterion profile, not a score.
+Only the *same* item is ever aggregated across assessors, and an item is one quality
+(ADR-0052 §1). Collapsing distinct items into one number is forbidden (ADR-0011): the result
+of evaluating a content is a per-quality profile, not a score.
 """
 
 import statistics
@@ -21,7 +21,7 @@ from uuid import UUID
 
 
 class ScoreLike(Protocol):
-    criterion_id: str
+    quality_id: str
     # Null is an abstention, not a zero: the assessor answered "I could not judge this"
     # (ADR-0052 §4). Nothing here averages one.
     score: int | None
@@ -43,7 +43,7 @@ _EPOCH = datetime.min.replace(tzinfo=UTC)
 
 @dataclass(frozen=True)
 class Dispersion:
-    """Inter-rater spread for one criterion (ADR-0006).
+    """Inter-rater spread for one item (ADR-0006).
 
     All fields are `None` with a single rater: there is no agreement to measure, and 0 would
     read as "perfect agreement" — a lie.
@@ -85,50 +85,50 @@ def _ordering_key(evaluation: EvaluationLike) -> tuple[datetime, str]:
     return (evaluation.submitted_at or _EPOCH, str(getattr(evaluation, "evaluation_id", "")))
 
 
-def scores_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, list[int]]:
-    """One list of scores per criterion — one entry per assessor that scored it.
+def scores_by_quality(evaluations: Sequence[EvaluationLike]) -> dict[str, list[int]]:
+    """One list of scores per quality — one entry per assessor that scored its item.
 
-    Two kinds of row are **dropped from the list while keeping their criterion in the map**:
+    Two kinds of row are **dropped from the list while keeping their quality in the map**:
     an abstention (null score) and a derived row (ADR-0053), neither of which anybody judged.
-    A criterion nobody scored therefore stays visible with an empty list; dropping the key
-    instead would make it indistinguishable from a criterion that was never part of the
-    instrument, which is the coverage lie ADR-0011 §3 forbids.
+    A quality nobody scored therefore stays visible with an empty list; dropping the key
+    instead would make it indistinguishable from one that was never part of the instrument,
+    which is the coverage lie ADR-0011 §3 forbids.
     """
     grouped: dict[str, list[int]] = {}
     for evaluation in collapse_latest_per_assessor(evaluations):
         for score in evaluation.scores:
-            scores = grouped.setdefault(score.criterion_id, [])
+            scores = grouped.setdefault(score.quality_id, [])
             if score.score is not None and not score.derived:
                 scores.append(score.score)
     return grouped
 
 
-def withheld_criteria(evaluations: Sequence[EvaluationLike]) -> set[str]:
-    """The criteria no assessor was asked: every row for them is derived (ADR-0053).
+def withheld_items(evaluations: Sequence[EvaluationLike]) -> set[str]:
+    """The qualities no assessor was asked about: every row is derived (ADR-0053).
 
-    "Every", not "any": while one assessor was asked and another was not, the criterion is
-    still one somebody judged. That only happens if a content is re-profiled between two
+    "Every", not "any": while one assessor was asked and another was not, the item is still
+    one somebody judged. That only happens if a content is re-profiled between two
     submissions, which is rare and not a reason to hide what the first rater said.
     """
-    by_criterion: dict[str, list[bool]] = {}
+    by_quality: dict[str, list[bool]] = {}
     for evaluation in collapse_latest_per_assessor(evaluations):
         for score in evaluation.scores:
-            by_criterion.setdefault(score.criterion_id, []).append(score.derived)
-    return {criterion_id for criterion_id, flags in by_criterion.items() if all(flags)}
+            by_quality.setdefault(score.quality_id, []).append(score.derived)
+    return {quality_id for quality_id, flags in by_quality.items() if all(flags)}
 
 
-def average_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, float | None]:
+def average_by_quality(evaluations: Sequence[EvaluationLike]) -> dict[str, float | None]:
     """`None` where every assessor abstained — never 0, which would read as the worst score."""
     return {
-        criterion_id: round(statistics.fmean(scores), 2) if scores else None
-        for criterion_id, scores in scores_by_criterion(evaluations).items()
+        quality_id: round(statistics.fmean(scores), 2) if scores else None
+        for quality_id, scores in scores_by_quality(evaluations).items()
     }
 
 
-def dispersion_by_criterion(evaluations: Sequence[EvaluationLike]) -> dict[str, Dispersion]:
+def dispersion_by_quality(evaluations: Sequence[EvaluationLike]) -> dict[str, Dispersion]:
     return {
-        criterion_id: dispersion(scores)
-        for criterion_id, scores in scores_by_criterion(evaluations).items()
+        quality_id: dispersion(scores)
+        for quality_id, scores in scores_by_quality(evaluations).items()
     }
 
 

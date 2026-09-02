@@ -14,10 +14,10 @@ from app.modules.evaluation_design.application import queries as _queries
 from app.modules.evaluation_design.application.dtos import (
     BindingDTO,
     ClaimDTO,
-    CriterionDTO,
     CriterionSpecDTO,
     DataRequirementDTO,
     InstrumentSnapshot,
+    RubricItemDTO,
     RubricSnapshot,
     RubricSummaryDTO,
 )
@@ -36,7 +36,7 @@ __all__ = [
     "INSTRUMENT_VERSION_PUBLISHED",
     "BindingDTO",
     "ClaimDTO",
-    "CriterionDTO",
+    "RubricItemDTO",
     "CriterionSpecDTO",
     "DataRequirementDTO",
     "InstrumentQueries",

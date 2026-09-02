@@ -2,7 +2,7 @@
 
 A sibling of the legacy human `Evaluation` (scores 1-5), NOT an extension of it: the two
 share the `evaluations` table but write different children (`criterion_outcomes` vs
-`criterion_scores`) and carry different invariants. Identity per ADR-0005: its own
+`item_scores`) and carry different invariants. Identity per ADR-0005: its own
 `evaluationId`; repetitions of the same (assessor, content, instrumentVersion) are
 first-class and collapse to the most recent downstream; `attempt` counts them (max+1,
 informational).

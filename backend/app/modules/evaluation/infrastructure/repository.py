@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.modules.evaluation.application.dtos import (
     CriterionOutcomeDTO,
-    CriterionScoreDTO,
     EvaluationDTO,
     FindingDTO,
+    ItemScoreDTO,
     JudgmentClaimDTO,
     QualityJudgmentDTO,
     RatificationDTO,
@@ -61,14 +61,14 @@ class SqlAlchemyEvaluationRepository:
             self._session.execute(
                 text(
                     """
-                    INSERT INTO criterion_scores
-                        (evaluation_id, criterion_id, score, comment, derived)
-                    VALUES (:evaluation_id, :criterion_id, :score, :comment, :derived)
+                    INSERT INTO item_scores
+                        (evaluation_id, quality_id, score, comment, derived)
+                    VALUES (:evaluation_id, :quality_id, :score, :comment, :derived)
                     """
                 ),
                 {
                     "evaluation_id": evaluation.id,
-                    "criterion_id": score.criterion_id,
+                    "quality_id": score.quality_id,
                     "score": score.score,
                     "comment": score.comment,
                     "derived": score.derived,
@@ -102,10 +102,10 @@ class SqlAlchemyEvaluationRepository:
             self._session.execute(
                 text(
                     """
-                    SELECT evaluation_id, criterion_id, score, comment, derived
-                      FROM criterion_scores
+                    SELECT evaluation_id, quality_id, score, comment, derived
+                      FROM item_scores
                      WHERE evaluation_id = ANY(:evaluation_ids)
-                     ORDER BY criterion_id
+                     ORDER BY quality_id
                     """
                 ),
                 {"evaluation_ids": [row["id"] for row in rows]},
@@ -114,11 +114,11 @@ class SqlAlchemyEvaluationRepository:
             .all()
         )
 
-        by_evaluation: dict[UUID, list[CriterionScoreDTO]] = defaultdict(list)
+        by_evaluation: dict[UUID, list[ItemScoreDTO]] = defaultdict(list)
         for score in score_rows:
             by_evaluation[score["evaluation_id"]].append(
-                CriterionScoreDTO(
-                    criterion_id=score["criterion_id"],
+                ItemScoreDTO(
+                    quality_id=score["quality_id"],
                     score=score["score"],
                     comment=score["comment"],
                     derived=score["derived"],

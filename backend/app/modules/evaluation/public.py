@@ -18,9 +18,9 @@ from sqlalchemy.orm import Session
 from app.modules.evaluation.application import queries as _queries
 from app.modules.evaluation.application.dtos import (
     CriterionOutcomeDTO,
-    CriterionScoreDTO,
     EvaluationDTO,
     FindingDTO,
+    ItemScoreDTO,
     JudgmentClaimDTO,
     QualityJudgmentDTO,
     RatificationDTO,
@@ -43,7 +43,7 @@ __all__ = [
     "FINDING_RAISED",
     "QUALITY_JUDGMENT_PUBLISHED",
     "CriterionOutcomeDTO",
-    "CriterionScoreDTO",
+    "ItemScoreDTO",
     "EvaluationCompletedFact",
     "EvaluationDTO",
     "EvaluationQueries",

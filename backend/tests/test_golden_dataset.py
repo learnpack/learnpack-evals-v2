@@ -20,7 +20,7 @@ from app.shared.domain.ids import new_id
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
-CRITERIA = [
+QUALITIES = [
     "objectives-observable",
     "progression-starting-point",
     "alignment-coverage",
@@ -37,7 +37,7 @@ CRITERIA = [
 
 
 def scores(value: int = 4) -> list[dict]:
-    return [{"criterion_id": c, "score": value} for c in CRITERIA]
+    return [{"quality_id": c, "score": value} for c in QUALITIES]
 
 
 # --------------------------------------------------------------------------- pure
