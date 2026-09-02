@@ -88,7 +88,7 @@ export interface Silences {
   /** Courses that have not reached their quorum yet. */
   awaiting: number;
   /** Items resting on a declaration, and how widely the scope actually makes it. */
-  declarationBound: { criterionId: string; prompt: string; asked: number; of: number }[];
+  declarationBound: { qualityId: string; prompt: string; asked: number; of: number }[];
 }
 
 /** The three ways a cell can be empty, counted apart (ADR-0060 §4).
@@ -104,7 +104,7 @@ export function silences(report: CampaignReport): Silences {
     declarationBound: report.items
       .filter((item) => item.required_data.length > 0)
       .map((item) => ({
-        criterionId: item.criterion_id,
+        qualityId: item.quality_id,
         prompt: item.prompt,
         asked: report.quorum.contents_in_scope - item.summary.withheld_contents,
         of: report.quorum.contents_in_scope,
@@ -129,7 +129,7 @@ export function answerRows(report: CampaignReport): (string | number)[][] {
           content.title ?? "",
           evaluation.assessor_name ?? evaluation.assessor_id,
           evaluation.submitted_at ?? "",
-          score.criterion_id,
+          score.quality_id,
           score.score ?? "",
           // The three empties, spelled out rather than left as a blank cell.
           score.derived ? "not asked" : score.score === null ? "abstained" : "answered",

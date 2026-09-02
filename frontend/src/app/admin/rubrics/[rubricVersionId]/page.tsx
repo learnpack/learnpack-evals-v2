@@ -10,7 +10,7 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ScoreForm } from "@/components/evaluator/score-form";
 import { useReferenceInstrument } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
-import type { RubricCriterion } from "@/lib/api/types";
+import type { RubricDetailItem } from "@/lib/api/types";
 
 type View = "items" | "preview";
 
@@ -38,7 +38,7 @@ export default function RubricDetailPage({
   const [view, setView] = useState<View>("items");
 
   const items = useMemo(
-    () => [...(rubric?.criteria ?? [])].sort((a, b) => a.order - b.order),
+    () => [...(rubric?.items ?? [])].sort((a, b) => a.order - b.order),
     [rubric],
   );
 
@@ -121,12 +121,12 @@ function ViewTab({
   );
 }
 
-function ItemsView({ items }: { items: RubricCriterion[] }) {
+function ItemsView({ items }: { items: RubricDetailItem[] }) {
   return (
     <Card>
       <CardContent className="divide-y p-0">
         {items.map((item, index) => (
-          <div key={item.criterion_id} className="p-5">
+          <div key={item.quality_id} className="p-5">
             <div className="flex gap-4">
               <span className="w-6 shrink-0 pt-0.5 text-sm font-medium tabular-nums text-muted-foreground">
                 {index + 1}
@@ -134,11 +134,11 @@ function ItemsView({ items }: { items: RubricCriterion[] }) {
               <div className="min-w-0 flex-1">
                 {/* The id is the tooltip, as on the instruments page: the language here is
                     the statements, and ids are for lineage and dispute paths. */}
-                <p className="font-medium" title={item.criterion_id}>
+                <p className="font-medium" title={item.quality_id}>
                   {item.prompt}
                 </p>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  {item.dimension} · elicits {item.qualities.join(", ") || "—"} · grounded in{" "}
+                  {item.dimension} · elicits {item.quality_id} · grounded in{" "}
                   {item.grounded_in.join(", ") || "—"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -176,7 +176,7 @@ function PreviewView({
   items,
 }: {
   rubric: { scale_min: number; scale_max: number; response_format: string };
-  items: RubricCriterion[];
+  items: RubricDetailItem[];
 }) {
   return (
     <div>
@@ -198,7 +198,7 @@ function PreviewView({
         <CollapsibleSection title="Score" badge={`${items.length} items`}>
           <ScoreForm
             preview
-            criteria={items}
+            items={items}
             scaleMin={rubric.scale_min}
             scaleMax={rubric.scale_max}
             responseFormat={rubric.response_format}

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
-import type { Criterion } from "@/lib/api/types";
+import type { RubricItem } from "@/lib/api/types";
 
 /**
  * Two elicitations, one form.
@@ -26,7 +26,7 @@ import type { Criterion } from "@/lib/api/types";
  * Collapsing the two would silently turn "I don't know" into the worst possible verdict.
  */
 
-type Scores = { criterion_id: string; score: number | null; comment: string | null }[];
+type Scores = { quality_id: string; score: number | null; comment: string | null }[];
 
 /**
  * `preview` is a discriminated arm rather than a flag so the compiler enforces the rule:
@@ -35,7 +35,7 @@ type Scores = { criterion_id: string; score: number | null; comment: string | nu
  * same form — a preview that drifts from the real one lies about the only thing it shows.
  */
 type Props = {
-  criteria: Criterion[];
+  items: RubricItem[];
   scaleMin: number;
   scaleMax: number;
   responseFormat: string;
@@ -57,7 +57,7 @@ const AGREEMENT_LABELS = [
 ] as const;
 
 export function ScoreForm({
-  criteria,
+  items,
   scaleMin,
   scaleMax,
   responseFormat,
@@ -69,18 +69,18 @@ export function ScoreForm({
 
   const schema = useMemo(() => {
     const shape: Record<string, z.ZodTypeAny> = {};
-    for (const c of criteria) {
-      shape[c.criterion_id] = z.object({
+    for (const item of items) {
+      shape[item.quality_id] = z.object({
         // Required, and satisfied by either an answer or an explicit abstention — never by
         // leaving the item alone. Silence is not an answer of any kind.
         answer: z.union([z.number().int().min(scaleMin).max(scaleMax), z.literal(ABSTAIN)], {
-          required_error: likert ? "Answer or skip this statement" : "Score or skip this criterion",
+          required_error: likert ? "Answer or skip this statement" : "Score or skip this item",
         }),
         comment: z.string().max(2000).optional(),
       });
     }
     return z.object(shape);
-  }, [criteria, scaleMin, scaleMax, likert]);
+  }, [items, scaleMin, scaleMax, likert]);
 
   const {
     control,
@@ -94,12 +94,12 @@ export function ScoreForm({
   const submit = handleSubmit((values) => {
     if (!onSubmit) return; // preview: unreachable, the footer offers nothing to submit
     onSubmit(
-      criteria.map((c) => {
-        const answer = values[c.criterion_id].answer;
+      items.map((item) => {
+        const answer = values[item.quality_id].answer;
         return {
-          criterion_id: c.criterion_id,
+          quality_id: item.quality_id,
           score: answer === ABSTAIN ? null : (answer as number),
-          comment: values[c.criterion_id].comment?.trim() || null,
+          comment: values[item.quality_id].comment?.trim() || null,
         };
       }),
     );
@@ -110,42 +110,42 @@ export function ScoreForm({
   // Progress: how many items have been answered. An abstention counts — it is an answer
   // about the rater's evidence, not a blank.
   const values = useWatch({ control });
-  const answered = criteria.filter((c) => values?.[c.criterion_id]?.answer !== undefined).length;
+  const answered = items.filter((item) => values?.[item.quality_id]?.answer !== undefined).length;
 
   return (
     <form onSubmit={submit} className="space-y-8">
-      {criteria.map((criterion, index) => {
-        const fieldError = errors[criterion.criterion_id]?.answer?.message as string | undefined;
+      {items.map((item, index) => {
+        const fieldError = errors[item.quality_id]?.answer?.message as string | undefined;
         return (
           <fieldset
-            key={criterion.criterion_id}
+            key={item.quality_id}
             className="space-y-3 border-t pt-6 first:border-t-0 first:pt-0"
           >
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
-                  {index + 1}/{criteria.length}
+                  {index + 1}/{items.length}
                 </span>
                 {/* A Likert form is statements, not sections: the dimension is a grouping for
                     reports, and showing it here would only invite scoring the group. */}
-                {!likert ? <h3 className="font-medium">{criterion.dimension}</h3> : null}
+                {!likert ? <h3 className="font-medium">{item.dimension}</h3> : null}
               </div>
               <p className={cn("mt-1 text-sm", likert ? "text-foreground" : "text-muted-foreground")}>
-                {criterion.prompt}
+                {item.prompt}
               </p>
               {/* The cost of putting the declarations above the form: by item 3 they have
                   scrolled away. One line, no anchor — a reminder that the material is there. */}
-              {criterion.required_data.length > 0 && !preview ? (
+              {item.required_data.length > 0 && !preview ? (
                 <p className="mt-1.5 text-xs text-muted-foreground">
                   Rests on what the course declares, above.
                 </p>
               ) : null}
-              <GuidanceDisclosure guidance={criterion.guidance} likert={likert} />
+              <GuidanceDisclosure guidance={item.guidance} likert={likert} />
             </div>
 
             <Controller
               control={control}
-              name={`${criterion.criterion_id}.answer`}
+              name={`${item.quality_id}.answer`}
               render={({ field }) => (
                 <div>
                   {likert ? (
@@ -189,10 +189,10 @@ export function ScoreForm({
                       </div>
                       <div className="mt-1.5 flex justify-between text-xs text-muted-foreground">
                         <span>
-                          {scaleMin} · {criterion.anchor_low}
+                          {scaleMin} · {item.anchor_low}
                         </span>
                         <span>
-                          {criterion.anchor_high} · {scaleMax}
+                          {item.anchor_high} · {scaleMax}
                         </span>
                       </div>
                     </>
@@ -223,7 +223,7 @@ export function ScoreForm({
             <Textarea
               placeholder="Comment (optional)"
               rows={2}
-              {...register(`${criterion.criterion_id}.comment`)}
+              {...register(`${item.quality_id}.comment`)}
             />
           </fieldset>
         );
@@ -233,7 +233,7 @@ export function ScoreForm({
       <div className="sticky bottom-0 -mx-5 -mb-5 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-5 py-3 backdrop-blur">
         <p className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground">
-            {answered}/{criteria.length}
+            {answered}/{items.length}
           </span>{" "}
           answered
         </p>

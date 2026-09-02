@@ -28,7 +28,7 @@ export function DimensionProfile({ report }: { report: CampaignReport }) {
           </div>
           <ul className="divide-y">
             {group.items.map((item) => (
-              <ItemRow key={item.criterion_id} item={item} scale={scale} scope={report.quorum.contents_in_scope} />
+              <ItemRow key={item.quality_id} item={item} scale={scale} scope={report.quorum.contents_in_scope} />
             ))}
           </ul>
         </div>
@@ -55,7 +55,7 @@ function ItemRow({
 
   return (
     <li className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_10rem_4rem] sm:items-center">
-      <span className="min-w-0" title={item.criterion_id}>
+      <span className="min-w-0" title={item.quality_id}>
         <span className="block">{item.prompt}</span>
         <span className="block text-xs text-muted-foreground">
           {item.summary.scored_count} answers over {item.summary.answered_contents} of {scope}{" "}

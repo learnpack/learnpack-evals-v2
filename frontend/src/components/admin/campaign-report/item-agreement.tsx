@@ -31,7 +31,7 @@ export function ItemAgreement({ report }: { report: CampaignReport }) {
       </div>
       <ul className="divide-y">
         {rows.map((row) => (
-          <ItemEntry key={row.criterion_id} row={row} scope={report.quorum.contents_in_scope} />
+          <ItemEntry key={row.quality_id} row={row} scope={report.quorum.contents_in_scope} />
         ))}
       </ul>
     </section>
@@ -58,7 +58,7 @@ function ItemEntry({ row, scope }: { row: RankedItem; scope: number }) {
           )}
         />
         <span className="min-w-0 flex-1 space-y-1">
-          <span className="block" title={row.criterion_id}>
+          <span className="block" title={row.quality_id}>
             {row.prompt}
           </span>
           <span className="block text-xs text-muted-foreground">
@@ -90,7 +90,7 @@ function ItemEntry({ row, scope }: { row: RankedItem; scope: number }) {
         <div className="space-y-3 border-t bg-muted/20 px-4 py-3 text-sm">
           <p className="text-xs text-muted-foreground">
             <span className="uppercase tracking-wide">{row.dimension}</span> ·{" "}
-            <code className="text-xs">{row.criterion_id}</code>
+            <code className="text-xs">{row.quality_id}</code>
           </p>
 
           {unpaired ? (
