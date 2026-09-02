@@ -240,8 +240,9 @@ export interface AssignmentResponse {
   instrument_version_id: string;
 }
 
-export interface Criterion {
-  criterion_id: string;
+export interface RubricItem {
+  /** The id IS the quality this item asks about (ADR-0052 §1, ADR-0062). */
+  quality_id: string;
   order: number;
   dimension: string;
   prompt: string;
@@ -273,9 +274,9 @@ export interface AssignmentDetail {
    *  (ADR-0052). Decides which control the score form renders. */
   response_format: string;
   /** How many items this course's profile settles as undeclared, so they are not asked
-   *  (ADR-0053). `criteria` already excludes them; this is only so the screen can say so. */
+   *  (ADR-0053). `items` already excludes them; this is only so the screen can say so. */
   withheld_count: number;
-  criteria: Criterion[];
+  items: RubricItem[];
   /** Only the data the asked items rest on, where the course declares it (ADR-0057). */
   declared: DeclaredDatum[];
 }
@@ -299,7 +300,7 @@ export interface CourseSession {
 }
 
 export interface ScoreInput {
-  criterion_id: string;
+  quality_id: string;
   /** Null is an abstention — "I couldn't see enough of this course to judge this"
    *  (ADR-0052 §4). It is NOT the bottom of the scale, which is an answer. */
   score: number | null;
@@ -338,13 +339,12 @@ export interface ReferenceInstrumentResponse {
   scale_min: number;
   scale_max: number;
   response_format: string; // numeric | likert
-  criterion_count: number;
+  item_count: number;
 }
 
-/** One item of the reference instrument, whole. A superset of `Criterion`, so it can be
+/** One item of the reference instrument, whole. A superset of `RubricItem`, so it can be
  *  handed straight to `ScoreForm`. */
-export interface RubricCriterion extends Criterion {
-  qualities: string[];
+export interface RubricDetailItem extends RubricItem {
   grounded_in: string[];
   eligible_sources: string[];
 }
@@ -360,7 +360,7 @@ export interface RubricDetailResponse {
   scale_min: number;
   scale_max: number;
   response_format: string;
-  criteria: RubricCriterion[];
+  items: RubricDetailItem[];
 }
 
 // --- Datasets (ADR-0058) ---------------------------------------------------
@@ -497,7 +497,7 @@ export interface ItemSummary {
 }
 
 export interface CampaignReportItem {
-  criterion_id: string;
+  quality_id: string;
   order: number;
   dimension: string;
   /** The statement the assessor agreed or disagreed with. An id is not a question. */

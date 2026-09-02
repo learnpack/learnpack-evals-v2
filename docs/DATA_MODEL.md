@@ -37,9 +37,9 @@ erDiagram
 | identity | `assessors`, `assessor_invitations` |
 | course_session | `course_seats` |
 | evaluand_registry | `contents`, `content_package_artifacts`, `generators`, `generator_versions`, `generation_briefs` |
-| evaluation_design | `pedagogical_frameworks`, `pedagogical_dimensions`, `qualities`, `data_requirements`, `instrument_versions`, `instrument_claims`, `instrument_criteria`, `instrument_bindings`, `rubric_versions`, `criteria` |
+| evaluation_design | `pedagogical_frameworks`, `pedagogical_dimensions`, `qualities`, `data_requirements`, `instrument_versions`, `instrument_claims`, `instrument_criteria`, `instrument_bindings`, `rubric_versions`, `rubric_items` |
 | content_profiling | `content_profiles`, `profile_entries`, `profile_extras`, `extraction_acceptances` |
-| evaluation | `evaluations`, `criterion_scores`, `criterion_outcomes`, `computed_metrics`, `quality_judgments`, `judgment_claims`, `findings`, `assessor_ratifications` |
+| evaluation | `evaluations`, `item_scores`, `criterion_outcomes`, `computed_metrics`, `quality_judgments`, `judgment_claims`, `findings`, `assessor_ratifications` |
 | orchestration | `campaigns`, `campaign_contents`, `assignments`, `content_evaluation_completions` |
 | golden_dataset | `golden_references` |
 | datasets | `datasets`, `dataset_versions`, `dataset_version_members` |
@@ -161,9 +161,11 @@ deployment, not package bytes; `title` names the course for a reader and identif
 
 ## 4. evaluation_design
 
-Norm-side reference data and the Instrument aggregate. `rubric_versions` / `criteria` store
-the **human reference instrument** (the panel of ADR-0015 layer 1, one item per `Quality` —
-ADR-0052); new instruments live in `instrument_*`. `rubric_versions.response_format` says
+Norm-side reference data and the Instrument aggregate. `rubric_versions` / `rubric_items`
+store the **human reference instrument** (the panel of ADR-0015 layer 1, one item per
+`Quality` — ADR-0052); new instruments live in `instrument_*`. The two families are named
+apart on purpose (ADR-0062): `rubric_*` is what a human answers, `instrument_*` is the
+evidential argument, and only the second has `criteria`. `rubric_versions.response_format` says
 what the points of its scale mean (`numeric | likert`), which the range cannot.
 
 ```mermaid
@@ -172,7 +174,7 @@ erDiagram
     instrument_versions ||--o{ instrument_claims : "owns"
     instrument_versions ||--o{ instrument_criteria : "owns"
     instrument_versions ||--o{ instrument_bindings : "owns"
-    rubric_versions ||--o{ criteria : "owns"
+    rubric_versions ||--o{ rubric_items : "owns"
 
     pedagogical_frameworks {
         text id PK
@@ -262,16 +264,15 @@ erDiagram
         timestamptz published_at
     }
 
-    criteria {
+    rubric_items {
         text rubric_version_id PK_FK
-        text criterion_id PK
+        text quality_id PK "the item IS the quality it asks about"
         int ord
         text dimension
         text prompt
         text guidance
         text anchor_low
         text anchor_high
-        jsonb qualities
         jsonb grounded_in
         jsonb eligible_sources
         jsonb required_data "asked only if the content declares these"
@@ -281,6 +282,10 @@ erDiagram
 `instrument_criteria.required_data` and `instrument_claims.quality_ids` hold ids from the
 reference tables as JSONB (no FK). Domain rule (ADR-0026): a claim asserts about exactly
 one quality.
+
+`rubric_items.quality_id` is a `qualities.id` and carries no FK either — a cross-module
+reference like every other. It is the primary key rather than a lookup column (ADR-0052 §1),
+which is what makes the human/automated comparison a join and not a mapping exercise.
 
 ## 5. content_profiling
 
@@ -334,7 +339,7 @@ Unique coordinates: `(content_id, adapter_version)`. A non-`absent` entry requir
 erDiagram
     assessors ||--o{ evaluations : "assessor_id"
     content_profiles ||--o{ evaluations : "profile_id"
-    evaluations ||--o{ criterion_scores : "human path"
+    evaluations ||--o{ item_scores : "human path"
     evaluations ||--o{ criterion_outcomes : "automated path"
     evaluations ||--o{ computed_metrics : "measurements"
     evaluations ||--o| quality_judgments : "derived once"
@@ -354,9 +359,9 @@ erDiagram
         timestamptz submitted_at
     }
 
-    criterion_scores {
+    item_scores {
         uuid evaluation_id PK_FK
-        text criterion_id PK
+        text quality_id PK
         int score "1..5, null = not scored"
         text comment
         bool derived "the mechanics answered, not a person"

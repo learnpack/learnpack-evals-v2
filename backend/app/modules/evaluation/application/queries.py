@@ -1,6 +1,6 @@
 """Read-only query port of Evaluation.
 
-Evaluation owns the `CriterionScore`s, so it is the only module that may serve them
+Evaluation owns the `ItemScore`s, so it is the only module that may serve them
 (ADR-0006: Reporting composes through query ports, it does not JOIN across modules).
 """
 

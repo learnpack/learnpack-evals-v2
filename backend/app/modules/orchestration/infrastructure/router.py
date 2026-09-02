@@ -122,8 +122,8 @@ class CampaignProgressResponse(BaseModel):
     contents: list[ContentProgressResponse]
 
 
-class CriterionResponse(BaseModel):
-    criterion_id: str
+class RubricItemResponse(BaseModel):
+    quality_id: str
     order: int
     dimension: str
     prompt: str
@@ -169,7 +169,7 @@ class AssignmentDetailResponse(BaseModel):
     # (ADR-0053). The screen says so in one neutral line; it never says which generator made
     # a course, and the count is not a property of one.
     withheld_count: int
-    criteria: list[CriterionResponse]
+    items: list[RubricItemResponse]
     # Only the data the asked items rest on, and only where the course declares it — never
     # the profile at large, which also holds the whole course text (ADR-0057 §1).
     declared: list[DeclaredDatumResponse]
@@ -478,24 +478,24 @@ def assignment_detail(
         content_id=snapshot.content_id,
         content_title=snapshot.title,
         consumable_url=snapshot.consumable_url,
-        # RubricSnapshot keeps the slice 1 name (ADR-0015); the public JSON speaks instrument.
+        # The snapshot is a rubric version; the public JSON speaks instrument (ADR-0056).
         instrument_version_id=rubric.rubric_version_id,
         scale_min=rubric.scale_min,
         scale_max=rubric.scale_max,
         response_format=rubric.response_format,
         withheld_count=len(rubric.withheld(declared)),
-        criteria=[
-            CriterionResponse(
-                criterion_id=c.criterion_id,
-                order=c.order,
-                dimension=c.dimension,
-                prompt=c.prompt,
-                guidance=c.guidance,
-                anchor_low=c.anchor_low,
-                anchor_high=c.anchor_high,
-                required_data=list(c.required_data),
+        items=[
+            RubricItemResponse(
+                quality_id=item.quality_id,
+                order=item.order,
+                dimension=item.dimension,
+                prompt=item.prompt,
+                guidance=item.guidance,
+                anchor_low=item.anchor_low,
+                anchor_high=item.anchor_high,
+                required_data=list(item.required_data),
             )
-            for c in asked
+            for item in asked
         ],
         declared=[
             DeclaredDatumResponse(requirement_id=datum, value=values[datum])

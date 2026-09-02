@@ -2,7 +2,7 @@
 
 Reporting and Golden Dataset consume these; they never import `evaluation.domain`.
 Names follow GLOSSARY.md: an `Evaluation` is the act (with its coordinates), and it carries
-an `EvaluationResult` — the set of `CriterionScore`.
+an `EvaluationResult` — the set of `ItemScore`.
 """
 
 from dataclasses import dataclass, field
@@ -12,10 +12,10 @@ from uuid import UUID
 
 
 @dataclass(frozen=True)
-class CriterionScoreDTO:
-    """Four states out of `score` + `derived` — see `CriterionScore` (ADR-0052, ADR-0053)."""
+class ItemScoreDTO:
+    """Four states out of `score` + `derived` — see `ItemScore` (ADR-0052, ADR-0053)."""
 
-    criterion_id: str
+    quality_id: str
     score: int | None
     comment: str | None = None
     derived: bool = False
@@ -27,13 +27,13 @@ class EvaluationDTO:
     assessor_id: UUID
     content_id: UUID
     instrument_version_id: str
-    scores: list[CriterionScoreDTO]
+    scores: list[ItemScoreDTO]
     attempt: int = 1
     submitted_at: datetime | None = None
 
-    def score_for(self, criterion_id: str) -> int | None:
+    def score_for(self, quality_id: str) -> int | None:
         for score in self.scores:
-            if score.criterion_id == criterion_id:
+            if score.quality_id == quality_id:
                 return score.score
         return None
 

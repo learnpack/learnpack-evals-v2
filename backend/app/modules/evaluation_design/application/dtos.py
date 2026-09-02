@@ -19,15 +19,16 @@ PROVENANCE_ABSENT = "absent"
 
 
 @dataclass(frozen=True)
-class CriterionDTO:
-    criterion_id: str
+class RubricItemDTO:
+    # The id IS the quality this item asks about (ADR-0052 §1, ADR-0062): a primary key
+    # rather than a lookup, which is what makes the human/automated comparison a join.
+    quality_id: str
     order: int
     dimension: str
     prompt: str
     guidance: str
     anchor_low: str
     anchor_high: str
-    qualities: list[str]
     grounded_in: list[str]
     eligible_sources: list[str]
     # data_requirement ids from the same demand-side namespace the automated instrument uses
@@ -118,7 +119,7 @@ class RubricSummaryDTO:
     scale_min: int
     scale_max: int
     response_format: str
-    criterion_count: int
+    item_count: int
 
 
 @dataclass(frozen=True)
@@ -134,12 +135,12 @@ class RubricSnapshot:
     # `numeric | likert` — what the five points MEAN, which the range alone cannot say
     # (ADR-0052 §3). The evaluator screen picks its control from this.
     response_format: str
-    criteria: list[CriterionDTO]
+    items: list[RubricItemDTO]
 
     @property
-    def criterion_ids(self) -> list[str]:
+    def quality_ids(self) -> list[str]:
         """The exact set an `Evaluation` must cover (07-define.md, invariant 1)."""
-        return [c.criterion_id for c in self.criteria]
+        return [item.quality_id for item in self.items]
 
     @property
     def is_published(self) -> bool:
@@ -173,14 +174,14 @@ class RubricSnapshot:
         if not provenances:
             return {}
         withheld: dict[str, int | None] = {}
-        for criterion in self.criteria:
-            if any(datum not in provenances for datum in criterion.required_data):
-                withheld[criterion.criterion_id] = None
-            elif any(provenances[datum] == PROVENANCE_ABSENT for datum in criterion.required_data):
-                withheld[criterion.criterion_id] = self.scale_min
+        for item in self.items:
+            if any(datum not in provenances for datum in item.required_data):
+                withheld[item.quality_id] = None
+            elif any(provenances[datum] == PROVENANCE_ABSENT for datum in item.required_data):
+                withheld[item.quality_id] = self.scale_min
         return withheld
 
-    def asked(self, provenances: Mapping[str, str]) -> list[CriterionDTO]:
+    def asked(self, provenances: Mapping[str, str]) -> list[RubricItemDTO]:
         """The items this content's rater actually answers — everything not withheld."""
         withheld = self.withheld(provenances)
-        return [c for c in self.criteria if c.criterion_id not in withheld]
+        return [item for item in self.items if item.quality_id not in withheld]

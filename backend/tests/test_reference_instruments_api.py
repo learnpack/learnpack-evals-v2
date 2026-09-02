@@ -25,14 +25,14 @@ def admin(as_user, cleanup, promote, unique):
 
 @pytest.fixture
 def reference_version(requires_db):
-    """Insert extra `rubric_versions`, with their criteria, and take them away again.
+    """Insert extra `rubric_versions`, with their items, and take them away again.
 
     `cleanup` has no bucket for these — the seeded version is the only one the suite has
-    ever needed — so this fixture owns the teardown: criteria first, then the version.
+    ever needed — so this fixture owns the teardown: items first, then the version.
     """
     created: list[str] = []
 
-    def _make(version_id: str, status: str, criteria: int = 2) -> str:
+    def _make(version_id: str, status: str, items: int = 2) -> str:
         with SessionLocal() as session:
             session.execute(
                 text(
@@ -51,16 +51,16 @@ def reference_version(requires_db):
                     "status": status,
                 },
             )
-            for index in range(criteria):
+            for index in range(items):
                 session.execute(
                     text(
                         """
-                        INSERT INTO criteria
-                            (rubric_version_id, criterion_id, ord, dimension, prompt,
-                             guidance, anchor_low, anchor_high, qualities, grounded_in,
+                        INSERT INTO rubric_items
+                            (rubric_version_id, quality_id, ord, dimension, prompt,
+                             guidance, anchor_low, anchor_high, grounded_in,
                              eligible_sources, required_data)
                         VALUES (:v, :c, :ord, 'clarity', 'prompt', 'guidance', 'low', 'high',
-                                '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb)
+                                '[]'::jsonb, '[]'::jsonb, '[]'::jsonb)
                         """
                     ),
                     {"v": version_id, "c": f"item-{index}", "ord": index},
@@ -74,7 +74,7 @@ def reference_version(requires_db):
     with SessionLocal() as session:
         for version_id in created:
             session.execute(
-                text("DELETE FROM criteria WHERE rubric_version_id = :id"), {"id": version_id}
+                text("DELETE FROM rubric_items WHERE rubric_version_id = :id"), {"id": version_id}
             )
             session.execute(text("DELETE FROM rubric_versions WHERE id = :id"), {"id": version_id})
         session.commit()
@@ -90,16 +90,16 @@ def test_lists_the_seeded_reference_instrument(admin):
     assert (row["scale_min"], row["scale_max"]) == (1, 5)
     assert row["response_format"] == "likert"
     # The count is what lets somebody tell two versions apart without opening either.
-    assert row["criterion_count"] == 12
+    assert row["item_count"] == 12
 
 
 def test_a_second_published_version_is_offered_alongside_the_first(admin, reference_version):
     """The plural is the point of the endpoint, so it is pinned rather than assumed."""
-    second = reference_version("learnpack-pedagogical-test-v98", "published", criteria=3)
+    second = reference_version("learnpack-pedagogical-test-v98", "published", items=3)
 
     listed = {r["rubric_version_id"]: r for r in admin.get(ENDPOINT).json()}
     assert SEEDED in listed
-    assert listed[second]["criterion_count"] == 3
+    assert listed[second]["item_count"] == 3
 
 
 def test_a_draft_version_is_not_offered(admin, reference_version):
@@ -119,15 +119,14 @@ def test_the_detail_returns_every_item_with_what_grounds_it(admin):
     assert body["response_format"] == "likert"
     assert body["scope"]
 
-    criteria = body["criteria"]
-    assert len(criteria) == 12
-    assert [c["order"] for c in criteria] == sorted(c["order"] for c in criteria)
+    items = body["items"]
+    assert len(items) == 12
+    assert [i["order"] for i in items] == sorted(i["order"] for i in items)
 
-    first = criteria[0]
-    assert first["criterion_id"] == "objectives-observable"
+    first = items[0]
+    # One item per quality (ADR-0052 §1, ADR-0062): the item's own id IS the quality.
+    assert first["quality_id"] == "objectives-observable"
     assert first["prompt"] and first["guidance"]
-    # One item per quality (ADR-0052): the item's own id IS the quality it elicits.
-    assert first["qualities"] == ["objectives-observable"]
     assert first["grounded_in"] == ["Biggs", "Revised Bloom"]
     # What decides whether this item is put to a human at all (ADR-0053).
     assert first["required_data"] == ["learning_objectives"]
@@ -140,11 +139,11 @@ def test_the_detail_of_an_unknown_instrument_is_404(admin):
 def test_a_draft_can_be_read_even_though_it_is_not_offered(admin, reference_version):
     """Reading what a version asks is not opening a campaign against it — that is the whole
     reason to read a draft."""
-    draft = reference_version("learnpack-pedagogical-test-v97", "draft", criteria=2)
+    draft = reference_version("learnpack-pedagogical-test-v97", "draft", items=2)
 
     body = admin.get(f"{ENDPOINT}/{draft}").json()
     assert body["status"] == "draft"
-    assert len(body["criteria"]) == 2
+    assert len(body["items"]) == 2
 
 
 def test_reading_one_requires_admin(as_user, cleanup, unique):

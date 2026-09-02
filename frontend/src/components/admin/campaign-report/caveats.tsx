@@ -56,7 +56,7 @@ export function Caveats({ report }: { report: CampaignReport }) {
             </p>
             <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
               {partial.map((item) => (
-                <li key={item.criterionId}>
+                <li key={item.qualityId}>
                   <span className="text-foreground">{item.prompt}</span> — asked on {item.asked}{" "}
                   of {item.of} courses
                 </li>

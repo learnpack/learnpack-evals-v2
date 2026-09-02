@@ -130,7 +130,9 @@
   ADR-0010 shape — it is the **reference instrument** of calibration (layer 1): holistic
   elicitation for the human panel, **one item per `Quality`**, answered as agreement with a
   statement on a uniform 1–5 scale. That grain is what makes ADR-0015 §4's per-claim
-  coefficient computable, since a claim asserts about exactly one quality (ADR-0026). Its
+  coefficient computable, since a claim asserts about exactly one quality (ADR-0026). An
+  item therefore **is** its quality and is named by it (`qualityId`, ADR-0062): the word
+  `Criterion` belongs to the automated instrument and never to this one. Its
   stability is a feature — a reference that changes is no reference — and it is honoured by
   **versioning** it: from its first reference campaign, a version is frozen.
 
@@ -331,8 +333,9 @@
   (`not_applicable`) · datum absent from the content (`no_evidence`) · assessor with no
   executor for the criterion (`not_assessed`) · this run's execution failed on it
   (`execution_error` — a fact of the run, never of the content; re-evaluating replaces it).
-  (The 1–5 score survives in the **reference panel** flow — ADR-0015, ADR-0052 — where
-  `score` + `derived` give **four states**: a judgement (`1–5`, not derived) · the assessor's
+  (The 1–5 score survives in the **reference panel** flow as an **`ItemScore`**, a different
+  record on the human path — ADR-0015, ADR-0052, ADR-0062 — keyed by the `qualityId` of the
+  item it answers, where `score` + `derived` give **four states**: a judgement (`1–5`, not derived) · the assessor's
   abstention, *I could not see enough of this course to judge this* (null, not derived) · an
   item that **does not apply** to this content's format, because no adapter declares the
   datum it is about (null, derived — ADR-0053) · an item the course **could have declared and
@@ -340,7 +343,7 @@
   abstention wearing a number, and nothing that reports what humans said averages a derived
   row. Which items an assessor is asked at all is decided from the content's profile by
   `RubricSnapshot.withheld`, the one definition both the screen and the submit path read.)
-- **EvaluationResult** — the set of `CriterionScore`s (+ comments) of an `Evaluation`.
+- **EvaluationResult** — the set of `ItemScore`s (+ comments) of one human `Evaluation`.
 - **QualityJudgment** — the published quality judgment on a content: a **per-criterion
   profile** (never a single aggregated score, ADR-0011) + **coverage** (assessed / not
   applicable / no evidence / no capable assessor / execution failed — ADR-0018, ADR-0037) +
@@ -403,10 +406,13 @@
   `usable` when it reaches a minimum coverage (`coverage ≥ threshold`); each content
   requires a quorum of **N=2–3** human evaluations.
 - **Calibration** — adjustment/validation of automated sources against the human reference,
-  keyed by **`(Assessor, Criterion)`** (not by the abstract type): a concrete configuration is
-  calibrated, criterion by criterion.
+  keyed by **`(Assessor, Claim)`** (not by the abstract type): a concrete configuration is
+  calibrated, claim by claim. **The claim, not the criterion** (ADR-0062): criteria do not
+  reference qualities — the chain is `criterion → claim → quality` — so a criterion has no
+  human number of its own and only reaches one through its claim, which asserts about exactly
+  one quality (ADR-0026) and meets the reference instrument's item on that id.
 - **CalibrationProfile** (aka `SourceCalibration`) — the output of calibration: the agreement
-  of an `Assessor` with the reference, per criterion. It *qualifies* (does not enable) that
+  of an `Assessor` with the reference, per claim. It *qualifies* (does not enable) that
   `Assessor`'s future evaluations, via `assessorCalibrationStatus` in the provenance of the
   `QualityJudgment`.
 

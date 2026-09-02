@@ -379,7 +379,7 @@ def cleanup(requires_db) -> Iterator[dict[str, list]]:
         for content_id in created["contents"]:
             s.execute(
                 text(
-                    "DELETE FROM criterion_scores WHERE evaluation_id IN "
+                    "DELETE FROM item_scores WHERE evaluation_id IN "
                     "(SELECT id FROM evaluations WHERE content_id = :id)"
                 ),
                 {"id": content_id},

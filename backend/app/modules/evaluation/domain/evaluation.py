@@ -21,8 +21,12 @@ class InvalidEvaluation(Exception):
 
 
 @dataclass(frozen=True)
-class CriterionScore:
-    """A judgement on one criterion. Distinct from a `ComputedMetric` (a raw measurement).
+class ItemScore:
+    """A judgement on one item of the reference instrument, i.e. on one quality.
+
+    Distinct from a `ComputedMetric` (a raw measurement) and from a `CriterionOutcome` (the
+    automated path): the id here is a `qualityId`, because the item IS the quality it asks
+    about (ADR-0052 §1, ADR-0062).
 
     Four states, out of two fields (ADR-0052 §4, ADR-0053 §3):
 
@@ -39,38 +43,38 @@ class CriterionScore:
     answer -- never an abstention wearing a number.
     """
 
-    criterion_id: str
+    quality_id: str
     score: int | None
     comment: str | None = None
     derived: bool = False
 
     def __post_init__(self) -> None:
-        if not self.criterion_id or not self.criterion_id.strip():
-            raise InvalidEvaluation("criterion_id is required")
+        if not self.quality_id or not self.quality_id.strip():
+            raise InvalidEvaluation("quality_id is required")
         if self.score is None:
             return
         # bool is an int subclass — reject it explicitly.
         if isinstance(self.score, bool) or not isinstance(self.score, int):
-            raise InvalidEvaluation(f"score for '{self.criterion_id}' must be an integer")
+            raise InvalidEvaluation(f"score for '{self.quality_id}' must be an integer")
         if not SCORE_MIN <= self.score <= SCORE_MAX:
             raise InvalidEvaluation(
-                f"score for '{self.criterion_id}' must be between "
+                f"score for '{self.quality_id}' must be between "
                 f"{SCORE_MIN} and {SCORE_MAX}, got {self.score}"
             )
 
 
 @dataclass(frozen=True)
 class EvaluationResult:
-    """The set of `CriterionScore` of one evaluation."""
+    """The set of `ItemScore` of one evaluation."""
 
-    scores: list[CriterionScore]
+    scores: list[ItemScore]
 
-    def covers_exactly(self, criterion_ids: list[str]) -> bool:
-        return {s.criterion_id for s in self.scores} == set(criterion_ids)
+    def covers_exactly(self, quality_ids: list[str]) -> bool:
+        return {s.quality_id for s in self.scores} == set(quality_ids)
 
-    def score_for(self, criterion_id: str) -> int | None:
+    def score_for(self, quality_id: str) -> int | None:
         for score in self.scores:
-            if score.criterion_id == criterion_id:
+            if score.quality_id == quality_id:
                 return score.score
         return None
 
@@ -95,33 +99,33 @@ class Evaluation:
         assessor_id: UUID,
         content_id: UUID,
         instrument_version_id: str,
-        scores: list[CriterionScore],
-        rubric_criterion_ids: list[str],
+        scores: list[ItemScore],
+        rubric_quality_ids: list[str],
         attempt: int = 1,
     ) -> "Evaluation":
         """Build a submitted evaluation, enforcing every invariant.
 
-        `rubric_criterion_ids` arrives as plain data, so this aggregate never depends on the
+        `rubric_quality_ids` arrives as plain data, so this aggregate never depends on the
         Rubric Authoring module (ARCHITECTURE.md §3).
         """
-        if not rubric_criterion_ids:
-            raise InvalidEvaluation("the rubric version has no criteria")
+        if not rubric_quality_ids:
+            raise InvalidEvaluation("the rubric version has no items")
 
-        duplicates = {s.criterion_id for s in scores if _count(scores, s.criterion_id) > 1}
+        duplicates = {s.quality_id for s in scores if _count(scores, s.quality_id) > 1}
         if duplicates:
-            raise InvalidEvaluation(f"duplicated criterion scores: {sorted(duplicates)}")
+            raise InvalidEvaluation(f"duplicated item scores: {sorted(duplicates)}")
 
         result = EvaluationResult(scores=list(scores))
-        if not result.covers_exactly(rubric_criterion_ids):
-            missing = sorted(set(rubric_criterion_ids) - {s.criterion_id for s in scores})
-            extra = sorted({s.criterion_id for s in scores} - set(rubric_criterion_ids))
+        if not result.covers_exactly(rubric_quality_ids):
+            missing = sorted(set(rubric_quality_ids) - {s.quality_id for s in scores})
+            extra = sorted({s.quality_id for s in scores} - set(rubric_quality_ids))
             details = []
             if missing:
                 details.append(f"missing {missing}")
             if extra:
                 details.append(f"unexpected {extra}")
             raise InvalidEvaluation(
-                "scores must cover exactly the rubric criteria: " + ", ".join(details)
+                "scores must cover exactly the rubric items: " + ", ".join(details)
             )
 
         now = datetime.now(UTC)
@@ -141,5 +145,5 @@ class Evaluation:
         return self.submitted_at is not None
 
 
-def _count(scores: list[CriterionScore], criterion_id: str) -> int:
-    return sum(1 for s in scores if s.criterion_id == criterion_id)
+def _count(scores: list[ItemScore], quality_id: str) -> int:
+    return sum(1 for s in scores if s.quality_id == quality_id)

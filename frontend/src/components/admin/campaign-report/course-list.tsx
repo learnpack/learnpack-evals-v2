@@ -131,13 +131,13 @@ function SideBySide({
         </thead>
         <tbody className="divide-y">
           {items.map((item) => (
-            <tr key={item.criterion_id} className="align-top">
-              <td className="py-2 pr-3" title={item.criterion_id}>
+            <tr key={item.quality_id} className="align-top">
+              <td className="py-2 pr-3" title={item.quality_id}>
                 {item.prompt}
               </td>
               {evaluations.map((evaluation) => {
                 const answer = evaluation.scores.find(
-                  (s) => s.criterion_id === item.criterion_id,
+                  (s) => s.quality_id === item.quality_id,
                 );
                 return (
                   <td key={evaluation.evaluation_id} className="py-2 pr-3">

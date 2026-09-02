@@ -9,7 +9,7 @@ from conftest import open_campaign_over
 
 RUBRIC = "learnpack-pedagogical-2.0.0"
 COURSE_URL = "https://introduction-to-generative-ai.learn-pack.com/"
-CRITERIA = [
+QUALITIES = [
     "objectives-observable",
     "progression-starting-point",
     "alignment-coverage",
@@ -26,9 +26,7 @@ CRITERIA = [
 
 
 def scores(value: int = 4, **overrides) -> list[dict]:
-    return [
-        {"criterion_id": c, "score": overrides.get(c, value), "comment": None} for c in CRITERIA
-    ]
+    return [{"quality_id": c, "score": overrides.get(c, value), "comment": None} for c in QUALITIES]
 
 
 @pytest.fixture

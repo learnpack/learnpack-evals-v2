@@ -77,10 +77,10 @@ Evaluations = Annotated[EvaluationQueries, Depends(get_evaluation_queries)]
 
 
 class ScoreRequest(BaseModel):
-    criterion_id: str
+    quality_id: str
     # Null is the abstention — the assessor answered "I could not judge this" (ADR-0052 §4)
     # — and it is REQUIRED, not defaulted: an omitted field would let silence mean an
-    # abstention, and silence is never evidence. Every criterion of the instrument still
+    # abstention, and silence is never evidence. Every item of the instrument still
     # travels; exact coverage is an invariant of the aggregate.
     score: Annotated[int, Field(ge=1, le=5)] | None
     comment: str | None = None
@@ -100,7 +100,7 @@ class ScoreResponse(BaseModel):
     launder a judgement into a fact.
     """
 
-    criterion_id: str
+    quality_id: str
     score: int | None
     comment: str | None = None
     derived: bool = False
@@ -163,17 +163,17 @@ def submit_evaluation(
                 content_id=assignment.content_id,
                 instrument_version_id=assignment.instrument_version_id,
                 scores=[
-                    ScoreInput(criterion_id=s.criterion_id, score=s.score, comment=s.comment)
+                    ScoreInput(quality_id=s.quality_id, score=s.score, comment=s.comment)
                     for s in request.scores
-                    if s.criterion_id not in withheld
+                    if s.quality_id not in withheld
                 ]
                 + [
-                    ScoreInput(criterion_id=criterion_id, score=score, derived=True)
-                    for criterion_id, score in withheld.items()
+                    ScoreInput(quality_id=quality_id, score=score, derived=True)
+                    for quality_id, score in withheld.items()
                 ],
-                # Still every criterion of the instrument: exact coverage is an invariant of
-                # the aggregate, and a withheld item is covered by its derived row.
-                rubric_criterion_ids=rubric.criterion_ids,
+                # Still every item of the instrument: exact coverage is an invariant of the
+                # aggregate, and a withheld item is covered by its derived row.
+                rubric_quality_ids=rubric.quality_ids,
             )
         )
     except InvalidEvaluation as exc:
@@ -188,7 +188,7 @@ def submit_evaluation(
         instrument_version_id=evaluation.instrument_version_id,
         scores=[
             ScoreResponse(
-                criterion_id=s.criterion_id,
+                quality_id=s.quality_id,
                 score=s.score,
                 comment=s.comment,
                 derived=s.derived,

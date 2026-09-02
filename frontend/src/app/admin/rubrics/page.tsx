@@ -63,7 +63,7 @@ export default function RubricsPage() {
                         <div className="font-medium">{r.name}</div>
                         <div className="text-xs text-muted-foreground">{r.rubric_version_id}</div>
                       </TableCell>
-                      <TableCell>{r.criterion_count}</TableCell>
+                      <TableCell>{r.item_count}</TableCell>
                       <TableCell className="text-sm">
                         {r.response_format} {r.scale_min}–{r.scale_max}
                       </TableCell>

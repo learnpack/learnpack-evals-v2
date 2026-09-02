@@ -313,7 +313,7 @@ def _rubric_version_id(rubric: dict[str, Any]) -> str:
 
 
 def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
-    """Upsert frameworks + the published rubric version + its criteria. Idempotent."""
+    """Upsert frameworks + the published rubric version + its items. Idempotent."""
     for framework in rubric["frameworks"]:
         session.execute(
             text(
@@ -360,26 +360,25 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
         },
     )
 
-    for criterion in rubric["criteria"]:
+    for item in rubric["items"]:
         session.execute(
             text(
                 """
-                INSERT INTO criteria
-                    (rubric_version_id, criterion_id, ord, dimension, prompt, guidance,
-                     anchor_low, anchor_high, qualities, grounded_in, eligible_sources,
+                INSERT INTO rubric_items
+                    (rubric_version_id, quality_id, ord, dimension, prompt, guidance,
+                     anchor_low, anchor_high, grounded_in, eligible_sources,
                      required_data)
                 VALUES
-                    (:rubric_version_id, :criterion_id, :ord, :dimension, :prompt, :guidance,
-                     :anchor_low, :anchor_high, :qualities, :grounded_in, :eligible_sources,
+                    (:rubric_version_id, :quality_id, :ord, :dimension, :prompt, :guidance,
+                     :anchor_low, :anchor_high, :grounded_in, :eligible_sources,
                      :required_data)
-                ON CONFLICT (rubric_version_id, criterion_id) DO UPDATE SET
+                ON CONFLICT (rubric_version_id, quality_id) DO UPDATE SET
                     ord = excluded.ord,
                     dimension = excluded.dimension,
                     prompt = excluded.prompt,
                     guidance = excluded.guidance,
                     anchor_low = excluded.anchor_low,
                     anchor_high = excluded.anchor_high,
-                    qualities = excluded.qualities,
                     grounded_in = excluded.grounded_in,
                     eligible_sources = excluded.eligible_sources,
                     required_data = excluded.required_data
@@ -387,18 +386,18 @@ def seed_rubric(session: Session, rubric: dict[str, Any]) -> None:
             ),
             {
                 "rubric_version_id": version_id,
-                "criterion_id": criterion["criterionId"],
-                "ord": criterion["order"],
-                "dimension": criterion["dimension"],
-                "prompt": criterion["prompt"],
-                "guidance": criterion["guidance"],
-                "anchor_low": criterion.get("anchorLow", scale["anchorLow"]),
-                "anchor_high": criterion.get("anchorHigh", scale["anchorHigh"]),
-                "qualities": json.dumps(criterion["qualities"]),
-                "grounded_in": json.dumps(criterion["groundedIn"]),
-                "eligible_sources": json.dumps(criterion["eligibleSources"]),
+                # The id *is* the quality (ADR-0052 §1, ADR-0062).
+                "quality_id": item["qualityId"],
+                "ord": item["order"],
+                "dimension": item["dimension"],
+                "prompt": item["prompt"],
+                "guidance": item["guidance"],
+                "anchor_low": item.get("anchorLow", scale["anchorLow"]),
+                "anchor_high": item.get("anchorHigh", scale["anchorHigh"]),
+                "grounded_in": json.dumps(item["groundedIn"]),
+                "eligible_sources": json.dumps(item["eligibleSources"]),
                 # Absent means the item is asked of everybody (ADR-0053).
-                "required_data": json.dumps(criterion.get("requiredData", [])),
+                "required_data": json.dumps(item.get("requiredData", [])),
             },
         )
 
@@ -466,8 +465,8 @@ def run_seed(seed_file: Path, reference_file: Path = DEFAULT_REFERENCE_FILE) -> 
         seed_reference_data(session, reference)
         session.commit()
 
-        criteria_count = session.execute(
-            text("SELECT count(*) FROM criteria WHERE rubric_version_id = :id"),
+        item_count = session.execute(
+            text("SELECT count(*) FROM rubric_items WHERE rubric_version_id = :id"),
             {"id": _rubric_version_id(rubric)},
         ).scalar_one()
         frameworks_count = session.execute(
@@ -480,7 +479,7 @@ def run_seed(seed_file: Path, reference_file: Path = DEFAULT_REFERENCE_FILE) -> 
 
     print(
         f"seeded {rubric['name']} ({_rubric_version_id(rubric)}): "
-        f"{criteria_count} criteria, {frameworks_count} frameworks, "
+        f"{item_count} items, {frameworks_count} frameworks, "
         f"{dimensions_count} dimensions, {qualities_count} qualities"
     )
 
@@ -3975,7 +3974,7 @@ def _reset_demo(session: Session) -> None:
     """
     for statement in (
         "DELETE FROM studies",  # recipe/dataset/report cascade; before contents (stale refs)
-        "DELETE FROM criterion_scores",
+        "DELETE FROM item_scores",
         "DELETE FROM evaluations",
         "DELETE FROM content_evaluation_completions",
         "DELETE FROM golden_references",

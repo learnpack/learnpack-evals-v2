@@ -28,8 +28,8 @@ def test_seed_is_idempotent(requires_db):
     run_seed(DEFAULT_SEED_FILE)
 
     with SessionLocal() as session:
-        criteria = session.execute(
-            text("SELECT count(*) FROM criteria WHERE rubric_version_id = :id"),
+        item_count = session.execute(
+            text("SELECT count(*) FROM rubric_items WHERE rubric_version_id = :id"),
             {"id": RUBRIC_VERSION_ID},
         ).scalar_one()
         frameworks = session.execute(
@@ -42,7 +42,7 @@ def test_seed_is_idempotent(requires_db):
         order = (
             session.execute(
                 text(
-                    "SELECT criterion_id FROM criteria WHERE rubric_version_id = :id ORDER BY ord"
+                    "SELECT quality_id FROM rubric_items WHERE rubric_version_id = :id ORDER BY ord"
                 ),
                 {"id": RUBRIC_VERSION_ID},
             )
@@ -54,7 +54,7 @@ def test_seed_is_idempotent(requires_db):
             {"id": RUBRIC_VERSION_ID},
         ).scalar_one()
 
-    assert criteria == 12
+    assert item_count == 12
     assert frameworks == 6
     assert status == "published"
     assert response_format == "likert"

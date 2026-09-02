@@ -28,7 +28,7 @@ Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
 
 
 class ScoreDetailResponse(BaseModel):
-    criterion_id: str
+    quality_id: str
     # Null is an abstention — see `ScoreDetailDTO`.
     score: int | None
     comment: str | None
@@ -134,7 +134,7 @@ class ItemSummaryResponse(BaseModel):
 
 
 class ItemReportResponse(BaseModel):
-    criterion_id: str
+    quality_id: str
     order: int
     dimension: str
     prompt: str
@@ -247,7 +247,7 @@ def campaign_report_endpoint(
         ),
         items=[
             ItemReportResponse(
-                criterion_id=item.criterion_id,
+                quality_id=item.quality_id,
                 order=item.order,
                 dimension=item.dimension,
                 prompt=item.prompt,
@@ -292,7 +292,7 @@ def campaign_report_endpoint(
                         superseded=e.superseded,
                         scores=[
                             ScoreDetailResponse(
-                                criterion_id=s.criterion_id,
+                                quality_id=s.quality_id,
                                 score=s.score,
                                 comment=s.comment,
                                 derived=s.derived,

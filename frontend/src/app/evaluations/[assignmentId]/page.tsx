@@ -46,7 +46,7 @@ export default function AssignmentPage({
   }, [assignment, alreadyDone, assignmentId, markOpened]);
 
   function handleSubmit(
-    scores: { criterion_id: string; score: number | null; comment: string | null }[],
+    scores: { quality_id: string; score: number | null; comment: string | null }[],
   ) {
     submitEvaluation.mutate(
       { assignment_id: assignmentId, scores },
@@ -156,7 +156,7 @@ export default function AssignmentPage({
                   <DeclaredData declared={assignment.declared} />
                   <CollapsibleSection
                     title="Score"
-                    badge={`${assignment.criteria.length} items`}
+                    badge={`${assignment.items.length} items`}
                   >
                     {assignment.withheld_count > 0 ? (
                       /* Said, rather than left as a silent gap: an evaluator who scores two
@@ -169,7 +169,7 @@ export default function AssignmentPage({
                       </p>
                     ) : null}
                     <ScoreForm
-                      criteria={[...assignment.criteria].sort((a, b) => a.order - b.order)}
+                      items={[...assignment.items].sort((a, b) => a.order - b.order)}
                       scaleMin={assignment.scale_min}
                       scaleMax={assignment.scale_max}
                       responseFormat={assignment.response_format}

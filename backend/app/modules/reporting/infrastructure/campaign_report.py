@@ -58,7 +58,7 @@ class QuorumDTO:
 
 @dataclass(frozen=True)
 class ItemReportDTO:
-    criterion_id: str
+    quality_id: str
     order: int
     dimension: str
     # The statement the assessor agreed or disagreed with. Carried because an id is not a
@@ -72,7 +72,7 @@ class ItemReportDTO:
 
 @dataclass(frozen=True)
 class ScoreDetailDTO:
-    criterion_id: str
+    quality_id: str
     score: int | None
     comment: str | None
     derived: bool
@@ -119,7 +119,7 @@ class InstrumentUnavailable(Exception):
 
     Not a 404 about the campaign: the campaign exists and its pin is exactly what ADR-0056
     fixed at open. Reporting cannot say what the items were, and saying so is better than
-    composing a report of criterion ids with no questions attached.
+    composing a report of quality ids with no questions attached.
     """
 
 
@@ -180,14 +180,14 @@ def build_campaign_report(
 
     items = [
         ItemReportDTO(
-            criterion_id=criterion.criterion_id,
-            order=criterion.order,
-            dimension=criterion.dimension,
-            prompt=criterion.prompt,
-            required_data=list(criterion.required_data),
+            quality_id=item.quality_id,
+            order=item.order,
+            dimension=item.dimension,
+            prompt=item.prompt,
+            required_data=list(item.required_data),
             summary=campaign_report.summarise_item(
                 [
-                    _answers_for(counted[content_id], criterion.criterion_id)
+                    _answers_for(counted[content_id], item.quality_id)
                     for content_id in campaign.content_ids
                 ],
                 rubric.scale_min,
@@ -196,7 +196,7 @@ def build_campaign_report(
         )
         # Every item of the pinned version, in its own order — including one nobody answered
         # (ADR-0060 §3).
-        for criterion in sorted(rubric.criteria, key=lambda c: c.order)
+        for item in sorted(rubric.items, key=lambda i: i.order)
     ]
 
     content_reports = []
@@ -217,8 +217,8 @@ def build_campaign_report(
                 completed=row.completed if row else False,
                 disagreement=campaign_report.content_disagreement(
                     [
-                        _answers_for(counted[content_id], criterion.criterion_id).scores
-                        for criterion in rubric.criteria
+                        _answers_for(counted[content_id], item.quality_id).scores
+                        for item in rubric.items
                     ]
                 ),
                 evaluations=[
@@ -231,7 +231,7 @@ def build_campaign_report(
                         superseded=e.evaluation_id not in counted_ids,
                         scores=[
                             ScoreDetailDTO(
-                                criterion_id=s.criterion_id,
+                                quality_id=s.quality_id,
                                 score=s.score,
                                 comment=s.comment,
                                 derived=s.derived,
@@ -274,7 +274,7 @@ def build_campaign_report(
     )
 
 
-def _answers_for(evaluations: list[EvaluationDTO], criterion_id: str) -> ContentItemAnswers:
+def _answers_for(evaluations: list[EvaluationDTO], quality_id: str) -> ContentItemAnswers:
     """One course's answers to one item — the three states kept apart (ADR-0060 §4).
 
     `withheld` needs at least one row to be true: a course nobody has evaluated yet has no
@@ -287,7 +287,7 @@ def _answers_for(evaluations: list[EvaluationDTO], criterion_id: str) -> Content
     derived_rows = 0
     for evaluation in evaluations:
         for score in evaluation.scores:
-            if score.criterion_id != criterion_id:
+            if score.quality_id != quality_id:
                 continue
             rows += 1
             if score.derived:

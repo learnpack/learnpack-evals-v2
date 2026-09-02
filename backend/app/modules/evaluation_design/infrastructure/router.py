@@ -153,7 +153,7 @@ class ReferenceInstrumentResponse(BaseModel):
     scale_max: int
     # `numeric | likert` — what the points of the scale mean (ADR-0052 §3).
     response_format: str
-    criterion_count: int
+    item_count: int
 
 
 @reference_router.get("/instruments", response_model=list[ReferenceInstrumentResponse])
@@ -169,19 +169,17 @@ def list_reference_instruments(admin: AdminAssessor, uow: Uow) -> list[Reference
     return [ReferenceInstrumentResponse(**s.__dict__) for s in summaries]
 
 
-class RubricCriterionResponse(BaseModel):
+class RubricItemResponse(BaseModel):
     """One item of the reference instrument, whole — including what the form cannot show."""
 
-    criterion_id: str
+    # The id IS the quality the item elicits (ADR-0052 §1, ADR-0062).
+    quality_id: str
     order: int
     dimension: str
     prompt: str
     guidance: str
     anchor_low: str
     anchor_high: str
-    # The quality this item elicits. Singular in practice (one item per quality, ADR-0052),
-    # a list because the column is one.
-    qualities: list[str]
     grounded_in: list[str]
     eligible_sources: list[str]
     # Whether a course declares this decides if the item is put to a human at all (ADR-0053).
@@ -200,7 +198,7 @@ class RubricDetailResponse(BaseModel):
     scale_min: int
     scale_max: int
     response_format: str
-    criteria: list[RubricCriterionResponse]
+    items: list[RubricItemResponse]
 
 
 @reference_router.get("/instruments/{rubric_version_id}", response_model=RubricDetailResponse)
@@ -228,7 +226,7 @@ def get_reference_instrument(
         scale_min=snapshot.scale_min,
         scale_max=snapshot.scale_max,
         response_format=snapshot.response_format,
-        criteria=[RubricCriterionResponse(**c.__dict__) for c in snapshot.criteria],
+        items=[RubricItemResponse(**item.__dict__) for item in snapshot.items],
     )
 
 
