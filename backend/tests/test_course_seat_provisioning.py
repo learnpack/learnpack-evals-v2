@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from app.config import get_settings
+from app.config import Settings
 from app.modules.course_session.application.ensure_seat import (
     EnsureCourseSeat,
     EnsureCourseSeatCommand,
@@ -382,5 +382,17 @@ def _json(request: httpx.Request) -> dict:
 
 
 def _as_settings(monkeypatch: pytest.MonkeyPatch, **overrides: object) -> None:
-    settings = get_settings().model_copy(update=overrides)
+    """The settings this test names, and nothing else.
+
+    `model_construct` rather than a copy of the process settings: copying would let whatever
+    the developer's `.env` happens to hold decide what is not named here, and the test that
+    asserts a credential is MISSING would then pass or fail by machine — passing in CI, which
+    has no credentials, and failing on anyone's laptop that has them.
+
+    It reads neither `.env` nor the environment, which `Settings(_env_file=None)` would still
+    do. Every field of `Settings` has a default, so what comes back is complete; the one
+    validator guards a real deployment against `AUTH_MODE=local`, which is not what a unit
+    test declaring a configuration is for.
+    """
+    settings = Settings.model_construct(**overrides)
     monkeypatch.setattr(providers, "get_settings", lambda: settings)
