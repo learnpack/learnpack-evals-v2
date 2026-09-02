@@ -42,7 +42,7 @@ same outcomes and never enters that report.
 
 | | |
 |---|---|
-| Migration head | `0033` |
+| Migration head | `0034` |
 | Reference instrument | `learnpack-pedagogical-2.0.0` — 12 Likert items, one per quality |
 | Instruments published | `learnpack-course-qa-v1` · `course-drafts-qa-v9` |
 | Assessors registered | `structural:1` · `drafts-structural:1` · `drafts-hybrid:13` |
