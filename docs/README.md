@@ -82,7 +82,7 @@ deployment is declared when it exists, and redeclared when it moves · `0055` a 
 to the human it is asked of · `0058` a dataset is a named set, and changing it is a new version ·
 `0059` a course carries the name its package declares · `0060` a campaign's result is read
 inside the campaign that produced it · `0061` an evaluator reaches the course's AI through a
-seat we hold.
+seat we hold · `0062` the human side names qualities, not criteria.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
