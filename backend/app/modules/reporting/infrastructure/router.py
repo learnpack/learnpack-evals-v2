@@ -12,10 +12,15 @@ from app.modules.evaluand_registry.public import (
     get_evaluand_registry_queries,
 )
 from app.modules.evaluation.public import EvaluationQueries, get_evaluation_queries
-from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
+from app.modules.evaluation_design.public import (
+    InstrumentQueries,
+    RubricQueries,
+    get_instrument_queries,
+    get_rubric_queries,
+)
 from app.modules.identity.public import IdentityQueries, get_identity_queries
 from app.modules.orchestration.public import OrchestrationQueries, get_orchestration_queries
-from app.modules.reporting.infrastructure import campaign_report, reports
+from app.modules.reporting.infrastructure import campaign_report, claim_validity, reports
 from app.platform.security import AdminAssessor
 
 router = APIRouter(prefix="/admin", tags=["reporting"])
@@ -25,6 +30,7 @@ Evaluations = Annotated[EvaluationQueries, Depends(get_evaluation_queries)]
 Identity = Annotated[IdentityQueries, Depends(get_identity_queries)]
 Orchestration = Annotated[OrchestrationQueries, Depends(get_orchestration_queries)]
 Rubrics = Annotated[RubricQueries, Depends(get_rubric_queries)]
+Instruments = Annotated[InstrumentQueries, Depends(get_instrument_queries)]
 
 
 class ScoreDetailResponse(BaseModel):
@@ -304,5 +310,128 @@ def campaign_report_endpoint(
                 ],
             )
             for content in report.contents
+        ],
+    )
+
+
+# --------------------------------------------------------------------------- claim validity
+
+
+class RatioResponse(BaseModel):
+    """A proportion with its denominator: `9 of 11` and `82 %` are not the same assertion."""
+
+    hit: int
+    of: int
+
+
+class ClaimValidityResponse(BaseModel):
+    claim_id: str
+    statement: str
+    quality_id: str
+    dimension: str | None
+    sample: int
+    sensitivity: RatioResponse
+    specificity: RatioResponse
+    # Null, never 0, wherever the table cannot support the number (ADR-0063 §3).
+    kappa: float | None
+    youden_j: float | None
+    judge_agreement: float | None
+    human_agreement: float | None
+    grey: int
+    unanswered: int
+    insufficient: int
+    status: str
+    reason: str | None
+
+
+class ClaimValidityReportResponse(BaseModel):
+    campaign_id: UUID
+    campaign_name: str
+    assessor_id: UUID
+    assessor_name: str | None
+    instrument_version_id: str
+    instrument_name: str
+    courses_in_campaign: int
+    courses_judged: int
+    claims: list[ClaimValidityResponse]
+
+
+@router.get("/validity", response_model=ClaimValidityReportResponse)
+def claim_validity_endpoint(
+    campaign: UUID,
+    assessor: UUID,
+    instrument: str,
+    admin: AdminAssessor,
+    orchestration: Orchestration,
+    evaluations: Evaluations,
+    rubrics: Rubrics,
+    instruments: Instruments,
+    identity: Identity,
+) -> ClaimValidityReportResponse:
+    """How much each claim of this assessor follows the panel of that campaign (ADR-0063).
+
+    The three coordinates are query parameters and all three are required here. What ADR-0063
+    §7 makes optional is the *campaign a reader chooses*, and a reader that chose none has no
+    verdict to ask for — which is why the option lives on the screen and not in this signature.
+
+    Not a sub-resource of the campaign: what is being qualified is the pair
+    `(assessor version, claim)`, and the campaign is what it was measured against.
+    """
+    try:
+        report = claim_validity.build_claim_validity(
+            campaign,
+            assessor,
+            instrument,
+            orchestration,
+            evaluations,
+            rubrics,
+            instruments,
+            identity,
+        )
+    except campaign_report.InstrumentUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"the campaign's pinned reference instrument '{exc}' is not in the store",
+        ) from exc
+    except claim_validity.InstrumentNotPublished as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"instrument '{exc}' not found"
+        ) from exc
+    except claim_validity.AssessorUnknown as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"assessor '{exc}' not found"
+        ) from exc
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
+
+    return ClaimValidityReportResponse(
+        campaign_id=report.campaign_id,
+        campaign_name=report.campaign_name,
+        assessor_id=report.assessor_id,
+        assessor_name=report.assessor_name,
+        instrument_version_id=report.instrument_version_id,
+        instrument_name=report.instrument_name,
+        courses_in_campaign=report.courses_in_campaign,
+        courses_judged=report.courses_judged,
+        claims=[
+            ClaimValidityResponse(
+                claim_id=c.claim_id,
+                statement=c.statement,
+                quality_id=c.quality_id,
+                dimension=c.dimension,
+                sample=c.sample,
+                sensitivity=RatioResponse(hit=c.sensitivity.hit, of=c.sensitivity.of),
+                specificity=RatioResponse(hit=c.specificity.hit, of=c.specificity.of),
+                kappa=c.kappa,
+                youden_j=c.youden_j,
+                judge_agreement=c.judge_agreement,
+                human_agreement=c.human_agreement,
+                grey=c.grey,
+                unanswered=c.unanswered,
+                insufficient=c.insufficient,
+                status=c.status,
+                reason=c.reason,
+            )
+            for c in report.claims
         ],
     )
