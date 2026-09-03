@@ -20,12 +20,20 @@ from app.modules.evaluation.public import EvaluationDTO, EvaluationQueries
 from app.modules.evaluation_design.public import RubricQueries
 from app.modules.identity.public import IdentityQueries
 from app.modules.orchestration.public import OrchestrationQueries
-from app.modules.reporting.application import aggregation, campaign_report
+from app.modules.reporting.application import campaign_report
 from app.modules.reporting.application.campaign_report import (
     ContentDisagreement,
     ContentItemAnswers,
     ItemSummary,
 )
+from app.modules.reporting.infrastructure.campaign_scope import (
+    InstrumentUnavailable,
+    campaign_answers,
+)
+
+# Re-exported: the router imports it from here, and where the scope rule LIVES is not the
+# router's business (ADR-0060 §1 — one definition, several readers).
+__all__ = ["InstrumentUnavailable", "build_campaign_report"]
 
 # --------------------------------------------------------------------------- DTOs
 
@@ -114,15 +122,6 @@ class CampaignReportDTO:
     contents: list[ContentReportDTO]
 
 
-class InstrumentUnavailable(Exception):
-    """The campaign pins a reference instrument the store cannot resolve.
-
-    Not a 404 about the campaign: the campaign exists and its pin is exactly what ADR-0056
-    fixed at open. Reporting cannot say what the items were, and saying so is better than
-    composing a report of quality ids with no questions attached.
-    """
-
-
 # --------------------------------------------------------------------------- builder
 
 
@@ -134,45 +133,17 @@ def build_campaign_report(
     identity: IdentityQueries,
     rubrics: RubricQueries,
 ) -> CampaignReportDTO | None:
-    campaign = orchestration.get_campaign(campaign_id)
-    if campaign is None:
+    answers = campaign_answers(campaign_id, orchestration, evaluations, rubrics)
+    if answers is None:
         return None
-
-    rubric = rubrics.get_rubric(campaign.instrument_version_id)
-    if rubric is None:
-        raise InstrumentUnavailable(campaign.instrument_version_id)
+    campaign, rubric = answers.campaign, answers.rubric
+    by_content, counted = answers.submitted, answers.counted
 
     progress = orchestration.get_campaign_progress(campaign_id)
     assert progress is not None  # the campaign resolved one line above
 
-    # ADR-0060 §1: what belongs to this campaign is what its assignments asked for. A
-    # cancelled assignment asked for nothing, and an automated assessor never has one — which
-    # is why no filter on assessor kind appears anywhere below.
-    asked_of = {
-        (assignment.content_id, assignment.assessor_id)
-        for assignment in orchestration.list_assignments_for_campaign(campaign_id)
-        if not assignment.is_cancelled
-    }
-    campaign_assessors = {assessor_id for _, assessor_id in asked_of}
-
-    mine = [
-        evaluation
-        for evaluation in evaluations.list_for_contents(campaign.content_ids)
-        # The pin is read, not assumed: a course in two campaigns judged against two versions
-        # answers two different sets of questions (ADR-0056).
-        if evaluation.instrument_version_id == campaign.instrument_version_id
-        and (evaluation.content_id, evaluation.assessor_id) in asked_of
-    ]
-
-    by_content: dict[UUID, list[EvaluationDTO]] = {cid: [] for cid in campaign.content_ids}
-    for evaluation in mine:
-        by_content.setdefault(evaluation.content_id, []).append(evaluation)
-
-    # Repetitions are corrections: only the latest per assessor counts (ADR-0005/0006).
-    counted = {
-        content_id: aggregation.collapse_latest_per_assessor(found)
-        for content_id, found in by_content.items()
-    }
+    mine = [e for found in by_content.values() for e in found]
+    campaign_assessors = {assessor_id for _, assessor_id in answers.asked_of}
 
     names = identity.list_assessors(list({e.assessor_id for e in mine}))
     snapshots = {s.content_id: s for s in contents.list_content_snapshots()}
