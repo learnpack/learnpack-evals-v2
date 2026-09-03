@@ -1,20 +1,29 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { FileText } from "lucide-react";
 import { LoadingState } from "@/components/ui/states";
 import { assessorLabel } from "@/components/admin/assessor-label";
 import { CaveatsLine } from "@/components/admin/study-report/caveats-line";
+import { ClaimValiditySection } from "@/components/admin/study-report/claim-validity";
 import { CourseList } from "@/components/admin/study-report/course-list";
 import { CriteriaRollup } from "@/components/admin/study-report/criteria-rollup";
 import { DocumentBand } from "@/components/admin/study-report/document-band";
 import { WeakestClaims } from "@/components/admin/study-report/weakest-claims";
 import {
+  useClaimValidity,
   useInstruments,
   useStudyCriterionOutcomes,
   useStudyReport,
   useStudyReportPreview,
 } from "@/lib/api/hooks";
-import type { DocumentSource, ReportBody, StudyResponse } from "@/lib/api/types";
+import type {
+  ClaimValidity,
+  DocumentSource,
+  ReportBody,
+  StudyResponse,
+  Uuid,
+} from "@/lib/api/types";
 
 /** The study's result, readable before it is signed.
  *
@@ -34,6 +43,19 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
   const preview = useStudyReportPreview(study.study_id);
   const outcomes = useStudyCriterionOutcomes(study.study_id);
   const instruments = useInstruments();
+
+  // The reader's choice of campaign lives here because two things answer to it: the validity
+  // table below, and the badge each claim carries above it (ADR-0063 §7).
+  const [campaign, setCampaign] = useState<Uuid | "">("");
+  const validity = useClaimValidity(
+    campaign || null,
+    study.assessor_id,
+    study.instrument_version_id,
+  );
+  const validityByClaim = useMemo(
+    () => new Map<string, ClaimValidity>((validity.data?.claims ?? []).map((c) => [c.claim_id, c])),
+    [validity.data],
+  );
 
   const instrument = (instruments.data ?? []).find(
     (candidate) => candidate.instrument_version_id === study.instrument_version_id,
@@ -66,7 +88,7 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
       </div>
 
       <DocumentBand source={source} />
-      <WeakestClaims body={body} />
+      <WeakestClaims body={body} validity={validityByClaim} />
       {outcomes.data ? (
         <CriteriaRollup
           outcomes={outcomes.data}
@@ -75,6 +97,12 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
         />
       ) : null}
       <CourseList body={body} outcomes={outcomes.data} instrument={instrument} />
+      <ClaimValiditySection
+        campaign={campaign}
+        onCampaignChange={setCampaign}
+        validity={validity}
+        pinned={Boolean(study.assessor_id && study.instrument_version_id)}
+      />
       <CaveatsLine body={body} />
     </div>
   );

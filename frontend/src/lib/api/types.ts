@@ -363,6 +363,54 @@ export interface RubricDetailResponse {
   items: RubricDetailItem[];
 }
 
+// --- Claim validity against a campaign (ADR-0063) ---------------------------
+
+/** A proportion that carries its denominator: `9 of 11` and `82 %` are not the same
+ *  assertion. `of` is 0 when nothing was measured — show nothing, never `0 %`. */
+export interface ValidityRatio {
+  hit: number;
+  of: number;
+}
+
+/** How much one claim of one assessor version follows the panel of one campaign.
+ *
+ *  Every coefficient is nullable and null means *the table cannot support this number*, which
+ *  is a different fact from zero. */
+export interface ClaimValidity {
+  claim_id: string;
+  statement: string;
+  quality_id: string;
+  dimension: string | null;
+  /** Courses where both sides committed — the denominator every ratio reads against. */
+  sample: number;
+  sensitivity: ValidityRatio;
+  specificity: ValidityRatio;
+  kappa: number | null;
+  youden_j: number | null;
+  judge_agreement: number | null;
+  /** The panel's agreement with itself, on the same cut: the ceiling of everything above. */
+  human_agreement: number | null;
+  /** The three ways a course stayed out of the table, apart because they mean different
+   *  things: the panel would not commit, nobody answered, the assessor abstained. */
+  grey: number;
+  unanswered: number;
+  insufficient: number;
+  status: string; // tracks | weak | unvalidated
+  reason: string | null;
+}
+
+export interface ClaimValidityReport {
+  campaign_id: Uuid;
+  campaign_name: string;
+  assessor_id: Uuid;
+  assessor_name: string | null;
+  instrument_version_id: string;
+  instrument_name: string;
+  courses_in_campaign: number;
+  courses_judged: number;
+  claims: ClaimValidity[];
+}
+
 // --- Datasets (ADR-0058) ---------------------------------------------------
 
 /** A frozen membership. Immutable: changing the set mints the next ordinal. */

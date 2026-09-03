@@ -2,7 +2,8 @@ import { ClaimStatusBadge } from "@/components/admin/claim-status";
 import { CopyButton } from "@/components/admin/copy-button";
 import { DistributionBar } from "@/components/admin/distribution-bar";
 import { rankClaims } from "@/components/admin/study-report/rollup";
-import type { ReportBody } from "@/lib/api/types";
+import { ValidityBadge } from "@/components/admin/study-report/validity-badge";
+import type { ClaimValidity, ReportBody } from "@/lib/api/types";
 
 /** Which assertions about the generator did not hold, worst first.
  *
@@ -11,8 +12,18 @@ import type { ReportBody } from "@/lib/api/types";
  *  from reading the page.
  *
  *  A distribution and its coverage, never a score: three courses refuted out of four judged
- *  is a different fact from three out of twenty, and one number cannot hold both. */
-export function WeakestClaims({ body }: { body: ReportBody }) {
+ *  is a different fact from three out of twenty, and one number cannot hold both.
+ *
+ *  `validity` qualifies each row when the reader has chosen a campaign below (ADR-0063): a
+ *  refuted claim reads differently depending on whether that claim tracks expert judgment.
+ *  Empty until one is chosen, and then nothing is shown — which is not `unvalidated`. */
+export function WeakestClaims({
+  body,
+  validity,
+}: {
+  body: ReportBody;
+  validity?: Map<string, ClaimValidity>;
+}) {
   const rows = rankClaims(body);
   if (rows.length === 0) {
     return (
@@ -45,9 +56,12 @@ export function WeakestClaims({ body }: { body: ReportBody }) {
                 <p className="min-w-0 flex-1" title={claim.claimId}>
                   {claim.statement}
                 </p>
-                <ClaimStatusBadge status={refuted > 0 ? "refuted" : supported > 0 ? "supported" : "insufficient"}>
-                  {refuted > 0 ? `${refuted} refuted` : supported > 0 ? "held" : "undecided"}
-                </ClaimStatusBadge>
+                <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  <ValidityBadge validity={validity?.get(claim.claimId)} />
+                  <ClaimStatusBadge status={refuted > 0 ? "refuted" : supported > 0 ? "supported" : "insufficient"}>
+                    {refuted > 0 ? `${refuted} refuted` : supported > 0 ? "held" : "undecided"}
+                  </ClaimStatusBadge>
+                </span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <DistributionBar
