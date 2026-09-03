@@ -32,6 +32,14 @@ session into the frame, so an SME signs in once with Clerk and the exercises and
 inside the iframe actually answer. Without the credentials configured the course still loads and
 the screen says the AI is unavailable.
 
+**The two halves meet at the claim** (ADR-0063). A campaign qualifies a claim of an assessor
+version: over the courses both sides judged, the human 1–5 is cut at ≥4 / ≤2 and compared with
+`supported` / `refuted`, and each claim reports its sensitivity and specificity with their
+counts, the panel's agreement with itself as the ceiling, and a `tracks | weak | unvalidated`
+verdict. It is a read composed on demand, it names the campaign it came from, and no campaign
+chosen means no verdict. The thresholds are asserted, not measured: the first campaign settles
+them.
+
 **Generator QA.** A study measures the generator versions its recipe names, over a dataset
 composed from commissions: each package is discovered and profiled, an instrument's criteria
 are judged by an assessor ratified against the pinned version, and the round is signed off into
@@ -55,9 +63,10 @@ a decision is realized in the code, so what this file carries is the **exception
 
 Decided, deferred deliberately, and named here so nobody counts on them:
 
-- **The validity coefficients** of ADR-0015 §4. They correlate a claim with the human score of
-  its quality, which crosses a campaign with a study, and nothing in the system computes a
-  correlation yet.
+- **The population-rate correction** that a claim's sensitivity and specificity make possible
+  (ADR-0063 §9). It needs a randomly sampled campaign and a consumer that asks for it, and it
+  enters neither the fitness projection nor a study's frozen report until an ADR says what a
+  corrected aggregate means to whoever reads it.
 - **Assessor severity.** Unmeasured for the first campaign by choice — and the first suspect if
   its results come out strange.
 - **`CompareStudies`**, and with it the dataset-version leg of ADR-0058's comparability gate.
