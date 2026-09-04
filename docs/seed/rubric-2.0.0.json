@@ -135,7 +135,7 @@
       "order": 11,
       "dimension": "learning-progression",
       "prompt": "Ideas the course builds on are introduced before they are needed.",
-      "guidance": "Agree if, where a lesson depends on an idea, that idea was introduced earlier in the course, or it is genuinely part of the background this course is written for. Disagree if lessons depend on ideas that were never introduced and that this audience would not be expected to bring.",
+      "guidance": "Agree if every idea a lesson depends on was introduced earlier in the course, or is genuinely part of the background this course is written for. Disagree if lessons depend on ideas that were never introduced and that this audience would not be expected to bring.",
       "anchorLow": "Strongly disagree",
       "anchorHigh": "Strongly agree",
       "groundedIn": ["Learning Progressions", "Schmidt"],
