@@ -191,6 +191,7 @@ function CalibrationConsole() {
 
       <ArrivedFromReport
         preselected={Boolean(params.get("content") ?? params.get("instrument"))}
+        cameFromValidity={params.get("why") === "validity"}
         criterion={selectedInstrument?.criteria.find((c) => c.criterion_id === cameAbout)}
         criterionId={cameAbout}
         unprofiled={Boolean(contentId) && profileStatus.get(contentId as Uuid) !== "ok"}
@@ -387,35 +388,53 @@ function CalibrationConsole() {
  *
  *  Arriving with the course and the instrument already chosen is most of the value; naming
  *  what the criterion demands is the rest. The question they came with is whether the check
- *  is wrong, and reading its pass condition often answers it before anything is run. */
+ *  is wrong, and reading its pass condition often answers it before anything is run.
+ *
+ *  Two reports send people here and they arrive with different questions. From the criteria
+ *  rollup the course failed a check. From the validity table nothing failed: a panel of
+ *  experts read the course the other way round, and where the assessor was the one that said
+ *  `supported` there is no failure to speak of at all. Saying "that course failed" there
+ *  would be false about the very case that brought them. */
 function ArrivedFromReport({
   preselected,
+  cameFromValidity,
   criterion,
   criterionId,
   unprofiled,
 }: {
   preselected: boolean;
+  cameFromValidity: boolean;
   criterion: InstrumentCriterion | undefined;
   criterionId: string | null;
   unprofiled: boolean;
 }) {
   if (!preselected) return null;
 
+  const named = criterion ? (
+    <em>{criterion.statement ?? criterion.criterion_id}</em>
+  ) : criterionId ? (
+    <code>{criterionId}</code>
+  ) : null;
+
   return (
     <div className="space-y-1 rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm">
-      <p>
-        <strong>Preselected from a study report.</strong> That course failed{" "}
-        {criterion ? (
-          <em>{criterion.statement ?? criterion.criterion_id}</em>
-        ) : criterionId ? (
-          <code>{criterionId}</code>
-        ) : (
-          "a criterion"
-        )}{" "}
-        under this instrument version. Pick an assessor and run it: a dry run persists
-        nothing, so this is the safe place to find out whether the criterion is wrong or the
-        course is.
-      </p>
+      {cameFromValidity ? (
+        <p>
+          <strong>Preselected from a claim&apos;s validity.</strong> A panel of experts read
+          this course the other way round from the assessor
+          {named ? <>, over {named}</> : null} under this instrument version. Pick an assessor
+          and run it: a dry run persists nothing, so this is the safe place to find out whether
+          the check asks the wrong thing or the judge reads it badly. Start with the check —
+          a threshold nobody wrote makes every assessor look equally bad.
+        </p>
+      ) : (
+        <p>
+          <strong>Preselected from a study report.</strong> That course failed{" "}
+          {named ?? "a criterion"} under this instrument version. Pick an assessor and run it:
+          a dry run persists nothing, so this is the safe place to find out whether the
+          criterion is wrong or the course is.
+        </p>
+      )}
       {criterion ? (
         <p className="text-xs text-muted-foreground">
           It passes when: {criterion.pass_condition}

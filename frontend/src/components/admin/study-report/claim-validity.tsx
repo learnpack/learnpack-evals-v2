@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, FlaskConical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Select } from "@/components/ui/select";
@@ -169,7 +170,11 @@ function ValidityTable({ report }: { report: ClaimValidityReport }) {
           </thead>
           <tbody className="divide-y">
             {report.claims.map((claim) => (
-              <ClaimRow key={claim.claim_id} claim={claim} />
+              <ClaimRow
+                key={claim.claim_id}
+                claim={claim}
+                instrumentVersionId={report.instrument_version_id}
+              />
             ))}
           </tbody>
         </table>
@@ -190,7 +195,13 @@ function ValidityTable({ report }: { report: ClaimValidityReport }) {
  *  what a rewrite is made of. Deliberately not gated on `weak`: a claim left `unvalidated` for
  *  want of courses still has disagreements worth reading, and on a short campaign that is the
  *  only thing there is to read. */
-function ClaimRow({ claim }: { claim: ClaimValidity }) {
+function ClaimRow({
+  claim,
+  instrumentVersionId,
+}: {
+  claim: ClaimValidity;
+  instrumentVersionId: string;
+}) {
   const [open, setOpen] = useState(false);
   const courses = claim.discordant;
   const disclosable = courses.length > 0;
@@ -259,9 +270,18 @@ function ClaimRow({ claim }: { claim: ClaimValidity }) {
               Both readings are shown as they were given: nothing here corrects a course, and
               neither side is the one that was right.
             </p>
+            <p className="mb-3 max-w-2xl text-xs text-muted-foreground">
+              Rewriting from these is the point. Pasting one of them into a prompt as an example
+              is not: a course that has been shown the answer takes itself out of the sample,
+              because it can no longer test the version it was rewritten from.
+            </p>
             <ul className="space-y-3">
               {courses.map((course) => (
-                <DiscordantEntry key={course.content_id} course={course} />
+                <DiscordantEntry
+                  key={course.content_id}
+                  course={course}
+                  instrumentVersionId={instrumentVersionId}
+                />
               ))}
             </ul>
           </td>
@@ -285,7 +305,13 @@ function Coordinates({ claim }: { claim: ClaimValidity }) {
  *  The panel's own agreement comes first because it decides whether anything below it means
  *  anything: where two experts read the same course differently there is no human answer for
  *  the assessor to have matched, and the suspect is the item, not the judge. */
-function DiscordantEntry({ course }: { course: DiscordantCourse }) {
+function DiscordantEntry({
+  course,
+  instrumentVersionId,
+}: {
+  course: DiscordantCourse;
+  instrumentVersionId: string;
+}) {
   const refutedWhatWasAccepted = course.cell === "refuted_accepted";
 
   return (
@@ -355,6 +381,28 @@ function DiscordantEntry({ course }: { course: DiscordantCourse }) {
             It concluded from <EvidenceBasis basis={course.evidence_basis} />.
           </p>
         )}
+      </div>
+
+      {/* The instrument before the assessor. A criterion whose threshold was never written
+          makes every assessor look equally bad, so starting at the prompt chases ghosts. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-2 text-xs">
+        <span className="text-muted-foreground">Is this the check, or the judge?</span>
+        <Link
+          href={{
+            pathname: "/admin/calibration",
+            query: {
+              content: course.content_id,
+              instrument: instrumentVersionId,
+              why: "validity",
+              ...(course.findings[0]
+                ? { criterion: course.findings[0].criterion_id }
+                : {}),
+            },
+          }}
+          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 hover:bg-accent"
+        >
+          <FlaskConical className="h-3 w-3" /> try it in calibration
+        </Link>
       </div>
     </li>
   );

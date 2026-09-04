@@ -21,6 +21,21 @@ You get **evidence about the question**, never a verdict about a course. Four to
   criterion that already executes gets tested before it is shipped — and what the numbers to
   read are is *A correct verdict is not a safe one*, below.
 
+There is a second way into this job, and it comes from outside. When a campaign of experts has
+read the same courses an assessor judged, the **Validity** section of a study report says how
+much each claim follows the panel, and a claim that does not follow it names the courses where
+the two sides read the same course differently — the experts' answers and comments beside the
+passage the assessor cited. Each of those courses links straight into this console with the
+course and the criterion already loaded. The evidence a run gives you here is the same either
+way; what the panel adds is external evidence that the pair measures what it says it measures,
+which no amount of repeating a run can supply.
+
+Two cautions that belong to that entrance. **Read the check before the judge**: a criterion
+whose threshold was never written makes every assessor look equally bad, so starting at the
+prompt chases ghosts. And **a course from the campaign must not become an example inside a
+prompt** — once it has been shown the answer it leaves the sample, because it can no longer
+test the version it was rewritten from.
+
 You do **not** get a pass or a fail from any of it, and that is deliberate. Nothing here
 writes a judgment, enters a report, or reaches the fitness projection. The dumps in particular
 are outside the assessor's identity (ADR-0034): no executor imports them, no criterion is
