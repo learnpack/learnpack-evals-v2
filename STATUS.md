@@ -36,9 +36,11 @@ the screen says the AI is unavailable.
 version: over the courses both sides judged, the human 1–5 is cut at ≥4 / ≤2 and compared with
 `supported` / `refuted`, and each claim reports its sensitivity and specificity with their
 counts, the panel's agreement with itself as the ceiling, and a `tracks | weak | unvalidated`
-verdict. It is a read composed on demand, it names the campaign it came from, and no campaign
-chosen means no verdict. The thresholds are asserted, not measured: the first campaign settles
-them.
+verdict. Each claim also names the courses where the two sides contradicted each other, with the
+experts' answers and comments beside the passage the assessor cited — the reading a weak claim is
+rewritten from. It is a read composed on demand, it names the campaign it came from, and no
+campaign chosen means no verdict. The thresholds are asserted, not measured: the first campaign
+settles them.
 
 **Generator QA.** A study measures the generator versions its recipe names, over a dataset
 composed from commissions: each package is discovered and profiled, an instrument's criteria
@@ -56,7 +58,7 @@ same outcomes and never enters that report.
 | Assessors registered | `structural:1` · `drafts-structural:1` · `drafts-hybrid:13` |
 | Extractions accepted | `LearnpackV1` · `LearnpackV2` |
 
-**ADRs 0001–0061 are the decision record** and `docs/README.md` rolls them. The default is that
+**ADRs 0001–0063 are the decision record** and `docs/README.md` rolls them. The default is that
 a decision is realized in the code, so what this file carries is the **exceptions**, below.
 
 ## Not built on purpose

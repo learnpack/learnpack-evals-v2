@@ -44,8 +44,14 @@ QUALITIES = [
 ]
 
 
-def scores(value: int = 4, **overrides) -> list[dict]:
-    return [{"quality_id": q, "score": overrides.get(q, value), "comment": None} for q in QUALITIES]
+def scores(value: int = 4, comments: dict[str, str] | None = None, **overrides) -> list[dict]:
+    """The whole form, one answer per quality. `comments` is what makes a drill-down worth
+    reading: the number says how much the expert disagreed, the note says about what."""
+    written = comments or {}
+    return [
+        {"quality_id": q, "score": overrides.get(q, value), "comment": written.get(q)}
+        for q in QUALITIES
+    ]
 
 
 # --------------------------------------------------------------------------- fixtures
@@ -189,7 +195,15 @@ def robot(requires_db, cleanup, unique, instrument):
 def judge(requires_db, instrument, robot):
     """Record what the assessor concluded about one course, without running it."""
 
-    def _judge(content_id: str, **status_by_claim: str) -> None:
+    def _judge(
+        content_id: str,
+        basis: dict[str, dict[str, int]] | None = None,
+        raises: dict[str, tuple[str, str]] | None = None,
+        **status_by_claim: str,
+    ) -> None:
+        """`basis` is the evidence behind each claim; `raises` the finding it raised, if any."""
+        bases = basis or {}
+        raised = raises or {}
         evaluation_id = str(_uuid.uuid4())
         judgment_id = str(_uuid.uuid4())
         with SessionLocal() as session:
@@ -224,16 +238,42 @@ def judge(requires_db, instrument, robot):
                 },
             )
             for claim_id, claim_status in status_by_claim.items():
+                claim_id = claim_id.replace("_", "-")
                 session.execute(
                     text(
                         """
                         INSERT INTO judgment_claims
                             (judgment_id, claim_id, status, evidence_basis)
-                        VALUES (:j, :c, :s, '{}'::jsonb)
+                        VALUES (:j, :c, :s, :basis)
                         """
                     ),
-                    {"j": judgment_id, "c": claim_id.replace("_", "-"), "s": claim_status},
+                    {
+                        "j": judgment_id,
+                        "c": claim_id,
+                        "s": claim_status,
+                        "basis": json.dumps(bases.get(claim_id, {})),
+                    },
                 )
+                if claim_id in raised:
+                    criterion_id, quote = raised[claim_id]
+                    session.execute(
+                        text(
+                            """
+                            INSERT INTO findings
+                                (id, judgment_id, claim_id, criterion_id, quote, locator,
+                                 failure_mode, raised_at)
+                            VALUES (:id, :j, :c, :criterion, :quote, :locator, 'missing', now())
+                            """
+                        ),
+                        {
+                            "id": str(_uuid.uuid4()),
+                            "j": judgment_id,
+                            "c": claim_id,
+                            "criterion": criterion_id,
+                            "quote": quote,
+                            "locator": json.dumps({"lesson": "01.md"}),
+                        },
+                    )
             session.commit()
 
     return _judge
@@ -450,3 +490,191 @@ def test_an_evaluator_may_not_read_it(evaluator, admin, make_content, instrument
     ada, _ = evaluator("ada")
 
     assert validity_of(ada, campaign, robot, instrument).status_code == 403
+
+
+# ---- the discordant courses (the half that says why, not how much)
+
+
+def test_a_course_the_experts_accepted_and_the_assessor_refuted_is_named_and_quoted(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup, unique
+):
+    """The reading a `weak` claim is rewritten from (ADR-0063 §9: shown, never corrected).
+
+    Both sides reach the reader in their own words: the expert's number with the note beside
+    it, and the passage the assessor cited against the claim.
+    """
+    content = make_content("disputed")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=1,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    submit(
+        ada,
+        admin,
+        campaign,
+        content,
+        ada_id,
+        comments={ELICITED_A: "The objectives are observable in every lesson."},
+        **{ELICITED_A: 5},
+    )
+    judge(
+        content,
+        cl_elicited_a="refuted",
+        raises={"cl-elicited-a": ("cr-objectives", "Learn about generative AI")},
+    )
+
+    body = validity_of(admin, campaign, robot, instrument).json()
+
+    (course,) = claim(body, "cl-elicited-a")["discordant"]
+    assert course["cell"] == "refuted_accepted"
+    assert course["external_id"] == f"disputed-{unique}"
+    assert course["human_mean"] == 5.0
+    assert course["answers"][0]["score"] == 5
+    assert course["answers"][0]["comment"] == "The objectives are observable in every lesson."
+    assert course["answers"][0]["assessor_name"] == "ada"
+    assert course["findings"][0]["criterion_id"] == "cr-objectives"
+    assert course["findings"][0]["quote"] == "Learn about generative AI"
+    assert course["findings"][0]["locator"] == {"lesson": "01.md"}
+
+
+def test_where_the_assessor_saw_nothing_the_silence_is_the_finding(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup
+):
+    """The mirror cell has no finding to cite, by construction: nothing was raised.
+
+    Leaving the reader with an empty list and no explanation would read as missing data, so
+    the evidence basis travels beside it — that is what says how the claim reached `supported`.
+    """
+    content = make_content("missed")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=1,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    submit(ada, admin, campaign, content, ada_id, **{ELICITED_A: 1})
+    judge(
+        content,
+        cl_elicited_a="supported",
+        basis={"cl-elicited-a": {"pass": 4, "noEvidence": 2}},
+    )
+
+    body = validity_of(admin, campaign, robot, instrument).json()
+
+    (course,) = claim(body, "cl-elicited-a")["discordant"]
+    assert course["cell"] == "supported_rejected"
+    assert course["findings"] == []
+    assert course["evidence_basis"] == {"pass": 4, "noEvidence": 2}
+
+
+def test_two_experts_who_read_the_course_differently_say_so_on_the_row(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup
+):
+    """The ceiling at the grain of one course, and the first suspect when it is false.
+
+    Where the panel does not agree with itself there is no human answer for the assessor to
+    match (ADR-0015 §5), so the reader is told before they go blaming the prompt.
+    """
+    content = make_content("split")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=3,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    bob, bob_id = evaluator("bob")
+    cyd, cyd_id = evaluator("cyd")
+    submit(ada, admin, campaign, content, ada_id, **{ELICITED_A: 5})
+    submit(bob, admin, campaign, content, bob_id, **{ELICITED_A: 5})
+    submit(cyd, admin, campaign, content, cyd_id, **{ELICITED_A: 2})
+    judge(content, cl_elicited_a="refuted")
+
+    body = validity_of(admin, campaign, robot, instrument).json()
+
+    (course,) = claim(body, "cl-elicited-a")["discordant"]
+    # The mean is 4, so the panel accepts — while one of the three rejected outright.
+    assert course["human_mean"] == 4.0
+    assert course["experts_agree"] is False
+    assert sorted(answer["score"] for answer in course["answers"]) == [2, 5, 5]
+
+
+def test_the_courses_that_agreed_are_not_listed_and_neither_is_the_grey_zone(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup
+):
+    """Only a contradiction is a contradiction. An absence of commitment is not one."""
+    agreed, grey = make_content("agreed"), make_content("grey")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [agreed, grey],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=1,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    submit(ada, admin, campaign, agreed, ada_id, **{ELICITED_A: 5})
+    submit(ada, admin, campaign, grey, ada_id, **{ELICITED_A: 3})
+    judge(agreed, cl_elicited_a="supported")
+    judge(grey, cl_elicited_a="refuted")
+
+    body = validity_of(admin, campaign, robot, instrument).json()
+
+    row = claim(body, "cl-elicited-a")
+    assert row["discordant"] == []
+    assert row["grey"] == 1
+
+
+def test_the_widest_disagreement_is_listed_first(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup, unique
+):
+    """Worst first: the reader's next act is rewriting the claim, not admiring it."""
+    mild, flat = make_content("mild"), make_content("flat")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [mild, flat],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=1,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    submit(ada, admin, campaign, mild, ada_id, **{ELICITED_A: 2})
+    submit(ada, admin, campaign, flat, ada_id, **{ELICITED_A: 1})
+    judge(mild, cl_elicited_a="supported")
+    judge(flat, cl_elicited_a="supported")
+
+    body = validity_of(admin, campaign, robot, instrument).json()
+
+    assert [c["external_id"] for c in claim(body, "cl-elicited-a")["discordant"]] == [
+        f"flat-{unique}",
+        f"mild-{unique}",
+    ]
+
+
+def test_a_claim_with_no_reference_item_has_nothing_to_drill_into(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup
+):
+    """It is still listed (ADR-0063 §6) — with an empty list, not a missing key."""
+    content = make_content("course")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [content],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=1,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    submit(ada, admin, campaign, content, ada_id, **{ELICITED_A: 1})
+    judge(content, cl_elicited_a="supported", cl_not_elicited="refuted")
+
+    body = validity_of(admin, campaign, robot, instrument).json()
+
+    assert claim(body, "cl-not-elicited")["discordant"] == []
+    # And the elicited one did produce a row, so the empty list above is a fact, not a bug.
+    assert len(claim(body, "cl-elicited-a")["discordant"]) == 1

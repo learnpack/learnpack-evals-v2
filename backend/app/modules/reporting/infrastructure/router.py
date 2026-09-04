@@ -1,7 +1,7 @@
 """Admin read models (08-code.md §7). Reporting is the CQRS query side: no writes, no events."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -324,6 +324,40 @@ class RatioResponse(BaseModel):
     of: int
 
 
+class HumanAnswerResponse(BaseModel):
+    """One expert's number on this item, and what they wrote beside it."""
+
+    assessor_id: UUID
+    assessor_name: str | None
+    score: int
+    comment: str | None
+
+
+class CitedFindingResponse(BaseModel):
+    """What the assessor raised, in its own words. Null quote only on an absence-derived fail."""
+
+    criterion_id: str
+    failure_mode: str
+    quote: str | None
+    locator: dict[str, Any] | None
+
+
+class DiscordantCourseResponse(BaseModel):
+    """A course where the two sides contradicted each other — both readings, neither corrected."""
+
+    content_id: UUID
+    external_id: str
+    title: str | None
+    cell: str
+    human_mean: float
+    # Null when only one expert answered: one opinion is not a disagreement.
+    experts_agree: bool | None
+    answers: list[HumanAnswerResponse]
+    evidence_basis: dict[str, int]
+    # Empty whenever the assessor said `supported` — it raised nothing, and that is the finding.
+    findings: list[CitedFindingResponse]
+
+
 class ClaimValidityResponse(BaseModel):
     claim_id: str
     statement: str
@@ -342,6 +376,7 @@ class ClaimValidityResponse(BaseModel):
     insufficient: int
     status: str
     reason: str | None
+    discordant: list[DiscordantCourseResponse]
 
 
 class ClaimValidityReportResponse(BaseModel):
@@ -364,6 +399,7 @@ def claim_validity_endpoint(
     admin: AdminAssessor,
     orchestration: Orchestration,
     evaluations: Evaluations,
+    contents: Contents,
     rubrics: Rubrics,
     instruments: Instruments,
     identity: Identity,
@@ -384,6 +420,7 @@ def claim_validity_endpoint(
             instrument,
             orchestration,
             evaluations,
+            contents,
             rubrics,
             instruments,
             identity,
@@ -431,6 +468,36 @@ def claim_validity_endpoint(
                 insufficient=c.insufficient,
                 status=c.status,
                 reason=c.reason,
+                discordant=[
+                    DiscordantCourseResponse(
+                        content_id=d.content_id,
+                        external_id=d.external_id,
+                        title=d.title,
+                        cell=d.cell,
+                        human_mean=d.human_mean,
+                        experts_agree=d.experts_agree,
+                        answers=[
+                            HumanAnswerResponse(
+                                assessor_id=a.assessor_id,
+                                assessor_name=a.assessor_name,
+                                score=a.score,
+                                comment=a.comment,
+                            )
+                            for a in d.answers
+                        ],
+                        evidence_basis=d.evidence_basis,
+                        findings=[
+                            CitedFindingResponse(
+                                criterion_id=f.criterion_id,
+                                failure_mode=f.failure_mode,
+                                quote=f.quote,
+                                locator=f.locator,
+                            )
+                            for f in d.findings
+                        ],
+                    )
+                    for d in c.discordant
+                ],
             )
             for c in report.claims
         ],

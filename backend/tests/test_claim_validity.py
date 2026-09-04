@@ -18,11 +18,14 @@ from app.modules.reporting.application.claim_validity import (
     classify,
     cohen_kappa,
     confuse,
+    discordant_cell,
+    distance_from_cut,
     human_verdict,
     pairwise_agreement,
     rater_verdicts,
     sensitivity,
     specificity,
+    verdicts_agree,
     youden_j,
 )
 
@@ -214,3 +217,62 @@ def test_the_bars_are_values():
     assert classify(MIDDLING, ceiling=0.85, thresholds=Thresholds(min_kappa=0.5)).status == (
         "tracks"
     )
+
+
+# ---- the discordant courses (ADR-0063 §9: shown, never corrected)
+
+
+def test_only_the_two_off_diagonal_cells_are_a_disagreement():
+    assert discordant_cell(ACCEPT, REFUTED) == "refuted_accepted"
+    assert discordant_cell(REJECT, SUPPORTED) == "supported_rejected"
+    assert discordant_cell(ACCEPT, SUPPORTED) is None
+    assert discordant_cell(REJECT, REFUTED) is None
+
+
+def test_an_absence_is_not_a_disagreement():
+    """The grey zone, the unanswered item and the assessor's `insufficient` never clash.
+
+    They are courses where one of the two sides declined to commit, which is the same reason
+    `confuse` leaves them out of the 2x2 — counting them as contradictions would invent a
+    disagreement nobody had.
+    """
+    assert discordant_cell(GREY, REFUTED) is None
+    assert discordant_cell(ABSENT, SUPPORTED) is None
+    assert discordant_cell(ACCEPT, "insufficient") is None
+
+
+def test_the_widest_disagreement_is_the_one_furthest_past_the_cut():
+    """A course rejected at 1.0 contradicts the assessor harder than one rejected at 2.0."""
+    assert distance_from_cut(1.0) > distance_from_cut(2.0)
+    assert distance_from_cut(5.0) > distance_from_cut(4.0)
+    assert distance_from_cut(4.0) == 0.0
+
+
+def test_a_course_inside_the_grey_zone_is_at_no_distance():
+    assert distance_from_cut(3.0) == 0.0
+
+
+def test_the_distance_moves_with_the_cut_because_the_cut_is_a_value():
+    assert distance_from_cut(3.0, Thresholds(accept_at=3)) == 0.0
+    assert distance_from_cut(4.0, Thresholds(accept_at=3)) == 1.0
+
+
+def test_two_experts_on_the_same_side_agree_and_on_opposite_sides_do_not():
+    assert verdicts_agree([ACCEPT, ACCEPT]) is True
+    assert verdicts_agree([ACCEPT, REJECT]) is False
+
+
+def test_one_opinion_is_not_a_disagreement_with_itself():
+    """`None`, never `False`: a single expert cannot fail to agree with a second one.
+
+    The distinction matters where a reader is about to blame the reference item — that
+    diagnosis needs two people who read the same course differently, not one who read it.
+    """
+    assert verdicts_agree([ACCEPT]) is None
+    assert verdicts_agree([]) is None
+
+
+def test_an_expert_in_the_grey_zone_takes_no_side():
+    """Same rule as the ceiling: grey is not a side, so it forms no pair (ADR-0063 §4)."""
+    assert verdicts_agree([ACCEPT, GREY]) is None
+    assert verdicts_agree([ACCEPT, GREY, ACCEPT]) is True
