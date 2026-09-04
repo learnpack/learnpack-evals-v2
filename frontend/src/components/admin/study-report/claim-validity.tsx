@@ -54,7 +54,7 @@ export function ClaimValiditySection({
     <CollapsibleSection
       title="Validity"
       badge={
-        validity.data ? (
+        validity.data && validity.data.courses_judged > 0 ? (
           <Badge variant="outline">{validity.data.courses_judged} courses compared</Badge>
         ) : null
       }
@@ -62,8 +62,14 @@ export function ClaimValiditySection({
     >
       <div className="space-y-4">
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Against a campaign of experts, how much each claim of this assessor follows human
-          judgment. It qualifies the verdicts above — it never changes them.
+          Against a campaign of experts, how much each claim of this study&apos;s assessor
+          follows human judgment. It qualifies the verdicts above — it never changes them.
+        </p>
+        <p className="max-w-2xl text-xs text-muted-foreground">
+          The comparison runs over <span className="font-medium">the campaign&apos;s courses</span>,
+          wherever this assessor judged them — not over this study&apos;s dataset. Validity is a
+          property of the assessor and its instrument, so one run qualifies every study that
+          pins the same pair.
         </p>
 
         <div className="flex max-w-md flex-col gap-1.5">
@@ -110,11 +116,34 @@ export function ClaimValiditySection({
 }
 
 function ValidityTable({ report }: { report: ClaimValidityReport }) {
+  // Nothing to read is not the same as nothing to say. Twenty-one `unvalidated` rows look
+  // like a verdict on the claims; what actually happened is that the run nobody made yet
+  // has not been made.
+  if (report.courses_judged === 0) {
+    return (
+      <div className="rounded-md border border-dashed bg-muted/30 p-4 text-sm">
+        <p className="font-medium">
+          This assessor has not judged any of this campaign&apos;s courses.
+        </p>
+        <p className="mt-1.5 text-muted-foreground">
+          The comparison needs both sides over the same courses. Run{" "}
+          <span className="font-medium text-foreground">{report.assessor_name ?? "this assessor"}</span>{" "}
+          with{" "}
+          <span className="font-medium text-foreground">{report.instrument_name}</span> over the
+          dataset <span className="font-medium text-foreground">{report.campaign_name}</span> was
+          opened on, and come back. It is one run, and it qualifies every study that pins this
+          pair.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        {report.courses_judged} of {report.courses_in_campaign} courses in the campaign were
-        also judged by this assessor. Every number below reads against that overlap.
+        {report.courses_judged} of {report.courses_in_campaign} courses in the campaign have
+        also been judged by this assessor, in whichever study did it. Every number below reads
+        against that overlap.
       </p>
 
       <div className="overflow-x-auto rounded-lg border">
