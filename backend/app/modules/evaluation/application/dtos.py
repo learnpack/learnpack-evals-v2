@@ -28,6 +28,9 @@ class EvaluationDTO:
     content_id: UUID
     instrument_version_id: str
     scores: list[ItemScoreDTO]
+    # The assignment this answered, and therefore the campaign it belongs to (ADR-0065).
+    # Null on the automated path, which answers none and is in no campaign report.
+    assignment_id: UUID | None = None
     attempt: int = 1
     submitted_at: datetime | None = None
 

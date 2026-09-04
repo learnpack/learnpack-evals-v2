@@ -190,15 +190,6 @@ class SqlAlchemyAssignmentRepository:
         )
         return found[0] if found else None
 
-    def list_open_for_assessor_and_content(
-        self, assessor_id: UUID, content_id: UUID
-    ) -> list[Assignment]:
-        """Assignments still awaiting a submission — cancelled ones never count (ADR-0002)."""
-        return self._query(
-            "assessor_id = :a AND content_id = :c AND status IN ('assigned','opened')",
-            {"a": assessor_id, "c": content_id},
-        )
-
     def count_submitted(self, campaign_id: UUID, content_id: UUID) -> int:
         return self._session.execute(
             text(

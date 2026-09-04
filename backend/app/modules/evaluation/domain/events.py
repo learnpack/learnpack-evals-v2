@@ -34,6 +34,9 @@ def evaluation_submitted(evaluation: Evaluation) -> DomainEvent:
             "assessorId": str(evaluation.assessor_id),
             "contentId": str(evaluation.content_id),
             "instrumentVersionId": evaluation.instrument_version_id,
+            # Which assignment was answered (ADR-0065). The completion policy advances that
+            # one and no other, so a campaign never reports a delivery it did not receive.
+            "assignmentId": (str(evaluation.assignment_id) if evaluation.assignment_id else None),
             "mode": MODE_HUMAN,
             "attempt": evaluation.attempt,
             "scores": [

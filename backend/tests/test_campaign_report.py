@@ -208,13 +208,13 @@ def test_two_campaigns_over_the_same_course_do_not_pool(
     assert second_report["quorum"]["evaluations_counted"] == 1
 
 
-def test_one_evaluation_may_count_for_two_campaigns_that_asked_for_it(
+def test_an_answer_belongs_to_the_round_that_received_it_and_to_no_other(
     admin, evaluator, content, campaign, cleanup
 ):
-    """The report filters, it does not partition (ADR-0060 §1).
+    """An evaluation answers one assignment (ADR-0065).
 
-    Ada is assigned the same course in both rounds; her single submission satisfies both,
-    because the completion policy marks every open assignment that asked for it.
+    Ada is asked the same course by two rounds and answers one. The other asked and received
+    nothing, and its report says so rather than borrowing an answer given elsewhere.
     """
     ada, ada_id = evaluator("ada")
     second = open_campaign_over(
@@ -230,7 +230,7 @@ def test_one_evaluation_may_count_for_two_campaigns_that_asked_for_it(
     submit(ada, admin, campaign, content, ada_id)
 
     assert report_of(admin, campaign)["quorum"]["evaluations_counted"] == 1
-    assert report_of(admin, second)["quorum"]["evaluations_counted"] == 1
+    assert report_of(admin, second)["quorum"]["evaluations_counted"] == 0
 
 
 def test_an_evaluation_this_campaign_never_asked_for_is_not_counted(
@@ -299,15 +299,22 @@ def test_a_cancelled_assignment_does_not_pull_an_evaluation_into_its_campaign(
     assert report_of(admin, second)["quorum"]["evaluations_counted"] == 1
 
 
-def test_a_repetition_is_shown_and_not_counted(admin, evaluator, content, campaign, session):
-    """ADR-0005/0006: a human re-evaluation is a correction, not a second opinion."""
+def test_an_evaluation_nobody_assigned_is_in_no_campaign(
+    admin, evaluator, content, campaign, session
+):
+    """No assignment, no campaign (ADR-0065 §6).
+
+    Written straight through the repository, so it answers nothing. Before ADR-0065 a row
+    like this was pulled into the campaign by a lookup on `(content, assessor)` and shown as
+    a correction of an answer it had nothing to do with.
+    """
     ada, ada_id = evaluator("ada")
     bob, bob_id = evaluator("bob")
 
     submit(ada, admin, campaign, content, ada_id, **dict.fromkeys(QUALITIES, 1))
     submit(bob, admin, campaign, content, bob_id, **dict.fromkeys(QUALITIES, 5))
 
-    correction = Evaluation.submit(
+    unasked = Evaluation.submit(
         evaluation_id=new_id(),
         assessor_id=_uuid.UUID(ada_id),
         content_id=_uuid.UUID(content),
@@ -316,18 +323,16 @@ def test_a_repetition_is_shown_and_not_counted(admin, evaluator, content, campai
         rubric_quality_ids=QUALITIES,
         attempt=2,
     )
-    SqlAlchemyEvaluationRepository(session).add(correction)
+    SqlAlchemyEvaluationRepository(session).add(unasked)
     session.commit()
 
     report = report_of(admin, campaign)
     row = course(report, content)
 
-    # (3 + 5) / 2 = 4.0, not (1 + 3 + 5) / 3 = 3.0
-    assert item(report, "alignment-coverage")["summary"]["average"] == 4.0
+    # (1 + 5) / 2 = 3.0. The unasked 3 is in no round's arithmetic and on no row.
+    assert item(report, "alignment-coverage")["summary"]["average"] == 3.0
     assert report["quorum"]["evaluations_counted"] == 2
-    assert report["quorum"]["superseded_count"] == 1
-    assert len(row["evaluations"]) == 3
-    assert sum(1 for e in row["evaluations"] if e["superseded"]) == 1
+    assert len(row["evaluations"]) == 2
 
 
 # ------------------------------------------------------------------------ the silences
@@ -360,7 +365,7 @@ def test_the_three_silences_are_told_apart(admin, evaluator, make_content, clean
     # (ADR-0053). Written straight through the repository — the mechanics that produce it are
     # tested in `test_withheld_items_flow.py`; what is under test here is how it reads.
     _, bob_id = evaluator("bob")
-    assign(admin, campaign_id, untouched, bob_id)
+    bobs_assignment = assign(admin, campaign_id, untouched, bob_id)
     SqlAlchemyEvaluationRepository(session).add(
         Evaluation.submit(
             evaluation_id=new_id(),
@@ -372,6 +377,9 @@ def test_the_three_silences_are_told_apart(admin, evaluator, make_content, clean
                 for c in QUALITIES
             ],
             rubric_quality_ids=QUALITIES,
+            # The shortcut still has to answer something: an evaluation with no assignment
+            # is in no campaign (ADR-0065 §6), and this one is Bob answering his.
+            assignment_id=_uuid.UUID(bobs_assignment),
         )
     )
     session.commit()
@@ -446,7 +454,6 @@ def test_the_individual_answers_and_their_comments_reach_the_report(
     individual = course(report_of(admin, campaign), content)["evaluations"][0]
 
     assert individual["assessor_name"] == "ada"
-    assert individual["superseded"] is False
     comment = next(
         s["comment"] for s in individual["scores"] if s["quality_id"] == "objectives-observable"
     )

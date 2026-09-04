@@ -88,6 +88,10 @@ class Evaluation:
     content_id: UUID
     instrument_version_id: str
     result: EvaluationResult
+    # The assignment this answers (ADR-0065). Null for an automated evaluation, which answers
+    # none — and an evaluation that answers none belongs to no campaign. This aggregate still
+    # knows nothing of campaigns: the campaign is reached through the assignment.
+    assignment_id: UUID | None = None
     attempt: int = 1
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     submitted_at: datetime | None = None
@@ -101,6 +105,7 @@ class Evaluation:
         instrument_version_id: str,
         scores: list[ItemScore],
         rubric_quality_ids: list[str],
+        assignment_id: UUID | None = None,
         attempt: int = 1,
     ) -> "Evaluation":
         """Build a submitted evaluation, enforcing every invariant.
@@ -135,6 +140,7 @@ class Evaluation:
             content_id=content_id,
             instrument_version_id=instrument_version_id,
             result=result,
+            assignment_id=assignment_id,
             attempt=attempt,
             occurred_at=now,
             submitted_at=now,

@@ -1,6 +1,7 @@
 """HTTP adapter for `SubmitEvaluation` (08-code.md §7).
 
-The endpoint takes an `assignmentId`, but an `Evaluation` is campaign-agnostic (ADR-0005).
+The endpoint takes an `assignmentId` and the evaluation records it (ADR-0065): an
+evaluation answers one assignment and reaches its campaign through it.
 It therefore resolves the assignment through Orchestration's **public query surface**
 (a read-only sync query, allowed by 05-connect.md rule 2) and never issues a cross-module
 command: the assignment becomes `submitted` because the completion policy hears
@@ -162,6 +163,7 @@ def submit_evaluation(
                 assessor_id=assessor.assessor_id,
                 content_id=assignment.content_id,
                 instrument_version_id=assignment.instrument_version_id,
+                assignment_id=request.assignment_id,
                 scores=[
                     ScoreInput(quality_id=s.quality_id, score=s.score, comment=s.comment)
                     for s in request.scores

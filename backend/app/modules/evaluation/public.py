@@ -66,6 +66,9 @@ class EvaluationSubmittedFact:
     assessor_id: UUID
     content_id: UUID
     instrument_version_id: str
+    # The assignment answered (ADR-0065). `None` for an automated evaluation, and for an
+    # event published before that decision — neither is attributable to a round.
+    assignment_id: UUID | None
     mode: str
 
     @classmethod
@@ -76,6 +79,7 @@ class EvaluationSubmittedFact:
             content_id=UUID(payload["contentId"]),
             # Old rows in `events` carry the pre-rename key; both replay fine.
             instrument_version_id=payload.get("instrumentVersionId") or payload["rubricVersionId"],
+            assignment_id=(UUID(payload["assignmentId"]) if payload.get("assignmentId") else None),
             mode=payload.get("mode", "human"),
         )
 
