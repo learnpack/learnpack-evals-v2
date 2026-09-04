@@ -678,3 +678,45 @@ def test_a_claim_with_no_reference_item_has_nothing_to_drill_into(
     assert claim(body, "cl-not-elicited")["discordant"] == []
     # And the elicited one did produce a row, so the empty list above is a fact, not a bug.
     assert len(claim(body, "cl-elicited-a")["discordant"]) == 1
+
+
+def test_the_ceiling_is_measured_only_where_the_judge_was_scored(
+    admin, evaluator, make_content, instrument, robot, judge, cleanup
+):
+    """ADR-0063 §4: the ceiling and the judge's agreement are the same proportion over the
+    same 2x2.
+
+    A course the panel left in the grey zone is not one the assessor is scored on, so its
+    raters must not set the bar either. Counting them was measuring the two halves of the
+    relative rule on different populations, and the wider the gap between the courses the
+    panel committed on and the courses the assessor could answer, the wider the error — which
+    is exactly what happens when a package format feeds only half the criteria.
+    """
+    agreed, split = make_content("agreed"), make_content("split")
+    campaign = open_campaign_over(
+        admin,
+        cleanup,
+        [agreed, split],
+        instrument_version_id=RUBRIC,
+        required_evaluations_per_content=2,
+    )["campaign_id"]
+    ada, ada_id = evaluator("ada")
+    bob, bob_id = evaluator("bob")
+
+    # One course the panel commits on, unanimously.
+    submit(ada, admin, campaign, agreed, ada_id, **{ELICITED_A: 5})
+    submit(bob, admin, campaign, agreed, bob_id, **{ELICITED_A: 5})
+    # And one it does not: the mean lands in the grey zone, and the two experts read it from
+    # opposite sides. Before this fix that disagreement halved the ceiling of a claim it says
+    # nothing about.
+    submit(ada, admin, campaign, split, ada_id, **{ELICITED_A: 5})
+    submit(bob, admin, campaign, split, bob_id, **{ELICITED_A: 2})
+
+    judge(agreed, cl_elicited_a="supported")
+    judge(split, cl_elicited_a="supported")
+
+    row = claim(validity_of(admin, campaign, robot, instrument).json(), "cl-elicited-a")
+
+    assert row["sample"] == 1
+    assert row["grey"] == 1
+    assert row["human_agreement"] == 1.0

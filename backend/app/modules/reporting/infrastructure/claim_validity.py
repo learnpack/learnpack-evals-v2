@@ -355,7 +355,6 @@ def _validity_of(
         verdict = side.verdict.get(quality_id, claim_validity.ABSENT)
         judged = machine[content_id].get(claim_id)
         status = judged.status if judged is not None else None
-        per_rater.append(side.per_rater.get(quality_id, []))
 
         if verdict == GREY:
             grey += 1
@@ -363,8 +362,17 @@ def _validity_of(
             unanswered += 1
         elif status not in (claim_validity.SUPPORTED, claim_validity.REFUTED):
             insufficient += 1
-        if status is not None:
-            pairs.append((verdict, status))
+
+        # The two lists are the same courses, in the same order, by construction — which is
+        # what ADR-0063 §4 means by *the same proportion over the same 2x2*. A course the
+        # assessor could not commit on carries human answers, and counting them towards the
+        # ceiling while the judge is scored without them would measure the two halves of the
+        # relative rule on different populations. That is not hypothetical where a format
+        # feeds only half the criteria: there the whole other half would inflate the ceiling.
+        committed = status if claim_validity.counts_in_table(verdict, status) else None
+        if committed is not None:
+            pairs.append((verdict, committed))
+            per_rater.append(side.per_rater.get(quality_id, []))
 
         cell = claim_validity.discordant_cell(verdict, status) if status else None
         if cell is not None and judged is not None:
