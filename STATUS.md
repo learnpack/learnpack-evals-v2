@@ -92,3 +92,16 @@ Decided, deferred deliberately, and named here so nobody counts on them:
   variables. Until it exists the evaluator's frame loads the course without its AI.
 - **A console for seats.** Provisioning is lazy and needs no screen, but nothing lists which
   evaluators have one, revokes it, or reaps them when a campaign ends.
+- **A later campaign can move an earlier one's numbers.** `collapse_latest_per_assessor` keys on
+  `(assessor, content, instrument version)` with no campaign in it, and `evaluations` does not
+  record which assignment produced them — so the same expert re-answering the same course in a
+  second campaign silently rewrites what the first one found. It contradicts ADR-0060's thesis
+  and nothing frozen protects it, because that report is composed on read. Filtering by campaign
+  is not the fix: ADR-0005 made an evaluation campaign-agnostic on purpose, so that one answer
+  can satisfy several. It needs an ADR before it needs code.
+- **`course-drafts-qa-v9` binds only `LearnpackV2`**, so that pair cannot judge a V1 course. No
+  new instrument is needed — a binding, a new version, and a re-ratification of the same
+  assessor, which ADR-0019 §3 makes cheap where nothing else moved.
+- **A set-up store large enough to show a verdict.** With `min_sample = 10` and a handful of
+  courses, every claim's validity reads `unvalidated · too_few` on a developer's machine, so
+  `tracks` and `weak` cannot be seen by hand and only the plumbing can be checked.
