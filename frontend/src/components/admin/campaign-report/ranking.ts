@@ -133,7 +133,6 @@ export function answerRows(report: CampaignReport): (string | number)[][] {
           score.score ?? "",
           // The three empties, spelled out rather than left as a blank cell.
           score.derived ? "not asked" : score.score === null ? "abstained" : "answered",
-          evaluation.superseded ? "superseded" : "counted",
           (score.comment ?? "").replace(/\s+/g, " "),
         ]);
       }
@@ -151,6 +150,5 @@ export const ANSWER_COLUMNS = [
   "item",
   "score",
   "state",
-  "counted",
   "comment",
 ];

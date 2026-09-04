@@ -526,7 +526,6 @@ export interface IndividualEvaluation {
   assessor_id: Uuid;
   assessor_name: string | null;
   submitted_at: string | null;
-  superseded: boolean;
   scores: ScoreDetail[];
 }
 
@@ -629,10 +628,10 @@ export interface CampaignReportQuorum {
   contents_complete: number;
   coverage: number;
   required_per_content: number;
-  /** Distinct submissions this campaign counts — superseded corrections excluded. */
+  /** Distinct submissions this campaign received. There is no second kind: an assessor
+   *  answers a course at most once per campaign (ADR-0065). */
   evaluations_counted: number;
   evaluations_expected: number;
-  superseded_count: number;
   assessor_count: number;
 }
 
