@@ -26,6 +26,7 @@ import type {
   CampaignProgress,
   CampaignReport,
   CampaignResponse,
+  ClaimValidityReport,
   DatasetResponse,
 
   ContentResponse,
@@ -113,6 +114,10 @@ export const queryKeys = {
   campaignAssignments: (id: Uuid) => ["admin", "campaigns", id, "assignments"] as const,
   campaignProgress: (id: Uuid) => ["admin", "campaigns", id, "progress"] as const,
   golden: (id: Uuid) => ["admin", "campaigns", id, "golden"] as const,
+  // All three coordinates are in the key: each of them changes the answer, and a key that
+  // omitted one would serve another pair's numbers from the cache (ADR-0063 §7).
+  claimValidity: (campaign: Uuid, assessor: Uuid, instrument: string) =>
+    ["admin", "validity", campaign, assessor, instrument] as const,
   campaignReport: (id: Uuid) => ["admin", "campaigns", id, "report"] as const,
   assessors: ["admin", "assessors"] as const,
   invitations: ["admin", "invitations"] as const,
@@ -602,6 +607,29 @@ export function useCampaignAssignments(id: Uuid) {
   return useQuery({
     queryKey: queryKeys.campaignAssignments(id),
     queryFn: () => api<AssignmentResponse[]>(`/admin/campaigns/${id}/assignments`),
+  });
+}
+
+/** How much each claim of this assessor version follows that campaign's panel (ADR-0063).
+ *
+ *  The campaign is the caller's choice and it is optional: with none chosen there is nothing
+ *  to ask for, and no badge — which is a different fact from `unvalidated`, where the
+ *  comparison was made and did not conclude. */
+export function useClaimValidity(
+  campaign: Uuid | null,
+  assessor: Uuid | null,
+  instrument: string | null,
+) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.claimValidity(campaign ?? "", assessor ?? "", instrument ?? ""),
+    queryFn: () =>
+      api<ClaimValidityReport>(
+        `/admin/validity?campaign=${encodeURIComponent(campaign!)}` +
+          `&assessor=${encodeURIComponent(assessor!)}` +
+          `&instrument=${encodeURIComponent(instrument!)}`,
+      ),
+    enabled: Boolean(campaign && assessor && instrument),
   });
 }
 
