@@ -175,7 +175,10 @@ export function ScoreForm({
           <fieldset
             key={item.quality_id}
             className={cn(
-              "space-y-3 border-t first:border-t-0 first:pt-0",
+              // `min-w-0` is not decoration: a fieldset is min-content wide by UA rule, so
+              // once the folded statement stops wrapping it would stretch the item past the
+              // rail and out of the panel.
+              "min-w-0 space-y-3 border-t first:border-t-0 first:pt-0",
               // Twelve folded rows should not read as twelve empty bands.
               open ? "pt-6" : "pt-3",
             )}
