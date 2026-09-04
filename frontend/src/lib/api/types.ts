@@ -372,6 +372,46 @@ export interface ValidityRatio {
   of: number;
 }
 
+/** One expert's answer on the item, and the note they wrote beside it. The note is the half
+ *  that says what the judge missed, so it is the reason this reaches a reader at all. */
+export interface HumanAnswer {
+  assessor_id: Uuid;
+  assessor_name: string | null;
+  score: number;
+  comment: string | null;
+}
+
+/** What the assessor raised against the claim, in its own words. The quote is absent only on
+ *  an absence-derived fail: there was no passage to cite because nothing was there. */
+export interface CitedFinding {
+  criterion_id: string;
+  failure_mode: string;
+  quote: string | null;
+  locator: Record<string, unknown> | null;
+}
+
+/** One course where the two sides contradicted each other — both readings, neither corrected.
+ *
+ *  This is what a weak claim gets rewritten from. It is not a verdict about the course
+ *  (ADR-0063 §9): nothing here is reconciled, adjusted or scored. */
+export interface DiscordantCourse {
+  content_id: Uuid;
+  /** The external id identifies, the title only describes — another screen may use the other. */
+  external_id: string;
+  title: string | null;
+  /** Which corner of the 2×2: `refuted_accepted` or `supported_rejected`. */
+  cell: string;
+  human_mean: number;
+  /** Whether the experts landed on the same side here. Null when only one of them answered —
+   *  one opinion is not a disagreement. */
+  experts_agree: boolean | null;
+  answers: HumanAnswer[];
+  /** {pass, fail, noEvidence, notApplicable, notAssessed} — how the claim reached its status. */
+  evidence_basis: Record<string, number>;
+  /** Empty whenever the assessor said `supported`: it raised nothing, and that is the finding. */
+  findings: CitedFinding[];
+}
+
 /** How much one claim of one assessor version follows the panel of one campaign.
  *
  *  Every coefficient is nullable and null means *the table cannot support this number*, which
@@ -397,6 +437,9 @@ export interface ClaimValidity {
   insufficient: number;
   status: string; // tracks | weak | unvalidated
   reason: string | null;
+  /** The courses behind the numbers that contradicted the assessor, widest disagreement first.
+   *  Empty for a claim with a sample means the two sides never clashed — the good outcome. */
+  discordant: DiscordantCourse[];
 }
 
 export interface ClaimValidityReport {
