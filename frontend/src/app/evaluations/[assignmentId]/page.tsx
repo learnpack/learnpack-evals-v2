@@ -12,6 +12,7 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ConsumeContent } from "@/components/evaluator/consume-content";
 import { DeclaredData } from "@/components/evaluator/declared-data";
+import { HowThisWorks } from "@/components/evaluator/how-this-works";
 import { ScoreForm } from "@/components/evaluator/score-form";
 import { useAssignment, useOpenAssignment, useSubmitEvaluation } from "@/lib/api/hooks";
 import { assignedCourseLabel } from "@/lib/courses";
@@ -151,6 +152,12 @@ export default function AssignmentPage({
 
               {!focus ? (
                 <div className="space-y-4">
+                  {/* Closed, and here rather than only on the list: what the scale's bottom
+                      means against what the abstention means (ADR-0052 §4) is needed while
+                      scoring, not only before starting. */}
+                  <CollapsibleSection title="How this works" defaultOpen={false}>
+                    <HowThisWorks />
+                  </CollapsibleSection>
                   {/* Above the form, because it is read once as context before answering —
                       the items that rest on it carry a pointer back up (ADR-0057). */}
                   <DeclaredData declared={assignment.declared} />
