@@ -130,7 +130,19 @@ export function ScoreForm({
                     reports, and showing it here would only invite scoring the group. */}
                 {!likert ? <h3 className="font-medium">{item.dimension}</h3> : null}
               </div>
-              <p className={cn("mt-1 text-sm", likert ? "text-foreground" : "text-muted-foreground")}>
+              {/* The statement has to outrank everything around it: it is what is being
+                  judged, and the guidance, the pointer and the scale labels are all there to
+                  serve it. At one size for all of them the eye lands on the five buttons —
+                  the loudest shape — rather than on the question. Likert only: in numeric mode
+                  the dimension heading above carries the weight and the prompt sits under it. */}
+              <p
+                className={cn(
+                  "mt-1",
+                  likert
+                    ? "text-[15px] font-medium leading-snug text-foreground"
+                    : "text-sm text-muted-foreground",
+                )}
+              >
                 {item.prompt}
               </p>
               {/* The cost of putting the declarations above the form: by item 3 they have
@@ -253,21 +265,70 @@ export function ScoreForm({
   );
 }
 
+const AGREE_LEAD = "Agree if";
+const DISAGREE_LEAD = "Disagree if";
+
+/**
+ * The two halves of a guidance, told apart.
+ *
+ * ADR-0052 §3 writes each item's guidance as an **Agree** half and a **Disagree** half, *each
+ * standing on its own*, so a rater reads the one they are leaning towards instead of a
+ * paragraph written as the continuation of the other. One block under a label naming only the
+ * Agree half did neither: it read as a single explanation, and it named the pole it was about
+ * to lean the reader towards.
+ *
+ * The shape lives in the text — every v2 item reads `[preamble] Agree if … Disagree if …` — so
+ * that is what this splits on. Anything else falls back to the whole string, unsplit: rubric
+ * v1 is worded differently, is no longer seeded but still resolves for a campaign pinned to
+ * it, and the admin preview renders whatever version the store holds.
+ */
+function splitGuidance(guidance: string) {
+  // Capital A on purpose: "Disagree if" does not contain "Agree if", so the first match is
+  // the Agree half and never the tail of the other one.
+  const agree = guidance.indexOf(AGREE_LEAD);
+  const disagree = guidance.indexOf(DISAGREE_LEAD);
+  if (agree === -1 || disagree === -1 || disagree < agree) return null;
+  return {
+    preamble: guidance.slice(0, agree).trim(),
+    agree: guidance.slice(agree + AGREE_LEAD.length, disagree).trim(),
+    disagree: guidance.slice(disagree + DISAGREE_LEAD.length).trim(),
+  };
+}
+
 function GuidanceDisclosure({ guidance, likert }: { guidance: string; likert: boolean }) {
   const [open, setOpen] = useState(false);
+  const halves = useMemo(() => splitGuidance(guidance), [guidance]);
   if (!guidance) return null;
   return (
     <div className="mt-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
         className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
       >
         <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
-        {open ? "Hide guidance" : likert ? "What agreeing means" : "Show guidance"}
+        {/* Neutral on purpose: the label names the act, not one of the two poles. */}
+        {open ? "Hide guidance" : likert ? "How to decide" : "Show guidance"}
       </button>
       {open ? (
-        <p className="mt-1.5 rounded-md bg-muted/60 p-3 text-sm text-muted-foreground">{guidance}</p>
+        <div className="mt-1.5 space-y-2 rounded-md bg-muted/60 p-3 text-sm text-muted-foreground">
+          {halves ? (
+            <>
+              {halves.preamble ? <p>{halves.preamble}</p> : null}
+              <p>
+                <span className="font-medium text-foreground">{AGREE_LEAD}</span>{" "}
+                {halves.agree}
+              </p>
+              <p>
+                <span className="font-medium text-foreground">{DISAGREE_LEAD}</span>{" "}
+                {halves.disagree}
+              </p>
+            </>
+          ) : (
+            <p>{guidance}</p>
+          )}
+        </div>
       ) : null}
     </div>
   );
