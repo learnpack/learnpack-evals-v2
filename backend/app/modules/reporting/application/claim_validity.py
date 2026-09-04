@@ -156,6 +156,58 @@ def confuse(pairs: Sequence[tuple[HumanVerdict, str]]) -> Confusion:
     )
 
 
+# The two cells off the diagonal: the courses where the two sides contradicted each other.
+# Named after the fields of `Confusion` so that one table does not grow a second vocabulary
+# for its own corners.
+Discordance = Literal["refuted_accepted", "supported_rejected"]
+
+REFUTED_ACCEPTED: Discordance = "refuted_accepted"
+SUPPORTED_REJECTED: Discordance = "supported_rejected"
+
+
+def discordant_cell(verdict: HumanVerdict, status: str) -> Discordance | None:
+    """Which off-diagonal cell a course fell in, or `None` when the two sides did not clash.
+
+    Only a course inside the 2x2 can contradict. The grey zone, the unanswered item and the
+    assessor's `insufficient` are absences rather than disagreements, and `confuse` leaves
+    them out for the same reason.
+    """
+    if verdict == ACCEPT and status == REFUTED:
+        return REFUTED_ACCEPTED
+    if verdict == REJECT and status == SUPPORTED:
+        return SUPPORTED_REJECTED
+    return None
+
+
+def distance_from_cut(mean: float, thresholds: Thresholds = DEFAULT_THRESHOLDS) -> float:
+    """How far past the cut the panel landed — how firmly it said what it said.
+
+    This is the reading order of the discordant courses: a course the experts rejected at 1.0
+    contradicts the assessor harder than one they rejected at 2.0, and the reader's next act
+    is rewriting a claim rather than admiring one. Zero inside the grey zone, which never
+    reaches here.
+    """
+    if mean >= thresholds.accept_at:
+        return mean - thresholds.accept_at
+    if mean <= thresholds.reject_at:
+        return thresholds.reject_at - mean
+    return 0.0
+
+
+def verdicts_agree(verdicts: Sequence[HumanVerdict]) -> bool | None:
+    """Whether the raters of one course landed on the same side. `None` when no two did.
+
+    The ceiling of ADR-0063 §4, at the grain of a single course. Where this is `False` the
+    course's disagreement with the assessor is weak evidence about the assessor: there was no
+    human answer to match here (ADR-0015 §5), and the first suspect is the reference item.
+    Never `False` for want of a second rater — that is not disagreement, it is one opinion.
+    """
+    sides = [v for v in verdicts if v in (ACCEPT, REJECT)]
+    if len(sides) < 2:
+        return None
+    return len(set(sides)) == 1
+
+
 def sensitivity(c: Confusion) -> Ratio:
     """Of the courses the experts accepted, on how many did the assessor say `supported`."""
     return Ratio(hit=c.supported_accepted, of=c.accepted)

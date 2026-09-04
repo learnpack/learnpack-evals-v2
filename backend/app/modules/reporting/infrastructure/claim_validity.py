@@ -11,12 +11,21 @@ whose verdicts are being qualified. Nothing is inferred — a defaulted coordina
 URL mean different things over time (ADR-0063 §7).
 """
 
+import statistics
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
-from app.modules.evaluation.public import EvaluationQueries, QualityJudgmentDTO
+from app.modules.evaluand_registry.public import ContentSnapshot, EvaluandRegistryQueries
+from app.modules.evaluation.public import (
+    EvaluationDTO,
+    EvaluationQueries,
+    FindingDTO,
+    JudgmentClaimDTO,
+    QualityJudgmentDTO,
+)
 from app.modules.evaluation_design.public import InstrumentQueries, RubricQueries
-from app.modules.identity.public import IdentityQueries
+from app.modules.identity.public import AssessorDTO, IdentityQueries
 from app.modules.orchestration.public import OrchestrationQueries
 from app.modules.reporting.application import claim_validity
 from app.modules.reporting.application.claim_validity import (
@@ -31,6 +40,64 @@ from app.modules.reporting.application.claim_validity import (
 from app.modules.reporting.infrastructure.campaign_scope import campaign_answers
 
 # --------------------------------------------------------------------------- DTOs
+
+
+@dataclass(frozen=True)
+class HumanAnswerDTO:
+    """One expert on one item of one course: the number, and what they wrote beside it.
+
+    The comment is the half that says *why*, and it is the reason this reaches a reader at
+    all — an expert's note is the critique that names what the judge missed. `rater` is not a
+    word of this domain (GLOSSARY): the human side of a campaign is a human `Assessor`.
+    """
+
+    assessor_id: UUID
+    assessor_name: str | None
+    score: int
+    comment: str | None
+
+
+@dataclass(frozen=True)
+class CitedFindingDTO:
+    """What the assessor raised against a claim on one course, in its own words.
+
+    The quote is absent only on an absence-derived fail, whose failure mode is mechanical
+    (ADR-0021) — there was no passage to cite because the point is that nothing was there.
+    """
+
+    criterion_id: str
+    failure_mode: str
+    quote: str | None
+    locator: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class DiscordantCourseDTO:
+    """One course where the two sides contradicted each other, with both sides quoted.
+
+    This is what a `weak` claim is rewritten from, and it is deliberately not a verdict about
+    the course (ADR-0063 §9): nothing here is corrected, reconciled or scored. It is the pair
+    of readings, side by side, so that a reader can see which of the two is wrong.
+    """
+
+    content_id: UUID
+    # The external id identifies and the title only describes (ADR-0059), so both travel: a
+    # reader moving to another screen may meet this course under the other label.
+    external_id: str
+    title: str | None
+    # Which corner of the 2x2 — `refuted_accepted` or `supported_rejected`.
+    cell: str
+    human_mean: float
+    # Whether the experts landed on the same side HERE. `None` when only one of them answered.
+    # Read this first: where it is false there was no human answer to match, and the suspect
+    # is the reference item rather than the assessor.
+    experts_agree: bool | None
+    answers: list[HumanAnswerDTO]
+    # {pass, fail, noEvidence, notApplicable, notAssessed} — how the claim reached its status.
+    evidence_basis: dict[str, int]
+    # Empty whenever the assessor said `supported`: it raised nothing, and that silence is the
+    # finding. `evidence_basis` is what explains it.
+    findings: list[CitedFindingDTO]
 
 
 @dataclass(frozen=True)
@@ -58,6 +125,10 @@ class ClaimValidityDTO:
     insufficient: int
     status: str
     reason: str | None
+    # The courses behind the numbers above that contradicted the assessor, widest disagreement
+    # first. Empty when there is no sample, and empty when the two sides never clashed — which
+    # for a claim with a sample is the good outcome, not a missing one.
+    discordant: list[DiscordantCourseDTO]
 
 
 @dataclass(frozen=True)
@@ -92,6 +163,7 @@ def build_claim_validity(
     instrument_version_id: str,
     orchestration: OrchestrationQueries,
     evaluations: EvaluationQueries,
+    contents: EvaluandRegistryQueries,
     rubrics: RubricQueries,
     instruments: InstrumentQueries,
     identity: IdentityQueries,
@@ -106,11 +178,6 @@ def build_claim_validity(
     if instrument is None:
         raise InstrumentNotPublished(instrument_version_id)
 
-    names = identity.list_assessors([assessor_id])
-    if assessor_id not in names:
-        raise AssessorUnknown(str(assessor_id))
-    assessor = names[assessor_id]
-
     campaign = answers.campaign
     elicited = {item.quality_id for item in answers.rubric.items}
 
@@ -121,8 +188,28 @@ def build_claim_validity(
     # not depend on dictionary insertion.
     sample_ids = [cid for cid in campaign.content_ids if cid in judgments]
 
-    human = {cid: _human_side(answers.counted.get(cid, []), thresholds) for cid in sample_ids}
-    machine = {cid: _claim_status(judgments[cid]) for cid in sample_ids}
+    # One lookup for every name on both sides of the comparison: the assessor being qualified,
+    # and the experts whose answers qualify it.
+    names = identity.list_assessors(
+        list(
+            {assessor_id}
+            | {e.assessor_id for cid in sample_ids for e in answers.counted.get(cid, [])}
+        )
+    )
+    if assessor_id not in names:
+        raise AssessorUnknown(str(assessor_id))
+    assessor = names[assessor_id]
+
+    human = {
+        cid: _human_side(answers.counted.get(cid, []), names, thresholds) for cid in sample_ids
+    }
+    machine = {cid: _claims_of(judgments[cid]) for cid in sample_ids}
+    # Batched, never per course (ADR-0006). Findings exist only where something was raised, so
+    # this is small: the courses the assessor refuted something on.
+    raised = _findings_by_course_and_claim(
+        evaluations.get_findings(sample_ids, instrument_version_id, assessor_id)
+    )
+    courses = {s.content_id: s for s in contents.list_content_snapshots()}
 
     claims = [
         _validity_of(
@@ -137,6 +224,8 @@ def build_claim_validity(
             sample_ids=sample_ids,
             human=human,
             machine=machine,
+            raised=raised,
+            courses=courses,
             thresholds=thresholds,
         )
         # Every claim of the pinned version, including the ones with no human item: a reading
@@ -176,10 +265,16 @@ class _HumanSide:
     verdict: dict[str, HumanVerdict]
     # Each rater's own cut, which is what the ceiling is measured on (ADR-0063 §4).
     per_rater: dict[str, list[HumanVerdict]]
+    # The same answers uncut, with who gave them and what they wrote. The cut is what the
+    # numbers are computed on; this is what a reader has to see to know why they came out so.
+    answers: dict[str, list[HumanAnswerDTO]]
 
 
-def _human_side(evaluations: list, thresholds: Thresholds) -> _HumanSide:
+def _human_side(
+    evaluations: list[EvaluationDTO], names: dict[UUID, AssessorDTO], thresholds: Thresholds
+) -> _HumanSide:
     scores: dict[str, list[int]] = {}
+    answers: dict[str, list[HumanAnswerDTO]] = {}
     for evaluation in evaluations:
         for score in evaluation.scores:
             # An abstention and a derived row are not judgements (ADR-0052 §4, ADR-0053), so
@@ -187,14 +282,48 @@ def _human_side(evaluations: list, thresholds: Thresholds) -> _HumanSide:
             if score.score is None or score.derived:
                 continue
             scores.setdefault(score.quality_id, []).append(score.score)
+            answers.setdefault(score.quality_id, []).append(
+                HumanAnswerDTO(
+                    assessor_id=evaluation.assessor_id,
+                    assessor_name=_name_of(names, evaluation.assessor_id),
+                    score=score.score,
+                    comment=score.comment,
+                )
+            )
     return _HumanSide(
         verdict={q: claim_validity.human_verdict(s, thresholds) for q, s in scores.items()},
         per_rater={q: claim_validity.rater_verdicts(s, thresholds) for q, s in scores.items()},
+        answers=answers,
     )
 
 
-def _claim_status(judgment: QualityJudgmentDTO) -> dict[str, str]:
-    return {claim.claim_id: claim.status for claim in judgment.claims}
+def _name_of(names: dict[UUID, AssessorDTO], assessor_id: UUID) -> str | None:
+    assessor = names.get(assessor_id)
+    if assessor is None:
+        return None
+    return assessor.display_name or assessor.email
+
+
+def _claims_of(judgment: QualityJudgmentDTO) -> dict[str, JudgmentClaimDTO]:
+    """The whole claim row, not just its status: `evidence_basis` explains a silent verdict."""
+    return {claim.claim_id: claim for claim in judgment.claims}
+
+
+def _findings_by_course_and_claim(
+    findings: list[FindingDTO],
+) -> dict[tuple[UUID, str], list[CitedFindingDTO]]:
+    """Findings are organised under the claim they compromise (GLOSSARY), one course at a time."""
+    grouped: dict[tuple[UUID, str], list[CitedFindingDTO]] = {}
+    for finding in findings:
+        grouped.setdefault((finding.content_id, finding.claim_id), []).append(
+            CitedFindingDTO(
+                criterion_id=finding.criterion_id,
+                failure_mode=finding.failure_mode,
+                quote=finding.quote,
+                locator=finding.locator,
+            )
+        )
+    return grouped
 
 
 def _validity_of(
@@ -206,7 +335,9 @@ def _validity_of(
     elicited: set[str],
     sample_ids: list[UUID],
     human: dict[UUID, _HumanSide],
-    machine: dict[UUID, dict[str, str]],
+    machine: dict[UUID, dict[str, JudgmentClaimDTO]],
+    raised: dict[tuple[UUID, str], list[CitedFindingDTO]],
+    courses: dict[UUID, ContentSnapshot],
     thresholds: Thresholds,
 ) -> ClaimValidityDTO:
     if quality_id not in elicited:
@@ -216,12 +347,15 @@ def _validity_of(
 
     pairs: list[tuple[HumanVerdict, str]] = []
     per_rater: list[list[HumanVerdict]] = []
+    discordant: list[tuple[float, DiscordantCourseDTO]] = []
     grey = unanswered = insufficient = 0
 
     for content_id in sample_ids:
-        verdict = human[content_id].verdict.get(quality_id, claim_validity.ABSENT)
-        status = machine[content_id].get(claim_id)
-        per_rater.append(human[content_id].per_rater.get(quality_id, []))
+        side = human[content_id]
+        verdict = side.verdict.get(quality_id, claim_validity.ABSENT)
+        judged = machine[content_id].get(claim_id)
+        status = judged.status if judged is not None else None
+        per_rater.append(side.per_rater.get(quality_id, []))
 
         if verdict == GREY:
             grey += 1
@@ -231,6 +365,30 @@ def _validity_of(
             insufficient += 1
         if status is not None:
             pairs.append((verdict, status))
+
+        cell = claim_validity.discordant_cell(verdict, status) if status else None
+        if cell is not None and judged is not None:
+            answers = side.answers.get(quality_id, [])
+            mean = statistics.fmean(answer.score for answer in answers)
+            snapshot = courses.get(content_id)
+            discordant.append(
+                (
+                    claim_validity.distance_from_cut(mean, thresholds),
+                    DiscordantCourseDTO(
+                        content_id=content_id,
+                        external_id=snapshot.external_id if snapshot else "",
+                        title=snapshot.title if snapshot else None,
+                        cell=cell,
+                        human_mean=mean,
+                        experts_agree=claim_validity.verdicts_agree(
+                            side.per_rater.get(quality_id, [])
+                        ),
+                        answers=answers,
+                        evidence_basis=dict(judged.evidence_basis),
+                        findings=raised.get((content_id, claim_id), []),
+                    ),
+                )
+            )
 
     confusion = claim_validity.confuse(pairs)
     ceiling = claim_validity.pairwise_agreement(per_rater)
@@ -253,7 +411,15 @@ def _validity_of(
         insufficient=insufficient,
         status=verdict_of.status,
         reason=verdict_of.reason,
+        # Widest disagreement first, and the campaign's order breaking ties so that two
+        # readings of the same data list the same courses in the same places.
+        discordant=[course for _, course in sorted(discordant, key=_widest_first)],
     )
+
+
+def _widest_first(entry: tuple[float, DiscordantCourseDTO]) -> tuple[float, str]:
+    distance, course = entry
+    return (-distance, course.external_id)
 
 
 def _empty(
@@ -276,14 +442,18 @@ def _empty(
         insufficient=0,
         status=claim_validity.UNVALIDATED,
         reason=reason,
+        discordant=[],
     )
 
 
 __all__ = [
     "AssessorUnknown",
+    "CitedFindingDTO",
     "ClaimValidityDTO",
     "ClaimValidityReportDTO",
     "Confusion",
+    "DiscordantCourseDTO",
+    "HumanAnswerDTO",
     "InstrumentNotPublished",
     "build_claim_validity",
 ]
