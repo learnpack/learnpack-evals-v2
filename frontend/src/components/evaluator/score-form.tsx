@@ -121,12 +121,15 @@ export function ScoreForm({
         }),
       );
     },
-    () => {
-      // A failed submit is the one moment the form overrules the rater about what is folded:
-      // they are being asked to fix something, and an error nobody can see is an error nobody
-      // can fix. Dropping the standing preference hands every item back to the rule below,
-      // which opens exactly the unanswered ones.
-      setActive(null);
+    (invalid) => {
+      // The one moment the form overrules the rater about what is folded: they are being
+      // asked to fix something, and an error nobody can see is an error nobody can fix. Only
+      // the items that failed are unfolded — the rest stay as they were left.
+      setFolded((f) => {
+        const next = { ...f };
+        for (const id of Object.keys(invalid)) delete next[id];
+        return next;
+      });
     },
   );
 
@@ -138,25 +141,14 @@ export function ScoreForm({
   const answered = items.filter((item) => values?.[item.quality_id]?.answer !== undefined).length;
 
   /**
-   * Folding is *derived* from the answer, so it can never drift from the form: an item is
-   * folded because it has been answered. `active` is the single exception, and it is about
-   * this moment rather than a remembered preference.
+   * Every item starts open and stays open: what is folded is what the rater folded.
    *
-   * - `id` alone — the rater is standing in this item, so it stays open even once answered.
-   *   This is why folding is not on the click: clicking a point focuses that button, so an
-   *   item never folds out from under the click that answered it, and the comment box does
-   *   not vanish at the moment the rater has just formed an opinion. It folds when they move
-   *   on, which is when folding is a relief rather than a theft.
-   * - `open` — they pressed the header. Explicit, because Safari does not focus a button on
-   *   click, so expanding cannot be left to focus alone.
-   *
-   * Both die when focus leaves the item, so what a rater walks away from is always the
-   * derived state and the panel keeps shrinking on its own. An unanswered item therefore
-   * cannot be folded away for good — which is the point of the whole thing.
+   * Deriving it from the answer was tried and taken out. An item that folds itself moves
+   * everything below it while that is being read, and takes the scale and the comment box
+   * away from somebody who may still be deciding. Putting a finished item aside is worth
+   * having — it is just not a call the form gets to make.
    */
-  const [active, setActive] = useState<{ id: string; open?: boolean } | null>(null);
-  const isOpen = (id: string) =>
-    active?.id === id ? (active.open ?? true) : values?.[id]?.answer === undefined;
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
 
   // Two forms on one page (the admin preview beside anything else) would otherwise collide
   // on `quality_id` as an element id.
@@ -169,7 +161,7 @@ export function ScoreForm({
         const commentError = errors[item.quality_id]?.comment?.message as string | undefined;
         const answer = values?.[item.quality_id]?.answer;
         const hasComment = Boolean(values?.[item.quality_id]?.comment?.trim());
-        const open = isOpen(item.quality_id);
+        const open = !folded[item.quality_id];
         const bodyId = `${formId}-${item.quality_id}`;
         return (
           <fieldset
@@ -182,15 +174,6 @@ export function ScoreForm({
               // Twelve folded rows should not read as twelve empty bands.
               open ? "pt-6" : "pt-3",
             )}
-            // React's onFocus/onBlur are focusin/focusout, so one pair here covers every
-            // control in the item — the points, abstain, the guidance toggle, the comment.
-            onFocus={() =>
-              setActive((a) => (a?.id === item.quality_id ? a : { id: item.quality_id }))
-            }
-            onBlur={(e) => {
-              if (e.currentTarget.contains(e.relatedTarget)) return; // moved within the item
-              setActive((a) => (a?.id === item.quality_id ? null : a));
-            }}
           >
             {/* The statement is the toggle, the way a CollapsibleSection's title is — and it
                 is mounted in both states on purpose: a trigger that disappears when pressed
@@ -200,7 +183,7 @@ export function ScoreForm({
               type="button"
               aria-expanded={open}
               aria-controls={bodyId}
-              onClick={() => setActive({ id: item.quality_id, open: !open })}
+              onClick={() => setFolded((f) => ({ ...f, [item.quality_id]: open }))}
               className="-mx-2 flex w-full items-start gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronDown
@@ -250,9 +233,13 @@ export function ScoreForm({
                   <span
                     className={cn(
                       "rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-tight",
-                      answer === ABSTAIN
-                        ? "border-dashed border-foreground/40 bg-muted text-muted-foreground"
-                        : "border-primary/40 bg-primary/10 text-foreground",
+                      // An item can be folded before it is answered, so the chip has to be
+                      // able to say so without looking like an answer.
+                      answer === undefined
+                        ? "border-dashed border-input text-muted-foreground"
+                        : answer === ABSTAIN
+                          ? "border-dashed border-foreground/40 bg-muted text-muted-foreground"
+                          : "border-primary/40 bg-primary/10 text-foreground",
                     )}
                   >
                     {answerLabel(answer, likert, scaleMin)}
