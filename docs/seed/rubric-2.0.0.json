@@ -145,7 +145,7 @@
       "qualityId": "progression-cognitive-demand",
       "order": 12,
       "dimension": "learning-progression",
-      "prompt": "The course grows more demanding at a pace someone arriving at it could follow.",
+      "prompt": "The course grows more demanding at a pace a learner who has kept up could still follow.",
       "guidance": "Agree if the course gets steadily more demanding and each step is reachable from the one before. Disagree if it stays flat throughout, or if at least one lesson runs far ahead of the rest of the course.",
       "anchorLow": "Strongly disagree",
       "anchorHigh": "Strongly agree",
