@@ -1,13 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Select } from "@/components/ui/select";
 import { ErrorState, LoadingState } from "@/components/ui/states";
+import { EvidenceQuote } from "@/components/admin/evidence-quote";
 import { ValidityBadge } from "@/components/admin/study-report/validity-badge";
 import { useCampaigns, useGoldenStatus } from "@/lib/api/hooks";
-import type { ClaimValidity, ClaimValidityReport, Uuid } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
+import type {
+  ClaimValidity,
+  ClaimValidityReport,
+  DiscordantCourse,
+  Uuid,
+} from "@/lib/api/types";
 
 /** How much this study's assessor follows a panel of experts, claim by claim (ADR-0063).
  *
@@ -160,32 +169,7 @@ function ValidityTable({ report }: { report: ClaimValidityReport }) {
           </thead>
           <tbody className="divide-y">
             {report.claims.map((claim) => (
-              <tr key={claim.claim_id} className="align-top">
-                <td className="px-3 py-2">
-                  <span className="block" title={claim.claim_id}>
-                    {claim.statement}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {claim.quality_id}
-                    {claim.grey > 0 ? ` · ${claim.grey} in the grey zone` : ""}
-                  </span>
-                </td>
-                <td className="px-3 py-2 tabular-nums">
-                  <Count ratio={claim.sensitivity} />
-                </td>
-                <td className="px-3 py-2 tabular-nums">
-                  <Count ratio={claim.specificity} />
-                </td>
-                <td className="px-3 py-2 tabular-nums">
-                  <Coefficient value={claim.kappa} />
-                </td>
-                <td className="px-3 py-2 tabular-nums">
-                  <Coefficient value={claim.human_agreement} percent />
-                </td>
-                <td className="px-3 py-2">
-                  <ValidityBadge validity={claim} />
-                </td>
-              </tr>
+              <ClaimRow key={claim.claim_id} claim={claim} />
             ))}
           </tbody>
         </table>
@@ -198,6 +182,190 @@ function ValidityTable({ report }: { report: ClaimValidityReport }) {
       </p>
     </div>
   );
+}
+
+/** One claim, and — folded under it — the courses that contradicted its assessor.
+ *
+ *  The numbers say how much the claim follows the panel; only the courses say why, and why is
+ *  what a rewrite is made of. Deliberately not gated on `weak`: a claim left `unvalidated` for
+ *  want of courses still has disagreements worth reading, and on a short campaign that is the
+ *  only thing there is to read. */
+function ClaimRow({ claim }: { claim: ClaimValidity }) {
+  const [open, setOpen] = useState(false);
+  const courses = claim.discordant;
+  const disclosable = courses.length > 0;
+
+  return (
+    <>
+      <tr className="align-top">
+        <td className="px-3 py-2">
+          {disclosable ? (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              className="flex w-full items-start gap-1.5 text-left hover:text-foreground/80"
+            >
+              <ChevronDown
+                className={cn(
+                  "mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
+                  !open && "-rotate-90",
+                )}
+              />
+              <span className="min-w-0">
+                <span className="block" title={claim.claim_id}>
+                  {claim.statement}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  <Coordinates claim={claim} /> ·{" "}
+                  <span className="font-medium text-foreground">
+                    {courses.length} disagreed
+                  </span>
+                </span>
+              </span>
+            </button>
+          ) : (
+            <>
+              <span className="block" title={claim.claim_id}>
+                {claim.statement}
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                <Coordinates claim={claim} />
+              </span>
+            </>
+          )}
+        </td>
+        <td className="px-3 py-2 tabular-nums">
+          <Count ratio={claim.sensitivity} />
+        </td>
+        <td className="px-3 py-2 tabular-nums">
+          <Count ratio={claim.specificity} />
+        </td>
+        <td className="px-3 py-2 tabular-nums">
+          <Coefficient value={claim.kappa} />
+        </td>
+        <td className="px-3 py-2 tabular-nums">
+          <Coefficient value={claim.human_agreement} percent />
+        </td>
+        <td className="px-3 py-2">
+          <ValidityBadge validity={claim} />
+        </td>
+      </tr>
+      {open && disclosable ? (
+        <tr>
+          <td colSpan={6} className="bg-muted/20 px-3 py-3">
+            <p className="mb-3 max-w-2xl text-xs text-muted-foreground">
+              Where the two sides read the same course differently, widest disagreement first.
+              Both readings are shown as they were given: nothing here corrects a course, and
+              neither side is the one that was right.
+            </p>
+            <ul className="space-y-3">
+              {courses.map((course) => (
+                <DiscordantEntry key={course.content_id} course={course} />
+              ))}
+            </ul>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+function Coordinates({ claim }: { claim: ClaimValidity }) {
+  return (
+    <>
+      {claim.quality_id}
+      {claim.grey > 0 ? ` · ${claim.grey} in the grey zone` : ""}
+    </>
+  );
+}
+
+/** One course, read in the order the diagnosis has to be read.
+ *
+ *  The panel's own agreement comes first because it decides whether anything below it means
+ *  anything: where two experts read the same course differently there is no human answer for
+ *  the assessor to have matched, and the suspect is the item, not the judge. */
+function DiscordantEntry({ course }: { course: DiscordantCourse }) {
+  const refutedWhatWasAccepted = course.cell === "refuted_accepted";
+
+  return (
+    <li className="rounded-md border bg-background p-3 text-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="font-medium">{course.title ?? course.external_id}</span>
+        <span className="font-mono text-xs text-muted-foreground">{course.external_id}</span>
+      </div>
+
+      <p className="mt-1 text-xs">
+        {refutedWhatWasAccepted ? (
+          <>
+            The experts <span className="font-medium text-foreground">accepted</span> it (mean{" "}
+            {course.human_mean.toFixed(1)}) and the assessor{" "}
+            <span className="font-medium text-foreground">refuted</span> the claim.
+          </>
+        ) : (
+          <>
+            The experts <span className="font-medium text-foreground">rejected</span> it (mean{" "}
+            {course.human_mean.toFixed(1)}) and the assessor{" "}
+            <span className="font-medium text-foreground">supported</span> the claim.
+          </>
+        )}
+      </p>
+
+      {course.experts_agree === false ? (
+        <p className="mt-2 rounded border border-dashed bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
+          The experts did not agree with each other on this course, so there is no human answer
+          here for the assessor to have matched. Read the item before reading the judge.
+        </p>
+      ) : null}
+
+      <ul className="mt-2 space-y-1.5">
+        {course.answers.map((answer) => (
+          <li key={answer.assessor_id} className="text-xs">
+            <span className="tabular-nums font-medium">{answer.score}</span>
+            <span className="text-muted-foreground"> · {answer.assessor_name ?? "an expert"}</span>
+            {answer.comment ? (
+              <span className="mt-0.5 block whitespace-pre-wrap text-muted-foreground">
+                {answer.comment}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-3 border-t pt-2">
+        {course.findings.length > 0 ? (
+          <ul className="space-y-2">
+            {course.findings.map((finding, index) => (
+              <li key={`${finding.criterion_id}-${index}`} className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-mono">{finding.criterion_id}</span> ·{" "}
+                  {finding.failure_mode}
+                </p>
+                <EvidenceQuote
+                  quote={finding.quote}
+                  locator={finding.locator}
+                  absentCause="the absence IS the finding"
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            The assessor raised nothing here — that silence is what the experts contradicted.
+            It concluded from <EvidenceBasis basis={course.evidence_basis} />.
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** What the claim was concluded from, spelled out. An empty basis says the criteria behind
+ *  this claim were never recorded, which is a different fact from all of them passing. */
+function EvidenceBasis({ basis }: { basis: Record<string, number> }) {
+  const parts = Object.entries(basis).filter(([, count]) => count > 0);
+  if (parts.length === 0) return <span>criteria it did not record</span>;
+  return <span>{parts.map(([state, count]) => `${count} ${state}`).join(", ")}</span>;
 }
 
 /** A proportion with its denominator, because `82 %` over 11 courses and over 400 are not the
