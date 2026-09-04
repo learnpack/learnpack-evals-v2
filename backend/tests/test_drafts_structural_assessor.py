@@ -20,10 +20,14 @@ from test_automated_evaluation_flow import publish_instrument, track_automated
 from test_learnpack_v2_extraction import extract_fixture
 
 from app.cli import run_ratify_assessor
+from app.modules.content_profiling.infrastructure.adapters.learnpack_v1 import (
+    CAPABILITIES as V1_CAPABILITIES,
+)
 from app.modules.evaluation.domain.derivation import derive_and_execute
 from app.modules.evaluation.domain.model import (
     BindingSpec,
     ClaimSpec,
+    Coverage,
     CriterionSpec,
     InstrumentSpec,
     ProfileData,
@@ -258,7 +262,7 @@ def _fixture_profile() -> ProfileData:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v9",
+        instrument_version_id="course-drafts-qa-v10",
         instrument_id=_REAL_SPEC["instrument_id"],
         status="published",
         claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _REAL_SPEC["claims"]),
@@ -382,3 +386,93 @@ def test_the_real_coverage_ratifies_both_published_versions(
 
     v9_id = publish_instrument(cleanup, drafts_copy_spec(unique, "v9"), admin_id)
     assert run_ratify_assessor(patched_drafts_package.name, "1", v9_id, email, []) == 0
+
+
+# ---- the LearnpackV1 binding (ADR-0032 §1)
+
+
+def _v1_profile() -> ProfileData:
+    """A LearnpackV1 profile carrying exactly what that adapter declares it can supply.
+
+    Built from the adapter's own `CAPABILITIES` rather than a literal list, so the day the
+    format starts declaring something new this test moves with it instead of lying.
+    """
+    return ProfileData(
+        profile_id=uuid4(),
+        package_format="LearnpackV1",
+        entries={
+            requirement_id: ProfileEntryData(
+                data_requirement_id=requirement_id,
+                provenance="declared_structured",
+                value={},
+                quote=None,
+                locator=None,
+            )
+            for requirement_id in V1_CAPABILITIES
+        },
+    )
+
+
+def _abstaining_coverage(spec: InstrumentSpec) -> Coverage:
+    """Abstains from everything, so nothing reaches an executor.
+
+    What is under test is the derivation's applicability gates, not any assessor's reading:
+    a criterion that comes back `not_assessed` here is one that got past both the binding and
+    the capability check, which is precisely the thing the binding was added for.
+    """
+    return Coverage(
+        executes=frozenset(),
+        abstains={
+            criterion.criterion_id: "not what this test measures" for criterion in spec.criteria
+        },
+    )
+
+
+# The fourteen this format cannot feed. Not a defect: unmet demand, reported (ADR-0032 §2).
+_V1_CANNOT_FEED = {
+    "cr-objectives-min-count",
+    "cr-objectives-observable-verbs",
+    "cr-objectives-non-decreasing-demand",
+    "cr-every-objective-is-developed-somewhere",
+    "cr-every-substantive-lesson-serves-an-objective",
+    "cr-lesson-works-at-the-level-its-objective-demands",
+    "cr-every-objective-has-an-assessment-item",
+    "cr-assessment-matches-the-declared-verification",
+    "cr-lessons-build-within-their-module",
+    "cr-modules-build-on-earlier-modules",
+    "cr-assessment-retrieves-earlier-taught-material",
+    "cr-audience-declared",
+    "cr-prerequisites-declared",
+    "cr-cognitive-demand-rises-across-the-course",
+}
+
+
+def test_a_learnpack_v1_course_is_judged_on_the_half_that_format_declares():
+    """Before the v10 binding every criterion derived `not_applicable` by cause (a), so a V1
+    course produced a judgment that said nothing at all. With it, the applicability question
+    moves to where it is answered per criterion: demand against what the adapter supplies."""
+    spec = _instrument_spec()
+    outcomes, _ = derive_and_execute(spec, _v1_profile(), _abstaining_coverage(spec), {})
+
+    assert len(outcomes) == 30
+    not_applicable = {o.criterion_id for o in outcomes if o.outcome == "not_applicable"}
+    assert not_applicable == _V1_CANNOT_FEED
+    assert len(outcomes) - len(not_applicable) == 16
+
+
+def test_no_claim_of_this_instrument_is_half_evidenced_on_learnpack_v1():
+    """The property that makes the partial reading sound rather than distorted.
+
+    A claim judged on a truncated subset of its own criteria would assert on less evidence
+    than it was designed to need, and nothing in the report would say so. Here every claim
+    keeps all of its criteria on a V1 course or loses all of them, so a claim either answers
+    as designed or is excluded by coverage and reported as excluded.
+    """
+    by_claim: dict[str, set[bool]] = {}
+    for raw in _REAL_SPEC["criteria"]:
+        runnable = raw["id"] not in _V1_CANNOT_FEED
+        for claim_id in raw["claims"]:
+            by_claim.setdefault(claim_id, set()).add(runnable)
+
+    split = {claim_id for claim_id, states in by_claim.items() if len(states) > 1}
+    assert split == set()

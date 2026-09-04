@@ -20,7 +20,7 @@ INSTRUMENTS_DIR = pathlib.Path(__file__).resolve().parents[2] / "docs" / "seed" 
 INSTRUMENT_SPEC_FILE = INSTRUMENTS_DIR / "learnpack-course-qa-v1.yaml"
 
 # The drafts lineage's current version — what `drafts-structural` declares coverage over.
-DRAFTS_INSTRUMENT_SPEC_FILE = INSTRUMENTS_DIR / "course-drafts-qa-v9.yaml"
+DRAFTS_INSTRUMENT_SPEC_FILE = INSTRUMENTS_DIR / "course-drafts-qa-v10.yaml"
 
 
 def declared_value_domains() -> dict[str, dict]:

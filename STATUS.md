@@ -57,7 +57,7 @@ same outcomes and never enters that report.
 |---|---|
 | Migration head | `0035` |
 | Reference instrument | `learnpack-pedagogical-2.0.0` — 12 Likert items, one per quality |
-| Instruments published | `learnpack-course-qa-v1` · `course-drafts-qa-v9` |
+| Instruments published | `learnpack-course-qa-v1` · `course-drafts-qa-v10` |
 | Assessors registered | `structural:1` · `drafts-structural:1` · `drafts-hybrid:13` |
 | Extractions accepted | `LearnpackV1` · `LearnpackV2` |
 
@@ -84,6 +84,12 @@ Decided, deferred deliberately, and named here so nobody counts on them:
   simply not done, so a reader moving between screens meets the same course under two labels.
 - **Outgoing integration events.** `QualityJudgmentPublished` and its candidates can leave
   through the outbox; nothing consumes them, so nothing relays them.
+- **Half of `course-drafts-qa` on a `LearnpackV1` course.** It binds both formats, but fourteen
+  of its thirty criteria need objectives, audience, prerequisites or a concept plan, and a V1
+  package declares none of them — reading those out of the bodies would be inference (ADR-0009).
+  The ten claims resting on them have no verdict there, and no adapter work changes it. Four of
+  the reference instrument's twelve items are withheld from the expert on the same courses for
+  the same reason (ADR-0053), so those qualities are short on the human side too.
 
 ## Pending
 
@@ -94,9 +100,6 @@ Decided, deferred deliberately, and named here so nobody counts on them:
   variables. Until it exists the evaluator's frame loads the course without its AI.
 - **A console for seats.** Provisioning is lazy and needs no screen, but nothing lists which
   evaluators have one, revokes it, or reaps them when a campaign ends.
-- **`course-drafts-qa-v9` binds only `LearnpackV2`**, so that pair cannot judge a V1 course. No
-  new instrument is needed — a binding, a new version, and a re-ratification of the same
-  assessor, which ADR-0019 §3 makes cheap where nothing else moved.
 - **A set-up store large enough to show a verdict.** With `min_sample = 10` and a handful of
   courses, every claim's validity reads `unvalidated · too_few` on a developer's machine, so
   `tracks` and `weak` cannot be seen by hand and only the plumbing can be checked.
