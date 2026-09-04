@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { HowThisWorks } from "@/components/evaluator/how-this-works";
 import { useMyAssignments } from "@/lib/api/hooks";
 import { assignedCourseLabel, courseRef } from "@/lib/courses";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,12 @@ export default function EvaluationsPage() {
           />
         ) : (
           <div className="space-y-3">
+            {/* Only where there is something to do with it. On an empty list it would be
+                instructions for a task nobody has been given. */}
+            <div className="mb-6 space-y-2 rounded-md border border-dashed bg-muted/40 p-4">
+              <p className="text-xs font-medium text-foreground">Before you start</p>
+              <HowThisWorks />
+            </div>
             {assignments.map((a) => (
               <Card key={a.assignment_id}>
                 <CardContent className="flex items-center justify-between gap-4 py-4">

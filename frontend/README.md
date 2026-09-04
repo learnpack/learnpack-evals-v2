@@ -96,7 +96,7 @@ src/
     page.tsx                       # redirects by role (admin → /admin, else → /evaluations)
     sign-in/[[...sign-in]]/        # <SignInScreen/> of the active adapter
     accept-invitation/[[...]]/     # the second door — see above
-    evaluations/                   # evaluator flow (list + 3-step wizard)
+    evaluations/                   # evaluator flow (list + one scoring screen)
     admin/                         # admin console. page.tsx is the loop (versions nobody
                                    # measured + last rounds), and layout.tsx groups the
                                    # destinations by how often they are needed:
@@ -111,7 +111,8 @@ src/
                                    # collapsible-section…)
     evaluator/                     # consume-content (iframe+fallback), score-form,
                                    # declared-data (what the course says about itself, for
-                                   # the items resting on it — ADR-0057)
+                                   # the items resting on it — ADR-0057), how-this-works
+                                   # (what a rater is told before answering)
     admin/                         # forms (content, campaign, assign), the shared badges
                                    # and palettes (study-status, outcome-badge,
                                    # claim-status), the quote/copy/distribution
@@ -354,7 +355,7 @@ they are invited and appear in the picker after their first sign-in.
    scoring until one is declared from the URL column of the List view (ADR-0054).
 2. `/admin/campaigns`: new campaign (quorum, courses).
 3. Assign the course to two evaluators in `/admin/campaigns/[id]`.
-4. Log in as an evaluator → `/evaluations` → 3-step wizard → submit.
+4. Log in as an evaluator → `/evaluations` → the course and the form side by side → submit.
 5. Back to admin → progress `1/1` in the campaign detail, then **Report** for what the round
    found (ADR-0060): agreement per item, the panel's profile per dimension, each expert's
    answers side by side, and golden `usable`. A result is read inside its own campaign, so
