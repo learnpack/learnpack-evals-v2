@@ -1,0 +1,1162 @@
+# course-drafts-qa v10 — DRAFT for team review.
+#
+# CHANGED IN v10 — one binding, and nothing else. `LearnpackV1` joins `LearnpackV2`; every id,
+# claim, criterion, pass condition and data requirement is verbatim v9.
+#
+# The reason is the reference campaign. Its forty courses are twenty V1 and twenty V2, and an
+# instrument bound to one format can be judged against only half of them — so a claim's validity
+# would rest on twenty courses when the campaign bought forty. The thresholds apply to the 2x2
+# AFTER the grey zone and the abstentions come out of it (`min_sample = 10`,
+# `min_sample_to_track = 15`), so twenty nominal courses leave almost no margin, and a claim that
+# slips under fifteen reads `weak · sample_below_tracking` — indistinguishable, in that table,
+# from a claim that genuinely does not follow the panel.
+#
+# Per ADR-0032 this is the normal path and needs no new instrument: an instrument forks when its
+# CLAIMS change, never because a package format changed. None of them changed here.
+#
+# WHAT V1 CANNOT ANSWER, AND WHY THAT IS THE FORMAT AND NOT THE ADAPTER. A LearnpackV1 package
+# declares no learning objectives, no audience and no prerequisites: `courseInfo` carries
+# description, duration, difficulty, language, technologies and title, and a lesson carries id,
+# title, type, description and duration. Reading objectives out of the bodies would be inference,
+# which ADR-0009 refuses. So fourteen of the thirty criteria derive `not_applicable` on a V1
+# course and the ten claims resting on them have no verdict there. Sixteen criteria and eleven
+# claims do run — and no claim runs on a truncated subset of its own evidence: each is judged on
+# all its criteria or on none. That is what makes the partial reading sound rather than distorted.
+#
+# TWO COLUMNS THAT WILL LOOK ALIKE AND ARE NOT. Where the machine cannot evidence a claim on a V1
+# course, the validity table counts it under `insufficient`. Where the HUMAN item was withheld
+# because the course declares nothing it could rest on (ADR-0053), it counts under `unanswered`.
+# Four of the twelve reference items require declared objectives or audience, so on a V1 course
+# they are never put to the expert at all: those qualities stay at twenty courses on the human
+# side, and no binding of any instrument changes that.
+#
+# CHANGED IN v9 — one claim becomes two, and the criterion under it becomes two. Nothing else
+# in this file moves: every other id, claim, criterion and data requirement is verbatim v8.
+#
+# `cl-course-revisits-what-it-taught` asked whether a course revisits its earlier content, and
+# a draft answers that question twice with different answers. Four independent readers were
+# each asked, unprompted, whether one draft builds on itself; each answered "partially", and
+# each split the same way — cumulative inside a module, rhetorical between modules. A single
+# conjunctive claim can only report the conjunction of those two, which is the least
+# informative thing either of them says.
+#
+# The mechanical reason is what settles it. A module's opening lesson has no earlier lesson
+# WITHIN its module to build on, so it can only build across modules; a single ratio over all
+# core lessons averages two populations whose denominators mean different things. Measured on
+# one draft, the failing lessons were precisely the module openers.
+#
+# `cr-assessment-retrieves-earlier-taught-material` moves to the across-modules claim without
+# a word changed: its pass condition already said "outside their own module", so it was
+# already evidencing one half of the old claim and not the other.
+#
+# The two new criteria widen what counts as working with earlier material, and the widening is
+# measured rather than preferred. v8 asked for a use "rather than a restatement"; over one
+# draft two readers found that act in 23 and 29 places while six model runs found it in 0 to
+# 9. A criterion resting on that distinction measures who is reading. Developing a concept,
+# operating with it, or setting a task on it all count; naming it does not, and neither does
+# saying again what it is — that last one is a course starting over, not building.
+#
+# COVERAGE MOVES: this lineage gains one criterion (two replace one). Fitness computed against
+# v8 and against v9 is not comparable (ADR-0023 §7), and an assessor ratified against v8 needs
+# an explicit ratification against v9 (ADR-0019).
+#
+# ------------------------------------------------------------------------------------------
+# course-drafts-qa v8 — DRAFT for team review.
+#
+# CHANGED IN v8 — the generator changed what `files/lesson_plan.json` declares per lesson:
+# `concept_covered: str` became `concepts_covered: list[str]` (plus an unrelated new
+# `lesson_focus` field this lineage does not consume — no criterion asks for it, so it is not
+# minted). `lesson_concepts` named exactly one concept per lesson; ADR-0020 makes one id one
+# shape, so the reshaped datum is a NEW id, `lesson_concept_coverage`, rather than a
+# redeclared `lesson_concepts` — the same move v7 made for `declared_objectives` and
+# `assessment_offerings` beside their narrower siblings. The one criterion that required the
+# old id, `cr-cognitive-demand-rises-across-the-course`, now requires the new one; its pass
+# condition never assumed a single concept, only the old field's shape did. No packages in
+# the old shape are measured going forward, so nothing here bridges the two, and
+# `lesson_concepts` stays exactly what v2/v5/v6/v7 declared it to be — untouched, for the
+# packages already measured against it.
+#
+# CHANGED IN v7 — one data requirement minted, three criteria re-pointed at it and one claim
+# widened, all for the same reason: the assessment this argument judges was being read through
+# half of what the draft offers. Every id, every other criterion and every other claim are
+# verbatim v6.
+#
+# The format these drafts arrive in emits an EXERCISE as a proposal — a block inside the
+# lesson body that says what the learner should be asked to build, for the teacher's step to
+# turn into an exercise — and the extraction reported only the components that ship ready for
+# the learner: questions, fill-in-the-blanks and quizzes. Counted over the five drafts on
+# hand, that is 5, 8, 10, 14 and 14 proposed exercises against 5, 12, 3, 3 and 3 delivered
+# items: between 40 % and 82 % of what each draft offers to assess with was invisible to
+# every criterion here. And the five objectives that repeated judging reported as
+# measured by nothing are covered by proposals, several of them near-verbatim against the
+# objective's own declared verification — an objective verified by "writes a complete .html
+# file that renders a heading, a paragraph, an image, and a link, correctly nested" paired
+# with a proposal asking for exactly that. So the failures those criteria produced were
+# findings about the extraction, not about the generator, and the systematic one — declared
+# verifications asking for production, items asking for recognition — does not merely weaken:
+# it reverses, because the proposals ARE the production.
+#
+# `assessment_offerings` therefore carries the whole surface a draft offers to assess with,
+# with every entry marked as DELIVERED or PROPOSED. One list rather than two, and the reason
+# is the machinery: a criterion is silent when ANY datum it requires is absent, so two lists
+# would leave a draft that offers only one of the two forms unjudged — and three of the five
+# drafts on hand are a single question block away from being all-proposals. The price is
+# stated here because it is real and it is permanent: the difference between delivered and
+# proposed now lives in a field rather than in the shape of the demand, so EVERY criterion
+# that reads this datum must say which of the two it counts. The three below say so.
+#
+# What did NOT change is as deliberate. The five criteria that require materialized exercises
+# stay out with their three claims (see DELIBERATELY NOT INHERITED below): they ask how an
+# exercise's scaffolding fades and in what order practice arrives, and a proposal cannot
+# answer that — it is the same argument, not a leftover. And this is a version rather than a
+# fork (ADR-0032 §3): the claim asks the same question it always asked, whether the draft
+# commits to measuring what it declared; what widened is the evidence admitted for it, not the
+# assertion.
+#
+# One risk is worth writing down before anyone reads the first result as good news: the
+# proposals are written by the same pipeline that wrote the objectives, so alignment between
+# them may be partly tautological, and `cr-assessment-matches-the-declared-verification` may
+# lose discriminating power. That is measured against the drafts on hand, not argued.
+#
+# CHANGED IN v6 — two pass conditions and one failure mode, each to write a threshold that
+# repeated judging exposed. Ids, claims, requires and every other criterion are verbatim v5.
+#
+# `cr-closing-lesson-projects-forward` said projecting forward means "naming something
+# beyond the course" and never said whether a mention alone is a projection. Judged nine
+# times against one draft whose closing names CSS and JavaScript and ties them to the
+# learner's own page ("turn your solid HTML structure into a living, breathing web page"),
+# it split 2-1 in three separate runs and once decided the claim the other way — every
+# answer quoting the SAME two passages and dividing only on whether naming counts. The
+# threshold, now written: a named technology projects forward when the closing OFFERS it to
+# the learner — connects what they can now do or build with the thing it names — and does
+# not when it appears only as background about what other tools do. The stricter reading
+# (demanding an explicit "go study X next") was available and rejected: the criterion's
+# purpose is orientation, not curriculum prescription, and "named and offered" still
+# refuses generic futurology and the keep-practising closing v5 was written against.
+#
+# `cr-opening-lesson-connects-backwards` listed "everyday experience" among the things an
+# opening may connect to, and repeated judging still split 2-1 on whether addressing the
+# learner's experience OF THE SUBJECT ("every web page you have ever visited") counts when
+# the course declares no prerequisites. It does, now stated: what the learner has seen or
+# used counts as something they already know, even if they never understood it.
+#
+# CHANGED IN v5 — one pass condition, and only to say where its threshold is. Ids, claims,
+# requires, failure modes and every other criterion are verbatim v4.
+#
+# `cr-closing-lesson-projects-forward` asked for a closing that "projects onto their learning
+# or professional path (what this enables, what comes next)" and never said how far. Judged
+# six times against one draft whose closing reads "With this foundation, you can style any
+# webpage with confidence. The rest is just practice and new properties", it answered pass
+# three times and fail three times — every answer quoting THAT sentence and describing the
+# same facts, dividing only on whether they clear the bar. One said both readings out loud:
+# "projecting onto future practice and new properties, but does not explicitly situate it in
+# a learning or professional path beyond that." That is not an unreliable judge; it is a
+# criterion with no threshold written down, and while it stayed unwritten the claim it
+# evidences was a coin flip for that draft (its sufficiency is conjunctive, so this criterion
+# decides the claim on its own whenever the other passes).
+#
+# The threshold, decided by the team: projecting forward means naming something BEYOND the
+# course, and more practice of what was already taught is not that. The permissive reading
+# was available and was rejected for a reason worth recording — nearly every closing says
+# something about the future, so admitting "keep practising" would have left the criterion
+# passing almost everything and discriminating nothing.
+#
+# Written to stand alone, with no cross-reference to another criterion: an assessor that
+# judges with an LLM puts this text VERBATIM into the model's prompt, and a name the model
+# has no referent for is noise at best.
+#
+# CHANGED IN v4 — two pass conditions reworded, for the same reason and found the same way.
+# `cr-opening-lesson-connects-backwards` did not say whether an explanatory ANALOGY counts as
+# relating the new material to what the learner knows; it does, now stated. And
+# `cr-closing-lesson-integrates` was a real contradiction rather than an ambiguity: it and
+# `cr-closing-lesson-projects-forward` evidence the same claim under conjunctive sufficiency,
+# so both must pass — while a closing that names what comes next was rewarded by one and,
+# read as "introduces new material", failed by the other, leaving the claim unsatisfiable for
+# that shape of closing. Its fail clause now says TEACHES new material, and says outright
+# that naming what comes next is not teaching it, so the defect it was written to catch (a
+# wrap-up that smuggles in content instead of consolidating) is still caught.
+#
+# A course DRAFT is not a poorer course: it is what a generator emits before a teacher's
+# processing step turns proposals into exercises and prompts into assets. This instrument
+# asks the question that artefact can answer — is this a good draft to hand a teacher? —
+# which is why it exists at all. Per ADR-0032 an instrument forks when its CLAIMS change,
+# never because a package format changed: LearnpackV2 binds here because it is the format
+# drafts arrive in, not because the format owns the argument.
+#
+# Authored as ASSISTANCE (see assisted_by): per design 12 invariant 5, nothing produced by
+# assistance reaches Published without a human act — review this file like code, edit
+# freely, and publish with
+# `python -m app.cli publish-instrument --id course-drafts-qa-v9 --email <admin>`
+# only when the team owns every word.
+#
+# INHERITED VERBATIM from learnpack-course-qa v1, through v1 of this lineage: 14 of the 20
+# claims here and 22 of the 29 criteria, ids included. The ids are scoped per instrument
+# version, so reuse collides with nothing, and a criterion that is literally the same check
+# deserves to read as the same check. What an assessor executes for one, it executes for the
+# other.
+#
+# DELIBERATELY NOT INHERITED: the five criteria that require `lesson_activities`, and with
+# them the three claims they were the only evidence for — cl-course-demonstrates-before-
+# practice, cl-lessons-offer-application, cl-tasks-grow-from-guided-to-open. A draft carries
+# exercise PROPOSALS, not exercises, so asking whether its practice tasks fade their
+# scaffolding is not a finding about the draft: it is a question about an artefact that does
+# not exist yet. Dropping them is the fork's whole point; a later version claims about the
+# quality of the proposals themselves, which is a different assertion.
+#
+# NEW IN v2 — the constructive-alignment dimension, all four of its qualities. v1 left it
+# empty, and learnpack-course-qa left it empty before that for a reason it wrote down: the
+# dimension compares DECLARED OBJECTIVES against content, and LearnpackV1 declares no
+# objectives anywhere. LearnpackV2 declares them WITH the criterion by which each would be
+# verified, so the comparison is finally possible — and `verifiable_by` lets the strongest
+# criterion here take the draft at its own word rather than at ours.
+#
+# Two more qualities return: instruction-demonstration and progression-sophistication. They
+# fell out of v1 because their criteria needed `lesson_activities`, not because a draft
+# cannot exhibit them. Their claims here are narrower than the qualities on purpose, and say
+# so: a draft can be shown to demonstrate, but not to demonstrate BEFORE practice it does
+# not have yet.
+#
+# EVERY criterion added in v2 needs semantics — extraction, classification or judgment — so
+# all seven derive `not_assessed` until an LLM-carrying assessor exists (ADR-0016). That is
+# deliberate, and it is the reason to write them now: the instrument states the demand, and
+# the assessor finds it waiting. What was NOT written is as deliberate: purely referential
+# checks over the concept graph (every objective mapped, every prerequisite present) hold in
+# every package measured, because those structures are output of the same pipeline rather
+# than independent observations. They would pass always and cover nothing.
+#
+# `data_requirements` DECLARES ONLY WHAT THIS LINEAGE MINTS (ADR-0014): `declared_objectives`,
+# `assessment_offerings` and now `lesson_concept_coverage` (v8 — the reshaped successor of
+# `lesson_concepts`, which stays declared in v2/v5/v6/v7 for the packages measured against
+# it). Everything else these criteria require is
+# already in the global namespace and is not redeclared. Two of the three stand alongside an
+# older id on purpose, for the same reason each time — a narrower datum and a wider one are
+# consumed by different criteria and must not be one id: `learning_objectives` is the
+# statements while `declared_objectives` is the objectives with their declared verification,
+# and `lesson_assessment_items` is the delivered half alone while `assessment_offerings` is
+# everything the content offers to assess with, delivered or proposed.
+#
+# Coverage: 19 of the 21 qualities in docs/seed/pedagogical-reference.yaml. Two stay uncited.
+# `objectives-specificity` is a deliberate omission for now. `instruction-application` is a
+# category error for this artefact — its definition is "learners get structured practice",
+# and a draft proposes practice rather than carrying it; claiming about it from proposals
+# would assert about something that does not exist yet. Both answer `undefined` in the
+# fitness (ADR-0023), which is honest, not a zero.
+
+instrument_id: course-drafts-qa
+version: v10
+revision_reason: "the drafts lineage binds LearnpackV1 too, for the half of it that format can answer"
+name: "Course Drafts QA v9"
+purpose: >
+  Internal QA of the drafts an AI course generator emits, before a teacher processes them
+  into a deliverable course: whether the draft declares what it is for, states observable
+  outcomes to the learner, and holds together as a progression — judged over the surface a
+  draft actually has. Claims about practice and demonstration are deliberately absent: a
+  draft proposes exercises rather than carrying them. Not a market signal, not a
+  certification, and not a verdict on the finished course.
+assisted_by:
+  assistant: claude-opus-5
+  role: "drafted the constructive-alignment claims and criteria for team review"
+
+bindings:
+  - package_format: LearnpackV2
+    # Demand-driven, same as the other lineage's binding: `cr-no-lesson-spikes-in-lexical-load`
+    # conditions on it, because its measure is only defined for English prose
+    # (docs/MEASUREMENT.md). LearnpackV2 declares the run's language in its lesson plan.
+    task_variables:
+      content_language: en
+  - package_format: LearnpackV1
+    # The same variable for the same criterion, justified on what THIS format offers: the
+    # adapter reads each lesson's `README.md`, which is the English body by that format's
+    # convention. It is the justification `learnpack-course-qa` v1 already wrote for its own
+    # V1 binding. Omitting it would take that one criterion dark on every V1 course without
+    # saying so — the granularity is the binding, not the package (docs/MEASUREMENT.md).
+    task_variables:
+      content_language: en
+
+# Only what THIS lineage mints (ADR-0014). The other four ids these criteria require —
+# lesson_bodies, lesson_inventory, learning_objectives, target_audience — are already in the
+# namespace and are not redeclared here. `lesson_assessment_items` leaves this list with v7:
+# no criterion here requires it any more, because every one of them asks about the whole
+# surface a draft offers rather than the delivered half of it.
+data_requirements:
+  - id: declared_objectives
+    definition: >
+      The learning objectives the content declares, each with the identifier it declares for
+      itself and, when the format carries one, the criterion by which that objective would be
+      verified — taken verbatim from declared metadata, never reconstructed from the body.
+      Distinct from `learning_objectives`, which is the same objectives as bare statements:
+      this id exists because an objective that states HOW it would be verified can be checked
+      against the assessment the content actually offers, and that comparison is a different
+      demand than counting objectives.
+    value_domain:
+      type: record_list
+      fields:
+        id: { type: string }
+        outcome: { type: string }
+        # Null when the format declares the objective but no verification for it — the
+        # adapter says "I looked and there was nothing", never by omitting the key.
+        verifiableBy: { type: string, nullable: true }
+    grounded_in: ["Biggs"]
+  - id: lesson_concept_coverage
+    definition: >
+      The concepts each lesson declares it covers, as a list keyed by lesson identifier. The
+      concepts a lesson names are the format's own summary of what that lesson teaches, so a
+      trajectory of concepts in delivery order is evidence about the course's progression
+      that needs neither the lesson bodies nor any inference over them. A lesson may name
+      several. A new id rather than a reshaped `lesson_concepts` (ADR-0020: one id, one
+      shape) — v7's `lesson_concepts` named exactly one concept per lesson, a shape earlier
+      packages actually had; this format names a set, and the two do not merge into one
+      declaration.
+    value_domain:
+      type: record_list
+      fields:
+        lessonId: { type: string }
+        # Empty for a lesson the format lists without naming a concept for it — the format's
+        # own "declares none", not an adapter guess.
+        concepts: { type: string_list }
+    grounded_in: ["Learning Progressions"]
+  - id: assessment_offerings
+    definition: >
+      Everything the content offers to assess the learner with, verbatim, as a list where
+      each entry carries the lesson it sits in, whether the content DELIVERS the task ready
+      for the learner or PROPOSES it for a later step to build, the kind of task it is and
+      the prompt it puts to the learner. A proposal is a commitment to assess rather than a
+      task anyone can take yet, and both belong here because a criterion asking whether the
+      content commits to measuring what it declared is asking about the two together.
+      Distinct from `lesson_assessment_items`, which is the delivered half alone: they stand
+      side by side rather than one replacing the other, because a format may deliver
+      everything it offers and a criterion may legitimately ask about only what ships.
+      The difference is marked on EVERY entry, never inferred: a criterion that must tell
+      the two apart reads the mark, and one that must not is spared asking two questions
+      about one surface.
+    value_domain:
+      type: record_list
+      fields:
+        lessonSlug: { type: string }
+        # Null for a body the content lists without an identifier for it.
+        lessonId: { type: string, nullable: true }
+        # "delivered" — ready for the learner as the content stands; "proposed" — a task the
+        # content asks a later step to build. The adapter reports which; nothing infers it.
+        status: { type: string }
+        kind: { type: string }
+        prompt: { type: string }
+    grounded_in: ["Biggs"]
+
+claims:
+  # --- objectives-quality ---------------------------------------------------------------
+  - id: cl-objectives-declared
+    statement: "The course declares observable learning objectives."
+    qualities: [objectives-observable]
+    warrants: ["Biggs", "Revised Bloom"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Objectives exist in the lesson bodies but not in the manifest/metadata the adapter
+        reads — an extraction gap, not a generator defect (dispute path: check the raw
+        package before blaming the generator).
+      - >
+        The course was authored against an older LearnPack convention that stores
+        objectives elsewhere — atypical package, not a missing-objectives defect.
+
+  - id: cl-outcomes-stated-to-learner
+    statement: "The course states to the learner what they will be able to do."
+    qualities: [objectives-observable]
+    warrants: ["Biggs", "Revised Bloom"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The outcomes are stated in the course description rather than in the opening
+        lesson — a placement difference, not an absence (check the descriptor).
+      - >
+        The brief commissioned a reference-style package where stating outcomes to the
+        learner is not the convention — a scope decision, not a defect.
+
+  - id: cl-objectives-level-matches-difficulty
+    statement: "The objectives the course sets sit at a cognitive level consistent with the difficulty it declares."
+    qualities: [objectives-cognitive-level]
+    warrants: ["Revised Bloom", "SOLO"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The declared difficulty describes the prerequisites, not the destination — a course
+        can legitimately start easy and end demanding (check the descriptor's meaning).
+      - >
+        Domain conventions make a verb read as more advanced than the work it names
+        ("design a selector" is routine in CSS) — a vocabulary artefact, not a mismatch.
+
+  - id: cl-objectives-advance
+    statement: "The objectives advance from lower to higher cognitive demand."
+    qualities: [objectives-progression]
+    warrants: ["Revised Bloom", "SOLO"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The course is a single-level reference where all objectives sit at one level by
+        design — a scope decision, not a flat progression (check the brief).
+
+  # --- constructive-alignment -----------------------------------------------------------
+  # New in v2. The whole dimension rests on the draft declaring its objectives, which is
+  # exactly what the previous format did not do — so every claim here compares a declared
+  # objective against what the draft actually contains.
+  - id: cl-content-develops-every-objective
+    statement: "Every objective the draft declares is developed by some part of its content."
+    qualities: [alignment-coverage]
+    warrants: ["Biggs"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The objective is developed across several lessons in fragments, none of which
+        carries it alone — dispersion rather than absence (read the lessons together
+        before calling it uncovered).
+      - >
+        The objective describes an outcome the teacher's own processing step is meant to
+        deliver, which a draft legitimately leaves open — a stage difference, not a gap.
+
+  - id: cl-no-lesson-serves-no-objective
+    statement: "No substantive lesson of the draft serves none of its declared objectives."
+    qualities: [alignment-no-orphans]
+    warrants: ["Biggs"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The lesson serves an objective the draft holds implicitly but never declared — an
+        under-declared objective, which is a different defect than orphaned content.
+      - >
+        The lesson is scaffolding for a neighbouring one (a setup, a recap) rather than a
+        contribution of its own — check whether it is doing work for the lesson after it.
+
+  - id: cl-lesson-demand-matches-its-objective
+    statement: "Each lesson works at the cognitive level the objective it serves demands."
+    qualities: [alignment-cognitive-consistency]
+    warrants: ["Biggs", "Revised Bloom"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The objective's verb overstates what it means (a loose "build" for what is really
+        "identify") — the wording is the defect, not the content's level.
+      - >
+        The lesson deliberately works below its objective because it is the first of a pair
+        that reaches the level together — read the pair before judging the lesson.
+
+  - id: cl-assessment-measures-the-declared-objectives
+    statement: "The assessment the draft offers — delivered or proposed — measures the objectives it declares."
+    qualities: [alignment-assessment]
+    warrants: ["Biggs"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The draft offers little assessment of either kind because the teacher's step is
+        expected to add it — sparse assessment at this stage is a scope decision, not
+        misalignment.
+      - >
+        The task measures a prerequisite of the objective rather than the objective itself,
+        which is legitimate early in a progression.
+      - >
+        The proposals were written by the same step that wrote the objectives, so they align
+        by construction — agreement here is evidence the draft is internally consistent,
+        which is weaker than evidence that it assesses well.
+
+  # --- instructional-design -------------------------------------------------------------
+  - id: cl-new-material-anchor-in-a-problem
+    statement: "New instructional material is anchored in a concrete problem or task before it is taught."
+    qualities: [instruction-authentic-problems]
+    warrants: ["Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The problem is posed in the preceding lesson rather than in the one that teaches
+        the material — anchoring across a boundary, not its absence.
+      - >
+        The material is a fact rather than a concept, procedure, process or principle —
+        facts are the one Merrill content type that has no problem to anchor.
+
+  - id: cl-course-activates-prior-knowledge
+    statement: "The course connects new material to what the learner already knows."
+    qualities: [instruction-prior-knowledge]
+    warrants: ["Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The course is the first in its track and has no prior knowledge to activate beyond
+        everyday experience — check the brief before reading this as an omission.
+
+  - id: cl-course-closes-by-integrating
+    statement: "The course closes by integrating what was learned and projecting it forward."
+    qualities: [instruction-integration]
+    warrants: ["Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The package is a fragment of a longer course whose closing lesson lives elsewhere —
+        an intake artifact gap, not a missing conclusion.
+
+  # Narrower than its quality ON PURPOSE. `instruction-demonstration` reads "new skills are
+  # demonstrated with worked examples BEFORE practice", and a draft has no practice yet — so
+  # this claims the half a draft can evidence, and claims no more than that.
+  - id: cl-new-skills-are-shown-worked
+    statement: "Lessons that introduce a skill show it worked through, not only described."
+    qualities: [instruction-demonstration]
+    warrants: ["Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The worked example lives in the lesson that follows, which the draft pairs with this
+        one — placement, not absence.
+      - >
+        The lesson introduces a concept rather than a skill, and a concept has nothing to
+        work through — check what kind of thing is being taught before expecting a walkthrough.
+
+  # --- inter-lesson-coherence -----------------------------------------------------------
+  - id: cl-course-arc
+    statement: "The course follows the intended arc: a general introduction, thematic development and a closing."
+    qualities: [coherence-logical-sequence]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The package is a partial export (lessons missing at either end) — an intake
+        artifact gap, not a generation defect (verify the package is complete first).
+      - >
+        The brief requested a fragment of a larger course (a single module), where the
+        course-level arc conventions do not apply — check the brief.
+
+  # v9 splits what was one claim, `cl-course-revisits-what-it-taught`, in two. The two facets
+  # below are separate findings about a draft and a single conjunctive claim could only report
+  # their conjunction, which is the least informative thing either of them says. Four
+  # independent readers of one draft, asked whether it builds on itself, each answered
+  # "partially" unprompted and each split the same way: cumulative inside a module, rhetorical
+  # between them. A claim that cannot carry that answer is the wrong shape for the question.
+  #
+  # There is a mechanical reason as well, and it is what settles it. The lesson that opens a
+  # module has no earlier lesson WITHIN its module to build on — it can only build across
+  # modules. A single ratio over all core lessons therefore averages two populations whose
+  # denominators mean different things, and a draft that is perfect inside its modules and
+  # empty between them lands in the middle, indistinguishable from one that is mediocre
+  # everywhere.
+  #
+  # Both claims keep the quality and the warrant of the claim they replace, which ADR-0026
+  # permits: a claim asserts about exactly one quality, and nothing says a quality carries only
+  # one claim. Coverage under this lineage therefore changes, so fitness values computed
+  # against v8 and against v9 are not comparable (ADR-0023 §7).
+  - id: cl-modules-build-within-themselves
+    statement: "Within a module, later lessons put the module's earlier material to work."
+    qualities: [coherence-reinforcement]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        A module of a single lesson has no interior to build across; its absence of internal
+        reuse is a shape decision, not incoherence.
+      - >
+        A module deliberately built as parallel siblings — four independent techniques of one
+        family — reuses nothing internally by design.
+
+  - id: cl-course-builds-across-modules
+    statement: "Later modules put the material of earlier modules to work."
+    qualities: [coherence-reinforcement]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    # This claim covers ONE facet of its quality — that earlier content is revisited across
+    # modules. The other facet the quality names, terminological consistency, yielded no
+    # actionable criterion and is deliberately left without one.
+    alternative_explanations:
+      - >
+        The course covers genuinely independent topics under one umbrella (a survey), where
+        revisiting would be artificial — a scope decision, not incoherence.
+      - >
+        A course whose modules are deliberately independent entry points, each usable without
+        the others, has no cross-module debt to pay.
+
+  - id: cl-course-modular
+    statement: "The course develops its content in focused, well-formed modules."
+    qualities: [coherence-focus-depth]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Lesson identifiers follow an older numbering convention the module mechanism does
+        not recognize — a structural mismatch, not incoherent content (check the raw
+        manifest).
+      - >
+        The brief asked for a very short single-topic course, which legitimately yields
+        one module — degenerate modularity by scope, not dispersion.
+
+  - id: cl-transitions-are-stated
+    statement: "The course states enough of its inter-lesson relations that the sequence reads as a connected argument."
+    qualities: [coherence-explicit-links]
+    warrants: ["Schmidt"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The relation is carried by the module structure and lesson titles rather than by
+        prose — visible to the learner in the sidebar, invisible to a reader of bodies.
+
+  # --- learning-progression -------------------------------------------------------------
+  - id: cl-no-concept-used-before-introduced
+    statement: "No concept is used before the course introduces it."
+    qualities: [progression-prerequisites]
+    warrants: ["Learning Progressions", "Schmidt"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The concept is a declared prerequisite of the course, so using it without
+        introduction is correct — check what the course assumes before reading it as drift.
+      - >
+        The term appears in a motivating preview ("later you will meet X") rather than in
+        use — a forward reference, which is not the same as unprepared use.
+
+  - id: cl-audience-declared
+    statement: "The course declares who it is for and what it assumes the learner knows."
+    qualities: [progression-starting-point]
+    warrants: ["Learning Progressions", "Merrill"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        Audience and prerequisites were provided in the generation brief but the generator
+        was never asked to emit them into the package — a pipeline configuration gap, not
+        a generation defect (check the brief before diagnosing).
+
+  - id: cl-no-lesson-outruns-the-course
+    statement: "No single lesson's text runs far ahead of the course's own level."
+    qualities: [progression-cognitive-demand]
+    warrants: ["Learning Progressions", "Revised Bloom"]
+    sufficiency: { rule: conjunctive }
+    # Covers one facet of its quality — that demand stays appropriate. Whether demand GROWS
+    # is not measurable from vocabulary density and is deliberately not claimed here.
+    alternative_explanations:
+      - >
+        The lesson's subject genuinely carries longer technical vocabulary than the rest of
+        the course (a terminology lesson) — a topic effect, not a difficulty spike.
+      - >
+        The measure is lexical density, not cognitive demand: a conceptually hard lesson
+        written in short words does not spike, and a plain lesson full of long domain nouns
+        does. See docs/MEASUREMENT.md.
+
+  # New in v2, and the counterpart the claim above names: it covers that demand stays
+  # appropriate and explicitly declines to claim that demand GROWS, because lexical density
+  # cannot show it. This one claims exactly that, from a different datum.
+  - id: cl-lessons-grow-in-demand
+    statement: "The sequence of lessons advances toward more sophisticated reasoning."
+    qualities: [progression-sophistication]
+    warrants: ["Learning Progressions", "SOLO"]
+    sufficiency: { rule: conjunctive }
+    alternative_explanations:
+      - >
+        The course is a flat reference by design, where every lesson sits at one level — a
+        scope decision recorded in the brief, not a failed progression.
+      - >
+        Sophistication grows within lessons rather than across them, which a plan-level view
+        cannot see — read the bodies before calling the trajectory flat.
+
+# --- criteria ---------------------------------------------------------------------------
+
+criteria:
+  # --- evidencing cl-objectives-declared ------------------------------------------------
+  - id: cr-objectives-min-count
+    statement: "Objectives are declared and countable."
+    pass_condition: >
+      At least 2 learning objectives are declared. Fail = fewer than 2 entries, or entries
+      that are empty/whitespace.
+    failure_modes:
+      - "No objectives declared at all — the generator omitted them."
+      - "A single catch-all objective covering the whole course."
+    claims: [cl-objectives-declared]
+    requires: [learning_objectives]
+    on_missing_evidence: fail # the absence IS the finding (ADR-0009 §4)
+    eligible_sources: [human, automated]
+
+  - id: cr-objectives-observable-verbs
+    statement: "Each objective is phrased with an observable action verb."
+    pass_condition: >
+      Every declared objective starts its verb phrase with an observable action verb
+      (e.g. 'build', 'classify', 'solve', 'write'). Fail = any objective phrased with
+      'understand', 'know', 'learn about', 'be familiar with' or equivalent
+      non-observable verbs.
+    failure_modes:
+      - "Objectives phrased as internal states ('understand X') that cannot be verified."
+    claims: [cl-objectives-declared]
+    requires: [learning_objectives]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-outcomes-stated-to-learner -----------------------------------------
+  # These two read the same extraction: identify the outcome statements the opening lesson
+  # makes to the learner, each with its verb. One pass over the text answers both by
+  # counting — which is why they are written as separate criteria over the same datum
+  # rather than as one criterion doing two things.
+  - id: cr-outcomes-present
+    statement: "The opening lesson tells the learner what they will be able to do."
+    pass_condition: >
+      The course's first lesson by declared position states at least 1 outcome — a
+      statement of what the learner will be able to do after the course. Fail = the opening
+      lesson states none.
+    failure_modes:
+      - "The opening lesson describes topics to be covered without saying what the learner will be able to do."
+    claims: [cl-outcomes-stated-to-learner]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-outcomes-observable-verbs
+    statement: "Each stated outcome uses an observable action verb."
+    pass_condition: >
+      Every outcome the opening lesson states is phrased with an observable action verb.
+      Fail = any outcome phrased with 'understand', 'know', 'learn about', 'be familiar
+      with' or equivalent non-observable verbs.
+    failure_modes:
+      - "Outcomes phrased as internal states ('understand X') that the learner cannot check they reached."
+    claims: [cl-outcomes-stated-to-learner]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-objectives-level-matches-difficulty --------------------------------
+  - id: cr-objectives-verb-level-band
+    statement: "The cognitive level of the objectives matches the declared difficulty."
+    pass_condition: >
+      The cognitive level of the course's objectives is compatible with the difficulty the
+      package declares: for 'beginner', objectives sit at remember/understand/apply; for
+      'intermediate', up to analyse; for 'advanced', evaluate and create are expected.
+      Fail = the objectives sit predominantly above or below the declared band.
+    failure_modes:
+      - "A beginner course whose objectives demand evaluation or creation from the start."
+      - "An advanced course whose objectives never leave recall and comprehension."
+    claims: [cl-objectives-level-matches-difficulty]
+    requires: [lesson_bodies, lesson_inventory, course_descriptor]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-objectives-advance -------------------------------------------------
+  - id: cr-objectives-non-decreasing-demand
+    statement: "The objectives do not fall back in cognitive demand as the course proceeds."
+    pass_condition: >
+      Read in the course's own order, the cognitive level of successive objectives never
+      drops by more than one level. Fail = the sequence falls back, or is flat across a
+      course long enough to progress.
+    failure_modes:
+      - "The course ends at a lower cognitive demand than it reached mid-way."
+      - "Every objective sits at the same level: the course does not build."
+    claims: [cl-objectives-advance]
+    # v3: the declared objectives are the sequence being judged — "the course's own order"
+    # is the order the format declares them in. The bodies were only ever where an older
+    # format left the objectives implicit.
+    requires: [learning_objectives]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-content-develops-every-objective -----------------------------------
+  - id: cr-every-objective-is-developed-somewhere
+    statement: "Every declared objective is developed by at least one lesson."
+    pass_condition: >
+      For each entry of `declared_objectives`, at least one lesson body develops that
+      objective — teaches what it names, not merely mentions it in passing. Fail = any
+      declared objective no lesson develops. A single lesson may develop several
+      objectives, and several lessons may share one.
+    failure_modes:
+      - "An objective is declared and never taught — the plan promised more than the draft delivers."
+      - "An objective is only named in the opening lesson's list of what the course will cover."
+    claims: [cl-content-develops-every-objective]
+    requires: [declared_objectives, lesson_bodies, lesson_inventory]
+    # A declared objective with no content behind it IS the finding, not a gap in evidence.
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-no-lesson-serves-no-objective --------------------------------------
+  - id: cr-every-substantive-lesson-serves-an-objective
+    statement: "Every substantive lesson contributes to a declared objective."
+    pass_condition: >
+      Each lesson develops, practises or assesses at least one entry of
+      `declared_objectives`. The course-level opening and closing slots are EXCLUDED: by
+      this format's convention the first lesson is the introduction and the last is the
+      wrap-up (see `lesson_inventory`), and they are frame rather than orphaned content.
+      Fail = any other lesson serving no declared objective.
+    failure_modes:
+      - "A lesson teaches material the course never committed to — scope drift the draft did not declare."
+      - "A lesson survives from an earlier plan whose objective was dropped."
+    claims: [cl-no-lesson-serves-no-objective]
+    requires: [declared_objectives, lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-lesson-demand-matches-its-objective --------------------------------
+  - id: cr-lesson-works-at-the-level-its-objective-demands
+    statement: "Each lesson works at the cognitive level its objective's verb demands."
+    pass_condition: >
+      For each lesson, classify the cognitive level the verb of the objective it serves
+      demands, and the level the lesson body actually works at. Pass = the body reaches the
+      level the objective demands. Fail = any lesson working below it — an objective that
+      says 'construct' served by a lesson that only describes.
+      Anchored on the objective's own verb rather than on the course's declared difficulty,
+      which this format leaves undeclared more often than not.
+    failure_modes:
+      - "The objective demands application and the lesson only explains."
+      - "The objective demands analysis and the lesson offers a worked example without asking for one."
+    claims: [cl-lesson-demand-matches-its-objective]
+    requires: [declared_objectives, lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-assessment-measures-the-declared-objectives ------------------------
+  # Two criteria over the same pair of data: one asks whether each objective is measured at
+  # all, the other whether it is measured the way the objective itself said it should be.
+  - id: cr-every-objective-has-an-assessment-item
+    statement: "Each declared objective is measured by at least one of the assessment tasks the draft offers."
+    pass_condition: >
+      For each entry of `declared_objectives`, at least one of the assessment tasks the draft
+      offers measures it. A task counts whether the draft DELIVERS it ready for the learner —
+      a question, a quiz, a fill-in-the-blank — or PROPOSES it for a later step to build: a
+      proposed exercise is what the draft commits to being assessed on, and a draft is held
+      to what it commits to. Fail = a declared objective that no offered task bears on, when
+      the draft offers assessment of either kind at all.
+    failure_modes:
+      - "The course assesses only what is easy to ask about, leaving its harder objectives unmeasured."
+      - "Every task offered measures recall while the objectives demand application."
+    claims: [cl-assessment-measures-the-declared-objectives]
+    # The quality reads "when present": a draft offering no assessment of either kind settles
+    # nothing here rather than failing, because adding it is the teacher's step.
+    on_missing_evidence: no_evidence
+    requires: [declared_objectives, assessment_offerings]
+    eligible_sources: [human, automated]
+
+  - id: cr-assessment-matches-the-declared-verification
+    statement: "Assessment measures objectives the way the objective declares they would be verified."
+    pass_condition: >
+      For each objective that declares how it would be verified, the assessment tasks that
+      bear on it ask for what that declared verification describes. A task counts whether the
+      draft DELIVERS it ready for the learner or PROPOSES it for a later step to build, and a
+      proposal that asks for the performance the objective names satisfies this as fully as a
+      delivered task would: what is judged is what the draft commits to measuring. Fail = an
+      objective whose tasks all ask for something narrower or other than what its declared
+      verification describes — an objective verified by 'writes a complete page from scratch'
+      assessed only by a multiple-choice question about tag names. Objectives that declare no
+      verification are excluded.
+    failure_modes:
+      - "The objective declares a performance and every task offered for it asks for recognition."
+      - "The declared verification names an artefact the assessment never asks the learner to produce."
+    claims: [cl-assessment-measures-the-declared-objectives]
+    requires: [declared_objectives, assessment_offerings]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-new-material-anchor-in-a-problem -----------------------------------
+  - id: cr-new-instruction-is-preceded-by-a-problem
+    statement: "New instructional material is motivated by a problem before it is taught."
+    pass_condition: >
+      For every lesson that introduces a new concept, procedure, process or principle
+      (Merrill's content types; bare facts are excluded), a concrete problem, task or
+      situation that the material addresses appears BEFORE it in that lesson. It need not
+      open the lesson. Fail = material introduced as abstract exposition with no motivating
+      problem anywhere ahead of it.
+    failure_modes:
+      - "The lesson defines and then illustrates, never posing the problem the material solves."
+      - "The problem appears only after the material, as an exercise rather than a motivation."
+    claims: [cl-new-material-anchor-in-a-problem]
+    requires: [lesson_bodies]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-course-activates-prior-knowledge -----------------------------------
+  - id: cr-opening-lesson-connects-backwards
+    statement: "The course's opening connects to knowledge the learner already has."
+    pass_condition: >
+      The body of the first lesson by declared position refers to what the learner already
+      knows — a previous course, a prerequisite skill, or everyday experience — and relates
+      the new material to it. An analogy that explains the new material in terms of
+      something familiar counts as relating it. Addressing the learner's everyday
+      experience of the subject — what they have seen or used, even without understanding
+      it — counts as referring to what they already know. Fail = the opening starts from
+      the new material with no bridge.
+    failure_modes:
+      - "The course opens directly on new content, leaving the learner to find their own footing."
+      - "The opening lists what will be covered without connecting it to anything known."
+    claims: [cl-course-activates-prior-knowledge]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-course-closes-by-integrating ---------------------------------------
+  - id: cr-closing-lesson-integrates
+    statement: "The closing lesson ties together what the course taught."
+    pass_condition: >
+      The body of the last lesson by declared position relates what was learned across the
+      course into a connected whole. Fail = the closing merely lists topics, or teaches new
+      material instead of consolidating what the course taught. Naming what comes next — a
+      following course, a related technology — is not teaching it.
+    failure_modes:
+      - "The closing enumerates the syllabus back to the learner without connecting anything."
+      - "The course simply stops after its last topic."
+    claims: [cl-course-closes-by-integrating]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-closing-lesson-projects-forward
+    statement: "The closing lesson says what the learner can now do and where it leads."
+    pass_condition: >
+      The body of the last lesson by declared position states what the learner is now able
+      to do and projects it onto their learning or professional path. Projecting forward
+      means naming something beyond the course — a capability, a course, a technology or a
+      context the learner has not met yet — and offering it to the learner: the text
+      connects what they can now do or build with the thing it names. A named technology
+      counts when the closing relates it to the learner's own work or path, even without
+      saying where to study it; it does not count when it appears only as background about
+      what other tools do, never connected to the learner. Telling the learner to keep
+      practising what the course already taught is not a forward horizon either. Fail = a
+      closing that looks only backwards, offers only more of the same, or names the future
+      without offering it to the learner.
+    failure_modes:
+      - "The closing summarises without telling the learner what they can now do with it."
+      - "No forward horizon: the course ends without situating itself in a path, or names one only as background never offered to the learner."
+    claims: [cl-course-closes-by-integrating]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-new-skills-are-shown-worked ----------------------------------------
+  - id: cr-skill-lessons-carry-a-worked-example
+    statement: "Lessons that introduce a skill show it carried out."
+    pass_condition: >
+      Each lesson that introduces a skill — something the learner is meant to DO, as opposed
+      to a concept to understand — shows it carried out at least once: a worked example, a
+      walkthrough, or an annotated sample the learner can follow. Fail = a skill introduced
+      and only described. Lessons that introduce no skill are excluded.
+    failure_modes:
+      - "The lesson explains the syntax of something and never shows it used."
+      - "The example shows the finished result without the steps that produce it."
+    claims: [cl-new-skills-are-shown-worked]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-course-arc ---------------------------------------------------------
+  - id: cr-course-opens-with-general-intro
+    statement: "The course reserves its opening slot."
+    pass_condition: >
+      Module 00 exists and contains exactly one lesson. Fail = no module 00, or more
+      than one lesson in it.
+    failure_modes:
+      - "The course starts mid-content with no course-level introduction slot."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-course-has-development
+    statement: "The course has a development body."
+    pass_condition: >
+      At least two lessons follow the module-00 introduction (or the first lesson, when
+      no module 00 exists). Fail = fewer — an opening with (almost) nothing behind it is
+      a stub, not a course.
+    failure_modes:
+      - "A stub course: an introduction and little or nothing to develop it."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-arc-character
+    statement: "The opening lesson introduces and the final lesson closes."
+    pass_condition: >
+      The first lesson's body introduces the course as a whole, and the final lesson's
+      body closes it (wrap-up, integration or farewell) — first and last by declared
+      position, whatever their numbering. Fail = an opening that dives straight into
+      topic content, or a course that simply stops after the last topic.
+    failure_modes:
+      - "No course-level framing: the learner lands in content with no orientation."
+      - "No closure: nothing integrates what was learned before the course ends."
+    claims: [cl-course-arc]
+    requires: [lesson_inventory, lesson_bodies]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-modules-build-within-themselves ------------------------------------
+  #
+  # This criterion and the next replace v8's `cr-later-lessons-apply-earlier-concepts`, which
+  # asked one question over both. What each of them counts as WORKING WITH a concept is
+  # written out below and is deliberately wider than v8's "uses it rather than restates it".
+  # The narrower reading was measured and does not survive: over one draft, readers found the
+  # working-with act in 23 and 29 places while six model runs found it in 0 to 9, so a
+  # criterion resting on that distinction alone measures the reader, not the course. The wider
+  # reading — developing a concept, working with it, or setting a task on it — lands inside
+  # the band two independent readers produced in every run. What stays excluded is the bare
+  # backward reference, which names earlier material without doing anything with it.
+  - id: cr-lessons-build-within-their-module
+    statement: "Within a module, later lessons work with what the module already taught."
+    pass_condition: >
+      A lesson WORKS WITH a concept when it develops that concept (says more about it than
+      what it is), operates with it as something the learner already has, or sets a task that
+      checks it. Merely naming it does not count, and neither does saying again what it is.
+      Pass = at least two thirds of the lessons that follow the first lesson of their own
+      module work with a concept that an earlier lesson OF THAT SAME MODULE introduced, and
+      no two consecutive such lessons both fail to. Fail = either part. Modules of a single
+      lesson contribute no lesson to this count.
+    failure_modes:
+      - "A module's lessons sit side by side: the second does not touch what the first taught."
+      - "The later lesson re-teaches the earlier one's material instead of working with it."
+      - "A stretch of consecutive lessons inside one module that build on nothing before them."
+    claims: [cl-modules-build-within-themselves]
+    requires: [lesson_bodies, lesson_inventory, lesson_concept_coverage]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-course-builds-across-modules ---------------------------------------
+  - id: cr-modules-build-on-earlier-modules
+    statement: "Later modules work with what earlier modules taught."
+    pass_condition: >
+      Working with a concept means what it means in the criterion above: developing it,
+      operating with it as already known, or setting a task that checks it — never merely
+      naming it, and never saying again what it is. Pass = at least two thirds of the modules
+      after the first thematic one contain a lesson that works with a concept introduced in an
+      EARLIER module. Fail = fewer, which is a course whose modules are parallel rather than
+      sequential.
+    failure_modes:
+      - "Each module restarts: a fresh domain, a fresh example, nothing carried forward."
+      - "Earlier modules are referred back to but their material is never put to work again."
+    claims: [cl-course-builds-across-modules]
+    requires: [lesson_bodies, lesson_inventory, lesson_concept_coverage]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  - id: cr-assessment-retrieves-earlier-taught-material
+    statement: "Assessment reaches back beyond the lesson it sits in."
+    pass_condition: >
+      The assessment tasks the course offers — the ones it delivers ready for the learner and
+      the ones it proposes for a later step to build, counted together — collectively
+      reference material from at least 2 distinct earlier lessons outside their own module.
+      A proposed exercise reaches back exactly as a delivered question does: what matters is
+      the material the learner must have studied to do it. Fail = assessment that only tests
+      the module it belongs to.
+    failure_modes:
+      - "The assessment tests only the most recent module: no retrieval across the course."
+      - "Tasks paraphrase a single lesson rather than integrating several."
+    claims: [cl-course-builds-across-modules]
+    requires: [assessment_offerings, lesson_inventory]
+    on_missing_evidence: no_evidence # a course with no assessment cannot evidence this
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-course-modular -----------------------------------------------------
+  - id: cr-module-structure-well-formed
+    statement: "Lesson identifiers form a well-formed module structure."
+    pass_condition: >
+      Every lesson identifier parses as module.lesson ('NN.M'); module numbers are
+      contiguous starting at 00; lesson numbering within each module starts at .0.
+      Fail = malformed identifiers, or gaps in module or lesson numbering.
+    failure_modes:
+      - "Numbering drift (ids like '05' instead of '05.0') that breaks the module mechanism downstream."
+      - "Skipped or duplicated module numbers."
+    claims: [cl-course-modular]
+    requires: [lesson_inventory]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-module-single-topic
+    statement: "Each module develops a single topic."
+    pass_condition: >
+      Within each module, the lesson titles and bodies develop one topic or sub-topic.
+      Fail = a module mixing unrelated topics, or content dispersed across many
+      single-lesson modules.
+    failure_modes:
+      - "A module is a grab-bag of leftovers rather than a developed topic."
+      - "Dispersion: many one-lesson modules instead of few focused ones."
+    claims: [cl-course-modular]
+    requires: [lesson_inventory, lesson_bodies]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-transitions-are-stated ---------------------------------------------
+  - id: cr-adjacent-pair-has-a-bridge
+    statement: "Consecutive lessons declare how one leads to the next."
+    pass_condition: >
+      A pair of consecutive core lessons (N, N+1) HAS A BRIDGE when at least one of the two
+      ends states the relation: N's closing says what comes next and why, or N+1's opening
+      says what it assumes or builds on. Pass = at least two thirds of consecutive pairs
+      have a bridge AND no two consecutive pairs both lack one. Fail = either part.
+    failure_modes:
+      - "The course enumerates topics instead of chaining them: most transitions are silent."
+      - "A stretch of consecutive lessons with no stated connection, where the thread is lost."
+    claims: [cl-transitions-are-stated]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-no-concept-used-before-introduced ----------------------------------
+  - id: cr-concepts-introduced-before-use
+    statement: "Each concept is introduced before the course uses it."
+    pass_condition: >
+      For every concept the course teaches, the lesson that introduces it comes before any
+      lesson that uses it as known. Fail = a concept used as understood in a lesson earlier
+      than the one that introduces it.
+    failure_modes:
+      - "A lesson relies on a concept the course only explains later."
+      - "Terminology appears in use before it is ever defined."
+    claims: [cl-no-concept-used-before-introduced]
+    requires: [lesson_bodies, lesson_inventory]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-audience-declared --------------------------------------------------
+  - id: cr-audience-declared
+    statement: "The target audience is declared."
+    pass_condition: >
+      A non-empty target audience statement is declared. Fail = missing or
+      empty/boilerplate ('everyone', 'anyone interested').
+    failure_modes:
+      - "No audience declared — the level of every judgment downstream is unanchored."
+      - "Audience so generic it cannot anchor a starting point."
+    claims: [cl-audience-declared]
+    requires: [target_audience]
+    on_missing_evidence: fail
+    eligible_sources: [human, automated]
+
+  - id: cr-prerequisites-declared
+    statement: "Prerequisites are declared."
+    pass_condition: >
+      At least 1 prerequisite is declared (an explicit 'none' also passes — declaring the
+      empty set is a declaration). Fail = prerequisites entry present but blank.
+    failure_modes:
+      - "Prerequisites omitted: the entry point of the progression is undeclared."
+    claims: [cl-audience-declared]
+    requires: [prerequisites]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-no-lesson-outruns-the-course ---------------------------------------
+  - id: cr-no-lesson-spikes-in-lexical-load
+    statement: "No lesson's vocabulary runs far above the rest of the course."
+    pass_condition: >
+      No lesson's lexical load — its mean syllables per word over prose, excluding fenced
+      code, image alt text and headings — exceeds the course's own median by more than
+      0.20. Lessons too short for a stable average are excluded from the comparison.
+      Fail = any lesson above that margin. The threshold and the measure are justified in
+      docs/MEASUREMENT.md; it is compared against the course's own median rather than an
+      absolute band because the absolute level tracks subject matter, not pedagogy.
+    failure_modes:
+      - "One lesson is written for a markedly more advanced reader than the rest of the course."
+    claims: [cl-no-lesson-outruns-the-course]
+    requires: [lesson_bodies]
+    condition: { content_language: en }
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]
+
+  # --- evidencing cl-lessons-grow-in-demand ---------------------------------------------
+  - id: cr-cognitive-demand-rises-across-the-course
+    statement: "The concepts the lessons cover grow in sophistication in delivery order."
+    pass_condition: >
+      Read the lessons in declared order — their titles, their delivery type and the concepts
+      each declares it covers — and classify the sophistication of the reasoning each
+      demands. Pass = the trajectory is non-decreasing overall, allowing local dips where a
+      lesson consolidates before the next step. Fail = the course peaks early and then works
+      below what it already required, or stays flat where the objectives promise growth.
+      The course-level opening and closing slots are excluded: they frame the course rather
+      than advance it.
+      Judged over the plan rather than the lesson bodies on purpose. The plan is the
+      generator's own statement of the trajectory it intended, it is two orders of magnitude
+      smaller to read, and a trajectory is a property of the sequence rather than of any
+      lesson's prose.
+    failure_modes:
+      - "The hardest concept arrives in the second module and nothing after it goes further."
+      - "Every lesson covers a sibling concept at the same level — a list rather than a progression."
+    claims: [cl-lessons-grow-in-demand]
+    requires: [lesson_inventory, lesson_concept_coverage]
+    on_missing_evidence: no_evidence
+    eligible_sources: [human, automated]

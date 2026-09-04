@@ -68,7 +68,7 @@ from tests.conftest import INSTRUMENTS_DIR
 PACKAGE = AUTOMATED_ASSESSORS[("drafts-hybrid", "13")]
 
 _SHIPPED_SPEC = yaml.safe_load(
-    (INSTRUMENTS_DIR / "course-drafts-qa-v9.yaml").read_text(encoding="utf-8")
+    (INSTRUMENTS_DIR / "course-drafts-qa-v10.yaml").read_text(encoding="utf-8")
 )
 _SHIPPED_CRITERIA = {
     raw["id"]: CriterionSpec(
@@ -2231,7 +2231,7 @@ def fixture_prose(data: ProfileData, lesson_id: str) -> str:
 
 def _instrument_spec() -> InstrumentSpec:
     return InstrumentSpec(
-        instrument_version_id="course-drafts-qa-v9",
+        instrument_version_id="course-drafts-qa-v10",
         instrument_id=_SHIPPED_SPEC["instrument_id"],
         status="published",
         claims=tuple(ClaimSpec(claim_id=raw["id"]) for raw in _SHIPPED_SPEC["claims"]),
