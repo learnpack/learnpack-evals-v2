@@ -48,10 +48,6 @@ class AssignmentRepositoryPort(Protocol):
         self, campaign_id: UUID, content_id: UUID, assessor_id: UUID
     ) -> Assignment | None: ...
 
-    def list_open_for_assessor_and_content(
-        self, assessor_id: UUID, content_id: UUID
-    ) -> list[Assignment]: ...
-
     def count_submitted(self, campaign_id: UUID, content_id: UUID) -> int: ...
 
     def count_submitted_by_content(self, campaign_id: UUID) -> dict[UUID, int]:

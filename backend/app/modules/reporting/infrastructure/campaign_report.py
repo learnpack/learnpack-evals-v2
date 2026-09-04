@@ -56,11 +56,10 @@ class QuorumDTO:
     contents_complete: int
     coverage: float
     required_per_content: int
-    # Distinct (content, assessor) submissions this campaign counts — superseded repetitions
-    # excluded, because a correction is not a second evaluation (ADR-0005).
+    # Distinct (content, assessor) submissions this campaign received. There is no second
+    # kind: an assessor answers a course at most once per campaign (ADR-0065 §7).
     evaluations_counted: int
     evaluations_expected: int
-    superseded_count: int
     assessor_count: int
 
 
@@ -92,7 +91,6 @@ class EvaluationDetailDTO:
     assessor_id: UUID
     assessor_name: str | None
     submitted_at: datetime | None
-    superseded: bool
     scores: list[ScoreDetailDTO]
 
 
@@ -137,12 +135,12 @@ def build_campaign_report(
     if answers is None:
         return None
     campaign, rubric = answers.campaign, answers.rubric
-    by_content, counted = answers.submitted, answers.counted
+    counted = answers.counted
 
     progress = orchestration.get_campaign_progress(campaign_id)
     assert progress is not None  # the campaign resolved one line above
 
-    mine = [e for found in by_content.values() for e in found]
+    mine = [e for found in counted.values() for e in found]
     campaign_assessors = {assessor_id for _, assessor_id in answers.asked_of}
 
     names = identity.list_assessors(list({e.assessor_id for e in mine}))
@@ -171,11 +169,8 @@ def build_campaign_report(
     ]
 
     content_reports = []
-    superseded_total = 0
     for content_id in campaign.content_ids:
-        found = by_content.get(content_id, [])
-        counted_ids = {e.evaluation_id for e in counted[content_id]}
-        superseded_total += len(found) - len(counted_ids)
+        found = counted[content_id]
         snapshot = snapshots.get(content_id)
         row = progress_of.get(content_id)
         content_reports.append(
@@ -198,8 +193,6 @@ def build_campaign_report(
                         assessor_id=e.assessor_id,
                         assessor_name=_name_of(names, e.assessor_id),
                         submitted_at=e.submitted_at,
-                        # Kept visible, and excluded from every number above it.
-                        superseded=e.evaluation_id not in counted_ids,
                         scores=[
                             ScoreDetailDTO(
                                 quality_id=s.quality_id,
@@ -237,7 +230,6 @@ def build_campaign_report(
             evaluations_counted=sum(len(v) for v in counted.values()),
             evaluations_expected=len(campaign.content_ids)
             * campaign.required_evaluations_per_content,
-            superseded_count=superseded_total,
             assessor_count=len(campaign_assessors),
         ),
         items=items,

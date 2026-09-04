@@ -354,6 +354,7 @@ erDiagram
         uuid content_id
         text instrument_version_id
         uuid profile_id FK "null on human path"
+        uuid assignment_id "null on automated path"
         int attempt
         timestamptz occurred_at
         timestamptz submitted_at
@@ -420,8 +421,10 @@ erDiagram
     }
 ```
 
-`evaluations.content_id` and `evaluations.instrument_version_id` are cross-module references
-without DB FK. Pass outcomes are always quoted and not derived; fail is quoted or
+`evaluations.content_id`, `evaluations.instrument_version_id` and `evaluations.assignment_id`
+are cross-module references without DB FK. The last one is the assignment the evaluation
+answered (ADR-0065), and therefore the campaign it belongs to; it is null exactly where no
+assignment exists, which is the automated path. Pass outcomes are always quoted and not derived; fail is quoted or
 absence-derived.
 
 **`execution_error` is a sixth outcome and is CHECK-enforced from both sides** (ADR-0037):
@@ -486,7 +489,9 @@ erDiagram
 ```
 
 At most one **active** assignment per `(campaign, content, assessor)` (partial unique where
-status ≠ `cancelled`). Campaigns do not own evaluations; the assignment is the link.
+status ≠ `cancelled`). Campaigns do not own evaluations; the assignment is the link, and the
+evaluation records which one it answered (ADR-0065) — so an answer belongs to the round that
+received it and to no other.
 
 `dataset_version_id` records **how the scope was chosen** and `campaign_contents` stays **what
 was judged** (ADR-0058 §5): the copy is what the assignment path reads, and it is what makes a

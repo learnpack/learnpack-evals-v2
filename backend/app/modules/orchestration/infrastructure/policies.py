@@ -25,9 +25,8 @@ def on_evaluation_submitted(event: DomainEvent) -> None:
     # so the application layer never depends on the Evaluation module.
     published = evaluation_contract.EvaluationSubmittedFact.from_payload(event.payload)
     fact = EvaluationSubmittedFact(
-        assessor_id=published.assessor_id,
         content_id=published.content_id,
-        instrument_version_id=published.instrument_version_id,
+        assignment_id=published.assignment_id,
     )
 
     session = SessionLocal()

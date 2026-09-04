@@ -236,8 +236,15 @@ def test_a_cancelled_assignment_does_not_count_towards_quorum(
     assert progress["contents"][0]["completed"] is True
 
 
-def test_one_evaluation_satisfies_two_campaigns(admin, evaluator, content, make_campaign, session):
-    """Evaluation is campaign-agnostic; the assignment is the link (ADR-0002 · ADR-0005)."""
+def test_an_answer_given_to_one_campaign_is_not_a_delivery_to_another(
+    admin, evaluator, content, make_campaign, session
+):
+    """An evaluation answers one assignment (ADR-0065).
+
+    Ada is asked the same course by two rounds and answers the first. The second asked her
+    too and received nothing, so it says so — before ADR-0065 its assignment flipped to
+    submitted and its progress screen credited it with work it never got.
+    """
     first_campaign = make_campaign(required=1)
     second_campaign = make_campaign(required=1)
     ada, ada_id = evaluator("ada")
@@ -245,18 +252,55 @@ def test_one_evaluation_satisfies_two_campaigns(admin, evaluator, content, make_
     first_assignment = assign(admin, first_campaign, content, ada_id)
     assign(admin, second_campaign, content, ada_id)
 
-    # A single submission, made against the first campaign's assignment.
     ada.post("/evaluations", json={"assignment_id": first_assignment, "scores": scores()})
 
-    for campaign_id in (first_campaign, second_campaign):
-        progress = admin.get(f"/admin/campaigns/{campaign_id}/progress").json()
-        assert progress["contents"][0]["completed"] is True, campaign_id
+    assert (
+        admin.get(f"/admin/campaigns/{first_campaign}/progress").json()["contents"][0]["completed"]
+        is True
+    )
+    assert (
+        admin.get(f"/admin/campaigns/{second_campaign}/progress").json()["contents"][0]["completed"]
+        is False
+    )
 
-    # And only one evaluation was ever stored.
+    # One submission, one evaluation: the second round has to ask again to get one.
     evaluations = session.execute(
         text("SELECT count(*) FROM evaluations WHERE content_id = :c"), {"c": content}
     ).scalar_one()
     assert evaluations == 1
+
+
+def test_the_second_round_gets_its_own_answer_and_neither_moves_the_other(
+    admin, evaluator, content, make_campaign, session
+):
+    """The defect ADR-0065 closes, in the order that produced it.
+
+    A campaign that has already been answered, a second one opened afterwards over the same
+    course and expert, and a fresh answer to it. Before this, the later answer became what
+    BOTH rounds counted, and the first stopped saying what it found when it ran.
+    """
+    first_campaign = make_campaign(required=1)
+    ada, ada_id = evaluator("ada")
+    first_assignment = assign(admin, first_campaign, content, ada_id)
+    ada.post(
+        "/evaluations",
+        json={"assignment_id": first_assignment, "scores": scores(**{"alignment-coverage": 1})},
+    )
+
+    second_campaign = make_campaign(required=1)
+    second_assignment = assign(admin, second_campaign, content, ada_id)
+    ada.post(
+        "/evaluations",
+        json={"assignment_id": second_assignment, "scores": scores(**{"alignment-coverage": 5})},
+    )
+
+    def coverage(campaign_id: str) -> float:
+        report = admin.get(f"/admin/campaigns/{campaign_id}/report").json()
+        row = next(i for i in report["items"] if i["quality_id"] == "alignment-coverage")
+        return row["summary"]["average"]
+
+    assert coverage(first_campaign) == 1.0
+    assert coverage(second_campaign) == 5.0
 
 
 def test_over_quorum_is_allowed(admin, evaluator, content, make_campaign, session):

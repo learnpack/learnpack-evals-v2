@@ -22,7 +22,9 @@ If you find status in any other document — "already done", "X missing", "N tes
 
 **Human evaluation.** A campaign puts courses in front of subject-matter experts, who answer
 the reference instrument one item per quality; the result is read **inside that campaign**, at
-the grain of the item, and the golden reference is established from coverage. Registering an
+the grain of the item, and the golden reference is established from coverage. An answer belongs
+to the round that received it and to no other (ADR-0065), so what a campaign reported when it
+ran cannot be moved by a later one. Registering an
 evaluator, granting a role and retiring somebody are acts of the console. Exercised end to end
 locally; the deploy is the one thing between it and a real panel.
 
@@ -53,13 +55,13 @@ same outcomes and never enters that report.
 
 | | |
 |---|---|
-| Migration head | `0034` |
+| Migration head | `0035` |
 | Reference instrument | `learnpack-pedagogical-2.0.0` — 12 Likert items, one per quality |
 | Instruments published | `learnpack-course-qa-v1` · `course-drafts-qa-v9` |
 | Assessors registered | `structural:1` · `drafts-structural:1` · `drafts-hybrid:13` |
 | Extractions accepted | `LearnpackV1` · `LearnpackV2` |
 
-**ADRs 0001–0064 are the decision record** and `docs/README.md` rolls them. The default is that
+**ADRs 0001–0065 are the decision record** and `docs/README.md` rolls them. The default is that
 a decision is realized in the code, so what this file carries is the **exceptions**, below.
 
 ## Not built on purpose
@@ -92,13 +94,6 @@ Decided, deferred deliberately, and named here so nobody counts on them:
   variables. Until it exists the evaluator's frame loads the course without its AI.
 - **A console for seats.** Provisioning is lazy and needs no screen, but nothing lists which
   evaluators have one, revokes it, or reaps them when a campaign ends.
-- **A later campaign can move an earlier one's numbers.** `collapse_latest_per_assessor` keys on
-  `(assessor, content, instrument version)` with no campaign in it, and `evaluations` does not
-  record which assignment produced them — so the same expert re-answering the same course in a
-  second campaign silently rewrites what the first one found. It contradicts ADR-0060's thesis
-  and nothing frozen protects it, because that report is composed on read. Filtering by campaign
-  is not the fix: ADR-0005 made an evaluation campaign-agnostic on purpose, so that one answer
-  can satisfy several. It needs an ADR before it needs code.
 - **`course-drafts-qa-v9` binds only `LearnpackV2`**, so that pair cannot judge a V1 course. No
   new instrument is needed — a binding, a new version, and a re-ratification of the same
   assessor, which ADR-0019 §3 makes cheap where nothing else moved.

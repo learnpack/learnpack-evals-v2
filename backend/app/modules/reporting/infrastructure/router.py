@@ -46,7 +46,6 @@ class IndividualEvaluationResponse(BaseModel):
     assessor_id: UUID
     assessor_name: str | None
     submitted_at: datetime | None
-    superseded: bool
     scores: list[ScoreDetailResponse]
 
 
@@ -181,7 +180,6 @@ class CampaignQuorumResponse(BaseModel):
     required_per_content: int
     evaluations_counted: int
     evaluations_expected: int
-    superseded_count: int
     assessor_count: int
 
 
@@ -248,7 +246,6 @@ def campaign_report_endpoint(
             required_per_content=report.quorum.required_per_content,
             evaluations_counted=report.quorum.evaluations_counted,
             evaluations_expected=report.quorum.evaluations_expected,
-            superseded_count=report.quorum.superseded_count,
             assessor_count=report.quorum.assessor_count,
         ),
         items=[
@@ -295,7 +292,6 @@ def campaign_report_endpoint(
                         assessor_id=e.assessor_id,
                         assessor_name=e.assessor_name,
                         submitted_at=e.submitted_at,
-                        superseded=e.superseded,
                         scores=[
                             ScoreDetailResponse(
                                 quality_id=s.quality_id,

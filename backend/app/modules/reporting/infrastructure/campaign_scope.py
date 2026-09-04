@@ -1,8 +1,12 @@
 """What a campaign's human answers ARE — the one definition, shared by its readers.
 
-ADR-0060 §1 fixes it: an evaluation belongs to a campaign when a non-cancelled assignment
-`(campaign, content, assessor)` exists and the evaluation's `instrumentVersion` equals the
-campaign's. And it says why this module exists rather than the rule being written twice —
+ADR-0060 §1 fixed it as a set lookup over `(content, assessor)`, because an evaluation carried
+no attribution. ADR-0065 gave it one, and the rule became a single clause: an evaluation belongs
+to the campaign of **the assignment it answered**. The instrument-version check and the special
+case that kept automated evaluations out both dissolve into it — an evaluation that answered no
+assignment is in no campaign.
+
+The reason this module exists is unchanged, and it is ADR-0060's own —
 *"a second definition of this campaign's evaluations — which would drift — never exists"*.
 
 Two readers need it now: the campaign report (ADR-0060) and the validity of a claim against
@@ -20,7 +24,6 @@ from uuid import UUID
 from app.modules.evaluation.public import EvaluationDTO, EvaluationQueries
 from app.modules.evaluation_design.public import RubricQueries, RubricSnapshot
 from app.modules.orchestration.public import CampaignSummaryDTO, OrchestrationQueries
-from app.modules.reporting.application import aggregation
 
 
 class InstrumentUnavailable(Exception):
@@ -34,18 +37,17 @@ class InstrumentUnavailable(Exception):
 
 @dataclass(frozen=True)
 class CampaignAnswers:
-    """One campaign's human side, scoped and collapsed, before anybody interprets it."""
+    """One campaign's human side, scoped, before anybody interprets it."""
 
     campaign: CampaignSummaryDTO
     rubric: RubricSnapshot
     # Who the campaign ASKED, which is not who answered: an assessor with an open assignment
     # and no submission is still one of this campaign's assessors.
     asked_of: frozenset[tuple[UUID, UUID]]
-    # Every evaluation the campaign asked for, by content — superseded ones included, because
-    # a reader that reports what was corrected needs to see both.
-    submitted: dict[UUID, list[EvaluationDTO]]
-    # The same, with repetitions collapsed to the latest per assessor (ADR-0005/0006): a human
-    # re-evaluation is a correction that supersedes. Every number is read off THIS one.
+    # The answers this campaign received, by content. One list, not two: an assessor answers a
+    # course at most once per campaign — one active assignment per (campaign, content,
+    # assessor), one submission per assignment — so there is nothing to collapse and no
+    # superseded row to keep beside it (ADR-0065 §7).
     counted: dict[UUID, list[EvaluationDTO]]
 
 
@@ -71,29 +73,30 @@ def campaign_answers(
     # ADR-0060 §1: what belongs to this campaign is what its assignments asked for. A
     # cancelled assignment asked for nothing, and an automated assessor never has one — which
     # is why no filter on assessor kind appears anywhere below.
-    asked_of = {
-        (assignment.content_id, assignment.assessor_id)
+    # ADR-0060 §1 realized through ADR-0065: what belongs to this campaign is what its own
+    # assignments were answered with. A cancelled assignment asked for nothing, and an
+    # automated assessor never has one — which is why no filter on assessor kind appears
+    # anywhere below.
+    live = [
+        assignment
         for assignment in orchestration.list_assignments_for_campaign(campaign_id)
         if not assignment.is_cancelled
-    }
+    ]
+    asked_of = {(assignment.content_id, assignment.assessor_id) for assignment in live}
+    mine = {assignment.assignment_id for assignment in live}
 
-    submitted: dict[UUID, list[EvaluationDTO]] = {cid: [] for cid in campaign.content_ids}
+    counted: dict[UUID, list[EvaluationDTO]] = {cid: [] for cid in campaign.content_ids}
     for evaluation in evaluations.list_for_contents(campaign.content_ids):
-        # The pin is read, not assumed: a course in two campaigns judged against two versions
-        # answers two different sets of questions (ADR-0056).
-        if evaluation.instrument_version_id != campaign.instrument_version_id:
+        # One test, where three used to be. The pin ADR-0056 fixed travels with the
+        # assignment, so a course in two campaigns judged against two versions separates here
+        # for the same reason everything else does.
+        if evaluation.assignment_id not in mine:
             continue
-        if (evaluation.content_id, evaluation.assessor_id) not in asked_of:
-            continue
-        submitted.setdefault(evaluation.content_id, []).append(evaluation)
+        counted.setdefault(evaluation.content_id, []).append(evaluation)
 
     return CampaignAnswers(
         campaign=campaign,
         rubric=rubric,
         asked_of=frozenset(asked_of),
-        submitted=submitted,
-        counted={
-            content_id: aggregation.collapse_latest_per_assessor(found)
-            for content_id, found in submitted.items()
-        },
+        counted=counted,
     )

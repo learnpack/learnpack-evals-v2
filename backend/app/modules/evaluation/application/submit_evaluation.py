@@ -1,8 +1,12 @@
 """SubmitEvaluation → EvaluationSubmitted (07-define.md, 08-code.md §5).
 
-The core command of the MVP. Note what it does *not* do: it does not know about campaigns or
-assignments, and it does not emit `ContentEvaluationCompleted`. Orchestration owns completion
-and reacts to the event.
+The core command of the MVP. Note what it does *not* do: it does not know about **campaigns**,
+and it does not emit `ContentEvaluationCompleted` — Orchestration owns completion and reacts to
+the event.
+
+It does know which **assignment** it answers (ADR-0065), and records it. That is the link
+ADR-0002 always named; what changed is that it is stored rather than reconstructed later from
+`(content, assessor)`, which could not tell one round's answer from another's.
 """
 
 from dataclasses import dataclass
@@ -31,6 +35,9 @@ class SubmitEvaluationCommand:
     assessor_id: UUID
     content_id: UUID
     instrument_version_id: str
+    # Which assignment this answers. Required on the human path — the endpoint has it — and
+    # absent only where no assignment exists, which is the automated path (ADR-0065 §1).
+    assignment_id: UUID
     scores: list[ScoreInput]
     # The rubric's items, passed in as plain data so the domain stays independent of
     # Rubric Authoring (ARCHITECTURE.md §3).
@@ -54,6 +61,7 @@ class SubmitEvaluation:
             assessor_id=command.assessor_id,
             content_id=command.content_id,
             instrument_version_id=command.instrument_version_id,
+            assignment_id=command.assignment_id,
             scores=[
                 ItemScore(
                     quality_id=s.quality_id,
