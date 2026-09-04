@@ -39,8 +39,9 @@ counts, the panel's agreement with itself as the ceiling, and a `tracks | weak |
 verdict. Each claim also names the courses where the two sides contradicted each other, with the
 experts' answers and comments beside the passage the assessor cited — the reading a weak claim is
 rewritten from. It is a read composed on demand, it names the campaign it came from, and no
-campaign chosen means no verdict. The thresholds are asserted, not measured: the first campaign
-settles them.
+campaign chosen means no verdict. The same reading is offered where an instrument is tuned
+(ADR-0064), which is the one place a criterion's author can see whether the claim it feeds ever
+followed a panel. The thresholds are asserted, not measured: the first campaign settles them.
 
 **Generator QA.** A study measures the generator versions its recipe names, over a dataset
 composed from commissions: each package is discovered and profiled, an instrument's criteria
@@ -58,7 +59,7 @@ same outcomes and never enters that report.
 | Assessors registered | `structural:1` · `drafts-structural:1` · `drafts-hybrid:13` |
 | Extractions accepted | `LearnpackV1` · `LearnpackV2` |
 
-**ADRs 0001–0063 are the decision record** and `docs/README.md` rolls them. The default is that
+**ADRs 0001–0064 are the decision record** and `docs/README.md` rolls them. The default is that
 a decision is realized in the code, so what this file carries is the **exceptions**, below.
 
 ## Not built on purpose

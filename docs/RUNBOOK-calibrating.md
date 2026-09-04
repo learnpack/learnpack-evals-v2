@@ -21,14 +21,29 @@ You get **evidence about the question**, never a verdict about a course. Four to
   criterion that already executes gets tested before it is shipped — and what the numbers to
   read are is *A correct verdict is not a safe one*, below.
 
-There is a second way into this job, and it comes from outside. When a campaign of experts has
-read the same courses an assessor judged, the **Validity** section of a study report says how
-much each claim follows the panel, and a claim that does not follow it names the courses where
-the two sides read the same course differently — the experts' answers and comments beside the
-passage the assessor cited. Each of those courses links straight into this console with the
-course and the criterion already loaded. The evidence a run gives you here is the same either
-way; what the panel adds is external evidence that the pair measures what it says it measures,
-which no amount of repeating a run can supply.
+And a fifth tool that is not a run at all: **what a panel of experts made of the claims this
+instrument asserts.** Choose a campaign in *Against a panel of experts* and every claim says
+whether it follows expert judgment, with the criterion you arrived about showing the claims it
+evidences. Everything else on the page measures whether the instrument is **reliable**; this is
+the only thing that measures whether it is **valid**, and the difference is the last section of
+*What repeated runs tell you*: a check can be perfectly stable and stably wrong.
+
+Four things about that reading are worth knowing before you trust it.
+
+- **It is about the pair you selected, never about your dry run.** A dry run persists nothing
+  and cannot move it.
+- **A version nobody ratified has judged nothing**, so there is nothing to compare. That is the
+  common case while you are tuning a draft, and the screen says which of the reasons applies.
+- **The grain is the claim.** A criterion has no human number of its own and reaches one only
+  through the claims it evidences; two claims of one criterion disagreeing is a finding about
+  the instrument, which is why they are never averaged into one badge.
+- **One campaign at a time.** A second campaign is asked for by name and never mixed in.
+
+The same reading is where people arrive from. The **Validity** section of a study report names,
+for a claim that does not follow the panel, the courses where the two sides read the same course
+differently — the experts' answers and comments beside the passage the assessor cited — and each
+of those courses links straight into this console with the course, the criterion and the campaign
+already loaded.
 
 Two cautions that belong to that entrance. **Read the check before the judge**: a criterion
 whose threshold was never written makes every assessor look equally bad, so starting at the

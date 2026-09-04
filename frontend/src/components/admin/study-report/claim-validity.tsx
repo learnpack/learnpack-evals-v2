@@ -9,7 +9,7 @@ import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Select } from "@/components/ui/select";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { EvidenceQuote } from "@/components/admin/evidence-quote";
-import { ValidityBadge } from "@/components/admin/study-report/validity-badge";
+import { ValidityBadge } from "@/components/admin/validity-badge";
 import { useCampaigns, useGoldenStatus } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import type {
@@ -174,6 +174,7 @@ function ValidityTable({ report }: { report: ClaimValidityReport }) {
                 key={claim.claim_id}
                 claim={claim}
                 instrumentVersionId={report.instrument_version_id}
+                campaignId={report.campaign_id}
               />
             ))}
           </tbody>
@@ -198,9 +199,11 @@ function ValidityTable({ report }: { report: ClaimValidityReport }) {
 function ClaimRow({
   claim,
   instrumentVersionId,
+  campaignId,
 }: {
   claim: ClaimValidity;
   instrumentVersionId: string;
+  campaignId: Uuid;
 }) {
   const [open, setOpen] = useState(false);
   const courses = claim.discordant;
@@ -281,6 +284,7 @@ function ClaimRow({
                   key={course.content_id}
                   course={course}
                   instrumentVersionId={instrumentVersionId}
+                  campaignId={campaignId}
                 />
               ))}
             </ul>
@@ -308,9 +312,14 @@ function Coordinates({ claim }: { claim: ClaimValidity }) {
 function DiscordantEntry({
   course,
   instrumentVersionId,
+  campaignId,
 }: {
   course: DiscordantCourse;
   instrumentVersionId: string;
+  /** Carried into the link so the console opens on the campaign the reader came from
+   *  (ADR-0064 §3): the coordinate is explicit there too, and choosing it twice is not a
+   *  choice, it is a chore. */
+  campaignId: Uuid;
 }) {
   const refutedWhatWasAccepted = course.cell === "refuted_accepted";
 
@@ -393,6 +402,7 @@ function DiscordantEntry({
             query: {
               content: course.content_id,
               instrument: instrumentVersionId,
+              campaign: campaignId,
               why: "validity",
               ...(course.findings[0]
                 ? { criterion: course.findings[0].criterion_id }

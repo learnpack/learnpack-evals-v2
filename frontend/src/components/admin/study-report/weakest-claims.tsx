@@ -2,7 +2,7 @@ import { ClaimStatusBadge } from "@/components/admin/claim-status";
 import { CopyButton } from "@/components/admin/copy-button";
 import { DistributionBar } from "@/components/admin/distribution-bar";
 import { rankClaims } from "@/components/admin/study-report/rollup";
-import { ValidityBadge } from "@/components/admin/study-report/validity-badge";
+import { ValidityBadge } from "@/components/admin/validity-badge";
 import type { ClaimValidity, ReportBody } from "@/lib/api/types";
 
 /** Which assertions about the generator did not hold, worst first.
