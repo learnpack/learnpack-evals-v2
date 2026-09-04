@@ -18,7 +18,7 @@ export function Verdict({
 
   return (
     <section className="rounded-lg border bg-card">
-      <div className="grid gap-px overflow-hidden rounded-t-lg bg-border sm:grid-cols-4">
+      <div className="grid gap-px overflow-hidden rounded-t-lg bg-border sm:grid-cols-3">
         <Figure
           label="Courses complete"
           value={`${quorum.contents_complete}/${quorum.contents_in_scope}`}
@@ -33,11 +33,6 @@ export function Verdict({
           label="Experts"
           value={String(quorum.assessor_count)}
           detail="with an active assignment in this round"
-        />
-        <Figure
-          label="Corrections"
-          value={String(quorum.superseded_count)}
-          detail="re-evaluations superseding an earlier answer"
         />
       </div>
 

@@ -49,7 +49,9 @@ function CourseEntry({
   items: CampaignReportItem[];
 }) {
   const [open, setOpen] = useState(false);
-  const counted = content.evaluations.filter((e) => !e.superseded);
+  // Every answer this round received is counted: an assessor answers a course at most
+  // once per campaign, so there is no superseded one to filter out (ADR-0065 §7).
+  const counted = content.evaluations;
 
   return (
     <li className="text-sm">
@@ -120,11 +122,6 @@ function SideBySide({
                 <span className="block">
                   {evaluation.assessor_name ?? evaluation.assessor_id.slice(0, 8)}
                 </span>
-                {evaluation.superseded ? (
-                  <span className="block text-xs font-normal text-muted-foreground">
-                    superseded
-                  </span>
-                ) : null}
               </th>
             ))}
           </tr>

@@ -39,11 +39,6 @@ export function Caveats({ report }: { report: CampaignReport }) {
           value={gaps.awaiting}
           detail="courses that have not reached their quorum. Their items contribute nothing to agreement yet."
         />
-        <Row
-          label="Corrections"
-          value={report.quorum.superseded_count}
-          detail="re-evaluations that supersede an earlier answer. Shown inside each course, excluded from every number above."
-        />
 
         {partial.length > 0 ? (
           <li className="px-4 py-3">
