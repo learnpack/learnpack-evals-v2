@@ -132,6 +132,17 @@ def rater_verdicts(
     return [human_verdict([score], thresholds) for score in scores]
 
 
+def counts_in_table(verdict: HumanVerdict, status: str | None) -> bool:
+    """Whether a course lands in the 2x2 at all: both sides committed to a side.
+
+    The one place that answers it, because ADR-0063 §4 requires the ceiling and the judge's
+    agreement to be **the same proportion over the same 2x2**. A caller that selected the
+    courses for one and not for the other would be comparing two populations and calling the
+    difference degradation.
+    """
+    return verdict in (ACCEPT, REJECT) and status in (SUPPORTED, REFUTED)
+
+
 def confuse(pairs: Sequence[tuple[HumanVerdict, str]]) -> Confusion:
     """The 2x2 over `(human verdict, claim status)` pairs.
 

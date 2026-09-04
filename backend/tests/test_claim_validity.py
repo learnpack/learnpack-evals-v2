@@ -18,6 +18,7 @@ from app.modules.reporting.application.claim_validity import (
     classify,
     cohen_kappa,
     confuse,
+    counts_in_table,
     discordant_cell,
     distance_from_cut,
     human_verdict,
@@ -276,3 +277,26 @@ def test_an_expert_in_the_grey_zone_takes_no_side():
     """Same rule as the ceiling: grey is not a side, so it forms no pair (ADR-0063 §4)."""
     assert verdicts_agree([ACCEPT, GREY]) is None
     assert verdicts_agree([ACCEPT, GREY, ACCEPT]) is True
+
+
+# ---- what is in the table, and what the ceiling is measured on (ADR-0063 §4)
+
+
+def test_a_course_is_in_the_table_only_when_both_sides_committed():
+    assert counts_in_table(ACCEPT, SUPPORTED) is True
+    assert counts_in_table(REJECT, REFUTED) is True
+    assert counts_in_table(ACCEPT, REFUTED) is True
+    assert counts_in_table(REJECT, SUPPORTED) is True
+
+
+def test_a_side_that_did_not_commit_keeps_the_course_out():
+    """Each of the three ways out, and they are three different facts.
+
+    The panel would not commit, nobody answered, the assessor could not conclude. None of
+    them is a disagreement, and none of them may be counted towards the ceiling either: the
+    judge is not scored on those courses, so the panel must not be scored on them.
+    """
+    assert counts_in_table(GREY, SUPPORTED) is False
+    assert counts_in_table(ABSENT, REFUTED) is False
+    assert counts_in_table(ACCEPT, "insufficient") is False
+    assert counts_in_table(ACCEPT, None) is False
