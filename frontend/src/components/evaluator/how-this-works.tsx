@@ -24,8 +24,12 @@ export function HowThisWorks() {
   return (
     <ol className="list-decimal space-y-1.5 pl-4 text-xs text-muted-foreground">
       <li>
-        <span className="font-medium text-foreground">Read the 12 statements first.</span> They
-        tell you what to watch for while you read.
+        {/* No count: a course that declares less is asked fewer of them (ADR-0053), so a
+            number here would be wrong on the very courses it would be read on. */}
+        <span className="font-medium text-foreground">
+          Read the form&apos;s statements first.
+        </span>{" "}
+        They tell you what to watch for as you go through the course.
       </li>
       <li>
         <span className="font-medium text-foreground">See all the lessons, in order.</span>{" "}
@@ -46,8 +50,11 @@ export function HowThisWorks() {
         &quot;I couldn&apos;t see enough&quot; only when you genuinely couldn&apos;t tell.
       </li>
       <li>
-        <span className="font-medium text-foreground">Use the comment</span> if you disagree for
-        a reason the statement doesn&apos;t capture.
+        {/* Open on purpose: tying it to disagreement would collect only half of what an
+            expert notices, and the instrument cannot ask about what it does not know to
+            ask. Agreeing with a caveat is worth as much as disagreeing. */}
+        <span className="font-medium text-foreground">Add a comment on any item</span> where the
+        scale alone doesn&apos;t capture what you saw.
       </li>
     </ol>
   );
