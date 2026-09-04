@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/states";
 import { ClaimStatusBadge } from "@/components/admin/claim-status";
+import { ValidityBadge } from "@/components/admin/validity-badge";
 import { ReadPackagesButton } from "@/components/admin/read-packages-button";
 import { OUTCOME_ORDER, OutcomeBadge } from "@/components/admin/outcome-badge";
 import {
@@ -25,7 +26,10 @@ import {
 import type { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
+  useCampaigns,
+  useClaimValidity,
   useContents,
+  useGoldenStatus,
   useInstruments,
   usePreviewRun,
   usePreviewRunTrace,
@@ -36,6 +40,10 @@ import {
 import { courseLabel } from "@/lib/courses";
 import type {
   AssessorPackageResponse,
+  CampaignResponse,
+  ClaimValidity,
+  ClaimValidityReport,
+  GoldenStatus,
   InstrumentCriterion,
   InstrumentResponse,
   LlmCallRecord,
@@ -84,6 +92,12 @@ function CalibrationConsole() {
   // should run, and pre-filling a choice nobody made is how a dry run gets attributed to
   // the wrong one.
   const [assessorKey, setAssessorKey] = useState(""); // "name:version"
+  // The fourth coordinate, and the only one that is not part of the run (ADR-0064). It is
+  // read from the URL the same way, because the validity table links here with the campaign
+  // its numbers came from and choosing it twice is a chore, not a choice.
+  const [campaignId, setCampaignId] = useState<Uuid | "">(
+    () => (params.get("campaign") as Uuid | null) ?? "",
+  );
   const cameAbout = params.get("criterion");
   // The instrument travels with the run: the fitness projection must read the version
   // that actually ran, not whatever the select points at afterwards.
@@ -126,6 +140,30 @@ function CalibrationConsole() {
   }, [packages.data, selectedInstrument]);
 
   const selectedPackage = sortedPackages.find((p) => `${p.name}:${p.version}` === assessorKey);
+
+  // What a panel of experts made of the claims this instrument asserts (ADR-0064). The three
+  // coordinates ADR-0063 §7 demands are all explicit: two of them are the run's own choices,
+  // and the campaign is the one asked for here. The hook stays disabled until all three
+  // resolve, so a package with no identity row simply never fires it.
+  const campaigns = useCampaigns();
+  const golden = useGoldenStatus(campaignId || "");
+  const validity = useClaimValidity(
+    campaignId || null,
+    selectedPackage?.assessor_id ?? null,
+    instrumentVersionId || null,
+  );
+  // Ratification is what says this pair could ever have judged anything. The dry run needs
+  // none of it (that is the point of this page), so a package can be perfectly runnable here
+  // and have nothing measured about it — two different states, said apart (ADR-0064 §5).
+  const ratifiedHere = selectedPackage?.lineage_versions.some(
+    (v) => v.instrument_version_id === instrumentVersionId && v.ratified,
+  );
+
+  const validityByClaim = useMemo(
+    () =>
+      new Map<string, ClaimValidity>((validity.data?.claims ?? []).map((c) => [c.claim_id, c])),
+    [validity.data],
+  );
   const running = start.isPending || run.data?.status === "running";
   const ready = contentId && instrumentVersionId && selectedPackage && !running;
 
@@ -195,6 +233,13 @@ function CalibrationConsole() {
         criterion={selectedInstrument?.criteria.find((c) => c.criterion_id === cameAbout)}
         criterionId={cameAbout}
         unprofiled={Boolean(contentId) && profileStatus.get(contentId as Uuid) !== "ok"}
+        // A criterion has no human number of its own; it reaches one through the claims it
+        // evidences (ADR-0064 §1). Several claims means several readings, never an average.
+        claimValidity={(
+          selectedInstrument?.criteria.find((c) => c.criterion_id === cameAbout)?.claim_ids ?? []
+        )
+          .map((claimId) => validityByClaim.get(claimId))
+          .filter((found): found is ClaimValidity => found !== undefined)}
       />
 
       {/* 1 ------------------------------------------------------------------ content */}
@@ -342,6 +387,20 @@ function CalibrationConsole() {
         </CardContent>
       </Card>
 
+      <AgainstThePanel
+        campaignId={campaignId}
+        onCampaignChange={setCampaignId}
+        campaigns={campaigns.data ?? []}
+        golden={golden.data}
+        assessorId={selectedPackage?.assessor_id ?? null}
+        packageName={selectedPackage?.display_name ?? null}
+        ratified={ratifiedHere}
+        instrument={selectedInstrument}
+        report={validity.data}
+        loading={validity.isLoading}
+        validityByClaim={validityByClaim}
+      />
+
       {/* 3 ---------------------------------------------------------------------- run */}
       <Card>
         <CardHeader>
@@ -374,6 +433,7 @@ function CalibrationConsole() {
                   instrument={started.instrument}
                   qualityReference={qualityReference.data ?? []}
                   focusCriterionId={cameAbout}
+                  validityByClaim={validityByClaim}
                 />
               ) : null}
             </>
@@ -381,6 +441,202 @@ function CalibrationConsole() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** What a panel of experts made of the claims this instrument asserts (ADR-0064).
+ *
+ *  Everything else on this page measures whether the instrument is **reliable** — traces,
+ *  repeats, self-agreement. All of it is internal to the machine, and the runbook says why
+ *  that is not enough: a criterion can be perfectly stable and stably wrong, and no number of
+ *  runs would show it. This is the only external evidence there is.
+ *
+ *  Outside the numbered steps on purpose: it is not part of the run, it changes nothing about
+ *  one, and a reader who has no campaign can ignore it entirely. */
+function AgainstThePanel({
+  campaignId,
+  onCampaignChange,
+  campaigns,
+  golden,
+  assessorId,
+  packageName,
+  ratified,
+  instrument,
+  report,
+  loading,
+  validityByClaim,
+}: {
+  campaignId: Uuid | "";
+  onCampaignChange: (campaign: Uuid | "") => void;
+  campaigns: CampaignResponse[];
+  golden: GoldenStatus | undefined;
+  assessorId: Uuid | null;
+  packageName: string | null;
+  ratified: boolean | undefined;
+  instrument: InstrumentResponse | undefined;
+  report: ClaimValidityReport | undefined;
+  loading: boolean;
+  validityByClaim: Map<string, ClaimValidity>;
+}) {
+  // Only a campaign that has been opened can have judged anything.
+  const options = campaigns.filter((option) => option.status !== "draft");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Against a panel of experts</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          Everything else on this page tells you whether the instrument is{" "}
+          <strong>reliable</strong> — whether it says the same thing twice. Only a panel that
+          read the same courses tells you whether it is <strong>valid</strong>, and a check can
+          be perfectly stable and stably wrong.
+        </p>
+
+        <div className="max-w-md space-y-1.5">
+          <Label htmlFor="calibration-campaign">Campaign</Label>
+          <Select
+            id="calibration-campaign"
+            value={campaignId}
+            onChange={(event) => onCampaignChange(event.target.value as Uuid | "")}
+          >
+            <option value="">No campaign — nothing is qualified</option>
+            {options.map((option) => (
+              <option key={option.campaign_id} value={option.campaign_id}>
+                {option.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {campaignId && golden && !golden.usable ? (
+          <p className="rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+            This campaign has not reached its coverage threshold yet (
+            {Math.round(golden.coverage * 100)}% of {Math.round(golden.threshold * 100)}%), so
+            its answers are still arriving. What is below will change.
+          </p>
+        ) : null}
+
+        <PanelReading
+          campaignId={campaignId}
+          assessorId={assessorId}
+          packageName={packageName}
+          ratified={ratified}
+          instrument={instrument}
+          report={report}
+          loading={loading}
+          validityByClaim={validityByClaim}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One state at a time, each saying its own reason.
+ *
+ *  *Nobody measured this* and *we measured it and it does not conclude* are different facts
+ *  (ADR-0011 §3), and so are the three ways the first one happens: the package has no identity
+ *  yet, it was never allowed to judge with this version, or it judged none of these courses.
+ *  One blank table for all of them would hide which. */
+function PanelReading({
+  campaignId,
+  assessorId,
+  packageName,
+  ratified,
+  instrument,
+  report,
+  loading,
+  validityByClaim,
+}: {
+  campaignId: Uuid | "";
+  assessorId: Uuid | null;
+  packageName: string | null;
+  ratified: boolean | undefined;
+  instrument: InstrumentResponse | undefined;
+  report: ClaimValidityReport | undefined;
+  loading: boolean;
+  validityByClaim: Map<string, ClaimValidity>;
+}) {
+  if (!campaignId) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Choose a campaign to see how far these claims agree with its panel. With none chosen
+        nothing is shown, which is not the same as a claim that failed to measure.
+      </p>
+    );
+  }
+
+  if (!instrument) {
+    return <p className="text-sm text-muted-foreground">Pick an instrument version first.</p>;
+  }
+
+  if (assessorId === null) {
+    return (
+      <Note>
+        {packageName ? <strong>{packageName}</strong> : "This assessor"} has never been
+        ratified, so it has no identity of its own yet and nothing has been measured about it.
+        The first ratification mints it. A dry run needs none of that and still works.
+      </Note>
+    );
+  }
+
+  if (ratified === false) {
+    return (
+      <Note>
+        This assessor was never ratified against{" "}
+        <span className="font-mono text-xs">{instrument.instrument_version_id}</span>, so it
+        cannot have judged anything with it and there is nothing to compare. Dry-running it
+        here is how that gets decided — ratification stays a separate, human act.
+      </Note>
+    );
+  }
+
+  if (loading) return <LoadingState label="Crossing the two sides…" />;
+  if (!report) return null;
+
+  if (report.courses_judged === 0) {
+    return (
+      <Note>
+        This assessor has judged none of{" "}
+        <span className="font-medium text-foreground">{report.campaign_name}</span>&apos;s
+        courses with this version. The comparison needs both sides over the same courses: run a
+        study over the dataset that campaign was opened on, and come back.
+      </Note>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        {report.courses_judged} of {report.courses_in_campaign} courses in{" "}
+        <span className="font-medium text-foreground">{report.campaign_name}</span> were judged
+        by both sides. Hover a badge for the counts behind it.
+      </p>
+      <ul className="space-y-1.5">
+        {/* From the instrument, never from a run: a claim excluded by coverage has no row in a
+            judgment at all, and would vanish here without a trace (ADR-0064 §2). */}
+        {instrument.claims.map((claim) => (
+          <li key={claim.claim_id} className="flex flex-wrap items-baseline gap-2 text-sm">
+            <ValidityBadge validity={validityByClaim.get(claim.claim_id)} />
+            <span title={claim.claim_id}>{claim.statement}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">
+        This qualifies the claim, not this page&apos;s run: a dry run persists nothing and
+        changes none of it. And it is one campaign&apos;s reading — another one is asked for by
+        name, never averaged with this.
+      </p>
+    </div>
+  );
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
+      {children}
+    </p>
   );
 }
 
@@ -401,12 +657,15 @@ function ArrivedFromReport({
   criterion,
   criterionId,
   unprofiled,
+  claimValidity,
 }: {
   preselected: boolean;
   cameFromValidity: boolean;
   criterion: InstrumentCriterion | undefined;
   criterionId: string | null;
   unprofiled: boolean;
+  /** The claims this criterion evidences, where a campaign has qualified them. */
+  claimValidity: ClaimValidity[];
 }) {
   if (!preselected) return null;
 
@@ -439,6 +698,17 @@ function ArrivedFromReport({
         <p className="text-xs text-muted-foreground">
           It passes when: {criterion.pass_condition}
         </p>
+      ) : null}
+      {claimValidity.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>What the panel made of the claims it evidences:</span>
+          {claimValidity.map((validity) => (
+            <span key={validity.claim_id} className="inline-flex items-center gap-1">
+              <ValidityBadge validity={validity} />
+              <span title={validity.claim_id}>{validity.quality_id}</span>
+            </span>
+          ))}
+        </div>
       ) : null}
       {unprofiled ? (
         <p className="text-xs text-muted-foreground">
@@ -672,6 +942,7 @@ function PreviewResults({
   instrument,
   qualityReference,
   focusCriterionId,
+  validityByClaim,
 }: {
   result: PreviewEvaluationResponse;
   instrument: InstrumentResponse;
@@ -679,6 +950,9 @@ function PreviewResults({
   /** The criterion a study report sent the reader here about: its row is marked, so they
    *  land on the answer instead of scanning thirty of them. */
   focusCriterionId?: string | null;
+  /** Empty until a campaign is chosen above. What it adds is the contrast: this run says
+   *  what the claim came out as, the badge says how much that verdict has been worth. */
+  validityByClaim: Map<string, ClaimValidity>;
 }) {
   const partition = new Map<string, number>();
   for (const outcome of result.outcomes) {
@@ -741,11 +1015,20 @@ function PreviewResults({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-sm font-medium">Claims</h3>
+          <h3 className="mb-1 text-sm font-medium">Claims</h3>
+          {/* Two badges, two different things, and they sit on one line: the first is what
+              this run concluded, the second is what a panel made of that claim before any of
+              this. A dry run cannot move the second one (ADR-0064 §4). */}
+          <p className="mb-2 text-xs text-muted-foreground">
+            The first badge is this run&apos;s verdict. The second, where a campaign is chosen
+            above, is how much that claim has been worth against experts — it is about the
+            published pair, not about this run.
+          </p>
           <ul className="space-y-1.5">
             {result.claims.map((claim) => (
               <li key={claim.claim_id} className="flex flex-wrap items-center gap-2 text-xs">
                 <ClaimStatusBadge status={claim.status} />
+                <ValidityBadge validity={validityByClaim.get(claim.claim_id)} />
                 <span className="font-mono">{claim.claim_id}</span>
                 <span className="text-muted-foreground">
                   (
