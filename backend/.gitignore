@@ -1,4 +1,6 @@
 .env
+# The deployed store's credentials (see .env.instance.example).
+.env.instance
 .venv/
 __pycache__/
 *.py[cod]

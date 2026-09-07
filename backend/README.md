@@ -169,6 +169,12 @@ and the app runs. What you may actually need to change:
 | `BATCH_MAX_COURSES` · `LLM_MAX_CONCURRENCY` · `HTTP_MAX_CONCURRENCY` · `DB_POOL_SIZE` | how much is asked for at once — [`TUNING.md`](TUNING.md) |
 | `AUTH_MODE`, `CLERK_*`, `ADMIN_EMAILS` | only a deployed instance — [`ENVIRONMENT.md`](ENVIRONMENT.md) |
 
+**`.env.instance.example` is the other template**, and it is not this one's neighbour by accident:
+it holds the credentials of a **deployed** store, so that the `instance:*` tasks can run the
+ordinary CLI against it from here. Nothing in developing, running or testing reads it. What it
+sets wins over `.env`, which is what lets the two coexist instead of being swapped back and
+forth — the local environment is never edited to reach a deployed one.
+
 ## Commands
 
 Every CLI command runs from `backend/` as `uv run python -m app.cli <command>`, and `--help` on
