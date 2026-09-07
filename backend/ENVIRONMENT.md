@@ -1,10 +1,11 @@
-# Deploying an instance: identity and roles
+# Deploying an instance
 
 This is for one errand: **a human evaluation campaign**, where subject-matter experts who do
-not have this repository open a course in a browser and score it. That needs real accounts, so
-it needs Clerk — and everything here is done **once per instance, before anyone signs in**: the
-Clerk instance itself, who is born an admin, how the evaluators are registered, and the order
-all of it has to happen in.
+not have this repository open a course in a browser and score it. That needs real accounts and
+somewhere to keep what they answer, so it needs Clerk, a store and two hosts — and everything
+here is done **once per instance**: the hosts, the schema, the two things nothing in the app
+can author, who is born an admin, how the evaluators are registered, and the order all of it
+has to happen in.
 
 Measuring a generator's output needs none of it. That runs on your machine in
 [local mode](README.md#local-mode-and-clerk-mode-adr-0008), which replaces where identity comes
@@ -12,7 +13,12 @@ from and nothing else — so the campaign flow can be rehearsed locally first, a
 [Running Clerk against your own machine](#running-clerk-against-your-own-machine) is how to
 rehearse the sign-in and invitation halves too.
 
-One Clerk instance is one instance. Commands are run from `backend/`.
+One Clerk instance is one instance.
+
+**The commands here run from `backend/` on your own machine, pointed at the deployed store** —
+`DATABASE_URL` at Neon and `AUTH_MODE=clerk` — not from a shell on the server. The image is
+built from `backend/` alone, so `docs/seed/` is not in it and the seeder's own files are not
+there to read.
 
 ## Clerk (ADR-0004)
 
@@ -171,8 +177,12 @@ same person signing in both ways is two assessors, which is what you want on a d
 
 ## Preparing an environment — **order matters**
 
-This sequence runs **once per environment** (one Clerk instance = one environment), before
-anyone signs in.
+This sequence runs **once per environment** (one Clerk instance = one environment). The order is
+not a preference: three of these steps degrade **silently** when they run late — nothing raises,
+nothing an operator is watching logs, and the price is paid later in data. Two of the three are
+repairable afterwards and say how below. The third stops being repairable the moment an expert
+answers, because by then it has cost their answers to questions they should never have been
+asked.
 
 > ⚠️ **The JWT template with the `email` claim must exist BEFORE the admin's first login.**
 > Without that claim the assessor is created as `evaluator` (a safe degrade), and since the
@@ -180,18 +190,134 @@ anyone signs in.
 > Two individually correct behaviors that, in the wrong order, leave the admin born an
 > evaluator.
 
-1. **Render:** `ADMIN_EMAILS=<the admin's email>` (and wait for the redeploy to finish).
-2. **Clerk:** create the **JWT template** with [all three claims](#clerk-adr-0004) — `email`
-   decides this step, `email_verified` decides step 4, and a template written once is written
-   right — and invite the admin's account. **Nobody signs in yet.**
-3. **Only now:** the admin signs in. Verify with `GET /me` that it says `"role": "admin"`.
-4. The admin invites the evaluators from `/admin/assessors`. **That is the whole act**: with
-   `CLERK_SECRET_KEY` set, it creates the Clerk invitation too, so do **not** also invite them
-   in Clerk by hand — Clerk refuses an address that is already one of its users, and the
-   second invitation is the one that comes back `delivered: false`. They sign in → their role
-   and expertise come from the invitation.
-5. Register the generator and its courses (see [Registering courses](README.md#registering-courses))
-   and open the campaign from the admin UI.
+### 1. The store (Neon)
+
+Create the project and keep its connection string. It needs the psycopg3 prefix and SSL:
+
+```bash
+DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
+```
+
+Put it in the **same region the API runs in**: a request pays that round trip many times over
+and a browser pays it once, so this is the latency that matters.
+
+Nothing migrates it by hand. `render.yaml` declares `alembic upgrade head` as the API's
+pre-deploy command, so it runs once per deploy, before traffic switches, and the first deploy
+is also the first migration. A failure there aborts the deploy and leaves the previous version
+serving.
+
+### 2. The API (Render)
+
+Apply the Blueprint from `render.yaml` at the repository root. It asks for the five values it
+deliberately does not carry: `DATABASE_URL`, `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `ADMIN_EMAILS`
+and `ALLOWED_ORIGINS`.
+
+Two of them cannot be known yet — the Clerk keys and the console's own origin — so a first pass
+with placeholders and one edit afterwards is the normal shape of this step, not a mistake.
+
+`GET /health` answering `{"status": "ok", "environment": "production"}` is what says the schema
+and the store are both there: it runs a real query, so it cannot answer `ok` over a database it
+cannot reach.
+
+### 3. The console (Netlify)
+
+`netlify.toml` at the repository root already declares the base directory, the build and the
+Node version. What the dashboard supplies is the environment, and **all of it is read at build
+time**, so changing any of it needs a redeploy rather than a restart:
+
+```bash
+NEXT_PUBLIC_API_URL=https://<the Render service>.onrender.com
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
+```
+
+`NEXT_PUBLIC_AUTH_MODE` is left unset on purpose: anything that is not `local` is `clerk`, so a
+missing or misspelled value fails safe.
+
+Then go back to Render and set `ALLOWED_ORIGINS` to this site's URL. **It goes first**, because
+the first entry is both what CORS allows and what Clerk's invitation link is derived from
+(`Settings.invitation_redirect_url`) — and an invitation that lands on the wrong origin is
+found by the person who cannot accept it.
+
+### 4. Clerk — all of it before anybody signs in
+
+1. The **JWT template** with [all three claims](#clerk-adr-0004). `email` decides who is born
+   an admin, `email_verified` decides whether an invitation can be redeemed at all, and a
+   template written once is written right.
+2. Invite-only, in **Restrictions**.
+3. Invite the admin's account. **Nobody signs in yet.**
+
+### 5. The two things nothing in the app can author
+
+From a checkout, pointed at Neon — not from a shell on the server, which has no `docs/seed/`.
+Set `DATABASE_URL` and `AUTH_MODE=clerk` **in that shell's environment**, which takes precedence
+over `backend/.env` and so needs no edit to your local one, and then:
+
+```bash
+uv run python -m app.cli seed
+```
+
+That installs the **human reference instrument** (one Likert statement per quality, ADR-0052)
+and the **pedagogical reference data** — the qualities, dimensions and frameworks an instrument
+cites. A campaign pins a reference instrument when it opens (ADR-0056), so without this there
+is no campaign to open.
+
+`seed-workbench` is **not** part of this. It replays acts that are human ones by decision and
+refuses outside `AUTH_MODE=local` (ADR-0045); what a deployed instance needs of it, it gets one
+act at a time in step 7, attributed to the admin who performs it.
+
+### 6. The first admin signs in
+
+Now, and not before. Verify with `GET /me` that it says `"role": "admin"`.
+
+### 7. What the campaign is measured on
+
+Same shell as step 5. Accepting an extraction is a human act and names its author, which is why
+step 6 comes first: the row has to exist for `--email` to find it. Registering the lineage names
+nobody — it mints a name that nothing ever renames (ADR-0031), so it is typed once and reviewed
+rather than attributed.
+
+```bash
+uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email <admin>
+uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email <admin>
+uv run python -m app.cli register-generator --name learnpack-generator
+```
+
+**Accepting the extraction is not paperwork, and it is the step that is paid for in data.** It
+is what arms automatic profiling on registration (ADR-0029), and an item is withheld from a
+human only when the profile *settles* that its datum is undeclared (ADR-0053). A course with no
+profile settles nothing — so on a store where the extraction was never accepted, the four items a
+`LearnpackV1` course cannot answer are **asked anyway**, of every expert, with no error and no
+warning anywhere.
+
+Accepting it **before** the courses are registered is what makes this automatic. Accepting it
+afterwards profiles nothing retroactively: those courses stay unread until somebody reads them
+from `/admin/profiles`. So the order is recoverable right up until an expert answers, and not
+one minute after — nothing detects it then, and nobody can be asked again.
+
+Then the courses and where they are deployed — see
+[Registering courses](README.md#registering-courses) and
+[Declaring the deployment](README.md#declaring-the-deployment-of-a-registered-course-declare-deployment).
+A course with no consumable URL can be judged automatically but is refused by the assign picker
+(ADR-0028), so for this errand every course needs one.
+
+**Before opening the campaign, read `/admin/profiles` and confirm every course was profiled.**
+That screen is where a package never read says so, and where it can be read now. A failure at
+registration is otherwise only in the summary line the command printed at the time, and the
+cost of missing it is the paragraph above.
+
+### 8. The campaign
+
+From the console, both of them:
+
+- **Invite the evaluators** from `/admin/assessors`. **That is the whole act**: with
+  `CLERK_SECRET_KEY` set it creates the Clerk invitation too, so do **not** also invite them in
+  Clerk by hand — Clerk refuses an address that is already one of its users, and the second
+  invitation is the one that comes back `delivered: false`. They sign in → their role and
+  expertise come from the invitation.
+- **Open the campaign** and assign.
 
 **If you got the order wrong** (the admin already signed in and landed as `evaluator`):
 nothing to delete, no allowlist to touch — fix it with
@@ -202,3 +328,20 @@ uv run python -m app.cli set-role --email <admin email> --role admin
 
 which is the break-glass path: at that point there is no admin, so there is nobody who could
 grant the role from the console.
+
+## Redeploying, once it is running
+
+A redeploy of either host **never touches the store**: Neon is its own service, and nothing in
+a deploy writes data. Pushing to the tracked branch is the whole act.
+
+What moves with the code is the schema, and `render.yaml`'s pre-deploy command is what moves
+it: `alembic upgrade head`, once, after the build and before traffic switches. If it fails,
+Render halts the deploy and the previous version keeps serving — which is also why it is not in
+the start command, where a half-migrated schema would meet live traffic.
+
+The seeders are not in that path and must not be: `seed` is idempotent, but a step that reruns
+on every deploy is a step nobody reads the output of.
+
+**Take a `pg_dump` before each redeploy while a campaign is open.** The migrations here do not
+destroy data, but that is a convention rather than a guarantee, and it is thirty seconds
+against the only copy of what the panel answered.
