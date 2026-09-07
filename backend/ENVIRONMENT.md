@@ -21,7 +21,7 @@ All of this lives outside the repository:
 | **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
 | **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
 | **A domain you can add DNS records to** | Clerk's production instance requires one. Without it you are on a development instance — 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
-| **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two tokens: `write:packages` for you, `read:packages` for Render |
+| **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you, `read:packages` for Render (step 1) |
 | **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
 | **The first admin's email address** | |
 
@@ -37,21 +37,38 @@ server: the image is built from `backend/` alone, so the seeder's own files are 
 
 ## 1. Publish the API image
 
-Render does not build this repository — it is private and owned by an organisation whose GitHub
-Apps are not ours to install — so it runs a **prebuilt image**, and one has to exist before a
-service can point at it.
+Render does not build this repository; it runs a **prebuilt image**, and one has to exist before
+a service can point at it.
+
+**Nothing has to be created first.** `IMAGE_REPO` is a name you choose, and the first push
+creates the package under it:
 
 ```bash
-docker login ghcr.io -u <the github user>   # the write:packages token is the password
-cp .env.instance.example .env.instance      # then fill in IMAGE_REPO
+IMAGE_REPO=ghcr.io/<your github user>/learnpack-evals-api
+```
+
+All **lowercase**: Docker refuses an uppercase repository name and GitHub usernames often carry
+one. What follows the slash is yours to pick — it only has to match what Render is pointed at
+in step 3.
+
+Then log in, with a **classic** personal access token scoped `write:packages` as the password.
+It has to be classic: *"GitHub Packages only supports authentication using a personal access
+token (classic)"*, so a fine-grained one is refused.
+
+```bash
+docker login ghcr.io -u <your github user>
+cp .env.instance.example .env.instance      # fill in IMAGE_REPO
 task deploy:api
 ```
 
-Then **make the package private** in GitHub: it carries this repository's source. Storage and
-bandwidth for the container registry are free today, so its size does not matter.
-
 `deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
 and a tag that misdescribes its contents outlives the chance to notice.
+
+Afterwards, **check in GitHub that the package is private**. It is by default, and it carries
+this repository's source. Storage and bandwidth for the container registry are free today, so
+the image's size does not matter.
+
+Render pulls it with a **second** classic token, scoped `read:packages` — step 3.
 
 ## 2. The store (Neon)
 
