@@ -61,14 +61,16 @@ container registry are free today, so the image's size does not matter.
 
 ## 2. The store (Neon)
 
-Create the project and keep its connection string. It needs the psycopg3 prefix and SSL:
+Create the project and keep its connection string. Nothing is run with it here — it is a value
+you will paste twice: into Render's environment at step 3, and into `backend/.env.instance` at
+step 7. It needs the psycopg3 prefix and SSL:
 
-```bash
+```ini
 DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
 ```
 
-Put it in the **same region as the API**: one request pays that round trip many times over,
-while a browser pays it once.
+Put the project in the **same region as the API**: one request pays that round trip many times
+over, while a browser pays it once.
 
 Nothing migrates it by hand. The API's pre-deploy command is `alembic upgrade head`, so the
 first release is also the first migration.
@@ -130,7 +132,7 @@ it is cross-origin by design.
 Set the environment in the Netlify dashboard. **All of it is read at build time**, so changing
 any of it needs a new release rather than a restart:
 
-```bash
+```ini
 NEXT_PUBLIC_API_URL=https://<the render service>.onrender.com
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 CLERK_SECRET_KEY=sk_live_...
@@ -408,7 +410,7 @@ refuses a remote database and `ENVIRONMENT=production`.
 
 `backend/.env`:
 
-```bash
+```ini
 AUTH_MODE=clerk
 CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
 CLERK_SECRET_KEY=sk_test_...
@@ -417,7 +419,7 @@ CLERK_SECRET_KEY=sk_test_...
 
 `frontend/.env.local`:
 
-```bash
+```ini
 NEXT_PUBLIC_AUTH_MODE=clerk
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
