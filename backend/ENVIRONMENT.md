@@ -40,35 +40,24 @@ server: the image is built from `backend/` alone, so the seeder's own files are 
 Render does not build this repository; it runs a **prebuilt image**, and one has to exist before
 a service can point at it.
 
-**Nothing has to be created first.** `IMAGE_REPO` is a name you choose, and the first push
-creates the package under it:
-
-```bash
-IMAGE_REPO=ghcr.io/<your github user>/learnpack-evals-api
-```
-
-All **lowercase**: Docker refuses an uppercase repository name and GitHub usernames often carry
-one. What follows the slash is yours to pick — it only has to match what Render is pointed at
-in step 3.
-
-Then log in, with a **classic** personal access token scoped `write:packages` as the password.
-It has to be classic: *"GitHub Packages only supports authentication using a personal access
-token (classic)"*, so a fine-grained one is refused.
+**Nothing is created by hand**: the first push creates the package. Log in with a **classic**
+personal access token scoped `write:packages` as the password — GHCR refuses fine-grained ones
+— and publish:
 
 ```bash
 docker login ghcr.io -u <your github user>
-cp .env.instance.example .env.instance      # fill in IMAGE_REPO
+cp .env.instance.example .env.instance      # IMAGE_REPO is the only one needed for now
 task deploy:api
 ```
+
+`.env.instance.example` says what to write in `IMAGE_REPO` and what it has to satisfy. The rest
+of that file is filled in at step 7.
 
 `deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
 and a tag that misdescribes its contents outlives the chance to notice.
 
-Afterwards, **check in GitHub that the package is private**. It is by default, and it carries
-this repository's source. Storage and bandwidth for the container registry are free today, so
-the image's size does not matter.
-
-Render pulls it with a **second** classic token, scoped `read:packages` — step 3.
+Afterwards, **check in GitHub that the package is private**. Storage and bandwidth for the
+container registry are free today, so the image's size does not matter.
 
 ## 2. The store (Neon)
 
