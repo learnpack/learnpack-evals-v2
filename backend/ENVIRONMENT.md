@@ -146,6 +146,19 @@ another page that signs somebody **up**; the default is
 Under `AUTH_MODE=local`, or with no secret key, nothing is delivered and the log says so —
 the invitation still stands and is redeemed at that address's first sign-in.
 
+**The invitation is where the panel is told what happens to what they write**, because it is
+the last moment before they can start. Clerk's own email is the one they receive, so the notice
+goes in that template, in the Clerk dashboard, once per instance — nothing in this repository
+composes it. One sentence is enough:
+
+> Your answers and comments are read by our team alongside the other reviewers', under an
+> identifier rather than your name.
+
+The evaluator's own screen carries the short half of it (`Your answers are recorded under an
+identifier, not your name`) where somebody about to answer can see it again. Keep the two
+saying the same thing: if what the export shares ever widens, the sentence here is what has to
+change first, and it can only change for people invited after it.
+
 > ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
 > already a Clerk user, and that rule cannot be bypassed. The invitation is created here
 > either way and the answer says `delivered: false` with Clerk's own sentence; the remedies

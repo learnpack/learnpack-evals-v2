@@ -42,6 +42,14 @@ export default function EvaluationsPage() {
             <div className="mb-6 space-y-2 rounded-md border border-dashed bg-muted/40 p-4">
               <p className="text-xs font-medium text-foreground">Before you start</p>
               <HowThisWorks />
+              {/* Outside the list, and deliberately. Those five are instructions that protect
+                  the measurement and their order is not decorative; this is not a sixth one,
+                  it is what the invitation already said, where somebody about to answer can
+                  see it again. The full notice is given when they are invited — this is the
+                  reminder, so it says the part that is about them and nothing else. */}
+              <p className="border-t pt-2 text-xs text-muted-foreground">
+                Your answers are recorded under an identifier, not your name.
+              </p>
             </div>
             {assignments.map((a) => (
               <Card key={a.assignment_id}>
