@@ -61,16 +61,26 @@ container registry are free today, so the image's size does not matter.
 
 ## 2. The store (Neon)
 
-Create the project and keep its connection string. Nothing is run with it here — it is a value
-you will paste twice: into Render's environment at step 3, and into `backend/.env.instance` at
-step 7. It needs the psycopg3 prefix and SSL:
+Create the project. Three of its options matter:
 
-```ini
+| | |
+|---|---|
+| **Postgres version** | **17** — what the test suite and the local container run, so it is the version everything here is tested against |
+| **Region** | **You choose it here**, and Render's service goes in the same one at step 3. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
+| **Enable Neon Auth** | **Leave it off.** Identity here is Clerk's job, and this would add tables of its own to the database for nothing |
+
+One region for both because **the API queries the database many times per request**, so that
+distance is paid over and over. The distance to whoever is browsing is paid once, and barely
+shows.
+
+Then keep the connection string. Nothing is run with it here: it is a value you paste twice,
+into Render's environment at step 3 and into `backend/.env.instance` at step 7. **Neon hands
+you a `postgresql://…` string, and it needs one edit** — the driver prefix, keeping the SSL
+that is already there:
+
+```text
 DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
 ```
-
-Put the project in the **same region as the API**: one request pays that round trip many times
-over, while a browser pays it once.
 
 Nothing migrates it by hand. The API's pre-deploy command is `alembic upgrade head`, so the
 first release is also the first migration.
@@ -132,7 +142,7 @@ it is cross-origin by design.
 Set the environment in the Netlify dashboard. **All of it is read at build time**, so changing
 any of it needs a new release rather than a restart:
 
-```ini
+```text
 NEXT_PUBLIC_API_URL=https://<the render service>.onrender.com
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 CLERK_SECRET_KEY=sk_live_...
@@ -410,7 +420,7 @@ refuses a remote database and `ENVIRONMENT=production`.
 
 `backend/.env`:
 
-```ini
+```text
 AUTH_MODE=clerk
 CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
 CLERK_SECRET_KEY=sk_test_...
@@ -419,7 +429,7 @@ CLERK_SECRET_KEY=sk_test_...
 
 `frontend/.env.local`:
 
-```ini
+```text
 NEXT_PUBLIC_AUTH_MODE=clerk
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
