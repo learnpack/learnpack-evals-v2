@@ -128,6 +128,64 @@ tasks:
       - task: db:wait
       - task: servers
 
+  # --- Releasing ------------------------------------------------------------
+  # A deploy is an act somebody performs, not a consequence of pushing. Neither host builds
+  # from this repository — it is private and owned by an organisation whose GitHub Apps we
+  # cannot install — so the code is published from here: an image to a registry for the API,
+  # a built site to Netlify for the console. Both read `backend/.env.instance`.
+  #
+  # Neither of these touches the database. That is `instance:*`, below.
+
+  deploy:api:
+    desc: Build, publish and release the API image
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - |
+        if [ -z "$IMAGE_REPO" ]; then
+          echo "IMAGE_REPO is empty: backend/.env.instance is where it is declared." >&2
+          exit 1
+        fi
+        # An image tagged with a commit is a claim about what is inside it. Uncommitted work
+        # would make that claim false, and the tag outlives the chance to notice. Untracked
+        # files do not count: `.dockerignore` keeps them out of the context anyway.
+        if [ -n "$(git status --porcelain -uno)" ]; then
+          echo "There are uncommitted changes: the image would be tagged with a commit that" >&2
+          echo "does not describe it. Commit or stash first." >&2
+          exit 1
+        fi
+        tag=$(git rev-parse --short HEAD)
+        # Render runs amd64; an Apple-silicon machine would otherwise publish arm64 and the
+        # service would fail to start with an error about the platform, not about the build.
+        docker build --platform linux/amd64 -t "$IMAGE_REPO:$tag" -t "$IMAGE_REPO:latest" .
+        docker push "$IMAGE_REPO:$tag"
+        docker push "$IMAGE_REPO:latest"
+        echo "published $IMAGE_REPO:$tag"
+      - |
+        # Pushing an image does not release it: an image-backed service does not redeploy on
+        # its own, which is the property this whole approach is built on. This is the release.
+        if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+          echo "No RENDER_DEPLOY_HOOK set — release it from the dashboard: Manual Deploy." >&2
+        else
+          curl -fsS "$RENDER_DEPLOY_HOOK" > /dev/null
+          echo "release triggered; the pre-deploy command migrates before traffic switches"
+        fi
+
+  deploy:console:
+    desc: Build and publish the console to Netlify, live
+    dir: frontend
+    cmds:
+      # `--build` runs the build here, and Netlify's CLI pulls the site's own environment down
+      # for it — which is what keeps the NEXT_PUBLIC_* values (inlined at build time) the same
+      # ones the dashboard declares.
+      - netlify deploy --build --prod
+
+  deploy:console:preview:
+    desc: Same, to a draft URL — look at it before promoting
+    dir: frontend
+    cmds:
+      - netlify deploy --build
+
   # --- The deployed instance ------------------------------------------------
   # These run the ordinary CLI against the DEPLOYED store, from this machine, because nothing
   # else can: the image is built from `backend/` alone, so `docs/seed/` is not in it and the
@@ -220,7 +278,7 @@ tasks:
       - uv run python -m app.cli declare-deployment --from-csv $DEPLOYMENTS_CSV --email $ADMIN_EMAIL
 
   instance:dump:
-    desc: Back up the deployed store to DUMP_DIR — before every redeploy while a campaign is open
+    desc: Back up the deployed store to DUMP_DIR — before every release while a campaign is open
     dir: backend
     dotenv: ['.env.instance']
     cmds:

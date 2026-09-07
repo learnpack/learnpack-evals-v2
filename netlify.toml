@@ -1,9 +1,12 @@
 # The console, built and served by Netlify (08-code.md §10).
 #
-# At the repository root because that is the only place Netlify looks on its own: a file
+# At the repository root because that is the only place it is looked for on its own: a file
 # inside `frontend/` is read only once the site's base directory already says `frontend`,
-# which is the setting this file exists to supply. So it declares the base itself, and a
-# fresh site needs nothing configured by hand to find it.
+# which is the setting this file exists to supply. So it declares the base itself.
+#
+# The build runs on a developer's machine — `task deploy:console` — because Netlify does not
+# build this repository. The CLI reads this file the same way a hosted build would, so what is
+# declared here is what publishes either way.
 
 [build]
   base = "frontend"

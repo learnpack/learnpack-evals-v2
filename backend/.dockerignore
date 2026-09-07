@@ -1,0 +1,38 @@
+# What must not reach the image, because the image is built HERE.
+#
+# This used to be a provider's job, from a clean checkout, and none of this mattered. It is
+# built on a developer's machine now (`task deploy:api`), where the build context is a working
+# directory — with credentials in it, and a virtualenv compiled for the wrong operating system.
+# Without this file `COPY . .` publishes both.
+
+# --- Credentials -------------------------------------------------------------
+# The store's password and the Clerk secret key. `Settings` also reads `.env` at runtime, so a
+# copy inside the image is a leak AND a configuration nobody declared, quietly underneath the
+# one the host sets.
+.env
+.env.instance
+
+# --- Built for this machine, not for the image -------------------------------
+# The image builds its own at /app/.venv one layer earlier. A Windows virtualenv copied over it
+# leaves `PATH=/app/.venv/bin` pointing at a directory that does not exist — Windows puts the
+# executables in `Scripts/`.
+.venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Output of runs ----------------------------------------------------------
+# `runs/` holds the prompts and raw answers of LLM calls, which are neither the image's
+# business nor anything to publish.
+runs/
+run.json
+
+# --- Not part of what is served ----------------------------------------------
+# The suite does not run in the image, and its fixtures are whole frozen course packages.
+tests/
+
+# `alembic/` and `alembic.ini` deliberately stay: the pre-deploy command runs the migrations
+# from inside this image.

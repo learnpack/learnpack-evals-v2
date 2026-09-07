@@ -159,8 +159,13 @@ shows up, check that it still works.
 
 ## Deploy (Netlify)
 
+- **Published from a developer's machine, never from a push**: `task deploy:console`
+  (`netlify deploy --build --prod`), or `deploy:console:preview` for a draft URL first. Netlify
+  does not build this repository — it is private, and its organisation's GitHub App is not ours
+  to install — and a release is an act somebody performs anyway.
 - Base dir `frontend`, declared by `../netlify.toml` — at the repository root, which is the
-  only place Netlify reads one from on its own. Plugin `@netlify/plugin-nextjs`.
+  only place Netlify reads one from on its own. The CLI reads it exactly as a hosted build
+  would. Plugin `@netlify/plugin-nextjs`.
 - Env: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_API_URL`,
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation`. All of
   them are read at **build** time, so changing one needs a redeploy.

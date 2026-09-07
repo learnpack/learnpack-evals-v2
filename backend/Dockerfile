@@ -1,4 +1,6 @@
-# Render: root directory = /backend
+# The API image. Built from this directory (`task deploy:api`), published to a private
+# registry, and run by Render from there — it never builds this itself, so what the context
+# holds is a working directory and `.dockerignore` is load-bearing.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \

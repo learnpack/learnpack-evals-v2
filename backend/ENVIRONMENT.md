@@ -230,19 +230,54 @@ DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbna
 Put it in the **same region the API runs in**: a request pays that round trip many times over
 and a browser pays it once, so this is the latency that matters.
 
-Nothing migrates it by hand. `render.yaml` declares `alembic upgrade head` as the API's
-pre-deploy command, so it runs once per deploy, before traffic switches, and the first deploy
-is also the first migration. A failure there aborts the deploy and leaves the previous version
-serving.
+Nothing migrates it by hand. The API's **pre-deploy command** is `alembic upgrade head`
+(step 2), so it runs once per deploy, before traffic switches, and the first deploy is also the
+first migration. A failure there aborts the deploy and leaves the previous version serving.
 
 ### 2. The API (Render)
 
-Apply the Blueprint from `render.yaml` at the repository root. It asks for the five values it
-deliberately does not carry: `DATABASE_URL`, `CLERK_ISSUER`, `CLERK_SECRET_KEY`, `ADMIN_EMAILS`
-and `ALLOWED_ORIGINS`.
+**Render does not build this repository.** It is private and owned by an organisation whose
+GitHub Apps are not ours to install, so the service runs a **prebuilt image** that
+`task deploy:api` publishes from a developer's machine (see
+[Releasing](#releasing-once-it-is-running)). Publish one first — the service needs something to
+point at — and then create a web service of type **Existing image**:
 
-Two of them cannot be known yet — the Clerk keys and the console's own origin — so a first pass
-with placeholders and one edit afterwards is the normal shape of this step, not a mistake.
+| Field | Value |
+|---|---|
+| Image URL | `IMAGE_REPO:latest`, from `backend/.env.instance` |
+| Credential | a token that can read that registry — for GHCR, `read:packages` |
+| Region | the one the Neon project is in |
+| Instance type | any **paid** one; the pre-deploy command is not available on free |
+| Health check path | `/health` |
+| Pre-deploy command | `alembic upgrade head` |
+
+And the environment:
+
+| Variable | Value |
+|---|---|
+| `ENVIRONMENT` | `production` |
+| `AUTH_MODE` | `clerk`. Declared rather than left to the code's default, so the refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
+| `DATABASE_URL` | Neon, from step 1 |
+| `CLERK_ISSUER` | step 4 |
+| `CLERK_SECRET_KEY` | step 4 — without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
+| `ADMIN_EMAILS` | provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
+| `ALLOWED_ORIGINS` | step 3, and that entry goes **first** |
+
+Two of those cannot be known yet — the Clerk keys and the console's own origin — so a first
+pass with placeholders and one edit afterwards is the normal shape of this step, not a mistake.
+
+**What is deliberately absent, and why:**
+
+- `CLERK_JWKS_URL` — left empty it is derived from the issuer, and a value copied over from a
+  local `.env` silently wins over it and points this instance at a development one.
+- `LLM_API_KEY` — no assessor judges from this instance. Measuring a generator runs on a
+  developer's machine, and a key on a host with no use for it is a key that can leak for
+  nothing (ADR-0034 makes it access, never identity).
+- `BREATHECODE_*` / `RIGOBOT_*` — the seat infrastructure of ADR-0061 is created once by hand
+  and may not exist. Unset is a valid deployment: every screen works and the course loads
+  without its AI, saying so.
+- `LOCAL_SOURCE_ROOTS` — local trees are served only under `AUTH_MODE=local`, and a locator
+  into this host would point at bytes it does not serve.
 
 `GET /health` answering `{"status": "ok", "environment": "production"}` is what says the schema
 and the store are both there: it runs a real query, so it cannot answer `ok` over a database it
@@ -250,9 +285,18 @@ cannot reach.
 
 ### 3. The console (Netlify)
 
-`netlify.toml` at the repository root already declares the base directory, the build and the
-Node version. What the dashboard supplies is the environment, and **all of it is read at build
-time**, so changing any of it needs a redeploy rather than a restart:
+Netlify does not build this repository either, for the same reason, so the site is created and
+published from here:
+
+```bash
+netlify sites:create --name <the site>
+netlify link
+```
+
+`netlify.toml` at the repository root declares the base directory, the build and the Node
+version, and the CLI reads it exactly as the hosted build would. What the dashboard supplies is
+the environment, and **all of it is read at build time**, so changing any of it needs a redeploy
+rather than a restart:
 
 ```bash
 NEXT_PUBLIC_API_URL=https://<the Render service>.onrender.com
@@ -264,6 +308,9 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 
 `NEXT_PUBLIC_AUTH_MODE` is left unset on purpose: anything that is not `local` is `clerk`, so a
 missing or misspelled value fails safe.
+
+Then `task deploy:console` publishes it, and `task deploy:console:preview` does the same to a
+draft URL when you want to look before promoting.
 
 Then go back to Render and set `ALLOWED_ORIGINS` to this site's URL. **It goes first**, because
 the first entry is both what CORS allows and what Clerk's invitation link is derived from
@@ -380,20 +427,32 @@ uv run python -m app.cli set-role --email <admin email> --role admin
 which is the break-glass path: at that point there is no admin, so there is nobody who could
 grant the role from the console.
 
-## Redeploying, once it is running
+## Releasing, once it is running
 
-A redeploy of either host **never touches the store**: Neon is its own service, and nothing in
-a deploy writes data. Pushing to the tracked branch is the whole act.
+**Pushing releases nothing.** Neither host watches this repository, and an image-backed service
+does not redeploy when a new image appears under its tag — so a release is an act somebody
+performs:
 
-What moves with the code is the schema, and `render.yaml`'s pre-deploy command is what moves
-it: `alembic upgrade head`, once, after the build and before traffic switches. If it fails,
-Render halts the deploy and the previous version keeps serving — which is also why it is not in
-the start command, where a half-migrated schema would meet live traffic.
+```bash
+task deploy:api        # builds, publishes the image, triggers the release
+task deploy:console    # builds and publishes the site
+```
+
+`deploy:api` refuses while anything tracked is uncommitted: it tags the image with the commit,
+and a tag that misdescribes what is inside it outlives the chance to notice. Without a
+`RENDER_DEPLOY_HOOK` it publishes and then says so — the release is *Manual Deploy* in the
+dashboard.
+
+A release of either host **never touches the store**: Neon is its own service, and nothing in a
+deploy writes data. What moves with the code is the schema, and the **pre-deploy command** is
+what moves it: `alembic upgrade head`, once, before traffic switches. If it fails, Render halts
+the release and the previous version keeps serving — which is also why it is not in the start
+command, where a half-migrated schema would meet live traffic.
 
 The seeders are not in that path and must not be: `seed` is idempotent, but a step that reruns
-on every deploy is a step nobody reads the output of.
+on every release is a step nobody reads the output of.
 
-**Back the store up before each redeploy while a campaign is open**:
+**Back the store up before each release while a campaign is open**:
 
 ```bash
 CONFIRM=<the neon host> task instance:dump
