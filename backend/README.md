@@ -177,6 +177,7 @@ any of them is authoritative. What each one is *for*:
 | Command | For |
 |---|---|
 | `seed` · `seed-workbench` · `seed-demo` | the human reference instrument and the reference data · what a database needs to measure · the human panel's demo (the last two, local only) |
+| `setup-clerk-jwt-template` | write the JWT template Clerk's tokens carry their claims in — **before anybody signs in** ([`ENVIRONMENT.md`](ENVIRONMENT.md)) |
 | `invite-assessor` · `list-invitations` | register a human evaluator by inviting them ([`ENVIRONMENT.md`](ENVIRONMENT.md)) |
 | `set-role` | break-glass role change, without the console's guardrails |
 | `register-generator` · `register-generator-version` | the lineage, then a version under it |

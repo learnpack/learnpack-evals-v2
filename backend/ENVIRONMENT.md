@@ -22,8 +22,22 @@ there to read.
 
 ## Clerk (ADR-0004)
 
-Clerk's default session token **carries neither email nor name**. Create a **JWT template**
-in the Clerk dashboard with these claims:
+Clerk's default session token **carries neither email nor name**. A **JWT template** adds them,
+and writing it is a command rather than a form:
+
+```bash
+uv run python -m app.cli setup-clerk-jwt-template
+```
+
+It needs `CLERK_SECRET_KEY` and nothing else — not `AUTH_MODE`, because the act belongs to the
+instance that key names and not to this process. It is idempotent, and says which of the three
+things it did: created it, updated claims that had drifted, or left one that already said the
+right thing. `--name` is there for a template called something other than `learnpack-evals`; it
+has to match the frontend's `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, because `getToken({ template })`
+against a name Clerk does not have returns nothing at all and the request then arrives
+unauthenticated rather than wrong.
+
+What it writes, and what the dashboard's own form would have to say:
 
 ```json
 {
@@ -161,8 +175,10 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
 ```
 
-Then create the **JWT template** in the Clerk dashboard, with the three claims above
-(`email`, `name`, `email_verified`) — before signing in for the first time.
+Then write the **JWT template** — `uv run python -m app.cli setup-clerk-jwt-template`, before
+signing in for the first time. It works from here for the same reason it needs no `AUTH_MODE`:
+a development instance of Clerk is a real instance, and this configures the one its secret key
+names.
 
 What changes when you do this:
 
@@ -243,9 +259,10 @@ found by the person who cannot accept it.
 
 ### 4. Clerk — all of it before anybody signs in
 
-1. The **JWT template** with [all three claims](#clerk-adr-0004). `email` decides who is born
-   an admin, `email_verified` decides whether an invitation can be redeemed at all, and a
-   template written once is written right.
+1. The **JWT template**: `uv run python -m app.cli setup-clerk-jwt-template`, with
+   `CLERK_SECRET_KEY` in that shell's environment
+   ([what it writes and why](#clerk-adr-0004)). `email` decides who is born an admin and
+   `email_verified` decides whether an invitation can be redeemed at all.
 2. Invite-only, in **Restrictions**.
 3. Invite the admin's account. **Nobody signs in yet.**
 

@@ -294,7 +294,7 @@ from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
 )
-from app.platform import batch_runs, observability, schema_version
+from app.platform import batch_runs, clerk_instance, observability, schema_version
 from app.platform.concurrency import all_at_once
 from app.platform.db import SessionLocal
 from app.platform.events import dispatcher
@@ -584,6 +584,39 @@ def run_list_invitations() -> int:
         pending = invitation.status == "pending"
         state = "expired" if invitation.expired and pending else invitation.status
         print(f"{invitation.email:<40} {invitation.role:<10} {state}")
+    return 0
+
+
+def run_setup_clerk_jwt_template(name: str) -> int:
+    """Write the JWT template this backend reads its claims from (ADR-0004).
+
+    **Not gated on `AUTH_MODE`.** The act belongs to the Clerk instance the secret key names,
+    and this process's own mode says nothing about it — a developer rehearsing Clerk against
+    localhost configures a real instance too (`ENVIRONMENT.md`). What it does need is the key,
+    and without one there is no instance to speak of.
+    """
+    secret_key = get_settings().clerk_secret_key
+    if not secret_key:
+        print(
+            "CLERK_SECRET_KEY is not set: there is no Clerk instance to configure from here.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        outcome = clerk_instance.ensure_jwt_template(secret_key, name)
+    except clerk_instance.ClerkSetupFailed as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    claims = ", ".join(clerk_instance.CLAIMS)
+    print(f"JWT template '{outcome.name}' {outcome.action} ({outcome.template_id}): {claims}")
+    if outcome.action != "unchanged":
+        print(
+            "Anybody who signed in BEFORE this carries the role they were created with: "
+            "logging in never changes a role (ADR-0007).",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -4166,6 +4199,19 @@ def main(argv: list[str] | None = None) -> int:
 
     subparsers.add_parser("list-invitations", help="who the roster is expecting, and what happened")
 
+    jwt_template_parser = subparsers.add_parser(
+        "setup-clerk-jwt-template",
+        help="write the JWT template Clerk's tokens need to carry (run before anyone signs in)",
+    )
+    jwt_template_parser.add_argument(
+        "--name",
+        default=clerk_instance.TEMPLATE_NAME,
+        help=(
+            "must match the frontend's NEXT_PUBLIC_CLERK_JWT_TEMPLATE "
+            f"(default: {clerk_instance.TEMPLATE_NAME})"
+        ),
+    )
+
     import_parser = subparsers.add_parser(
         "import-learnpack", help="bulk register courses from a canonical JSON list"
     )
@@ -4718,6 +4764,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_invite_assessor(args.email, args.role, args.display_name, args.expertise)
     elif args.command == "list-invitations":
         return run_list_invitations()
+    elif args.command == "setup-clerk-jwt-template":
+        return run_setup_clerk_jwt_template(args.name)
     elif args.command == "import-learnpack":
         if not args.file.exists():
             print(f"file not found: {args.file}", file=sys.stderr)
