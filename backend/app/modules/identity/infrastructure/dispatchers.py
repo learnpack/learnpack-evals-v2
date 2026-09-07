@@ -16,14 +16,13 @@ import httpx
 from app.config import get_settings
 from app.modules.identity.application.ports import InvitationDeliveryFailed
 from app.modules.identity.domain.invitation import Invitation
+from app.platform import clerk_api
 
 logger = logging.getLogger(__name__)
 
-CLERK_INVITATIONS_URL = "https://api.clerk.com/v1/invitations"
+CLERK_INVITATIONS_URL = f"{clerk_api.API_BASE}/invitations"
 
-# Long enough for a slow provider, short enough that an admin is not left watching a spinner
-# over an act that has already been committed on our side.
-TIMEOUT_SECONDS = 10.0
+TIMEOUT_SECONDS = clerk_api.TIMEOUT_SECONDS
 
 
 class LoggingInvitationDispatcher:
@@ -103,19 +102,14 @@ def _now():  # noqa: ANN202 — kept tiny so tests can freeze it
 
 
 def _explain(response: httpx.Response) -> str:
-    """Clerk's own sentence when it has one.
+    """This act's words around Clerk's own sentence.
 
-    Its errors arrive as `{"errors": [{"message", "long_message", ...}]}`. The generic
-    "delivery failed" is what an admin cannot act on; "that address is already a Clerk user"
-    is what they can.
+    The generic "delivery failed" is what an admin cannot act on; "that address is already a
+    Clerk user" is what they can — and reading it out of the envelope is the same job at every
+    Clerk endpoint, so it lives in `platform/clerk_api.py`. What stays here is the half that
+    is about invitations.
     """
-    try:
-        errors = response.json().get("errors") or []
-        detail = "; ".join(
-            e.get("long_message") or e.get("message") or "" for e in errors if isinstance(e, dict)
-        ).strip("; ")
-    except (ValueError, AttributeError):
-        detail = ""
+    detail = clerk_api.error_sentence(response)
     return f"Clerk refused the invitation ({response.status_code})" + (
         f": {detail}" if detail else ""
     )
