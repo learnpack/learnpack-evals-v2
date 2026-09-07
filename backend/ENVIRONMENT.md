@@ -87,13 +87,18 @@ first release is also the first migration.
 
 ## 3. The API (Render)
 
-A web service of type **Existing image**:
+Two screens. First **New → Web Services**: of the types offered there this is the only one that
+fits — a private service is reachable only from inside Render and the console is a browser, a
+background worker and a cron job serve no HTTP at all, and the database is Neon's.
+
+Then, on the form, under **Source Code** click **Existing Image** rather than a Git provider.
+Give it your `IMAGE_REPO:latest` and the `read:packages` token, and press **Connect**.
+
+The rest of the form:
 
 | Field | Value |
 |---|---|
-| Image URL | your `IMAGE_REPO:latest` |
-| Credential | the `read:packages` token |
-| Region | the one Neon is in |
+| Region | the one Neon is in (step 2) |
 | Instance type | any **paid** one |
 | Health check path | `/health` |
 | Pre-deploy command | `alembic upgrade head` |
