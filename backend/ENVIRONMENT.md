@@ -87,11 +87,9 @@ first release is also the first migration.
 
 ## 3. The API (Render)
 
-Two screens. First **New → Web Services**: of the types offered there this is the only one that
-fits — a private service is reachable only from inside Render and the console is a browser, a
-background worker and a cron job serve no HTTP at all, and the database is Neon's.
+Two screens. First **New → Web Services**.
 
-Then, on the form, under **Source Code** click **Existing Image** rather than a Git provider.
+Then, on the form, under **Source Code** click **Existing Image**.
 Give it your `IMAGE_REPO:latest` and the `read:packages` token, and press **Connect**.
 
 The rest of the form:
@@ -120,9 +118,28 @@ with placeholders and one edit afterwards is the normal shape of this step.
 
 **What is deliberately absent:** `CLERK_JWKS_URL` (empty, it is derived from the issuer; a
 value copied from a local `.env` silently wins and points this instance at a development one) ·
-`LLM_API_KEY` (no assessor judges from here) · `BREATHECODE_*` and `RIGOBOT_*` (ADR-0061's
-seats are optional: unset, the course loads without its AI and says so) · `LOCAL_SOURCE_ROOTS`
-(local trees are served only under `AUTH_MODE=local`).
+`LLM_API_KEY` (no assessor judges from here) · `LOCAL_SOURCE_ROOTS` (local trees are served
+only under `AUTH_MODE=local`).
+
+**The AI inside the course (ADR-0061) is optional, and takes four variables.** Left unset, the
+evaluator's course loads without its AI and the screen says why. Set them if the seats exist —
+an academy, a **non-SaaS** cohort, a service account and its role, created by hand and
+described in `.env.example`:
+
+```text
+BREATHECODE_SERVICE_TOKEN=
+BREATHECODE_ACADEMY_ID=
+BREATHECODE_COHORT_ID=
+SEAT_EMAIL_TEMPLATE=you+sme-{slug}@yourdomain.com
+```
+
+> ⚠️ **Only the first three decide whether course sessions are on.** Set those and leave
+> `SEAT_EMAIL_TEMPLATE` empty and the feature switches on anyway — then fails one evaluator at
+> a time, on their screen, when the seat cannot be given an address. It must contain `{slug}`,
+> which is what makes each seat's address its own.
+
+`BREATHECODE_API_URL`, `RIGOBOT_API_URL` and `RIGOBOT_ORGANIZATION` have working defaults;
+declare them only if yours differ.
 
 `GET /health` answering `{"status": "ok", "environment": "production"}` is what says the schema
 and the store are both there — it runs a real query, so it cannot answer `ok` over a database
