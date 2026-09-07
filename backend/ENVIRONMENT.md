@@ -167,10 +167,11 @@ instead, to look at before promoting).
    step 4. Its Frontend API lives at `clerk.<your domain>` for a reason: if it and the console
    were not same-site, the session cookie would need `SameSite=None`, which Safari does not
    accept.
-2. **Write the JWT template**, with `CLERK_SECRET_KEY` in your shell:
+2. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` — the first of
+   its values you need after `IMAGE_REPO` — and:
 
    ```bash
-   uv run python -m app.cli setup-clerk-jwt-template
+   task instance:clerk-template
    ```
 
    Idempotent, and it says which of three things it did. What it writes and why is
@@ -193,14 +194,15 @@ Everything below is attributed to somebody, so this row has to exist first: an a
 author (ADR-0042), and `--email` is how it finds them.
 
 **If the order went wrong** and they landed as an `evaluator`, there is nothing to delete and
-no allowlist to touch:
+no allowlist to touch. It needs `DATABASE_URL` and `ADMIN_EMAIL` in `backend/.env.instance`:
 
 ```bash
-uv run python -m app.cli set-role --email <admin email> --role admin
+CONFIRM=<the neon host> task instance:promote-admin
 ```
 
 That is the break-glass path — at this point there is no admin, so nobody could grant the role
-from the console.
+from the console, and this command has none of the console's guardrails. Which is why it is
+here and nowhere else.
 
 ## 7. What the store has to hold
 
@@ -437,6 +439,10 @@ NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
 
 Then write the template — `uv run python -m app.cli setup-clerk-jwt-template` — before signing
 in for the first time. It works from here because a development instance is a real instance.
+
+The command rather than `task instance:clerk-template`, deliberately: the task reads the key
+from `.env.instance`, which is the deployed instance's, and here the one you want is the
+development key sitting in `backend/.env`.
 
 What changes: the user picker is gone and you sign in as a real person; `GET /dev/identities`
 and the rest of the dev-only surface answer 404; `seed-demo` refuses to run; and inviting from
