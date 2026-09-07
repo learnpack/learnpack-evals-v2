@@ -127,3 +127,110 @@ tasks:
       - task: db
       - task: db:wait
       - task: servers
+
+  # --- The deployed instance ------------------------------------------------
+  # These run the ordinary CLI against the DEPLOYED store, from this machine, because nothing
+  # else can: the image is built from `backend/` alone, so `docs/seed/` is not in it and the
+  # seeder cannot run over there. They chain commands that already exist and invent no act —
+  # replaying human acts is what `seed-workbench` does, and it stays on a dev box (ADR-0045).
+  #
+  # Every one of them reads `backend/.env.instance` (gitignored, see its `.example`) and
+  # refuses until CONFIRM names the host it is about to write to. They live beside `db:reset`
+  # in one file, and the two must never be confused for one another.
+  #
+  # The order they are run in is `backend/ENVIRONMENT.md`. This is not that order.
+
+  instance:guard:
+    internal: true
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - |
+        host=$(printf '%s' "$DATABASE_URL" | sed -e 's|.*@||' -e 's|[:/?].*||')
+        if [ -z "$host" ]; then
+          echo "DATABASE_URL is empty: backend/.env.instance is where these tasks read it." >&2
+          exit 1
+        fi
+        echo "This writes to $host, as ${ADMIN_EMAIL:-nobody} (AUTH_MODE=${AUTH_MODE:-unset})."
+        if [ "$CONFIRM" != "$host" ]; then
+          echo "Re-run with CONFIRM=$host to say that is the store you meant." >&2
+          exit 1
+        fi
+
+  instance:seed:
+    desc: Seed a deployed store — rubric, reference data, accepted extractions (re-runnable)
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # What nothing in the app can author: the human reference instrument a campaign pins
+      # when it opens (ADR-0056) and the reference data an instrument cites.
+      - uv run python -m app.cli seed
+      # And what arms automatic profiling (ADR-0029). Without it every course registers
+      # unread, and an item is withheld from a human only where a profile settles that its
+      # datum is undeclared (ADR-0053) — so the four items a V1 course cannot answer would be
+      # asked of every expert, with nothing raised anywhere.
+      - uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email $ADMIN_EMAIL
+      - uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email $ADMIN_EMAIL
+
+  instance:generator:
+    desc: Mint the generator lineage GENERATOR_NAME — once ever, and it refuses a second time
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # Its own target, and not part of `instance:seed`, because it is the one act here that
+      # is NOT idempotent and must not be: a lineage still takes a typed name, so naming one
+      # twice is a typo worth refusing rather than a repetition worth absorbing (ADR-0031).
+      # Chained into a re-runnable target it would fail every re-run for being right.
+      - uv run python -m app.cli register-generator --name $GENERATOR_NAME
+
+  instance:courses:v1:
+    desc: Register the LearnpackV1 courses of COURSES_V1_CSV (a spreadsheet of URLs)
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # Public locators, so this store can read these packages again by itself.
+      - >
+        uv run python -m app.cli register-package --from-csv $COURSES_V1_CSV
+        --generator-name $GENERATOR_NAME --generator-version $GENERATOR_VERSION_V1
+
+  instance:courses:v2:
+    desc: Register the LearnpackV2 courses of the V2_ROOT tree (needs the local API running)
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # Two processes, and both are needed: the LOCAL API serves the tree (`task backend`, in
+      # local mode), and THIS command fetches through that mount and writes to the deployed
+      # store. The registered locators therefore point at localhost, which is fine for a
+      # campaign — the evaluator's screen reads the profile that was stored here and never
+      # fetches — and means only that the deployed API cannot re-read these packages later.
+      - uv run python -m app.cli register-package --all --root $V2_ROOT --format LearnpackV2
+
+  instance:deployments:
+    desc: Point registered courses at where they are deployed (DEPLOYMENTS_CSV)
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # Until this, a course can be judged automatically but the assign picker refuses it, so
+      # it can never be handed to an expert (ADR-0028).
+      - uv run python -m app.cli declare-deployment --from-csv $DEPLOYMENTS_CSV --email $ADMIN_EMAIL
+
+  instance:dump:
+    desc: Back up the deployed store to DUMP_DIR — before every redeploy while a campaign is open
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # `pg_dump` speaks libpq, which does not know the SQLAlchemy driver prefix, so it is
+      # stripped. The result is the identified record of what the panel answered: it holds
+      # every SME's address and belongs outside the repository, which DUMP_DIR is for.
+      - |
+        mkdir -p "$DUMP_DIR"
+        out="$DUMP_DIR/$(date -u +%Y%m%dT%H%M%SZ).dump"
+        pg_dump --format=custom --no-owner --no-privileges \
+          --file="$out" "$(printf '%s' "$DATABASE_URL" | sed 's|^postgresql+psycopg://|postgresql://|')"
+        echo "wrote $out"

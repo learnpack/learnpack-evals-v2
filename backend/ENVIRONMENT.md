@@ -266,41 +266,42 @@ found by the person who cannot accept it.
 2. Invite-only, in **Restrictions**.
 3. Invite the admin's account. **Nobody signs in yet.**
 
-### 5. The two things nothing in the app can author
-
-From a checkout, pointed at Neon — not from a shell on the server, which has no `docs/seed/`.
-Set `DATABASE_URL` and `AUTH_MODE=clerk` **in that shell's environment**, which takes precedence
-over `backend/.env` and so needs no edit to your local one, and then:
-
-```bash
-uv run python -m app.cli seed
-```
-
-That installs the **human reference instrument** (one Likert statement per quality, ADR-0052)
-and the **pedagogical reference data** — the qualities, dimensions and frameworks an instrument
-cites. A campaign pins a reference instrument when it opens (ADR-0056), so without this there
-is no campaign to open.
-
-`seed-workbench` is **not** part of this. It replays acts that are human ones by decision and
-refuses outside `AUTH_MODE=local` (ADR-0045); what a deployed instance needs of it, it gets one
-act at a time in step 7, attributed to the admin who performs it.
-
-### 6. The first admin signs in
+### 5. The first admin signs in
 
 Now, and not before. Verify with `GET /me` that it says `"role": "admin"`.
 
-### 7. What the campaign is measured on
+Everything below is attributed to somebody, so this row has to exist before any of it: an act
+names its author (ADR-0042), and `--email` is how it finds them.
 
-Same shell as step 5. Accepting an extraction is a human act and names its author, which is why
-step 6 comes first: the row has to exist for `--email` to find it. Registering the lineage names
-nobody — it mints a name that nothing ever renames (ADR-0031), so it is typed once and reviewed
-rather than attributed.
+### 6. What the store has to hold
+
+From a checkout on **your own machine**, pointed at the deployed store — not from a shell on the
+server, which has no `docs/seed/`. What points it there is `backend/.env.instance`: copy
+`.env.instance.example`, fill it in, and the `instance:*` tasks read it. Values from it win over
+`backend/.env`, so your local environment is left alone and the two never have to be swapped.
+
+Each of these announces the host it is about to write to and refuses until `CONFIRM` names it
+back, because they sit in the same file as `db:reset` and the two must never be confused.
 
 ```bash
-uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email <admin>
-uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email <admin>
-uv run python -m app.cli register-generator --name learnpack-generator
+CONFIRM=<the neon host> task instance:seed        # re-runnable
+CONFIRM=<the neon host> task instance:generator   # once, ever
 ```
+
+`instance:seed` installs the two things nothing in the app can author — the **human reference
+instrument** (one Likert statement per quality, ADR-0052) and the **pedagogical reference data**,
+the qualities, dimensions and frameworks an instrument cites; a campaign pins a reference
+instrument when it opens (ADR-0056), so without them there is no campaign to open — and then
+**accepts the extraction** for both package formats.
+
+`instance:generator` mints the generator lineage and is deliberately not part of that chain: it
+is the one act here that is not idempotent and must not be, since a lineage still takes a typed
+name and a second one is a typo worth refusing rather than a repetition worth absorbing
+(ADR-0031).
+
+`seed-workbench` is **not** part of any of this. It replays acts that are human ones by decision
+and refuses outside `AUTH_MODE=local` (ADR-0045); what a deployed instance needs of it, it gets
+one act at a time here, attributed to the admin who performs it.
 
 **Accepting the extraction is not paperwork, and it is the step that is paid for in data.** It
 is what arms automatic profiling on registration (ADR-0029), and an item is withheld from a
@@ -314,18 +315,38 @@ afterwards profiles nothing retroactively: those courses stay unread until someb
 from `/admin/profiles`. So the order is recoverable right up until an expert answers, and not
 one minute after — nothing detects it then, and nobody can be asked again.
 
-Then the courses and where they are deployed — see
+**Then the courses**, and in two ways, because the two formats are not reachable the same way:
+
+```bash
+CONFIRM=<host> task instance:courses:v1    # a spreadsheet of URLs
+CONFIRM=<host> task instance:courses:v2    # a tree on this machine
+CONFIRM=<host> task instance:deployments   # where each one is deployed
+```
+
+- **`LearnpackV1`, from URLs.** The locators stay public, so the deployed API can read those
+  packages again by itself later.
+- **`LearnpackV2`, from a local tree.** The generator's run output is served nowhere, so it is
+  read off disk — and that takes **two processes**: `task backend`, the API in local mode,
+  serving the tree (registering fetches one file through that mount before it writes anything),
+  and the task above, writing to the deployed store. The locators that land there therefore
+  point at `localhost`. For a campaign that is fine: the evaluator's screen reads the profile
+  stored at registration and fetches nothing. What it costs is that the deployed API can never
+  re-read those packages — `/admin/profiles` fails on them, and only there.
+- **Deployments last**, because a course is usually deployed after it is registered. Until a
+  course has a consumable URL it can be judged automatically but is refused by the assign picker
+  (ADR-0028), so for this errand every one of them needs one.
+
+The two commands underneath are the ordinary ones —
 [Registering courses](README.md#registering-courses) and
-[Declaring the deployment](README.md#declaring-the-deployment-of-a-registered-course-declare-deployment).
-A course with no consumable URL can be judged automatically but is refused by the assign picker
-(ADR-0028), so for this errand every course needs one.
+[Declaring the deployment](README.md#declaring-the-deployment-of-a-registered-course-declare-deployment)
+say what they do and what the CSVs look like.
 
 **Before opening the campaign, read `/admin/profiles` and confirm every course was profiled.**
 That screen is where a package never read says so, and where it can be read now. A failure at
 registration is otherwise only in the summary line the command printed at the time, and the
 cost of missing it is the paragraph above.
 
-### 8. The campaign
+### 7. The campaign
 
 From the console, both of them:
 
@@ -359,6 +380,14 @@ the start command, where a half-migrated schema would meet live traffic.
 The seeders are not in that path and must not be: `seed` is idempotent, but a step that reruns
 on every deploy is a step nobody reads the output of.
 
-**Take a `pg_dump` before each redeploy while a campaign is open.** The migrations here do not
-destroy data, but that is a convention rather than a guarantee, and it is thirty seconds
-against the only copy of what the panel answered.
+**Back the store up before each redeploy while a campaign is open**:
+
+```bash
+CONFIRM=<the neon host> task instance:dump
+```
+
+The migrations here do not destroy data, but that is a convention rather than a guarantee, and
+this is thirty seconds against the only copy of what the panel answered. It writes outside the
+repository, to `DUMP_DIR`, and deliberately: the dump is the **identified** record — it carries
+every expert's address — and it is what the campaign's results are read from once this instance
+is gone.
