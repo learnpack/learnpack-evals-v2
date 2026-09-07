@@ -159,10 +159,14 @@ shows up, check that it still works.
 
 ## Deploy (Netlify)
 
-- Base dir `frontend` (see `netlify.toml`, plugin `@netlify/plugin-nextjs`).
+- Base dir `frontend`, declared by `../netlify.toml` — at the repository root, which is the
+  only place Netlify reads one from on its own. Plugin `@netlify/plugin-nextjs`.
 - Env: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_API_URL`,
-  `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
-- Add the Netlify origin to `ALLOWED_ORIGINS` in the backend.
+  `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation`. All of
+  them are read at **build** time, so changing one needs a redeploy.
+- Add the Netlify origin to `ALLOWED_ORIGINS` in the backend, **first**: that entry is also
+  where Clerk's invitation link lands.
+- The whole order, once per instance: [`../backend/ENVIRONMENT.md`](../backend/ENVIRONMENT.md).
 
 ## Courses read by generator version
 

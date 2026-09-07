@@ -1,0 +1,27 @@
+# The console, built and served by Netlify (08-code.md §10).
+#
+# At the repository root because that is the only place Netlify looks on its own: a file
+# inside `frontend/` is read only once the site's base directory already says `frontend`,
+# which is the setting this file exists to supply. So it declares the base itself, and a
+# fresh site needs nothing configured by hand to find it.
+
+[build]
+  base = "frontend"
+  # Relative to `base`, like every other path here.
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # The version CI builds with. Left to Netlify's default, the two could drift apart and the
+  # build that breaks would be the one nobody ran locally.
+  NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# The environment is set in the Netlify dashboard, never here — `NEXT_PUBLIC_*` values are
+# inlined at BUILD time, so changing one needs a redeploy and not just a restart:
+#   NEXT_PUBLIC_API_URL · NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY · CLERK_SECRET_KEY
+#   NEXT_PUBLIC_CLERK_JWT_TEMPLATE · NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
+# And this origin has to be the first entry of the API's ALLOWED_ORIGINS: it is what CORS
+# allows, and what Clerk's invitation link is derived from. See backend/ENVIRONMENT.md.
