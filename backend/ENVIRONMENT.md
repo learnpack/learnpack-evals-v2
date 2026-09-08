@@ -119,7 +119,7 @@ which Safari does not accept. The **API stays on `onrender.com`** — its token 
 
    Idempotent, and it says which of three things it did. What it writes and why is
    [in the reference](#the-jwt-template-in-detail).
-5. **Invite-only**, under **User & Authentication** → **Access Mode**.
+5. **In Clerk**, under **User & Authentication** → **Access Mode**, set it to **Invite-only**.
 6. **Put the data-use notice in the invitation email.** **Customization → Emails**, the
    **Invitation** template, then *Apply changes*. This is the email the evaluators receive at
    step 8, when the console creates their Clerk invitations — so the sentence they are owed has
