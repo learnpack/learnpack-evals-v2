@@ -38,7 +38,10 @@ says where.
 
 **Optional, and worth it.** The identity half — the JWT template, the first admin, an
 invitation redeemed — is the part whose order cannot be repeated once an instance exists,
-and all of it can be exercised against `localhost` before any of it does.
+and all of it can be exercised against `localhost` before any of it does. Nothing done here
+reaches the deployed instance: Clerk's development and production instances are separate,
+each with its own keys, users and JWT templates, and the production template is written at
+step 3.5 whether or not you rehearsed.
 
 Clerk's **development** instance is built for `localhost`, so the sign-in and invitation flows
 can be exercised without deploying anything. The only guard is the reverse one: `AUTH_MODE=local`
