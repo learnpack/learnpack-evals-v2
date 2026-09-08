@@ -8,8 +8,7 @@ keep what they answer — so it needs Clerk, a store and two hosts.
 steps degrade *silently* if they run late, and one of them stops being repairable the moment an
 expert answers.
 
-Measuring a generator's output needs none of it — that runs on your machine in
-[local mode](README.md#local-mode-and-clerk-mode-adr-0008).
+Measuring a generator's output needs none of it — that runs on your machine in local mode.
 
 ## Before you start
 
@@ -53,7 +52,7 @@ task deploy:api
 ```
 
 `.env.instance.example` says what to write in `IMAGE_REPO` and what it has to satisfy. The rest
-of that file is filled in at step 7.
+of that file is filled in at step 8.
 
 `deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
 and a tag that misdescribes its contents outlives the chance to notice.
@@ -68,7 +67,7 @@ Create the project. Three of its options matter:
 | | |
 |---|---|
 | **Postgres version** | **17** — what the test suite and the local container run, so it is the version everything here is tested against |
-| **Region** | **You choose it here**, and Render's service goes in the same one at step 4. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
+| **Region** | **You choose it here**, and Render's service goes in the same one at step 5. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
 | **Enable Neon Auth** | **Leave it off.** Identity here is Clerk's job, and this would add tables of its own to the database for nothing |
 
 One region for both because **the API queries the database many times per request**, so that
@@ -76,7 +75,7 @@ distance is paid over and over. The distance to whoever is browsing is paid once
 shows.
 
 Then keep the connection string. Nothing is run with it here: it is a value you paste twice,
-into Render's environment at step 4 and into `backend/.env.instance` at step 7. **Neon hands
+into Render's environment at step 5 and into `backend/.env.instance` at step 8. **Neon hands
 you a `postgresql://…` string, and it needs one edit** — the driver prefix, keeping the SSL
 that is already there:
 
@@ -87,15 +86,34 @@ DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbna
 Nothing migrates it by hand. The API's pre-deploy command is `alembic upgrade head`, so the
 first release is also the first migration.
 
-## 3. Clerk — all of it before anybody signs in
+## 3. The domain
 
-**This early on purpose.** Clerk verifies DNS and nothing else — it does not need the console
-to exist yet — and *"it can take up to 48hrs for DNS records to fully propagate"*. Left for the
-end, that wait lands on the day you wanted to open the campaign.
+Clerk's production instance is verified by DNS, so the only thing needed here is **a domain
+whose records you can edit**. Deciding that is the whole step, and it depends on nothing.
 
-1. **Create the production instance** and add the DNS records it asks for, on your domain. Its
-   Frontend API lives at `clerk.<your domain>` for a reason: if it and the console were not
-   same-site, the session cookie would need `SameSite=None`, which Safari does not accept.
+**The records go wherever the nameservers point, which need not be the registrar.** A domain
+bought at one company and delegated to another is managed at the second: records added at the
+first are served by nobody, and the symptom is a verification that never passes with nothing
+to explain it. `nslookup -type=NS <your domain>` answers which it is.
+
+Where the console will be hosted is the natural place, since the domain ends up there anyway —
+for Netlify that is **Domains → Add domain**, and pointing the registrar's nameservers at it.
+The site itself comes later, at step 6; this is only the DNS.
+
+**Clerk's domain is the console's domain.** Its Frontend API lives at `clerk.<your domain>`
+because if the two were not same-site the session cookie would need `SameSite=None`, which
+Safari does not accept. The **API stays on `onrender.com`** and needs no domain: its token
+travels in the `Authorization` header and the backend runs `allow_credentials=False`, so it is
+cross-origin by design.
+
+## 4. Clerk — all of it before anybody signs in
+
+**This early on purpose.** Clerk verifies DNS and nothing else and *"it can take up to 48hrs for 
+DNS records to fully propagate"*.
+
+1. **Create the production instance** and add the five CNAME records it asks for, where step 3
+   put the DNS. Values exactly as given — one character out and the record stays unverified.
+   Then press **Verify** again: the check does not repeat itself.
 2. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` — the first of
    its values you need after `IMAGE_REPO` — and:
 
@@ -115,7 +133,7 @@ end, that wait lands on the day you wanted to open the campaign.
 
 **Nobody signs in yet.**
 
-## 4. The API (Render)
+## 5. The API (Render)
 
 Two screens. First **New → Web Services**.
 
@@ -138,13 +156,13 @@ And its environment:
 | `ENVIRONMENT` | `production` |
 | `AUTH_MODE` | `clerk`. Declared rather than left to the default, so a refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
 | `DATABASE_URL` | Neon, from step 2 |
-| `CLERK_ISSUER` | step 3 |
-| `CLERK_SECRET_KEY` | step 3. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
+| `CLERK_ISSUER` | step 4 |
+| `CLERK_SECRET_KEY` | step 4. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
 | `ADMIN_EMAILS` | the first admin. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
-| `ALLOWED_ORIGINS` | step 5, and that entry goes **first** |
+| `ALLOWED_ORIGINS` | the domain from step 3, and that entry goes **first** |
 
-Only `ALLOWED_ORIGINS` cannot be known yet: the console does not exist until step 5. Put a
-placeholder and come back — it is the single value this order cannot resolve in one pass.
+Every one of these is known by now, which is what steps 3 and 4 buy: no placeholders, and
+nothing to come back and edit.
 
 **What is deliberately absent:** `CLERK_JWKS_URL` (empty, it is derived from the issuer; a
 value copied from a local `.env` silently wins and points this instance at a development one) ·
@@ -175,7 +193,7 @@ declare them only if yours differ.
 and the store are both there — it runs a real query, so it cannot answer `ok` over a database
 it cannot reach.
 
-## 5. The console (Netlify), and the domain
+## 6. The console (Netlify)
 
 Netlify does not build this repository either, so the site is created and published from here.
 `netlify.toml` at the repository root declares the base directory, the build and the Node
@@ -191,12 +209,11 @@ netlify sites:create --name <the site>
 netlify link
 ```
 
-**Then the domain**, added to this site — `evals.yourdomain.com` — because Clerk's production
-instance already has its records there (step 3). The **API stays on `onrender.com`**: its
-token travels in the `Authorization` header and the backend runs `allow_credentials=False`, so
-it is cross-origin by design.
+**Attach the domain** from step 3 to this site. Its DNS is already there, so this is the
+record that points it at what you are about to publish.
 
-Set the environment in the Netlify dashboard — the Clerk keys are the ones step 3 gave you.
+Set the environment in the Netlify dashboard — the Clerk keys come from step 4, the API's URL
+from step 5.
 **All of it is read at build time**, so changing any of it needs a new release rather than a
 restart:
 
@@ -232,7 +249,7 @@ leaves the live site alone.
 > (`Settings.invitation_redirect_url`) — and an invitation that arrives at the wrong origin is
 > found by the one person who cannot accept it.
 
-## 6. The first admin signs in
+## 7. The first admin signs in
 
 Now, and not before. Verify with `GET /me` that it says `"role": "admin"`.
 
@@ -250,7 +267,7 @@ That is the break-glass path — at this point there is no admin, so nobody coul
 from the console, and this command has none of the console's guardrails. Which is why it is
 here and nowhere else.
 
-## 7. What the store has to hold
+## 8. What the store has to hold
 
 **Fill in the rest of `backend/.env.instance` now** — the store, the admin, the generator and
 the courses; its `.example` says what each one is for. It is what points these tasks at the
@@ -307,7 +324,7 @@ describe the commands underneath and what the files look like.
 > unread. A package that failed to be read says so only there and in the summary line the
 > command printed at the time.
 
-## 8. The campaign
+## 9. The campaign
 
 From the console, both of them:
 
