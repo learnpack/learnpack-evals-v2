@@ -390,8 +390,7 @@ CONFIRM=<the neon host> task instance:deployments
 ```
 
 Until a course has a deployment it cannot be assigned to anyone. The task looks the ids up
-among the V2 courses; for a V1 course deployed somewhere other than the URL it was registered
-from, add `FORMAT=LearnpackV1`.
+among the V2 courses.
 
 ### 7.6 Check that every course was read
 
@@ -433,7 +432,7 @@ task deploy:console    # builds and publishes the site
 Without a `RENDER_DEPLOY_HOOK` declared, `deploy:api` publishes and then says so — the release
 is *Manual Deploy* in the dashboard.
 
-A release **never touches the store**: Neon is its own service and nothing in a deploy writes
+A release **never touches the database**: Neon is its own service and nothing in a deploy writes
 data. What moves with the code is the schema, and the pre-deploy command is what moves it:
 `alembic upgrade head`, once, before traffic switches. If it fails Render halts the release and
 the previous version keeps serving — which is why it is not in the start command, where a
