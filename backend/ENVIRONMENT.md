@@ -211,11 +211,12 @@ Deploy Hook*, which is what lets `task deploy:api` release without the dashboard
 ## 5. The console (Netlify)
 
 Netlify does not build this repository either, so the site is created and published from here.
-`netlify.toml` at the repository root declares the base directory (`frontend`), the build and
-the Node version, and the CLI reads it exactly as a hosted build would.
+`frontend/netlify.toml` declares the build and the Node version, and the CLI reads it exactly
+as a hosted build would.
 
-**From the repository root**, because the CLI looks for `netlify.toml` in the directory it is
-run from, and `netlify link` records the site there too:
+**From `frontend/`**, and every `netlify` command in this step runs there: the CLI looks for
+`netlify.toml` in the directory it is run from, `netlify link` records the site there, and the
+deploy picks up the edge functions only when that directory is also the one the build ran in:
 
 ```bash
 netlify sites:create --name <the site>
@@ -247,11 +248,10 @@ missing or misspelled value fails safe.
 > here, so its variables have to be plain. A variable already marked secret cannot be unmarked
 > — delete it and create it again.
 
-Check the wiring before publishing anything — `netlify build --dry` from the root builds
+Check the wiring before publishing anything — `netlify build --dry` from `frontend/` builds
 nothing and prints what a real build would do:
 
-- **Config file** is the repository's `netlify.toml`, and **Current directory** the `frontend`
-  its `base` points at.
+- **Config file** is `frontend/netlify.toml`, and **Current directory** is `frontend`.
 - **Next.js Runtime** appears among the plugins. Without it a Next site still publishes, and
   its server-rendered routes do not work.
 
@@ -553,6 +553,7 @@ itself; these hand you a screen that looks fine, or a check that never passes, a
 | The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
 | The build says the Clerk publishable key is invalid, and shows it as `****************abcd` | The variable is marked secret in Netlify, so the CLI handed the local build the mask instead of the value | Delete the variable and create it again without "Contains secret values" — the same for every other one marked secret |
 | The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
+| The console shows *missing bearer token* on `/`, and an anonymous visitor gets `200` instead of a redirect to `/sign-in` | The deploy carries no edge functions, so the Clerk middleware never ran: the CLI reads them from `.netlify/` under the directory it was run from, and the build wrote them somewhere else | Run the deploy from `frontend/`, where `netlify.toml` is — `task deploy:console` does. `netlify api getDeploy` on the deploy shows `edge_functions_present: true` when it worked |
 | The console spins at *Signing you in…* and Clerk answers `400 origin_invalid` | The page is open on an origin that is not the domain — a `netlify.app` draft or the site's default address — and the production instance refuses every other one | Open it at `https://<your domain>`; a draft URL can never sign in |
 | Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
 

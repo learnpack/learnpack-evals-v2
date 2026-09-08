@@ -1,21 +1,20 @@
 # The console, built and served by Netlify (08-code.md §10).
 #
-# At the repository root because that is the only place it is looked for on its own: a file
-# inside `frontend/` is read only once the site's base directory already says `frontend`,
-# which is the setting this file exists to supply. So it declares the base itself.
+# In `frontend/`, and the CLI runs here too — `task deploy:console` does. The two have to be
+# the same directory, and not because of config lookup: the Next.js runtime writes what it
+# builds under `.netlify/` next to the build, and `netlify deploy` then reads the bundled edge
+# functions from `.netlify/edge-functions-dist` under the directory the CLI was RUN from.
+# With this file at the repository root and `base = "frontend"`, the two differ and the edge
+# functions are dropped from the deploy without a word — and the Clerk middleware is one, so
+# every page served without it, to anyone.
 #
-# The build runs on a developer's machine — `task deploy:console` — because Netlify does not
-# build this repository. The CLI reads this file the same way a hosted build would, so what is
-# declared here is what publishes either way.
+# The build runs on a developer's machine because Netlify does not build this repository.
+# The CLI reads this file the same way a hosted build would, so what is declared here is what
+# publishes either way.
 
 [build]
-  base = "frontend"
-  # Runs inside `base`.
   command = "npm run build"
-  # Relative to THIS FILE, not to `base`: that is how `publish` resolves in a netlify.toml
-  # (the dashboard resolves it from the base directory instead, which is the trap). `.next`
-  # alone points at a directory that does not exist at the repository root.
-  publish = "frontend/.next"
+  publish = ".next"
 
 [build.environment]
   # The version CI builds with. Left to Netlify's default, the two could drift apart and the

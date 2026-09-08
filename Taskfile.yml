@@ -173,12 +173,14 @@ tasks:
 
   deploy:console:
     desc: Build and publish the console to Netlify, live
+    dir: frontend
     cmds:
-      # From the REPOSITORY ROOT, which is where `netlify.toml` is and the only place it is
-      # looked for on its own. Its `base = "frontend"` is what moves the build into the
-      # frontend, exactly as a hosted build would — run from `frontend/` instead, the config
-      # may not be found at all, and a Next site silently built without its plugin is a site
-      # whose server-rendered routes do not work.
+      # From `frontend/`, where `netlify.toml` is, and the build directory has to be the one
+      # the CLI is run from: `netlify deploy` reads the bundled edge functions from
+      # `.netlify/edge-functions-dist` under its OWN working directory, while the Next.js
+      # runtime writes them next to the build. Run from the root with a `base` pointing here,
+      # the two differ and the edge functions — the Clerk middleware among them — are left
+      # out of the deploy without a word, and every page is served to anyone.
       #
       # `--build` runs the build here, and Netlify's CLI pulls the site's own environment down
       # for it — which is what keeps the NEXT_PUBLIC_* values (inlined at build time) the same
@@ -187,6 +189,7 @@ tasks:
 
   deploy:console:preview:
     desc: Same, to a draft URL — look at it before promoting
+    dir: frontend
     cmds:
       - netlify deploy --build
 
