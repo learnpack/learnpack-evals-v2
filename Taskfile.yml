@@ -258,11 +258,15 @@ tasks:
       # The data-requirements namespace, which nothing else here mints: a profile names what
       # it extracted by ids that Evaluation Design has to have declared first (ADR-0014), and
       # they are declared by importing an instrument. On a dev box `seed-workbench` imports
-      # this one; a campaign store has no workbench, so it is imported here — as a draft,
-      # never published, since no assessor judges from a deployed store. Without it every
-      # automatic profile aborts with "capabilities outside the data_requirements namespace"
-      # and the course stays unread.
+      # these two; a campaign store has no workbench, so they are imported here — as drafts,
+      # never published, since no assessor judges from a deployed store. Between them they
+      # declare every id the two adapters extract: the first covers LearnpackV1 and most of
+      # LearnpackV2, the second the three ids only LearnpackV2 declares (assessment_offerings,
+      # declared_objectives, lesson_concept_coverage). Missing either, every automatic profile
+      # of that format aborts with "capabilities outside the data_requirements namespace" and
+      # the course stays unread.
       - uv run python -m app.cli import-instrument --file ../docs/seed/instruments/learnpack-course-qa-v1.yaml
+      - uv run python -m app.cli import-instrument --file ../docs/seed/instruments/course-drafts-qa-v10.yaml
       # And what arms automatic profiling (ADR-0029). Without it every course registers
       # unread, and an item is withheld from a human only where a profile settles that its
       # datum is undeclared (ADR-0053) — so the four items a V1 course cannot answer would be

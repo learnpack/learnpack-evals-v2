@@ -336,15 +336,11 @@ CONFIRM=<the neon host> task instance:generator   # once, ever
 ```
 
 `instance:seed` installs the human reference instrument and the reference data, imports the
-instrument that declares the data a profile can name, and turns on automatic profiling for
-both package formats. `instance:generator` registers the lineage `GENERATOR_NAME`, and
+two instruments that declare the data a profile can name, and turns on automatic profiling
+for both package formats. `instance:generator` registers the lineage `GENERATOR_NAME`, and
 refuses to run twice.
 
-> ⚠️ **`instance:seed` goes before any course is registered.** A course registered earlier is
-> never profiled, so its evaluators are asked the items it cannot answer, with no error
-> anywhere. Recoverable until the first expert answers, and not after: run `instance:seed`,
-> then `CONFIRM=<the neon host> task instance:reprofile FORMAT=LearnpackV1` (or `LearnpackV2`,
-> with `task backend` serving the tree). It profiles every course that has no profile yet.
+> ⚠️ **`instance:seed` goes before any course is registered.**
 
 ### 7.3 The V1 courses, from a list of URLs
 
