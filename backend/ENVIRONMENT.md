@@ -19,7 +19,7 @@ All of this lives outside the repository:
 | **Neon** | a project, in the region the API will run in |
 | **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
 | **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
-| **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 is early. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
+| **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 comes first. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
 | **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you, `read:packages` for Render (step 1) |
 | **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
 | **The first admin's email address** | |
@@ -52,7 +52,7 @@ task deploy:api
 ```
 
 **`backend/.env.instance` is filled in as you go**, not at the end: every step below that hands
-you a value says to write it there, and by step 8 the file is complete. Right now that is
+you a value says to write it there, and by step 7 the file is complete. Right now that is
 `IMAGE_REPO` alone — `.env.instance.example` says what it has to satisfy.
 
 `deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
@@ -68,7 +68,7 @@ Create the project. Three of its options matter:
 | | |
 |---|---|
 | **Postgres version** | **17** — what the test suite and the local container run, so it is the version everything here is tested against |
-| **Region** | **You choose it here**, and Render's service goes in the same one at step 5. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
+| **Region** | **You choose it here**, and Render's service goes in the same one at step 4. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
 | **Enable Neon Auth** | **Leave it off.** Identity here is Clerk's job, and this would add tables of its own to the database for nothing |
 
 One region for both because **the API queries the database many times per request**, so that
@@ -76,7 +76,7 @@ distance is paid over and over. The distance to whoever is browsing is paid once
 shows.
 
 Then the connection string, which nothing here runs: it is a value, and it goes in two places
-— `DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 5.
+— `DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 4.
 **Neon hands you a `postgresql://…` string, and it needs one edit** — the driver prefix,
 keeping the SSL that is already there:
 
@@ -87,36 +87,28 @@ DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbna
 Nothing migrates it by hand. The API's pre-deploy command is `alembic upgrade head`, so the
 first release is also the first migration.
 
-## 3. The domain
+## 3. Clerk and the domain — all of it before anybody signs in
 
-Clerk's production instance is verified by DNS, so the only thing needed here is **a domain
-whose records you can edit**. Deciding that is the whole step, and it depends on nothing.
+**First of everything that follows**, because two waits start here and each can take up to
+48 hours: pointing a domain's nameservers, and propagating the records Clerk verifies. Left for
+later, they land on the day you meant to open the campaign.
 
-**The records go wherever the nameservers point, which need not be the registrar.** A domain
-bought at one company and delegated to another is managed at the second: records added at the
-first are served by nobody, and the symptom is a verification that never passes with nothing
-to explain it. `nslookup -type=NS <your domain>` answers which it is.
-
-Where the console will be hosted is the natural place, since the domain ends up there anyway —
-for Netlify that is **Domains → Add domain**, and pointing the registrar's nameservers at it.
-The site itself comes later, at step 6; this is only the DNS.
-
-**Clerk's domain is the console's domain.** Its Frontend API lives at `clerk.<your domain>`
+**Which domain.** Clerk's is the console's. Its Frontend API lives at `clerk.<your domain>`
 because if the two were not same-site the session cookie would need `SameSite=None`, which
-Safari does not accept. The **API stays on `onrender.com`** and needs no domain: its token
-travels in the `Authorization` header and the backend runs `allow_credentials=False`, so it is
-cross-origin by design.
+Safari does not accept. The **API stays on `onrender.com`** and needs no domain of its own: its
+token travels in the `Authorization` header and the backend runs `allow_credentials=False`, so
+it is cross-origin by design.
 
-## 4. Clerk — all of it before anybody signs in
-
-**This early on purpose.** Clerk verifies DNS and nothing else and *"it can take up to 48hrs for 
-DNS records to fully propagate"*.
-
-1. **Create the production instance** and add the five CNAME records it asks for, where step 3
-   put the DNS. Values exactly as given — one character out and the record stays unverified.
-   Then press **Verify** again: the check does not repeat itself.
-2. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` — the first of
-   its values you need after `IMAGE_REPO` — and:
+1. **Put the domain's DNS somewhere you can edit it.** The records go wherever the nameservers
+   point, **which need not be the registrar** — a domain bought at one company and delegated to
+   another is managed at the second, and records added at the first are served by nobody, with
+   a verification that never passes and nothing to explain it. `nslookup -type=NS <your domain>`
+   answers which it is. The console's host is the natural place, since the domain ends up there
+   anyway; for Netlify that is **Domains → Add domain**. The site itself comes later, at step 5.
+2. **Create the production instance.** Only now does Clerk show the five CNAME records, so this
+   is where they get added — into (1), with the values exactly as given: one character out and
+   the record stays unverified. Then press **Verify**, because the check does not repeat itself.
+3. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` and:
 
    ```bash
    task instance:clerk-template
@@ -124,8 +116,8 @@ DNS records to fully propagate"*.
 
    Idempotent, and it says which of three things it did. What it writes and why is
    [in the reference](#the-jwt-template-in-detail).
-3. **Invite-only**, under Restrictions.
-4. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
+4. **Invite-only**, under Restrictions.
+5. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
    template while you are there ([Inviting evaluators](#inviting-evaluators-adr-0049)).
 
 > ⚠️ **The template must exist before the admin's first login.** Without the `email` claim the
@@ -134,7 +126,7 @@ DNS records to fully propagate"*.
 
 **Nobody signs in yet.**
 
-## 5. The API (Render)
+## 4. The API (Render)
 
 Two screens. First **New → Web Services**.
 
@@ -157,8 +149,8 @@ And its environment:
 | `ENVIRONMENT` | `production` |
 | `AUTH_MODE` | `clerk`. Declared rather than left to the default, so a refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
 | `DATABASE_URL` | Neon, from step 2 |
-| `CLERK_ISSUER` | step 4 |
-| `CLERK_SECRET_KEY` | step 4. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
+| `CLERK_ISSUER` | step 3 |
+| `CLERK_SECRET_KEY` | step 3. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
 | `ADMIN_EMAILS` | the first admin. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
 | `ALLOWED_ORIGINS` | the domain from step 3, and that entry goes **first** |
 
@@ -198,7 +190,7 @@ Two values for `backend/.env.instance` come out of this step: **`ADMIN_EMAIL`**,
 address as `ADMIN_EMAILS` here, and **`RENDER_DEPLOY_HOOK`** from the service's *Settings →
 Deploy Hook*, which is what lets `task deploy:api` release without the dashboard.
 
-## 6. The console (Netlify)
+## 5. The console (Netlify)
 
 Netlify does not build this repository either, so the site is created and published from here.
 `netlify.toml` at the repository root declares the base directory, the build and the Node
@@ -217,8 +209,8 @@ netlify link
 **Attach the domain** from step 3 to this site. Its DNS is already there, so this is the
 record that points it at what you are about to publish.
 
-Set the environment in the Netlify dashboard — the Clerk keys come from step 4, the API's URL
-from step 5.
+Set the environment in the Netlify dashboard — the Clerk keys come from step 3, the API's URL
+from step 4.
 **All of it is read at build time**, so changing any of it needs a new release rather than a
 restart:
 
@@ -254,7 +246,7 @@ leaves the live site alone.
 > (`Settings.invitation_redirect_url`) — and an invitation that arrives at the wrong origin is
 > found by the one person who cannot accept it.
 
-## 7. The first admin signs in
+## 6. The first admin signs in
 
 Now, and not before. Verify with `GET /me` that it says `"role": "admin"`.
 
@@ -272,7 +264,7 @@ That is the break-glass path — at this point there is no admin, so nobody coul
 from the console, and this command has none of the console's guardrails. Which is why it is
 here and nowhere else.
 
-## 8. What the store has to hold
+## 7. What the store has to hold
 
 `backend/.env.instance` has been filling up since step 1, and what is left is this step's own:
 **the courses** — where the V1 list and the deployment list are, which tree the V2 courses come
@@ -332,7 +324,7 @@ describe the commands underneath and what the files look like.
 > unread. A package that failed to be read says so only there and in the summary line the
 > command printed at the time.
 
-## 9. The campaign
+## 8. The campaign
 
 From the console, both of them:
 
