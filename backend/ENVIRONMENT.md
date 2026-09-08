@@ -389,7 +389,9 @@ URL the course is deployed at. A header row is allowed. Then:
 CONFIRM=<the neon host> task instance:deployments
 ```
 
-Until a course has a deployment it cannot be assigned to anyone.
+Until a course has a deployment it cannot be assigned to anyone. The task looks the ids up
+among the V2 courses; for a V1 course deployed somewhere other than the URL it was registered
+from, add `FORMAT=LearnpackV1`.
 
 ### 7.6 Check that every course was read
 

@@ -330,14 +330,22 @@ tasks:
       - uv run python -m app.cli register-package --all --root $V2_ROOT --format LearnpackV2
 
   instance:deployments:
-    desc: Point registered courses at where they are deployed (DEPLOYMENTS_CSV)
+    desc: Point registered courses at where they are deployed (DEPLOYMENTS_CSV; FORMAT defaults to LearnpackV2)
     dir: backend
     dotenv: ['.env.instance']
+    vars:
+      FORMAT: '{{.FORMAT | default "LearnpackV2"}}'
     cmds:
       - task: instance:guard
       # Until this, a course can be judged automatically but the assign picker refuses it, so
       # it can never be handed to an expert (ADR-0028).
-      - uv run python -m app.cli declare-deployment --from-csv $DEPLOYMENTS_CSV --email $ADMIN_EMAIL
+      #
+      # An external_id is namespaced by its format (ADR-0005), and the command's own default
+      # is LearnpackV1 — under which every V2 slug is "not found". V2 is the default here
+      # because a V1 course registered from a URL already carries that URL as its deployment
+      # (ADR-0028); this act is for the courses read off disk. FORMAT=LearnpackV1 for the rare
+      # V1 course deployed somewhere other than where it was registered from.
+      - uv run python -m app.cli declare-deployment --from-csv $DEPLOYMENTS_CSV --email $ADMIN_EMAIL --format {{.FORMAT}}
 
   instance:dump:
     desc: Back up the deployed store to DUMP_DIR — before every release while a campaign is open
