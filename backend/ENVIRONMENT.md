@@ -34,10 +34,47 @@ built from `backend/` alone, so the seeder's own files are not inside it. A `tas
 anywhere in the repository; where a bare command has to run somewhere in particular, the step
 says where.
 
-> **Rehearse first if you can.** The identity half — the JWT template, the first admin, an
-> invitation redeemed — is the part whose order cannot be repeated, and all of it can be
-> exercised against `localhost` before any of this exists. See
-> [Rehearsing Clerk against your own machine](#rehearsing-clerk-against-your-own-machine).
+## Rehearse first: Clerk against your own machine
+
+**Optional, and worth it.** The identity half — the JWT template, the first admin, an
+invitation redeemed — is the part whose order cannot be repeated once an instance exists,
+and all of it can be exercised against `localhost` before any of it does.
+
+Clerk's **development** instance is built for `localhost`, so the sign-in and invitation flows
+can be exercised without deploying anything. The only guard is the reverse one: `AUTH_MODE=local`
+refuses a remote database and `ENVIRONMENT=production`.
+
+`backend/.env`:
+
+```text
+AUTH_MODE=clerk
+CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
+CLERK_SECRET_KEY=sk_test_...
+# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
+```
+
+`frontend/.env.local`:
+
+```text
+NEXT_PUBLIC_AUTH_MODE=clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
+```
+
+Then write the template — `uv run python -m app.cli setup-clerk-jwt-template` — before signing
+in for the first time. It works from here because a development instance is a real instance.
+
+The command rather than `task instance:clerk-template`, deliberately: the task reads the key
+from `.env.instance`, which is the deployed instance's, and here the one you want is the
+development key sitting in `backend/.env`.
+
+What changes: the user picker is gone and you sign in as a real person; `GET /dev/identities`
+and the rest of the dev-only surface answer 404; `seed-demo` refuses to run; and inviting from
+the console really sends an email.
+
+The two modes share one database and cannot collide — a local assessor is stored as
+`('local', <email>)` and a Clerk one as `('clerk', <sub>)`, so the same person signing in both
+ways is two assessors, which is what you want on a dev box.
 
 ---
 
@@ -551,44 +588,6 @@ deliberately, reads `"false"` as false.
 role while their invitation still says `pending`, because an invitation is consumed only while
 the assessor is being created. The backend logs a warning naming this template every time it
 declines to redeem, and the console marks such an invitation.
-
-### Rehearsing Clerk against your own machine
-
-Clerk's **development** instance is built for `localhost`, so the sign-in and invitation flows
-can be exercised without deploying anything. The only guard is the reverse one: `AUTH_MODE=local`
-refuses a remote database and `ENVIRONMENT=production`.
-
-`backend/.env`:
-
-```text
-AUTH_MODE=clerk
-CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
-CLERK_SECRET_KEY=sk_test_...
-# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
-```
-
-`frontend/.env.local`:
-
-```text
-NEXT_PUBLIC_AUTH_MODE=clerk
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
-```
-
-Then write the template — `uv run python -m app.cli setup-clerk-jwt-template` — before signing
-in for the first time. It works from here because a development instance is a real instance.
-
-The command rather than `task instance:clerk-template`, deliberately: the task reads the key
-from `.env.instance`, which is the deployed instance's, and here the one you want is the
-development key sitting in `backend/.env`.
-
-What changes: the user picker is gone and you sign in as a real person; `GET /dev/identities`
-and the rest of the dev-only surface answer 404; `seed-demo` refuses to run; and inviting from
-the console really sends an email.
-
-The two modes share one database and cannot collide — a local assessor is stored as
-`('local', <email>)` and a Clerk one as `('clerk', <sub>)`, so the same person signing in both
-ways is two assessors, which is what you want on a dev box.
 
 ---
 
