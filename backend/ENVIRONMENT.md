@@ -135,7 +135,12 @@ which Safari does not accept. The **API stays on `onrender.com`** — its token 
    It creates the template, updates it, or reports it unchanged, and can be run again at any
    time. What it writes and why is [in the reference](#the-jwt-template-in-detail).
 6. **In Clerk**, under **User & Authentication → Access Mode**, set it to **Invite-only**.
-7. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
+7. **Turn off the social sign-ins.** Under **Configure → SSO connections**, remove Google and
+   any other provider the new instance came with. Sign-in here is by email code (ADR-0004),
+   and a production instance has no shared OAuth credentials: the Google button sends an
+   empty `client_id` and Google answers `Error 400: invalid_request`. Keeping a provider
+   means creating your own OAuth client with it and pasting its credentials into Clerk.
+8. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
    first admin. Invite-only means nobody can sign themselves up, so the first account has to
    arrive this way. This invitation only gets them through Clerk's door: the `assessors` row
    appears when they sign in, at step 6, and there is no backend yet to run `invite-assessor`
@@ -609,6 +614,7 @@ itself; these hand you a screen that looks fine, or a check that never passes, a
 | The build says the Clerk publishable key is invalid, and shows it as `****************abcd` | The variable is marked secret in Netlify, so the CLI handed the local build the mask instead of the value | Delete the variable and create it again without "Contains secret values" — the same for every other one marked secret |
 | The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
 | The console shows *missing bearer token* on `/`, and an anonymous visitor gets `200` instead of a redirect to `/sign-in` | The deploy carries no edge functions, so the Clerk middleware never ran: the CLI reads them from `.netlify/` under the directory it was run from, and the build wrote them somewhere else | Run the deploy from `frontend/`, where `netlify.toml` is — `task deploy:console` does. `netlify api getDeploy` on the deploy shows `edge_functions_present: true` when it worked |
+| Signing in with Google ends at a Google page saying *Missing required parameter: client_id*, `Error 400: invalid_request` | The production instance still offers Google, and it has no OAuth credentials of its own — only development instances borrow Clerk's | Remove the provider in Clerk (step 3.7) and sign in with the email code, or give Clerk your own Google OAuth client |
 | The console spins at *Signing you in…* and Clerk answers `400 origin_invalid` | The page is open on an origin that is not the domain — a `netlify.app` draft or the site's default address — and the production instance refuses every other one | Open it at `https://<your domain>`; a draft URL can never sign in |
 | Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
 
