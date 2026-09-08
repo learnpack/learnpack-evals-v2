@@ -256,7 +256,11 @@ nothing and prints what a real build would do:
   its server-rendered routes do not work.
 
 Then publish with `task deploy:console`, or `task deploy:console:preview` for a draft URL that
-leaves the live site alone.
+leaves the live site alone. **A draft cannot sign anybody in**: its URL is on `netlify.app`,
+and Clerk's production instance answers only its own domain — every call to
+`clerk.<your domain>` comes back `400 origin_invalid` and the page spins at *Signing you in…*.
+What a draft proves is that the build runs and the server function answers; sign-in is
+checked on the live site, at `https://<your domain>`, at step 6.
 
 > ⚠️ **The environment has to be set before the build, not after.** `NEXT_PUBLIC_*` values are
 > baked into the bundle as it is built, so a site published before they exist points at
@@ -549,5 +553,6 @@ itself; these hand you a screen that looks fine, or a check that never passes, a
 | The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
 | The build says the Clerk publishable key is invalid, and shows it as `****************abcd` | The variable is marked secret in Netlify, so the CLI handed the local build the mask instead of the value | Delete the variable and create it again without "Contains secret values" — the same for every other one marked secret |
 | The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
+| The console spins at *Signing you in…* and Clerk answers `400 origin_invalid` | The page is open on an origin that is not the domain — a `netlify.app` draft or the site's default address — and the production instance refuses every other one | Open it at `https://<your domain>`; a draft URL can never sign in |
 | Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
 
