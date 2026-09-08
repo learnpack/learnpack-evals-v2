@@ -47,12 +47,13 @@ personal access token scoped `write:packages` as the password — GHCR refuses f
 
 ```bash
 docker login ghcr.io -u <your github user>
-cp .env.instance.example .env.instance      # IMAGE_REPO is the only one needed for now
+cp .env.instance.example .env.instance
 task deploy:api
 ```
 
-`.env.instance.example` says what to write in `IMAGE_REPO` and what it has to satisfy. The rest
-of that file is filled in at step 8.
+**`backend/.env.instance` is filled in as you go**, not at the end: every step below that hands
+you a value says to write it there, and by step 8 the file is complete. Right now that is
+`IMAGE_REPO` alone — `.env.instance.example` says what it has to satisfy.
 
 `deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
 and a tag that misdescribes its contents outlives the chance to notice.
@@ -74,10 +75,10 @@ One region for both because **the API queries the database many times per reques
 distance is paid over and over. The distance to whoever is browsing is paid once, and barely
 shows.
 
-Then keep the connection string. Nothing is run with it here: it is a value you paste twice,
-into Render's environment at step 5 and into `backend/.env.instance` at step 8. **Neon hands
-you a `postgresql://…` string, and it needs one edit** — the driver prefix, keeping the SSL
-that is already there:
+Then the connection string, which nothing here runs: it is a value, and it goes in two places
+— `DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 5.
+**Neon hands you a `postgresql://…` string, and it needs one edit** — the driver prefix,
+keeping the SSL that is already there:
 
 ```text
 DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
@@ -193,6 +194,10 @@ declare them only if yours differ.
 and the store are both there — it runs a real query, so it cannot answer `ok` over a database
 it cannot reach.
 
+Two values for `backend/.env.instance` come out of this step: **`ADMIN_EMAIL`**, the same
+address as `ADMIN_EMAILS` here, and **`RENDER_DEPLOY_HOOK`** from the service's *Settings →
+Deploy Hook*, which is what lets `task deploy:api` release without the dashboard.
+
 ## 6. The console (Netlify)
 
 Netlify does not build this repository either, so the site is created and published from here.
@@ -269,10 +274,13 @@ here and nowhere else.
 
 ## 8. What the store has to hold
 
-**Fill in the rest of `backend/.env.instance` now** — the store, the admin, the generator and
-the courses; its `.example` says what each one is for. It is what points these tasks at the
-deployed store, and values from it win over `backend/.env`, so your local environment is left
-alone.
+`backend/.env.instance` has been filling up since step 1, and what is left is this step's own:
+**the courses** — where the V1 list and the deployment list are, which tree the V2 courses come
+from, and the generator version they are attributed to. Its `.example` says what each one is
+for.
+
+It is what points these tasks at the deployed store, and values from it win over `backend/.env`,
+so your local environment is never edited to reach a deployed one.
 
 Each task prints the host it is about to write to and refuses until `CONFIRM` names it back —
 they live in the same file as `db:reset`, and the two must never be confused.
