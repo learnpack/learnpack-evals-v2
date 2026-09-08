@@ -20,7 +20,7 @@ All of this lives outside the repository:
 | **Neon** | a project, in the region the API will run in |
 | **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
 | **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
-| **A domain you can add DNS records to** | Clerk's production instance requires one. Without it you are on a development instance — 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
+| **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 is early. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
 | **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you, `read:packages` for Render (step 1) |
 | **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
 | **The first admin's email address** | |
@@ -68,7 +68,7 @@ Create the project. Three of its options matter:
 | | |
 |---|---|
 | **Postgres version** | **17** — what the test suite and the local container run, so it is the version everything here is tested against |
-| **Region** | **You choose it here**, and Render's service goes in the same one at step 3. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
+| **Region** | **You choose it here**, and Render's service goes in the same one at step 4. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
 | **Enable Neon Auth** | **Leave it off.** Identity here is Clerk's job, and this would add tables of its own to the database for nothing |
 
 One region for both because **the API queries the database many times per request**, so that
@@ -76,7 +76,7 @@ distance is paid over and over. The distance to whoever is browsing is paid once
 shows.
 
 Then keep the connection string. Nothing is run with it here: it is a value you paste twice,
-into Render's environment at step 3 and into `backend/.env.instance` at step 7. **Neon hands
+into Render's environment at step 4 and into `backend/.env.instance` at step 7. **Neon hands
 you a `postgresql://…` string, and it needs one edit** — the driver prefix, keeping the SSL
 that is already there:
 
@@ -87,7 +87,35 @@ DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbna
 Nothing migrates it by hand. The API's pre-deploy command is `alembic upgrade head`, so the
 first release is also the first migration.
 
-## 3. The API (Render)
+## 3. Clerk — all of it before anybody signs in
+
+**This early on purpose.** Clerk verifies DNS and nothing else — it does not need the console
+to exist yet — and *"it can take up to 48hrs for DNS records to fully propagate"*. Left for the
+end, that wait lands on the day you wanted to open the campaign.
+
+1. **Create the production instance** and add the DNS records it asks for, on your domain. Its
+   Frontend API lives at `clerk.<your domain>` for a reason: if it and the console were not
+   same-site, the session cookie would need `SameSite=None`, which Safari does not accept.
+2. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` — the first of
+   its values you need after `IMAGE_REPO` — and:
+
+   ```bash
+   task instance:clerk-template
+   ```
+
+   Idempotent, and it says which of three things it did. What it writes and why is
+   [in the reference](#the-jwt-template-in-detail).
+3. **Invite-only**, under Restrictions.
+4. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
+   template while you are there ([Inviting evaluators](#inviting-evaluators-adr-0049)).
+
+> ⚠️ **The template must exist before the admin's first login.** Without the `email` claim the
+> assessor is created as an `evaluator` — a safe degrade — and `ADMIN_EMAILS` applies once, at
+> row creation, so writing the template afterwards rescues nobody.
+
+**Nobody signs in yet.**
+
+## 4. The API (Render)
 
 Two screens. First **New → Web Services**.
 
@@ -110,13 +138,13 @@ And its environment:
 | `ENVIRONMENT` | `production` |
 | `AUTH_MODE` | `clerk`. Declared rather than left to the default, so a refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
 | `DATABASE_URL` | Neon, from step 2 |
-| `CLERK_ISSUER` | step 5 |
-| `CLERK_SECRET_KEY` | step 5. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
+| `CLERK_ISSUER` | step 3 |
+| `CLERK_SECRET_KEY` | step 3. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
 | `ADMIN_EMAILS` | the first admin. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
-| `ALLOWED_ORIGINS` | step 4, and that entry goes **first** |
+| `ALLOWED_ORIGINS` | step 5, and that entry goes **first** |
 
-Two of those cannot be known yet — the Clerk keys and the console's origin — so a first pass
-with placeholders and one edit afterwards is the normal shape of this step.
+Only `ALLOWED_ORIGINS` cannot be known yet: the console does not exist until step 5. Put a
+placeholder and come back — it is the single value this order cannot resolve in one pass.
 
 **What is deliberately absent:** `CLERK_JWKS_URL` (empty, it is derived from the issuer; a
 value copied from a local `.env` silently wins and points this instance at a development one) ·
@@ -147,7 +175,7 @@ declare them only if yours differ.
 and the store are both there — it runs a real query, so it cannot answer `ok` over a database
 it cannot reach.
 
-## 4. The console (Netlify), and the domain
+## 5. The console (Netlify), and the domain
 
 Netlify does not build this repository either, so the site is created and published from here.
 `netlify.toml` at the repository root declares the base directory, the build and the Node
@@ -164,12 +192,13 @@ netlify link
 ```
 
 **Then the domain**, added to this site — `evals.yourdomain.com` — because Clerk's production
-instance needs its records on the same one (step 5). The **API stays on `onrender.com`**: its
+instance already has its records there (step 3). The **API stays on `onrender.com`**: its
 token travels in the `Authorization` header and the backend runs `allow_credentials=False`, so
 it is cross-origin by design.
 
-Set the environment in the Netlify dashboard. **All of it is read at build time**, so changing
-any of it needs a new release rather than a restart:
+Set the environment in the Netlify dashboard — the Clerk keys are the ones step 3 gave you.
+**All of it is read at build time**, so changing any of it needs a new release rather than a
+restart:
 
 ```text
 NEXT_PUBLIC_API_URL=https://<the render service>.onrender.com
@@ -196,37 +225,12 @@ leaves the live site alone.
 > ⚠️ **The environment has to be set before the build, not after.** `NEXT_PUBLIC_*` values are
 > baked into the bundle as it is built, so a site published before they exist points at
 > `http://localhost:8000` — the client's fallback — with no Clerk key, and says nothing about
-> it. Until step 5 gives you the Clerk keys, the draft URL is the one to use.
+> it.
 
 > ⚠️ Now set `ALLOWED_ORIGINS` on Render to **the custom domain**, first in the list. That
 > first entry is both what CORS allows and where Clerk's invitation link lands
 > (`Settings.invitation_redirect_url`) — and an invitation that arrives at the wrong origin is
 > found by the one person who cannot accept it.
-
-## 5. Clerk — all of it before anybody signs in
-
-1. **Create the production instance** and add the DNS records it asks for, on the domain from
-   step 4. Its Frontend API lives at `clerk.<your domain>` for a reason: if it and the console
-   were not same-site, the session cookie would need `SameSite=None`, which Safari does not
-   accept.
-2. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` — the first of
-   its values you need after `IMAGE_REPO` — and:
-
-   ```bash
-   task instance:clerk-template
-   ```
-
-   Idempotent, and it says which of three things it did. What it writes and why is
-   [in the reference](#the-jwt-template-in-detail).
-3. **Invite-only**, under Restrictions.
-4. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
-   template while you are there ([Inviting evaluators](#inviting-evaluators-adr-0049)).
-
-> ⚠️ **The template must exist before the admin's first login.** Without the `email` claim the
-> assessor is created as an `evaluator` — a safe degrade — and `ADMIN_EMAILS` applies once, at
-> row creation, so writing the template afterwards rescues nobody.
-
-**Nobody signs in yet.**
 
 ## 6. The first admin signs in
 
