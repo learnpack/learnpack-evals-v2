@@ -119,11 +119,18 @@ which Safari does not accept. The **API stays on `onrender.com`** — its token 
 
    Idempotent, and it says which of three things it did. What it writes and why is
    [in the reference](#the-jwt-template-in-detail).
-5. **Invite-only**, under Restrictions.
-6. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
-   template while you are there ([Inviting evaluators](#inviting-evaluators-adr-0049)).
+5. **Invite-only**, under **User & Authentication** → **Access Mode**.
+6. **Put the data-use notice in the invitation email.** **Customization → Emails**, the
+   **Invitation** template, then *Apply changes*. This is the email the evaluators receive at
+   step 8, when the console creates their Clerk invitations — so the sentence they are owed has
+   to be in it before anybody is invited, and it can never reach the ones invited before.
+   [Inviting evaluators](#inviting-evaluators-adr-0049) has the wording.
+7. **Invite the admin**, from Clerk's **Invitations** page. Invite-only means nobody can sign
+   themselves up, so the first account has to arrive this way. This is **not**
+   `invite-assessor`: there is no backend to run it against yet, and this invitation only gets
+   them through Clerk's door. The `assessors` row appears when they sign in, at step 6.
 
-> ⚠️ **The template must exist before the admin's first login.** Without the `email` claim the
+> ⚠️ **The JWT template (4) must exist before the admin's first login.** Without the `email` claim the
 > assessor is created as an `evaluator` — a safe degrade — and `ADMIN_EMAILS` applies once, at
 > row creation, so writing the template afterwards rescues nobody.
 
