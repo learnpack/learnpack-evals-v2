@@ -163,9 +163,10 @@ shows up, check that it still works.
   (`netlify deploy --build --prod`), or `deploy:console:preview` for a draft URL first. Netlify
   does not build this repository — it is private, and its organisation's GitHub App is not ours
   to install — and a release is an act somebody performs anyway.
-- Base dir `frontend`, declared by `../netlify.toml` — at the repository root, which is the
-  only place Netlify reads one from on its own. The CLI reads it exactly as a hosted build
-  would. Plugin `@netlify/plugin-nextjs`.
+- `netlify.toml` lives here and the CLI runs here: the deploy reads the bundled edge functions
+  from `.netlify/` under the directory it is run from, and the Next.js runtime writes them
+  next to the build, so the two directories have to be one — or the Clerk middleware is left
+  out of the deploy without a word. Plugin `@netlify/plugin-nextjs`.
 - Env: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_API_URL`,
   `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation`. All of
   them are read at **build** time, so changing one needs a redeploy.

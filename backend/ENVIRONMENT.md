@@ -1,307 +1,240 @@
 # Deploying an instance
 
-This is for one errand: **a human evaluation campaign**, where subject-matter experts who do
-not have this repository open a course in a browser and score it. That needs real accounts and
-somewhere to keep what they answer, so it needs Clerk, a store and two hosts — and everything
-here is done **once per instance**: the hosts, the schema, the two things nothing in the app
-can author, who is born an admin, how the evaluators are registered, and the order all of it
-has to happen in.
+One errand: **a human evaluation campaign**, where subject-matter experts who do not have this
+repository open a course in a browser and score it. That needs real accounts and somewhere to
+keep what they answer — so it needs Clerk, a store and two hosts.
 
-Measuring a generator's output needs none of it. That runs on your machine in
-[local mode](README.md#local-mode-and-clerk-mode-adr-0008), which replaces where identity comes
-from and nothing else — so the campaign flow can be rehearsed locally first, and
-[Running Clerk against your own machine](#running-clerk-against-your-own-machine) is how to
-rehearse the sign-in and invitation halves too.
+Two things get deployed. **The API**, which holds everything, and **the console** — the web
+application people open: the admin screens and the evaluators' own. That is what "console"
+means throughout.
 
-One Clerk instance is one instance.
+**Follow this top to bottom, once per instance.** The order is not a preference: three of the
+steps degrade *silently* if they run late, and one of them stops being repairable the moment an
+expert answers.
 
-**The commands here run from `backend/` on your own machine, pointed at the deployed store** —
-`DATABASE_URL` at Neon and `AUTH_MODE=clerk` — not from a shell on the server. The image is
-built from `backend/` alone, so `docs/seed/` is not in it and the seeder's own files are not
-there to read.
+Measuring a generator's output needs none of it — that runs on your machine in local mode.
 
-## Clerk (ADR-0004)
+## Before you start
 
-Clerk's default session token **carries neither email nor name**. A **JWT template** adds them,
-and writing it is a command rather than a form:
+All of this lives outside the repository:
 
-```bash
-uv run python -m app.cli setup-clerk-jwt-template
-```
+| | |
+|---|---|
+| **Neon** | a project, in the region the API will run in |
+| **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
+| **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
+| **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 comes first. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
+| **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you (step 1), `read:packages` for Render (step 4) |
+| **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
+| **The first admin's email address** | |
 
-It needs `CLERK_SECRET_KEY` and nothing else — not `AUTH_MODE`, because the act belongs to the
-instance that key names and not to this process. It is idempotent, and says which of the three
-things it did: created it, updated claims that had drifted, or left one that already said the
-right thing. `--name` is there for a template called something other than `learnpack-evals`; it
-has to match the frontend's `NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, because `getToken({ template })`
-against a name Clerk does not have returns nothing at all and the request then arrives
-unauthenticated rather than wrong.
+Everything below runs **on your own machine**, never from a shell on the server: the image is
+built from `backend/` alone, so the seeder's own files are not inside it. A `task …` works from
+anywhere in the repository; where a bare command has to run somewhere in particular, the step
+says where.
 
-What it writes, and what the dashboard's own form would have to say:
+> **Rehearse first if you can.** The identity half — the JWT template, the first admin, an
+> invitation redeemed — is the part whose order cannot be repeated, and all of it can be
+> exercised against `localhost` before any of this exists. See
+> [Rehearsing Clerk against your own machine](#rehearsing-clerk-against-your-own-machine).
 
-```json
-{
-  "email": "{{user.primary_email_address}}",
-  "name": "{{user.full_name}}",
-  "email_verified": "{{user.email_verified}}"
-}
-```
+---
 
-The backend tolerates their absence (the profile stays `NULL`), but without them you cannot
-identify the SMEs or use `set-role`.
+## 1. Publish the API image
 
-`email_verified` gates one thing: **redeeming an invitation** (ADR-0049). Matching an
-invitation on an address the provider never vouched for is a known account-takeover shape,
-which is why the claim is required rather than assumed.
+Render does not build this repository; it runs a **prebuilt image**, and one has to exist before
+a service can point at it.
 
-**The symptom of getting it wrong is quiet**: the person signs in and appears in the roster
-with the *default* role, while their invitation sits there still saying `pending` — because
-an invitation is consumed only while the assessor is being created, and by then it is too
-late. The backend logs a warning naming this template every time it declines to redeem, and
-the console marks such an invitation. **Get the shortcode right before anybody signs in**:
-`{{user.email_verified}}`, not any of the other names it might plausibly have. Quoted or
-unquoted both work — the backend reads a real boolean and the string `"true"` alike, and,
-deliberately, reads `"false"` as false.
-
-**Create the template before anyone signs in.** The `email` claim also decides the first
-admin's initial role, and that decision is taken **exactly once** — see the order in
-[Preparing an environment](#preparing-an-environment--order-matters).
-
-## Roles and the first admin (ADR-0007)
-
-`assessors.role` is the **source of truth** for authorization, and **login never changes
-anyone's role** — authenticating cannot escalate privileges.
-
-For bootstrap (an admin is needed before an admin exists to create one) there is
-`ADMIN_EMAILS`: a **provisioning** allowlist, not an authorization one. It only decides the
-role a **new** assessor is created with:
+**Nothing is created by hand**: the first push creates the package. From `backend/`, create
+the instance file and fill in `IMAGE_REPO` — the name the image is published under, and
+`.env.instance.example` says what it has to satisfy:
 
 ```bash
-ADMIN_EMAILS=you@yourcompany.com,other@yourcompany.com
+cp .env.instance.example .env.instance
 ```
 
-- Email on the list and the person has **never signed in** → created as `admin`.
-- Email on the list but the person **already exists** as `evaluator` → **stays** `evaluator`.
-- An existing `admin` you **remove** from the list → **stays** `admin`.
-- No `email` claim (missing JWT template) → `evaluator`.
+**`backend/.env.instance` is filled in as you go**, not at the end: every step below that hands
+you a value says to write it there, and by step 7 the file is complete.
 
-This is safe **because access is invite-only**: nobody can register with an admin's email
-without the invitation. If you ever disable invite-only, revisit ADR-0007.
-
-The allowlist is the default for whoever arrives **uninvited**. Everybody after the first
-admin is registered by inviting them, which is where the role is decided per person.
-
-Changing the role of someone who already exists is done from `/admin/assessors` (ADR-0050).
-Two refusals are enforced, because neither is recoverable from inside the product: **nobody
-changes their own role**, and **the last admin cannot be demoted**. Every grant is recorded
-with its author.
-
-`set-role` remains as **break-glass** — for a store whose console nobody can reach, which is
-the bootstrap case above:
+Then log in to the registry, giving the **classic** token scoped `write:packages` as the
+password — GHCR refuses fine-grained ones — and publish:
 
 ```bash
-uv run python -m app.cli set-role --email you@yourcompany.com --role admin
+docker login ghcr.io -u <your github user>
+task deploy:api
 ```
 
-It enforces neither guardrail. That is the point of a break-glass tool, and the reason not to
-reach for it when a screen would do.
+`deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
+and a tag that misdescribes its contents outlives the chance to notice.
 
-## When somebody leaves (ADR-0051)
+Afterwards, **check in GitHub that the package is private**. Storage and bandwidth for the
+container registry are free today, so the image's size does not matter.
 
-Deactivate them from `/admin/assessors`. Nothing is deleted — their evaluations and the
-reports naming them are what happened, and an `Assessor` is the key of provenance — but they
-are offered no new work and **every request they make answers 403**. It is reversible from
-the same row. The same two refusals apply: not yourself, and not the last active admin.
+## 2. The store (Neon)
 
-Deactivating does **not** cancel their open assignments; that lives in campaigns and stays a
-manual step.
+Create the project. Three of its options matter:
 
-## Registering the evaluators after the first admin (ADR-0049)
+| | |
+|---|---|
+| **Postgres version** | **17** — what the test suite and the local container run, so it is the version everything here is tested against |
+| **Region** | **You choose it here**, and Render's service goes in the same one at step 4. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
+| **Enable Neon Auth** | **Leave it off.** Identity here is Clerk's job, and this would add tables of its own to the database for nothing |
 
-Inviting somebody creates **no account**: it records the address, the role and the expertise
-profile, and the `assessors` row still appears at that address's first login, already
-carrying them. Done from `/admin/assessors` in the console, or here:
+One region for both because **the API queries the database many times per request**, so that
+distance is paid over and over. The distance to whoever is browsing is paid once, and barely
+shows.
 
-```bash
-uv run python -m app.cli invite-assessor --email ada@yourcompany.com \
-    --role evaluator --name "Ada Lovelace" --expertise "Instructional design"
-uv run python -m app.cli list-invitations
-```
+Then copy the connection string from the project's **Connect** panel. It goes in two places:
+`DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 4. **Neon
+hands you a `postgresql://…` string, and it needs one edit** — the driver prefix becomes
+`postgresql+psycopg://`, keeping the `?sslmode=require` that is already there:
 
-An invitation is redeemable for seven days, at most one is pending per address, and re-sending
-reopens a window that closed. Revoking one frees the address to be invited again.
-
-Under `AUTH_MODE=clerk` with `CLERK_SECRET_KEY` set, this **also creates the Clerk
-invitation**, so it is one act: the person gets Clerk's email and can sign in to an
-invite-only instance.
-
-The link lands on **`/accept-invitation`**, which renders a sign-up. That is not a detail:
-somebody accepting an invitation **has no account yet**, so Clerk hands the ticket over as
-`__clerk_status=sign_up`, and a page rendering the sign-in form cannot complete it — it
-renders and spins for ever. Override with `CLERK_INVITATION_REDIRECT_URL` only towards
-another page that signs somebody **up**; the default is
-`<first ALLOWED_ORIGINS entry>/accept-invitation`. Point Clerk's own
-`NEXT_PUBLIC_CLERK_SIGN_UP_URL` at the same route.
-
-Under `AUTH_MODE=local`, or with no secret key, nothing is delivered and the log says so —
-the invitation still stands and is redeemed at that address's first sign-in.
-
-**The invitation is where the panel is told what happens to what they write**, because it is
-the last moment before they can start. Clerk's own email is the one they receive, so the notice
-goes in that template, in the Clerk dashboard, once per instance — nothing in this repository
-composes it. One sentence is enough:
-
-> Your answers and comments are read by our team alongside the other reviewers', under an
-> identifier rather than your name.
-
-The evaluator's own screen carries the short half of it (`Your answers are recorded under an
-identifier, not your name`) where somebody about to answer can see it again. Keep the two
-saying the same thing: if what the export shares ever widens, the sentence here is what has to
-change first, and it can only change for people invited after it.
-
-> ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
-> already a Clerk user, and that rule cannot be bypassed. The invitation is created here
-> either way and the answer says `delivered: false` with Clerk's own sentence; the remedies
-> are **Re-send**, or inviting that person in Clerk by hand.
-
-## Running Clerk against your own machine
-
-Clerk's **development** instance is built for `localhost`, so the real login flow — and the
-real invitation flow — can be exercised without deploying anything. Nothing in the code
-prevents it: the only guard is the reverse one (`AUTH_MODE=local` refuses a remote database
-and `ENVIRONMENT=production`).
-
-`backend/.env`:
-
-```bash
-AUTH_MODE=clerk
-CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
-CLERK_SECRET_KEY=sk_test_...
-# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
-```
-
-`frontend/.env.local`:
-
-```bash
-NEXT_PUBLIC_AUTH_MODE=clerk
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
-```
-
-Then write the **JWT template** — `uv run python -m app.cli setup-clerk-jwt-template`, before
-signing in for the first time. It works from here for the same reason it needs no `AUTH_MODE`:
-a development instance of Clerk is a real instance, and this configures the one its secret key
-names.
-
-What changes when you do this:
-
-- The user picker is gone; you sign in through Clerk, as a real person.
-- `GET /dev/identities` and the rest of the dev-only surface answer **404**, by design.
-- `seed-demo` refuses to run: it only works in local mode.
-- Inviting from the console really creates a Clerk invitation and really sends an email.
-
-The two modes share one database, and a local assessor's credential is stored as
-`('local', <email>)` while a Clerk one is `('clerk', <sub>)`, so they cannot collide — the
-same person signing in both ways is two assessors, which is what you want on a dev box.
-
-## Preparing an environment — **order matters**
-
-This sequence runs **once per environment** (one Clerk instance = one environment). The order is
-not a preference: three of these steps degrade **silently** when they run late — nothing raises,
-nothing an operator is watching logs, and the price is paid later in data. Two of the three are
-repairable afterwards and say how below. The third stops being repairable the moment an expert
-answers, because by then it has cost their answers to questions they should never have been
-asked.
-
-> ⚠️ **The JWT template with the `email` claim must exist BEFORE the admin's first login.**
-> Without that claim the assessor is created as `evaluator` (a safe degrade), and since the
-> allowlist applies **once, at row creation**, adding the template later does not rescue it.
-> Two individually correct behaviors that, in the wrong order, leave the admin born an
-> evaluator.
-
-### 1. The store (Neon)
-
-Create the project and keep its connection string. It needs the psycopg3 prefix and SSL:
-
-```bash
+```text
 DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
 ```
 
-Put it in the **same region the API runs in**: a request pays that round trip many times over
-and a browser pays it once, so this is the latency that matters.
+Nothing migrates it by hand. The API's pre-deploy command is `alembic upgrade head`, so the
+first release is also the first migration.
 
-Nothing migrates it by hand. The API's **pre-deploy command** is `alembic upgrade head`
-(step 2), so it runs once per deploy, before traffic switches, and the first deploy is also the
-first migration. A failure there aborts the deploy and leaves the previous version serving.
+## 3. Clerk and the domain — all of it before anybody signs in
 
-### 2. The API (Render)
+**First of everything that follows.** Two waits start here and each can take up to 48 hours:
+the nameservers, and the records Clerk verifies. Left for later they land on the day you meant
+to open the campaign.
 
-**Render does not build this repository.** It is private and owned by an organisation whose
-GitHub Apps are not ours to install, so the service runs a **prebuilt image** that
-`task deploy:api` publishes from a developer's machine (see
-[Releasing](#releasing-once-it-is-running)). Publish one first — the service needs something to
-point at — and then create a web service of type **Existing image**:
+**One domain, and it is the console's.** Clerk serves its Frontend API from `clerk.<your
+domain>` because if the two were not same-site the session cookie would need `SameSite=None`,
+which Safari does not accept. The **API stays on `onrender.com`** — its token travels in the
+`Authorization` header, so it is cross-origin by design and needs no domain.
+
+1. **In the Netlify dashboard**, go to **DNS → Use Netlify DNS**, enter the domain name and
+   click **Verify**.
+2. **Point the registrar at it.** Netlify answers with four nameservers; set those where the
+   domain was bought, replacing what is there — registrars usually call it *custom DNS*.
+3. **In Clerk, create the production instance** for your application, giving it the domain
+   from (1). Then go to **Developers → Domains → Configure**: Clerk lists five CNAME records.
+   Add each one to the Netlify DNS from (1), exactly as shown — a single character out and
+   the record stays unverified; Clerk's **AI prompt** button copies them out as text, which
+   beats transcribing. Then press **Verify** in Clerk.
+4. **Collect the production keys.** Under **Developers → API Keys**, the production instance
+   has a publishable key (`pk_live_…`) and a secret key (`sk_live_…`). Three values leave this
+   step, and later steps ask for them by name:
+
+   | Value | Where it goes |
+   |---|---|
+   | `CLERK_SECRET_KEY` (`sk_live_…`) | `backend/.env.instance` **now**; Render at step 4; Netlify at step 5 |
+   | `CLERK_ISSUER`, which is `https://clerk.<your domain>` | Render at step 4 |
+   | The publishable key (`pk_live_…`) | Netlify at step 5 |
+
+5. **Write the JWT template.** With `CLERK_SECRET_KEY` in `backend/.env.instance`:
+
+   ```bash
+   task instance:clerk-template
+   ```
+
+   It creates the template, updates it, or reports it unchanged, and can be run again at any
+   time. What it writes and why is [in the reference](#the-jwt-template-in-detail).
+6. **In Clerk**, under **User & Authentication → Access Mode**, set it to **Invite-only**.
+7. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
+   first admin. Invite-only means nobody can sign themselves up, so the first account has to
+   arrive this way. This invitation only gets them through Clerk's door: the `assessors` row
+   appears when they sign in, at step 6, and there is no backend yet to run `invite-assessor`
+   against.
+
+> ⚠️ **The JWT template (5) must exist before the admin's first login.** Without the `email`
+> claim the assessor is created as an `evaluator` — a safe degrade — and `ADMIN_EMAILS` applies
+> once, at row creation, so writing the template afterwards rescues nobody.
+
+**Nobody signs in yet.**
+
+## 4. The API (Render)
+
+In the Render dashboard, **New → Web Services**. On the form, under **Source Code**, click
+**Existing Image**, give it your `IMAGE_REPO:latest` and the `read:packages` token, and press
+**Connect**.
+
+The rest of the form:
 
 | Field | Value |
 |---|---|
-| Image URL | `IMAGE_REPO:latest`, from `backend/.env.instance` |
-| Credential | a token that can read that registry — for GHCR, `read:packages` |
-| Region | the one the Neon project is in |
-| Instance type | any **paid** one; the pre-deploy command is not available on free |
+| Region | the one Neon is in (step 2) |
+| Instance type | any **paid** one |
 | Health check path | `/health` |
 | Pre-deploy command | `alembic upgrade head` |
 
-And the environment:
+And its environment:
 
 | Variable | Value |
 |---|---|
 | `ENVIRONMENT` | `production` |
-| `AUTH_MODE` | `clerk`. Declared rather than left to the code's default, so the refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
-| `DATABASE_URL` | Neon, from step 1 |
-| `CLERK_ISSUER` | step 4 |
-| `CLERK_SECRET_KEY` | step 4 — without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
-| `ADMIN_EMAILS` | provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
-| `ALLOWED_ORIGINS` | step 3, and that entry goes **first** |
+| `AUTH_MODE` | `clerk`. Declared rather than left to the default, so a refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
+| `DATABASE_URL` | Neon, from step 2 |
+| `CLERK_ISSUER` | `https://clerk.<your domain>`, from step 3 |
+| `CLERK_SECRET_KEY` | the `sk_live_…` key from step 3. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
+| `ADMIN_EMAILS` | the first admin's address. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
+| `ALLOWED_ORIGINS` | `https://<your domain>`, the console's origin from step 3. If you add more, this one stays **first**: the first entry is both what CORS allows and where Clerk's invitation link lands, and an invitation that lands on the wrong origin is found by the one person who cannot accept it |
 
-Two of those cannot be known yet — the Clerk keys and the console's own origin — so a first
-pass with placeholders and one edit afterwards is the normal shape of this step, not a mistake.
+**What is deliberately absent:** `CLERK_JWKS_URL` (empty, it is derived from the issuer; a
+value copied from a local `.env` silently wins and points this instance at a development one) ·
+`LLM_API_KEY` (no assessor judges from here) · `LOCAL_SOURCE_ROOTS` (local trees are served
+only under `AUTH_MODE=local`).
 
-**What is deliberately absent, and why:**
+**The AI inside the course is optional, and takes four variables.** Left unset, the
+evaluator's course loads without its AI and the screen says why. Set them if the seats exist —
+an academy, a **non-SaaS** cohort, a service account and its role, created by hand and
+described in `.env.example`:
 
-- `CLERK_JWKS_URL` — left empty it is derived from the issuer, and a value copied over from a
-  local `.env` silently wins over it and points this instance at a development one.
-- `LLM_API_KEY` — no assessor judges from this instance. Measuring a generator runs on a
-  developer's machine, and a key on a host with no use for it is a key that can leak for
-  nothing (ADR-0034 makes it access, never identity).
-- `BREATHECODE_*` / `RIGOBOT_*` — the seat infrastructure of ADR-0061 is created once by hand
-  and may not exist. Unset is a valid deployment: every screen works and the course loads
-  without its AI, saying so.
-- `LOCAL_SOURCE_ROOTS` — local trees are served only under `AUTH_MODE=local`, and a locator
-  into this host would point at bytes it does not serve.
+```text
+BREATHECODE_SERVICE_TOKEN=
+BREATHECODE_ACADEMY_ID=
+BREATHECODE_COHORT_ID=
+SEAT_EMAIL_TEMPLATE=you+sme-{slug}@yourdomain.com
+```
 
-`GET /health` answering `{"status": "ok", "environment": "production"}` is what says the schema
-and the store are both there: it runs a real query, so it cannot answer `ok` over a database it
-cannot reach.
+> ⚠️ **Only the first three decide whether course sessions are on.** Set those and leave
+> `SEAT_EMAIL_TEMPLATE` empty and the feature switches on anyway — then fails one evaluator at
+> a time, on their screen, when the seat cannot be given an address. It must contain `{slug}`,
+> which is what makes each seat's address its own.
 
-### 3. The console (Netlify)
+`BREATHECODE_API_URL`, `RIGOBOT_API_URL` and `RIGOBOT_ORGANIZATION` have working defaults;
+declare them only if yours differ.
 
-Netlify does not build this repository either, for the same reason, so the site is created and
-published from here:
+Once the first release is live, open `https://<the service>.onrender.com/health` in a
+browser. `{"status": "ok", "environment": "production"}` says the schema and the store are
+both there — it runs a real query, so it cannot answer `ok` over a database it cannot reach.
+That URL is the API's address, which the console needs at step 5.
+
+Two values for `backend/.env.instance` come out of this step: **`ADMIN_EMAIL`**, the same
+address as `ADMIN_EMAILS` here, and **`RENDER_DEPLOY_HOOK`** from the service's *Settings →
+Deploy Hook*, which is what lets `task deploy:api` release without the dashboard.
+
+## 5. The console (Netlify)
+
+Netlify does not build this repository either, so the site is created and published from here.
+`frontend/netlify.toml` declares the build and the Node version, and the CLI reads it exactly
+as a hosted build would.
+
+**From `frontend/`**, and every `netlify` command in this step runs there: the CLI looks for
+`netlify.toml` in the directory it is run from, `netlify link` records the site there, and the
+deploy picks up the edge functions only when that directory is also the one the build ran in:
 
 ```bash
 netlify sites:create --name <the site>
 netlify link
 ```
 
-`netlify.toml` at the repository root declares the base directory, the build and the Node
-version, and the CLI reads it exactly as the hosted build would. What the dashboard supplies is
-the environment, and **all of it is read at build time**, so changing any of it needs a redeploy
-rather than a restart:
+**Attach the domain** from step 3 to this site: in the Netlify dashboard, the site's **Domain
+management → Add a domain**. Its DNS is already at Netlify, so this is the record that points
+the domain at what you are about to publish.
 
-```bash
-NEXT_PUBLIC_API_URL=https://<the Render service>.onrender.com
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
-CLERK_SECRET_KEY=sk_...
+**Set the environment** under the site's **Site configuration → Environment variables** —
+the Clerk keys come from step 3, the API's URL from step 4. **All of it is read at build
+time**, so changing any of it needs a new release rather than a restart:
+
+```text
+NEXT_PUBLIC_API_URL=https://<the render service>.onrender.com
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
+CLERK_SECRET_KEY=sk_live_...
 NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 ```
@@ -309,39 +242,63 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 `NEXT_PUBLIC_AUTH_MODE` is left unset on purpose: anything that is not `local` is `clerk`, so a
 missing or misspelled value fails safe.
 
-Then `task deploy:console` publishes it, and `task deploy:console:preview` does the same to a
-draft URL when you want to look before promoting.
+> ⚠️ **Do not tick "Contains secret values" on any of them.** A secret value never leaves
+> Netlify's own builders: what the CLI hands a build on this machine is the masked string
+> (`****************abcd`), and that is what would be baked into the bundle. The site is built
+> here, so its variables have to be plain. A variable already marked secret cannot be unmarked
+> — delete it and create it again.
 
-Then go back to Render and set `ALLOWED_ORIGINS` to this site's URL. **It goes first**, because
-the first entry is both what CORS allows and what Clerk's invitation link is derived from
-(`Settings.invitation_redirect_url`) — and an invitation that lands on the wrong origin is
-found by the person who cannot accept it.
+Check the wiring before publishing anything — `netlify build --dry` from `frontend/` builds
+nothing and prints what a real build would do:
 
-### 4. Clerk — all of it before anybody signs in
+- **Config file** is `frontend/netlify.toml`, and **Current directory** is `frontend`.
+- **Next.js Runtime** appears among the plugins. Without it a Next site still publishes, and
+  its server-rendered routes do not work.
 
-1. The **JWT template**: `uv run python -m app.cli setup-clerk-jwt-template`, with
-   `CLERK_SECRET_KEY` in that shell's environment
-   ([what it writes and why](#clerk-adr-0004)). `email` decides who is born an admin and
-   `email_verified` decides whether an invitation can be redeemed at all.
-2. Invite-only, in **Restrictions**.
-3. Invite the admin's account. **Nobody signs in yet.**
+Then publish with `task deploy:console`, or `task deploy:console:preview` for a draft URL that
+leaves the live site alone. **A draft cannot sign anybody in**: its URL is on `netlify.app`,
+and Clerk's production instance answers only its own domain — every call to
+`clerk.<your domain>` comes back `400 origin_invalid` and the page spins at *Signing you in…*.
+What a draft proves is that the build runs and the server function answers; sign-in is
+checked on the live site, at `https://<your domain>`, at step 6.
 
-### 5. The first admin signs in
+> ⚠️ **The environment has to be set before the build, not after.** `NEXT_PUBLIC_*` values are
+> baked into the bundle as it is built, so a site published before they exist points at
+> `http://localhost:8000` — the client's fallback — with no Clerk key, and says nothing about
+> it.
 
-Now, and not before. Verify with `GET /me` that it says `"role": "admin"`.
+## 6. The first admin signs in
 
-Everything below is attributed to somebody, so this row has to exist before any of it: an act
-names its author (ADR-0042), and `--email` is how it finds them.
+Now, and not before. The admin opens the invitation email from step 3, creates their account,
+and signs in at `https://<your domain>`. **The console lands an admin on `/admin`** and an
+evaluator on `/evaluations`, so the landing page is the check.
 
-### 6. What the store has to hold
+Everything below is attributed to somebody, so this row has to exist first: an act names its
+author (ADR-0042), and `ADMIN_EMAIL` in `backend/.env.instance` is how the tasks find them.
 
-From a checkout on **your own machine**, pointed at the deployed store — not from a shell on the
-server, which has no `docs/seed/`. What points it there is `backend/.env.instance`: copy
-`.env.instance.example`, fill it in, and the `instance:*` tasks read it. Values from it win over
-`backend/.env`, so your local environment is left alone and the two never have to be swapped.
+**If the order went wrong** and they landed as an `evaluator`, there is nothing to delete and
+no allowlist to touch. It needs `DATABASE_URL` and `ADMIN_EMAIL` in `backend/.env.instance`:
 
-Each of these announces the host it is about to write to and refuses until `CONFIRM` names it
-back, because they sit in the same file as `db:reset` and the two must never be confused.
+```bash
+CONFIRM=<the neon host> task instance:promote-admin
+```
+
+That is the break-glass path — at this point there is no admin, so nobody could grant the role
+from the console, and this command has none of the console's guardrails. Which is why it is
+here and nowhere else.
+
+## 7. What the store has to hold
+
+`backend/.env.instance` has been filling up since step 1, and what is left is this step's own:
+**the generator** (`GENERATOR_NAME`, `GENERATOR_VERSION_V1`) and **the courses** — where the
+V1 list and the deployment list are, and which tree the V2 courses come from. Its `.example`
+says what each one is for.
+
+That file is what points these tasks at the deployed store, and values from it win over
+`backend/.env`, so your local environment is never edited to reach a deployed one.
+
+Each task prints the host it is about to write to and refuses until `CONFIRM` names it back —
+they live in the same file as `db:reset`, and the two must never be confused.
 
 ```bash
 CONFIRM=<the neon host> task instance:seed        # re-runnable
@@ -349,33 +306,21 @@ CONFIRM=<the neon host> task instance:generator   # once, ever
 ```
 
 `instance:seed` installs the two things nothing in the app can author — the **human reference
-instrument** (one Likert statement per quality, ADR-0052) and the **pedagogical reference data**,
-the qualities, dimensions and frameworks an instrument cites; a campaign pins a reference
-instrument when it opens (ADR-0056), so without them there is no campaign to open — and then
-**accepts the extraction** for both package formats.
+instrument** (one Likert statement per quality, ADR-0052) and the **pedagogical reference
+data** — and then **accepts the extraction** for both package formats. `instance:generator` is
+separate because it is the one act here that must not be idempotent: a lineage takes a typed
+name, so a second one is a typo worth refusing (ADR-0031).
 
-`instance:generator` mints the generator lineage and is deliberately not part of that chain: it
-is the one act here that is not idempotent and must not be, since a lineage still takes a typed
-name and a second one is a typo worth refusing rather than a repetition worth absorbing
-(ADR-0031).
+> ⚠️ **Accepting the extraction is the step that is paid for in data.** It arms automatic
+> profiling on registration (ADR-0029), and an item is withheld from a human only where a
+> profile *settles* that its datum is undeclared (ADR-0053). A course with no profile settles
+> nothing — so the four items a `LearnpackV1` course cannot answer get **asked anyway**, of
+> every expert, with no error and no log. Accepting it *before* the courses are registered is
+> what makes profiling automatic; accepting it afterwards profiles nothing retroactively, and
+> those courses stay unread until somebody reads them from `/admin/profiles`. Recoverable right
+> up until an expert answers, and not one minute after.
 
-`seed-workbench` is **not** part of any of this. It replays acts that are human ones by decision
-and refuses outside `AUTH_MODE=local` (ADR-0045); what a deployed instance needs of it, it gets
-one act at a time here, attributed to the admin who performs it.
-
-**Accepting the extraction is not paperwork, and it is the step that is paid for in data.** It
-is what arms automatic profiling on registration (ADR-0029), and an item is withheld from a
-human only when the profile *settles* that its datum is undeclared (ADR-0053). A course with no
-profile settles nothing — so on a store where the extraction was never accepted, the four items a
-`LearnpackV1` course cannot answer are **asked anyway**, of every expert, with no error and no
-warning anywhere.
-
-Accepting it **before** the courses are registered is what makes this automatic. Accepting it
-afterwards profiles nothing retroactively: those courses stay unread until somebody reads them
-from `/admin/profiles`. So the order is recoverable right up until an expert answers, and not
-one minute after — nothing detects it then, and nobody can be asked again.
-
-**Then the courses**, and in two ways, because the two formats are not reachable the same way:
+**Then the courses**, in two ways, because the two formats are not reachable the same way:
 
 ```bash
 CONFIRM=<host> task instance:courses:v1    # a spreadsheet of URLs
@@ -383,51 +328,45 @@ CONFIRM=<host> task instance:courses:v2    # a tree on this machine
 CONFIRM=<host> task instance:deployments   # where each one is deployed
 ```
 
-- **`LearnpackV1`, from URLs.** The locators stay public, so the deployed API can read those
-  packages again by itself later.
+- **`LearnpackV1`, from URLs.** Locators stay public, so this store can read those packages
+  again by itself later.
 - **`LearnpackV2`, from a local tree.** The generator's run output is served nowhere, so it is
-  read off disk — and that takes **two processes**: `task backend`, the API in local mode,
-  serving the tree (registering fetches one file through that mount before it writes anything),
-  and the task above, writing to the deployed store. The locators that land there therefore
-  point at `localhost`. For a campaign that is fine: the evaluator's screen reads the profile
-  stored at registration and fetches nothing. What it costs is that the deployed API can never
-  re-read those packages — `/admin/profiles` fails on them, and only there.
-- **Deployments last**, because a course is usually deployed after it is registered. Until a
-  course has a consumable URL it can be judged automatically but is refused by the assign picker
-  (ADR-0028), so for this errand every one of them needs one.
+  read off disk — which takes **two processes**: `task backend` serving the tree in local mode,
+  and the task above writing to the deployed store. The tree has to be declared in
+  `LOCAL_SOURCE_ROOTS` in **both** files, `backend/.env` for the serving API and
+  `backend/.env.instance` for the task, under the same name, and `V2_ROOT` is that name. The
+  registered locators end up pointing at `localhost`, which costs a campaign nothing (the
+  evaluator's screen reads the stored profile and fetches nothing) and means only that the
+  deployed API can never re-read those packages.
+- **Deployments last**, because a course is usually deployed after it is registered. Its
+  `external_id` is declared by the package and printed by the registration, so the CSV —
+  `external_id,url` — is written *after* the two steps above, not before.
 
-The two commands underneath are the ordinary ones —
 [Registering courses](README.md#registering-courses) and
 [Declaring the deployment](README.md#declaring-the-deployment-of-a-registered-course-declare-deployment)
-say what they do and what the CSVs look like.
+describe the commands underneath and what the files look like.
 
-**Before opening the campaign, read `/admin/profiles` and confirm every course was profiled.**
-That screen is where a package never read says so, and where it can be read now. A failure at
-registration is otherwise only in the summary line the command printed at the time, and the
-cost of missing it is the paragraph above.
+> ⚠️ **Before opening the campaign, read `/admin/profiles`** and confirm no course was left
+> unread. A package that failed to be read says so only there and in the summary line the
+> command printed at the time.
 
-### 7. The campaign
+## 8. The campaign
 
-From the console, both of them:
+Both acts happen in the console:
 
-- **Invite the evaluators** from `/admin/assessors`. **That is the whole act**: with
-  `CLERK_SECRET_KEY` set it creates the Clerk invitation too, so do **not** also invite them in
-  Clerk by hand — Clerk refuses an address that is already one of its users, and the second
-  invitation is the one that comes back `delivered: false`. They sign in → their role and
-  expertise come from the invitation.
-- **Open the campaign** and assign.
+- **Invite the evaluators** from `/admin/assessors` —
+  [Inviting evaluators](#inviting-evaluators-adr-0049) says what can go wrong.
+- **Open the campaign** from `/admin/campaigns` and assign courses to evaluators.
 
-**If you got the order wrong** (the admin already signed in and landed as `evaluator`):
-nothing to delete, no allowlist to touch — fix it with
+Before inviting anyone real, run one course through end to end yourself: it is the only way to
+see that the course loads inside the frame from this origin, and that the right items are
+withheld from it.
 
-```bash
-uv run python -m app.cli set-role --email <admin email> --role admin
-```
+---
 
-which is the break-glass path: at that point there is no admin, so there is nobody who could
-grant the role from the console.
+## After it is running
 
-## Releasing, once it is running
+### Releasing
 
 **Pushing releases nothing.** Neither host watches this repository, and an image-backed service
 does not redeploy when a new image appears under its tag — so a release is an act somebody
@@ -438,21 +377,21 @@ task deploy:api        # builds, publishes the image, triggers the release
 task deploy:console    # builds and publishes the site
 ```
 
-`deploy:api` refuses while anything tracked is uncommitted: it tags the image with the commit,
-and a tag that misdescribes what is inside it outlives the chance to notice. Without a
-`RENDER_DEPLOY_HOOK` it publishes and then says so — the release is *Manual Deploy* in the
-dashboard.
+Without a `RENDER_DEPLOY_HOOK` declared, `deploy:api` publishes and then says so — the release
+is *Manual Deploy* in the dashboard.
 
-A release of either host **never touches the store**: Neon is its own service, and nothing in a
-deploy writes data. What moves with the code is the schema, and the **pre-deploy command** is
-what moves it: `alembic upgrade head`, once, before traffic switches. If it fails, Render halts
-the release and the previous version keeps serving — which is also why it is not in the start
-command, where a half-migrated schema would meet live traffic.
+A release **never touches the store**: Neon is its own service and nothing in a deploy writes
+data. What moves with the code is the schema, and the pre-deploy command is what moves it:
+`alembic upgrade head`, once, before traffic switches. If it fails Render halts the release and
+the previous version keeps serving — which is why it is not in the start command, where a
+half-migrated schema would meet live traffic.
 
 The seeders are not in that path and must not be: `seed` is idempotent, but a step that reruns
 on every release is a step nobody reads the output of.
 
-**Back the store up before each release while a campaign is open**:
+### Backing up
+
+**Before every release while a campaign is open:**
 
 ```bash
 CONFIRM=<the neon host> task instance:dump
@@ -460,6 +399,161 @@ CONFIRM=<the neon host> task instance:dump
 
 The migrations here do not destroy data, but that is a convention rather than a guarantee, and
 this is thirty seconds against the only copy of what the panel answered. It writes outside the
-repository, to `DUMP_DIR`, and deliberately: the dump is the **identified** record — it carries
+repository, to `DUMP_DIR`, deliberately: the dump is the **identified** record — it carries
 every expert's address — and it is what the campaign's results are read from once this instance
 is gone.
+
+### When somebody leaves (ADR-0051)
+
+Deactivate them from `/admin/assessors`. Nothing is deleted — their evaluations and the reports
+naming them are what happened, and an `Assessor` is the key of provenance — but they are
+offered no new work and every request they make answers 403. Reversible from the same row.
+
+It does **not** cancel their open assignments; that lives in campaigns and stays a manual step.
+
+---
+
+## Reference
+
+### Roles and the first admin (ADR-0007)
+
+`assessors.role` is the source of truth for authorization, and **login never changes anyone's
+role** — authenticating cannot escalate privileges.
+
+`ADMIN_EMAILS` is a **provisioning** allowlist, not an authorization one. It only decides the
+role a **new** assessor is created with:
+
+- On the list, never signed in → created as `admin`.
+- On the list but already exists as `evaluator` → **stays** `evaluator`.
+- An existing `admin` removed from the list → **stays** `admin`.
+- No `email` claim (missing JWT template) → `evaluator`.
+
+This is safe **because access is invite-only**: nobody can register with an admin's email
+without the invitation. If you ever disable invite-only, revisit ADR-0007.
+
+Changing an existing assessor's role is done from `/admin/assessors` (ADR-0050), with two
+refusals that are enforced because neither is recoverable from inside the product: nobody
+changes their own role, and the last admin cannot be demoted. Every grant records its author.
+`set-role` is the break-glass version and enforces neither — which is the point of a
+break-glass tool, and the reason not to reach for it when a screen would do.
+
+### Inviting evaluators (ADR-0049)
+
+Inviting somebody creates **no account**: it records the address, the role and the expertise
+profile, and the `assessors` row appears at that address's first login already carrying them.
+From `/admin/assessors`, or here:
+
+```bash
+uv run python -m app.cli invite-assessor --email ada@yourcompany.com \
+    --role evaluator --name "Ada Lovelace" --expertise "Instructional design"
+uv run python -m app.cli list-invitations
+```
+
+Redeemable for seven days, at most one pending per address; re-sending reopens a window that
+closed, revoking frees the address. With `CLERK_SECRET_KEY` set this **also creates the Clerk
+invitation**, so it is one act — do not also invite them in Clerk by hand.
+
+The link lands on **`/accept-invitation`**, which renders a sign-up. That is not a detail:
+somebody accepting an invitation has no account yet, so Clerk hands the ticket over as
+`__clerk_status=sign_up` and a page rendering the sign-in form renders and spins for ever.
+The console's `NEXT_PUBLIC_CLERK_SIGN_UP_URL` points at the same route.
+
+> ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
+> already a Clerk user, and that rule cannot be bypassed. The invitation is created here either
+> way and the answer says `delivered: false` with Clerk's own sentence; the remedies are
+> **Re-send**, or inviting that person in Clerk by hand.
+
+**The evaluator's screen is where the panel is told what happens to what they write**: one
+sentence under the rules they read before answering (`Your answers are recorded under an
+identifier, not your name`), shown only once something is assigned to them. Clerk's invitation
+email carries no notice, so its template needs no editing. If what is shared ever widens, that
+sentence is the one to change.
+
+### The JWT template, in detail
+
+Clerk's default session token **carries neither email nor name**. The template adds them:
+
+```json
+{
+  "email": "{{user.primary_email_address}}",
+  "name": "{{user.full_name}}",
+  "email_verified": "{{user.email_verified}}"
+}
+```
+
+`setup-clerk-jwt-template` needs `CLERK_SECRET_KEY` and nothing else — not `AUTH_MODE`, because
+the act belongs to the instance that key names and not to the process running it. `--name` is
+for a template called something other than `learnpack-evals`; it has to match the frontend's
+`NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, because `getToken({ template })` against a name Clerk does not
+have returns nothing at all and the request then arrives unauthenticated rather than wrong.
+
+`email` decides the first admin's initial role. `email_verified` gates one thing: **redeeming an
+invitation** — matching an invitation on an address the provider never vouched for is a known
+account-takeover shape, which is why the claim is required rather than assumed. Quoted or
+unquoted both work; the backend reads a real boolean and the string `"true"` alike and,
+deliberately, reads `"false"` as false.
+
+**Getting it wrong is quiet**: the person signs in and appears in the roster with the *default*
+role while their invitation still says `pending`, because an invitation is consumed only while
+the assessor is being created. The backend logs a warning naming this template every time it
+declines to redeem, and the console marks such an invitation.
+
+### Rehearsing Clerk against your own machine
+
+Clerk's **development** instance is built for `localhost`, so the sign-in and invitation flows
+can be exercised without deploying anything. The only guard is the reverse one: `AUTH_MODE=local`
+refuses a remote database and `ENVIRONMENT=production`.
+
+`backend/.env`:
+
+```text
+AUTH_MODE=clerk
+CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
+CLERK_SECRET_KEY=sk_test_...
+# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
+```
+
+`frontend/.env.local`:
+
+```text
+NEXT_PUBLIC_AUTH_MODE=clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
+```
+
+Then write the template — `uv run python -m app.cli setup-clerk-jwt-template` — before signing
+in for the first time. It works from here because a development instance is a real instance.
+
+The command rather than `task instance:clerk-template`, deliberately: the task reads the key
+from `.env.instance`, which is the deployed instance's, and here the one you want is the
+development key sitting in `backend/.env`.
+
+What changes: the user picker is gone and you sign in as a real person; `GET /dev/identities`
+and the rest of the dev-only surface answer 404; `seed-demo` refuses to run; and inviting from
+the console really sends an email.
+
+The two modes share one database and cannot collide — a local assessor is stored as
+`('local', <email>)` and a Clerk one as `('clerk', <sub>)`, so the same person signing in both
+ways is two assessors, which is what you want on a dev box.
+
+---
+
+## When something does not work
+
+Everything here fails **quietly** — that is what earns it a place. A loud failure explains
+itself; these hand you a screen that looks fine, or a check that never passes, and no reason.
+
+| What you see | What it is | What to do |
+|---|---|---|
+| Clerk keeps saying `unverified` | The records are at a provider the domain does not point at, or they have not propagated | `nslookup -type=NS <your domain>` — `dns1.p0N.nsone.net` means Netlify. If that is right, `nslookup -type=CNAME clerk.<your domain>` and wait; propagation can take 48 hours |
+| The admin signed in and is an `evaluator` | The JWT template was written after their first login, and `ADMIN_EMAILS` applies once, at row creation | `CONFIRM=<the neon host> task instance:promote-admin` |
+| Somebody signs in with the default role while their invitation still says `pending` | The token carries no `email_verified` claim, so the invitation could not be redeemed | Fix the template (step 3.5) and re-send. The backend logs a warning naming it every time |
+| An invitation answers `delivered: false` | That address is already a Clerk user, and Clerk refuses a second invitation for it | **Re-send**, or invite that person in Clerk by hand |
+| The console loads, and every request to the API fails | Its origin is not in `ALLOWED_ORIGINS` | Add it on Render, **first** in the list |
+| The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
+| The build says the Clerk publishable key is invalid, and shows it as `****************abcd` | The variable is marked secret in Netlify, so the CLI handed the local build the mask instead of the value | Delete the variable and create it again without "Contains secret values" — the same for every other one marked secret |
+| The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
+| The console shows *missing bearer token* on `/`, and an anonymous visitor gets `200` instead of a redirect to `/sign-in` | The deploy carries no edge functions, so the Clerk middleware never ran: the CLI reads them from `.netlify/` under the directory it was run from, and the build wrote them somewhere else | Run the deploy from `frontend/`, where `netlify.toml` is — `task deploy:console` does. `netlify api getDeploy` on the deploy shows `edge_functions_present: true` when it worked |
+| The console spins at *Signing you in…* and Clerk answers `400 origin_invalid` | The page is open on an origin that is not the domain — a `netlify.app` draft or the site's default address — and the production instance refuses every other one | Open it at `https://<your domain>`; a draft URL can never sign in |
+| Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
+

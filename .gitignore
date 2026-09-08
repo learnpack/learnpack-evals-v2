@@ -20,6 +20,11 @@ Thumbs.db
 # Task (go-task) cache
 .task/
 
+# Which Netlify site this checkout is linked to, written by `netlify link`. The CLI finds it
+# from any directory of the repository, so it may sit here even though the CLI runs from
+# `frontend/` (whose own .gitignore covers a copy written there).
+.netlify/
+
 # AI agents
 .claude/
 .cursor/

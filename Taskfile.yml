@@ -175,6 +175,13 @@ tasks:
     desc: Build and publish the console to Netlify, live
     dir: frontend
     cmds:
+      # From `frontend/`, where `netlify.toml` is, and the build directory has to be the one
+      # the CLI is run from: `netlify deploy` reads the bundled edge functions from
+      # `.netlify/edge-functions-dist` under its OWN working directory, while the Next.js
+      # runtime writes them next to the build. Run from the root with a `base` pointing here,
+      # the two differ and the edge functions — the Clerk middleware among them — are left
+      # out of the deploy without a word, and every page is served to anyone.
+      #
       # `--build` runs the build here, and Netlify's CLI pulls the site's own environment down
       # for it — which is what keeps the NEXT_PUBLIC_* values (inlined at build time) the same
       # ones the dashboard declares.
@@ -214,6 +221,30 @@ tasks:
           echo "Re-run with CONFIRM=$host to say that is the store you meant." >&2
           exit 1
         fi
+
+  instance:clerk-template:
+    desc: Write the JWT template on the Clerk instance CLERK_SECRET_KEY names — before anyone signs in
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      # No guard, because this writes to no store: the act belongs to the Clerk instance that
+      # key names, and the command refuses on its own when there is no key. What it needs from
+      # here is only that the key comes from `.env.instance` rather than from the local `.env`,
+      # which is what a developer rehearsing against their own machine has in it.
+      - uv run python -m app.cli setup-clerk-jwt-template
+
+  instance:promote-admin:
+    desc: Break-glass — make ADMIN_EMAIL an admin when they were born an evaluator
+    dir: backend
+    dotenv: ['.env.instance']
+    cmds:
+      - task: instance:guard
+      # For the one case ENVIRONMENT.md names: the JWT template was written late, so the first
+      # admin was created without an `email` claim and the allowlist — which applies once, at
+      # row creation — cannot rescue them. There is no admin yet, so nobody could grant the
+      # role from the console, which is what makes a command without the console's guardrails
+      # the right tool here and the wrong one everywhere else.
+      - uv run python -m app.cli set-role --email $ADMIN_EMAIL --role admin
 
   instance:seed:
     desc: Seed a deployed store — rubric, reference data, accepted extractions (re-runnable)
