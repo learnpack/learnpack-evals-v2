@@ -16,18 +16,18 @@ Measuring a generator's output needs none of it — that runs on your machine in
 
 ## Before you start
 
-All of this lives outside the repository:
+What the steps below need and do not create. Everything else — the Neon project, the Render
+service, the Netlify site, Clerk's production instance — is created at its step.
 
 | | |
 |---|---|
-| **Neon** | a project, in the region the API will run in |
-| **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
-| **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
+| **Accounts** | **Neon**, **Render** (with billing set up: step 4 picks a **paid** instance type, because the pre-deploy command that runs the migrations does not exist on free), **Netlify**, and **Clerk** with an application created in it — step 3 adds that application's production instance |
+| **Netlify's CLI** | `npm i -g netlify-cli`, then `netlify login` |
 | **Docker**, running | it builds the API image (step 1) and runs the backup (`instance:dump`), so nothing else has to be installed for either |
-| **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 comes first. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
-| **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you (step 1), `read:packages` for Render (step 4) |
-| **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
-| **The first admin's email address** | |
+| **A domain you control at its registrar** | Clerk's production instance requires one, and step 3 points its nameservers at Netlify. **Its DNS can take up to 48 hours to propagate**, which is why step 3 comes first |
+| **Two GitHub tokens** | **Classic** personal access tokens, from any account — it needs no relation to this repository: one scoped `write:packages` (step 1), one scoped `read:packages` (step 4) |
+| **The first admin's email address** | used at steps 3 and 4 |
+| **The courses** | by step 7: the V1 courses as public URLs, the V2 courses as the generator's output on this machine, and for each V2 course the URL it is deployed at — an expert opens every course in a browser (ADR-0028) |
 
 Everything below runs **on your own machine**, never from a shell on the server: the image is
 built from `backend/` alone, so the seeder's own files are not inside it. A `task …` works from
