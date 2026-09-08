@@ -25,8 +25,10 @@ All of this lives outside the repository:
 | **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
 | **The first admin's email address** | |
 
-Every command below runs from `backend/` **on your own machine**, never from a shell on the
-server: the image is built from `backend/` alone, so the seeder's own files are not in it.
+Everything below runs **on your own machine**, never from a shell on the server: the image is
+built from `backend/` alone, so the seeder's own files are not inside it. A `task …` works from
+anywhere in the repository; where a bare command has to run somewhere in particular, the step
+says where.
 
 > **Rehearse first if you can.** The identity half — the JWT template, the first admin, an
 > invitation redeemed — is the part whose order cannot be repeated, and all of it can be
@@ -150,6 +152,11 @@ it cannot reach.
 Netlify does not build this repository either, so the site is created and published from here.
 `netlify.toml` at the repository root declares the base directory, the build and the Node
 version, and the CLI reads it exactly as a hosted build would.
+
+**From the repository root**, not from `backend/` like the rest and not from `frontend/`:
+`netlify link` records the site in the directory it is run from, and the CLI looks for
+`netlify.toml` where it is standing. The root is where that file is, and its `base = "frontend"`
+does the rest — the same way a hosted build would.
 
 ```bash
 netlify sites:create --name <the site>

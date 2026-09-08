@@ -20,6 +20,10 @@ Thumbs.db
 # Task (go-task) cache
 .task/
 
+# Which Netlify site this checkout is linked to, written by `netlify link` at the root —
+# where the CLI is run from, because that is where netlify.toml is.
+.netlify/
+
 # AI agents
 .claude/
 .cursor/
