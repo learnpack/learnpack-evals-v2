@@ -24,7 +24,7 @@ All of this lives outside the repository:
 | **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
 | **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
 | **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 comes first. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
-| **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you, `read:packages` for Render (step 1) |
+| **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you (step 1), `read:packages` for Render (step 4) |
 | **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
 | **The first admin's email address** | |
 
@@ -45,19 +45,24 @@ says where.
 Render does not build this repository; it runs a **prebuilt image**, and one has to exist before
 a service can point at it.
 
-**Nothing is created by hand**: the first push creates the package. Log in with a **classic**
-personal access token scoped `write:packages` as the password — GHCR refuses fine-grained ones
-— and publish:
+**Nothing is created by hand**: the first push creates the package. From `backend/`, create
+the instance file and fill in `IMAGE_REPO` — the name the image is published under, and
+`.env.instance.example` says what it has to satisfy:
 
 ```bash
-docker login ghcr.io -u <your github user>
 cp .env.instance.example .env.instance
-task deploy:api
 ```
 
 **`backend/.env.instance` is filled in as you go**, not at the end: every step below that hands
-you a value says to write it there, and by step 7 the file is complete. Right now that is
-`IMAGE_REPO` alone — `.env.instance.example` says what it has to satisfy.
+you a value says to write it there, and by step 7 the file is complete.
+
+Then log in to the registry, giving the **classic** token scoped `write:packages` as the
+password — GHCR refuses fine-grained ones — and publish:
+
+```bash
+docker login ghcr.io -u <your github user>
+task deploy:api
+```
 
 `deploy:api` refuses while anything tracked is uncommitted — it tags the image with the commit,
 and a tag that misdescribes its contents outlives the chance to notice.
@@ -79,10 +84,10 @@ One region for both because **the API queries the database many times per reques
 distance is paid over and over. The distance to whoever is browsing is paid once, and barely
 shows.
 
-Then the connection string, which nothing here runs: it is a value, and it goes in two places
-— `DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 4.
-**Neon hands you a `postgresql://…` string, and it needs one edit** — the driver prefix,
-keeping the SSL that is already there:
+Then copy the connection string from the project's **Connect** panel. It goes in two places:
+`DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 4. **Neon
+hands you a `postgresql://…` string, and it needs one edit** — the driver prefix becomes
+`postgresql+psycopg://`, keeping the `?sslmode=require` that is already there:
 
 ```text
 DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
@@ -106,42 +111,58 @@ which Safari does not accept. The **API stays on `onrender.com`** — its token 
    click **Verify**.
 2. **Point the registrar at it.** Netlify answers with four nameservers; set those where the
    domain was bought, replacing what is there — registrars usually call it *custom DNS*.
-3. **In Clerk, create the production instance**, then go to **Developers → Domains →
-   Configure**. Clerk shows five CNAME records; add them to the Netlify DNS from (1). Its
-   **AI prompt** button copies them out as instructions to paste into an assistant, which
-   saves transcribing them by hand — a single character out and the record stays unverified.
-   Then press **Verify** in Clerk.
-4. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` and:
+3. **In Clerk, create the production instance** for your application, giving it the domain
+   from (1). Then go to **Developers → Domains → Configure**: Clerk lists five CNAME records.
+   Add each one to the Netlify DNS from (1), exactly as shown — a single character out and
+   the record stays unverified; Clerk's **AI prompt** button copies them out as text, which
+   beats transcribing. Then press **Verify** in Clerk.
+4. **Collect the production keys.** Under **Developers → API Keys**, the production instance
+   has a publishable key (`pk_live_…`) and a secret key (`sk_live_…`). Three values leave this
+   step, and later steps ask for them by name:
+
+   | Value | Where it goes |
+   |---|---|
+   | `CLERK_SECRET_KEY` (`sk_live_…`) | `backend/.env.instance` **now**; Render at step 4; Netlify at step 5 |
+   | `CLERK_ISSUER`, which is `https://clerk.<your domain>` | Render at step 4 |
+   | The publishable key (`pk_live_…`) | Netlify at step 5 |
+
+5. **Write the JWT template.** With `CLERK_SECRET_KEY` in `backend/.env.instance`:
 
    ```bash
    task instance:clerk-template
    ```
 
-   Idempotent, and it says which of three things it did. What it writes and why is
-   [in the reference](#the-jwt-template-in-detail).
-5. **In Clerk**, under **User & Authentication** → **Access Mode**, set it to **Invite-only**.
-6. **Put the data-use notice in the invitation email.** **Customization → Emails**, the
-   **Invitation** template, then *Apply changes*. This is the email the evaluators receive at
-   step 8, when the console creates their Clerk invitations — so the sentence they are owed has
-   to be in it before anybody is invited, and it can never reach the ones invited before.
-   [Inviting evaluators](#inviting-evaluators-adr-0049) has the wording.
-7. **Invite the admin**, from Clerk's **Invitations** page. Invite-only means nobody can sign
-   themselves up, so the first account has to arrive this way. This is **not**
-   `invite-assessor`: there is no backend to run it against yet, and this invitation only gets
-   them through Clerk's door. The `assessors` row appears when they sign in, at step 6.
+   It creates the template, updates it, or reports it unchanged, and can be run again at any
+   time. What it writes and why is [in the reference](#the-jwt-template-in-detail).
+6. **In Clerk**, under **User & Authentication → Access Mode**, set it to **Invite-only**.
+7. **Put the data-use notice in the invitation email.** In Clerk, under **Customization →
+   Emails**, open the **Invitation** template, add this sentence to its body and press
+   *Apply changes*:
 
-> ⚠️ **The JWT template (4) must exist before the admin's first login.** Without the `email` claim the
-> assessor is created as an `evaluator` — a safe degrade — and `ADMIN_EMAILS` applies once, at
-> row creation, so writing the template afterwards rescues nobody.
+   > Your answers and comments are read by our team alongside the other reviewers', under an
+   > identifier rather than your name.
+
+   This is the email every evaluator receives when the console invites them at step 8. The
+   sentence has to be in it before the first invitation goes out, because an email already
+   sent cannot be amended. [Inviting evaluators](#inviting-evaluators-adr-0049) says why this
+   sentence and where else it appears.
+8. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
+   first admin. Invite-only means nobody can sign themselves up, so the first account has to
+   arrive this way. This invitation only gets them through Clerk's door: the `assessors` row
+   appears when they sign in, at step 6, and there is no backend yet to run `invite-assessor`
+   against.
+
+> ⚠️ **The JWT template (5) must exist before the admin's first login.** Without the `email`
+> claim the assessor is created as an `evaluator` — a safe degrade — and `ADMIN_EMAILS` applies
+> once, at row creation, so writing the template afterwards rescues nobody.
 
 **Nobody signs in yet.**
 
 ## 4. The API (Render)
 
-Two screens. First **New → Web Services**.
-
-Then, on the form, under **Source Code** click **Existing Image**.
-Give it your `IMAGE_REPO:latest` and the `read:packages` token, and press **Connect**.
+In the Render dashboard, **New → Web Services**. On the form, under **Source Code**, click
+**Existing Image**, give it your `IMAGE_REPO:latest` and the `read:packages` token, and press
+**Connect**.
 
 The rest of the form:
 
@@ -159,12 +180,12 @@ And its environment:
 | `ENVIRONMENT` | `production` |
 | `AUTH_MODE` | `clerk`. Declared rather than left to the default, so a refusal is never what discovers it: `local` here does not boot at all (ADR-0008) |
 | `DATABASE_URL` | Neon, from step 2 |
-| `CLERK_ISSUER` | step 3 |
-| `CLERK_SECRET_KEY` | step 3. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
-| `ADMIN_EMAILS` | the first admin. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
-| `ALLOWED_ORIGINS` | the domain from step 3, and that entry goes **first** |
+| `CLERK_ISSUER` | `https://clerk.<your domain>`, from step 3 |
+| `CLERK_SECRET_KEY` | the `sk_live_…` key from step 3. Without it an invitation is recorded here and never created in Clerk, so the person invited cannot sign in at all (ADR-0049) |
+| `ADMIN_EMAILS` | the first admin's address. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
+| `ALLOWED_ORIGINS` | `https://<your domain>`, the console's origin from step 3. If you add more, this one stays **first**: the first entry is both what CORS allows and where Clerk's invitation link lands, and an invitation that lands on the wrong origin is found by the one person who cannot accept it |
 
-Every one of these is known by now, which is what steps 3 and 4 buy: no placeholders, and
+Every one of these is known by now, which is what steps 2 and 3 buy: no placeholders, and
 nothing to come back and edit.
 
 **What is deliberately absent:** `CLERK_JWKS_URL` (empty, it is derived from the issuer; a
@@ -192,9 +213,10 @@ SEAT_EMAIL_TEMPLATE=you+sme-{slug}@yourdomain.com
 `BREATHECODE_API_URL`, `RIGOBOT_API_URL` and `RIGOBOT_ORGANIZATION` have working defaults;
 declare them only if yours differ.
 
-`GET /health` answering `{"status": "ok", "environment": "production"}` is what says the schema
-and the store are both there — it runs a real query, so it cannot answer `ok` over a database
-it cannot reach.
+Once the first release is live, open `https://<the service>.onrender.com/health` in a
+browser. `{"status": "ok", "environment": "production"}` says the schema and the store are
+both there — it runs a real query, so it cannot answer `ok` over a database it cannot reach.
+That URL is the API's address, which the console needs at step 5.
 
 Two values for `backend/.env.instance` come out of this step: **`ADMIN_EMAIL`**, the same
 address as `ADMIN_EMAILS` here, and **`RENDER_DEPLOY_HOOK`** from the service's *Settings →
@@ -203,26 +225,24 @@ Deploy Hook*, which is what lets `task deploy:api` release without the dashboard
 ## 5. The console (Netlify)
 
 Netlify does not build this repository either, so the site is created and published from here.
-`netlify.toml` at the repository root declares the base directory, the build and the Node
-version, and the CLI reads it exactly as a hosted build would.
+`netlify.toml` at the repository root declares the base directory (`frontend`), the build and
+the Node version, and the CLI reads it exactly as a hosted build would.
 
-**From the repository root**:
-`netlify link` records the site in the directory it is run from, and the CLI looks for
-`netlify.toml` where it is standing. The root is where that file is, and its `base = "frontend"`
-does the rest — the same way a hosted build would.
+**From the repository root**, because the CLI looks for `netlify.toml` in the directory it is
+run from, and `netlify link` records the site there too:
 
 ```bash
 netlify sites:create --name <the site>
 netlify link
 ```
 
-**Attach the domain** from step 3 to this site. Its DNS is already there, so this is the
-record that points it at what you are about to publish.
+**Attach the domain** from step 3 to this site: in the Netlify dashboard, the site's **Domain
+management → Add a domain**. Its DNS is already at Netlify, so this is the record that points
+the domain at what you are about to publish.
 
-Set the environment in the Netlify dashboard — the Clerk keys come from step 3, the API's URL
-from step 4.
-**All of it is read at build time**, so changing any of it needs a new release rather than a
-restart:
+**Set the environment** under the site's **Site configuration → Environment variables** —
+the Clerk keys come from step 3, the API's URL from step 4. **All of it is read at build
+time**, so changing any of it needs a new release rather than a restart:
 
 ```text
 NEXT_PUBLIC_API_URL=https://<the render service>.onrender.com
@@ -251,17 +271,14 @@ leaves the live site alone.
 > `http://localhost:8000` — the client's fallback — with no Clerk key, and says nothing about
 > it.
 
-> ⚠️ Now set `ALLOWED_ORIGINS` on Render to **the custom domain**, first in the list. That
-> first entry is both what CORS allows and where Clerk's invitation link lands
-> (`Settings.invitation_redirect_url`) — and an invitation that arrives at the wrong origin is
-> found by the one person who cannot accept it.
-
 ## 6. The first admin signs in
 
-Now, and not before. Verify with `GET /me` that it says `"role": "admin"`.
+Now, and not before. The admin opens the invitation email from step 3, creates their account,
+and signs in at `https://<your domain>`. **The console lands an admin on `/admin`** and an
+evaluator on `/evaluations`, so the landing page is the check.
 
 Everything below is attributed to somebody, so this row has to exist first: an act names its
-author (ADR-0042), and `--email` is how it finds them.
+author (ADR-0042), and `ADMIN_EMAIL` in `backend/.env.instance` is how the tasks find them.
 
 **If the order went wrong** and they landed as an `evaluator`, there is nothing to delete and
 no allowlist to touch. It needs `DATABASE_URL` and `ADMIN_EMAIL` in `backend/.env.instance`:
@@ -277,12 +294,12 @@ here and nowhere else.
 ## 7. What the store has to hold
 
 `backend/.env.instance` has been filling up since step 1, and what is left is this step's own:
-**the courses** — where the V1 list and the deployment list are, which tree the V2 courses come
-from, and the generator version they are attributed to. Its `.example` says what each one is
-for.
+**the generator** (`GENERATOR_NAME`, `GENERATOR_VERSION_V1`) and **the courses** — where the
+V1 list and the deployment list are, and which tree the V2 courses come from. Its `.example`
+says what each one is for.
 
-It is what points these tasks at the deployed store, and values from it win over `backend/.env`,
-so your local environment is never edited to reach a deployed one.
+That file is what points these tasks at the deployed store, and values from it win over
+`backend/.env`, so your local environment is never edited to reach a deployed one.
 
 Each task prints the host it is about to write to and refuses until `CONFIRM` names it back —
 they live in the same file as `db:reset`, and the two must never be confused.
@@ -319,9 +336,12 @@ CONFIRM=<host> task instance:deployments   # where each one is deployed
   again by itself later.
 - **`LearnpackV2`, from a local tree.** The generator's run output is served nowhere, so it is
   read off disk — which takes **two processes**: `task backend` serving the tree in local mode,
-  and the task above writing to the deployed store. Its locators end up pointing at
-  `localhost`, which costs a campaign nothing (the evaluator's screen reads the stored profile
-  and fetches nothing) and means only that the deployed API can never re-read those packages.
+  and the task above writing to the deployed store. The tree has to be declared in
+  `LOCAL_SOURCE_ROOTS` in **both** files, `backend/.env` for the serving API and
+  `backend/.env.instance` for the task, under the same name, and `V2_ROOT` is that name. The
+  registered locators end up pointing at `localhost`, which costs a campaign nothing (the
+  evaluator's screen reads the stored profile and fetches nothing) and means only that the
+  deployed API can never re-read those packages.
 - **Deployments last**, because a course is usually deployed after it is registered. Its
   `external_id` is declared by the package and printed by the registration, so the CSV —
   `external_id,url` — is written *after* the two steps above, not before.
@@ -336,11 +356,11 @@ describe the commands underneath and what the files look like.
 
 ## 8. The campaign
 
-From the console, both of them:
+Both acts happen in the console:
 
-- **Invite the evaluators** from `/admin/assessors` — see
-  [Inviting evaluators](#inviting-evaluators-adr-0049).
-- **Open the campaign** and assign.
+- **Invite the evaluators** from `/admin/assessors`. Each invitation sends the Clerk email
+  from step 3 — [Inviting evaluators](#inviting-evaluators-adr-0049) says what can go wrong.
+- **Open the campaign** from `/admin/campaigns` and assign courses to evaluators.
 
 Before inviting anyone real, run one course through end to end yourself: it is the only way to
 see that the course loads inside the frame from this origin, and that the right items are
@@ -440,7 +460,7 @@ invitation**, so it is one act — do not also invite them in Clerk by hand.
 The link lands on **`/accept-invitation`**, which renders a sign-up. That is not a detail:
 somebody accepting an invitation has no account yet, so Clerk hands the ticket over as
 `__clerk_status=sign_up` and a page rendering the sign-in form renders and spins for ever.
-Point Clerk's `NEXT_PUBLIC_CLERK_SIGN_UP_URL` at the same route.
+The console's `NEXT_PUBLIC_CLERK_SIGN_UP_URL` points at the same route.
 
 > ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
 > already a Clerk user, and that rule cannot be bypassed. The invitation is created here either
@@ -449,7 +469,8 @@ Point Clerk's `NEXT_PUBLIC_CLERK_SIGN_UP_URL` at the same route.
 
 **The invitation is where the panel is told what happens to what they write**, because it is
 the last moment before they can start. Clerk's email is the one they receive, so the notice goes
-in that template, in the Clerk dashboard — nothing here composes it. One sentence is enough:
+in that template, in the Clerk dashboard (step 3) — nothing here composes it. One sentence is
+enough:
 
 > Your answers and comments are read by our team alongside the other reviewers', under an
 > identifier rather than your name.
@@ -536,7 +557,7 @@ itself; these hand you a screen that looks fine, or a check that never passes, a
 |---|---|---|
 | Clerk keeps saying `unverified` | The records are at a provider the domain does not point at, or they have not propagated | `nslookup -type=NS <your domain>` — `dns1.p0N.nsone.net` means Netlify. If that is right, `nslookup -type=CNAME clerk.<your domain>` and wait; propagation can take 48 hours |
 | The admin signed in and is an `evaluator` | The JWT template was written after their first login, and `ADMIN_EMAILS` applies once, at row creation | `CONFIRM=<the neon host> task instance:promote-admin` |
-| Somebody signs in with the default role while their invitation still says `pending` | The token carries no `email_verified` claim, so the invitation could not be redeemed | Fix the template (step 3.4) and re-send. The backend logs a warning naming it every time |
+| Somebody signs in with the default role while their invitation still says `pending` | The token carries no `email_verified` claim, so the invitation could not be redeemed | Fix the template (step 3.5) and re-send. The backend logs a warning naming it every time |
 | An invitation answers `delivered: false` | That address is already a Clerk user, and Clerk refuses a second invitation for it | **Re-send**, or invite that person in Clerk by hand |
 | The console loads, and every request to the API fails | Its origin is not in `ALLOWED_ORIGINS` | Add it on Render, **first** in the list |
 | The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
