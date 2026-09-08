@@ -44,9 +44,9 @@ export default function EvaluationsPage() {
               <HowThisWorks />
               {/* Outside the list, and deliberately. Those five are instructions that protect
                   the measurement and their order is not decorative; this is not a sixth one,
-                  it is what the invitation already said, where somebody about to answer can
-                  see it again. The full notice is given when they are invited — this is the
-                  reminder, so it says the part that is about them and nothing else. */}
+                  it is what happens to what they write. This is the only place the panel is
+                  told — the invitation email carries no notice — so it stands where somebody
+                  about to answer reads it first, and says the part that is about them. */}
               <p className="border-t pt-2 text-xs text-muted-foreground">
                 Your answers are recorded under an identifier, not your name.
               </p>

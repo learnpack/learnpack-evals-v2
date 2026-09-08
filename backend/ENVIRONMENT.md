@@ -135,18 +135,7 @@ which Safari does not accept. The **API stays on `onrender.com`** — its token 
    It creates the template, updates it, or reports it unchanged, and can be run again at any
    time. What it writes and why is [in the reference](#the-jwt-template-in-detail).
 6. **In Clerk**, under **User & Authentication → Access Mode**, set it to **Invite-only**.
-7. **Put the data-use notice in the invitation email.** In Clerk, under **Customization →
-   Emails**, open the **Invitation** template, add this sentence to its body and press
-   *Apply changes*:
-
-   > Your answers and comments are read by our team alongside the other reviewers', under an
-   > identifier rather than your name.
-
-   This is the email every evaluator receives when the console invites them at step 8. The
-   sentence has to be in it before the first invitation goes out, because an email already
-   sent cannot be amended. [Inviting evaluators](#inviting-evaluators-adr-0049) says why this
-   sentence and where else it appears.
-8. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
+7. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
    first admin. Invite-only means nobody can sign themselves up, so the first account has to
    arrive this way. This invitation only gets them through Clerk's door: the `assessors` row
    appears when they sign in, at step 6, and there is no backend yet to run `invite-assessor`
@@ -358,8 +347,8 @@ describe the commands underneath and what the files look like.
 
 Both acts happen in the console:
 
-- **Invite the evaluators** from `/admin/assessors`. Each invitation sends the Clerk email
-  from step 3 — [Inviting evaluators](#inviting-evaluators-adr-0049) says what can go wrong.
+- **Invite the evaluators** from `/admin/assessors` —
+  [Inviting evaluators](#inviting-evaluators-adr-0049) says what can go wrong.
 - **Open the campaign** from `/admin/campaigns` and assign courses to evaluators.
 
 Before inviting anyone real, run one course through end to end yourself: it is the only way to
@@ -467,17 +456,11 @@ The console's `NEXT_PUBLIC_CLERK_SIGN_UP_URL` points at the same route.
 > way and the answer says `delivered: false` with Clerk's own sentence; the remedies are
 > **Re-send**, or inviting that person in Clerk by hand.
 
-**The invitation is where the panel is told what happens to what they write**, because it is
-the last moment before they can start. Clerk's email is the one they receive, so the notice goes
-in that template, in the Clerk dashboard (step 3) — nothing here composes it. One sentence is
-enough:
-
-> Your answers and comments are read by our team alongside the other reviewers', under an
-> identifier rather than your name.
-
-The evaluator's screen carries the short half of it (`Your answers are recorded under an
-identifier, not your name`). Keep the two saying the same thing: if what is shared ever widens,
-this sentence changes first, and it can only change for people invited after it.
+**The evaluator's screen is where the panel is told what happens to what they write**: one
+sentence under the rules they read before answering (`Your answers are recorded under an
+identifier, not your name`), shown only once something is assigned to them. Clerk's invitation
+email carries no notice, so its template needs no editing. If what is shared ever widens, that
+sentence is the one to change.
 
 ### The JWT template, in detail
 
