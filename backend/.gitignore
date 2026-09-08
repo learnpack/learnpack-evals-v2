@@ -1,6 +1,9 @@
 .env
-# The deployed store's credentials (see .env.instance.example).
+# The deployed store's credentials (see .env.instance.example), and the campaign's own lists
+# that ENVIRONMENT.md step 7 writes beside it.
 .env.instance
+courses-v1.csv
+deployments.csv
 .venv/
 __pycache__/
 *.py[cod]

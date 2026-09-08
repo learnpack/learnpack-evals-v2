@@ -255,12 +255,37 @@ tasks:
       # What nothing in the app can author: the human reference instrument a campaign pins
       # when it opens (ADR-0056) and the reference data an instrument cites.
       - uv run python -m app.cli seed
+      # The data-requirements namespace, which nothing else here mints: a profile names what
+      # it extracted by ids that Evaluation Design has to have declared first (ADR-0014), and
+      # they are declared by importing an instrument. On a dev box `seed-workbench` imports
+      # these two; a campaign store has no workbench, so they are imported here — as drafts,
+      # never published, since no assessor judges from a deployed store. Between them they
+      # declare every id the two adapters extract: the first covers LearnpackV1 and most of
+      # LearnpackV2, the second the three ids only LearnpackV2 declares (assessment_offerings,
+      # declared_objectives, lesson_concept_coverage). Missing either, every automatic profile
+      # of that format aborts with "capabilities outside the data_requirements namespace" and
+      # the course stays unread.
+      - uv run python -m app.cli import-instrument --file ../docs/seed/instruments/learnpack-course-qa-v1.yaml
+      - uv run python -m app.cli import-instrument --file ../docs/seed/instruments/course-drafts-qa-v10.yaml
       # And what arms automatic profiling (ADR-0029). Without it every course registers
       # unread, and an item is withheld from a human only where a profile settles that its
       # datum is undeclared (ADR-0053) — so the four items a V1 course cannot answer would be
       # asked of every expert, with nothing raised anywhere.
       - uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email $ADMIN_EMAIL
       - uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email $ADMIN_EMAIL
+
+  instance:reprofile:
+    desc: Profile every course of FORMAT that has no ok profile yet (FORMAT=LearnpackV1|LearnpackV2)
+    dir: backend
+    dotenv: ['.env.instance']
+    requires:
+      vars: [FORMAT]
+    cmds:
+      - task: instance:guard
+      # For courses registered while profiling could not run — before `instance:seed`, or
+      # with the local API down for a V2 tree. Contents already profiled ok are skipped, so
+      # it is safe to run over everything. A V2 tree still needs `task backend` serving it.
+      - uv run python -m app.cli reprofile --package-format {{.FORMAT}}
 
   instance:generator:
     desc: Mint the generator lineage GENERATOR_NAME — once ever, and it refuses a second time
@@ -281,9 +306,15 @@ tasks:
     cmds:
       - task: instance:guard
       # Public locators, so this store can read these packages again by itself.
+      #
+      # `--register-new-version`, because on a fresh store the version does not exist yet and
+      # without the flag the whole list is refused. The flag exists to stop a typo attributing
+      # a batch to a phantom version; here the version is declared once in `.env.instance`,
+      # reviewed there rather than typed per run, which is the guard the flag asks for.
       - >
         uv run python -m app.cli register-package --from-csv $COURSES_V1_CSV
         --generator-name $GENERATOR_NAME --generator-version $GENERATOR_VERSION_V1
+        --register-new-version
 
   instance:courses:v2:
     desc: Register the LearnpackV2 courses of the V2_ROOT tree (needs the local API running)
@@ -299,14 +330,22 @@ tasks:
       - uv run python -m app.cli register-package --all --root $V2_ROOT --format LearnpackV2
 
   instance:deployments:
-    desc: Point registered courses at where they are deployed (DEPLOYMENTS_CSV)
+    desc: Point registered courses at where they are deployed (DEPLOYMENTS_CSV; FORMAT defaults to LearnpackV2)
     dir: backend
     dotenv: ['.env.instance']
+    vars:
+      FORMAT: '{{.FORMAT | default "LearnpackV2"}}'
     cmds:
       - task: instance:guard
       # Until this, a course can be judged automatically but the assign picker refuses it, so
       # it can never be handed to an expert (ADR-0028).
-      - uv run python -m app.cli declare-deployment --from-csv $DEPLOYMENTS_CSV --email $ADMIN_EMAIL
+      #
+      # An external_id is namespaced by its format (ADR-0005), and the command's own default
+      # is LearnpackV1 — under which every V2 slug is "not found". V2 is the default here
+      # because a V1 course registered from a URL already carries that URL as its deployment
+      # (ADR-0028); this act is for the courses read off disk. FORMAT=LearnpackV1 for the rare
+      # V1 course deployed somewhere other than where it was registered from.
+      - uv run python -m app.cli declare-deployment --from-csv $DEPLOYMENTS_CSV --email $ADMIN_EMAIL --format {{.FORMAT}}
 
   instance:dump:
     desc: Back up the deployed store to DUMP_DIR — before every release while a campaign is open
@@ -317,9 +356,15 @@ tasks:
       # `pg_dump` speaks libpq, which does not know the SQLAlchemy driver prefix, so it is
       # stripped. The result is the identified record of what the panel answered: it holds
       # every SME's address and belongs outside the repository, which DUMP_DIR is for.
+      #
+      # Run from the image the local database uses rather than from a pg_dump on PATH: a
+      # developer's machine usually has none, or one older than the server — and pg_dump
+      # refuses a server newer than itself — while the image is the server's own major and is
+      # already pulled here. The dump streams through stdout instead of a mounted volume, so
+      # no host path crosses into the container.
       - |
         mkdir -p "$DUMP_DIR"
         out="$DUMP_DIR/$(date -u +%Y%m%dT%H%M%SZ).dump"
-        pg_dump --format=custom --no-owner --no-privileges \
-          --file="$out" "$(printf '%s' "$DATABASE_URL" | sed 's|^postgresql+psycopg://|postgresql://|')"
-        echo "wrote $out"
+        docker run --rm postgres:17-alpine pg_dump --format=custom --no-owner --no-privileges \
+          "$(printf '%s' "$DATABASE_URL" | sed 's|^postgresql+psycopg://|postgresql://|')" > "$out"
+        echo "wrote $out ($(wc -c < "$out") bytes)"

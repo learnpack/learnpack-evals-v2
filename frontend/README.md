@@ -83,7 +83,9 @@ address the provider never vouched for is a known account-takeover shape. Theref
 
 A template missing `email_verified` does not fail loudly: the login works and the invitation
 simply is not redeemed, with a warning in the backend log naming the template.
-`../backend/ENVIRONMENT.md` is the whole job, including which spellings Clerk accepts.
+`../backend/ENVIRONMENT.md` is the whole job for a deployed instance, including which spellings
+Clerk accepts; running Clerk against `localhost` with a development instance is
+[Clerk against your own machine](../backend/README.md#clerk-against-your-own-machine).
 
 Access is **invite-only**: configured in Clerk (Restrictions → Allowlist / invitations).
 Evaluators appear in the assignment picker **after their first sign-in**.

@@ -113,12 +113,13 @@ against — which is why the check exists. If the revision is one this checkout 
 Below the claim **it is the same code in both modes** (`ResolveAssessor`, `assessors.role`,
 `require_admin`): local mode does not fork business rules, it only replaces where identity comes
 from — the same cut the test suite uses. So a flow rehearsed locally is the flow that runs
-deployed, and the console has no second version of itself. Setting up the other mode, Clerk
-against your own machine included, is [`ENVIRONMENT.md`](ENVIRONMENT.md).
+deployed, and the console has no second version of itself. A deployed instance is
+[`ENVIRONMENT.md`](ENVIRONMENT.md); Clerk on your own machine is the next section.
 
 The two share one database, and credentials cannot collide — a local assessor is stored as
-`('local', <email>)` and a Clerk one as `('clerk', <sub>)`. What keeps the modes themselves from
-mixing:
+`('local', <email>)` and a Clerk one as `('clerk', <sub>)`, so the same person signing in both
+ways is two assessors, which is what you want on a dev box. What keeps the modes themselves
+from mixing:
 
 - A value that is neither `clerk` nor `local` **does not boot**: a configuration error, not a
   silent degrade.
@@ -153,6 +154,43 @@ installs on top.
 than scoped: editing `DEMO_ASSESSORS`/`DEMO_CONTENTS` is the normal way to shape a demo, and a
 scoped delete strands everything the previous version created. `task db:reset` is the bigger hammer
 — it destroys the database volume, so there is no list of tables to keep in step.
+
+### Clerk against your own machine
+
+Clerk's **development** instance is built for `localhost`, so the sign-in and invitation flows
+can be exercised with real accounts and no deployment. It is a separate instance from the
+production one — its own keys (`sk_test_…`, `pk_test_…`), users and JWT templates — so nothing
+done here reaches a deployed instance, and a deployed instance needs none of it. What it is for
+is rehearsing the identity order that cannot be repeated once an instance exists: the JWT
+template, the first admin, an invitation redeemed. The only guard is the reverse one:
+`AUTH_MODE=local` refuses a remote database and `ENVIRONMENT=production`.
+
+`backend/.env`:
+
+```text
+AUTH_MODE=clerk
+CLERK_ISSUER=https://<your-app>.clerk.accounts.dev
+CLERK_SECRET_KEY=sk_test_...
+# DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
+```
+
+`frontend/.env.local`:
+
+```text
+NEXT_PUBLIC_AUTH_MODE=clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
+```
+
+Then write the template — `uv run python -m app.cli setup-clerk-jwt-template` — before signing
+in for the first time. It works from here because a development instance is a real instance.
+The command rather than `task instance:clerk-template`, deliberately: the task reads the key
+from `.env.instance`, which is the deployed instance's, and here the one you want is the
+development key sitting in `backend/.env`.
+
+What changes: the user picker is gone and you sign in as a real person; `GET /dev/identities`
+and the rest of the dev-only surface answer 404; `seed-demo` refuses to run; and inviting from
+the console really sends an email.
 
 ## Configuration
 
