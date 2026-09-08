@@ -6,7 +6,7 @@ keep what they answer — so it needs Clerk, a store and two hosts.
 
 Two things get deployed. **The API**, which holds everything, and **the console** — the web
 application people open: the admin screens and the evaluators' own. That is what "console"
-means throughout, never a terminal.
+means throughout.
 
 **Follow this top to bottom, once per instance.** The order is not a preference: three of the
 steps degrade *silently* if they run late, and one of them stops being repairable the moment an
@@ -93,34 +93,25 @@ first release is also the first migration.
 
 ## 3. Clerk and the domain — all of it before anybody signs in
 
-**First of everything that follows**, because two waits start here and each can take up to
-48 hours: pointing a domain's nameservers, and propagating the records Clerk verifies. Left for
-later, they land on the day you meant to open the campaign.
+**First of everything that follows.** Two waits start here and each can take up to 48 hours:
+the nameservers, and the records Clerk verifies. Left for later they land on the day you meant
+to open the campaign.
 
-**One domain, and it is the console's.** Clerk serves its Frontend API from a subdomain of the
-same one — `clerk.<your domain>` — because if the two were not same-site the session cookie
-would need `SameSite=None`, which Safari does not accept. The **API stays on `onrender.com`**
-and needs no domain of its own: its token travels in the `Authorization` header and the backend
-runs `allow_credentials=False`, so it is cross-origin by design.
+**One domain, and it is the console's.** Clerk serves its Frontend API from `clerk.<your
+domain>` because if the two were not same-site the session cookie would need `SameSite=None`,
+which Safari does not accept. The **API stays on `onrender.com`** — its token travels in the
+`Authorization` header, so it is cross-origin by design and needs no domain.
 
-1. **Put the domain's DNS somewhere you can edit it, and point the domain at it.** Two acts,
-   and the second is the one that is easy to miss:
-
-   - Add the domain at whichever provider will hold its records. The console's host is the
-     natural one, since the domain ends up there anyway; for Netlify that is
-     **Domains → Add domain**. The site itself comes later, at step 5 — this is only the DNS.
-   - It answers with its **nameservers**. Set those at the **registrar**, where the domain was
-     bought, replacing whatever is there — registrars usually call it *custom DNS*. Until that
-     is done the provider serves records nobody asks it for.
-
-   **Records go wherever the nameservers point, which need not be the registrar.** Added at the
-   wrong one they are served by nobody, and the only symptom is a verification that never
-   passes with nothing to explain it. `nslookup -type=NS <your domain>` answers which it is —
-   before adding a single record, and again if Clerk keeps saying `unverified`.
-2. **Create the production instance.** Only now does Clerk show the five CNAME records, so this
-   is where they get added — into (1), with the values exactly as given: one character out and
-   the record stays unverified. Then press **Verify**, because the check does not repeat itself.
-3. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` and:
+1. **Put the domain's DNS in Netlify**, with **Domains → Add domain**. The DNS only; the site
+   comes at step 5.
+2. **Point the registrar at it.** Netlify answers with four nameservers; set those where the
+   domain was bought, replacing what is there — registrars usually call it *custom DNS*. Skip
+   this and Netlify serves records nobody asks it for, Clerk never verifies, and nothing says
+   why. `nslookup -type=NS <your domain>` is the check: `dns1.p0N.nsone.net` means Netlify.
+3. **Create the production instance.** Only now does Clerk show the five CNAME records, so this
+   is where they get added, into the DNS from (1). Values exactly as given: one character out
+   and the record stays unverified. Then press **Verify** — the check does not repeat itself.
+4. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` and:
 
    ```bash
    task instance:clerk-template
@@ -128,8 +119,8 @@ runs `allow_credentials=False`, so it is cross-origin by design.
 
    Idempotent, and it says which of three things it did. What it writes and why is
    [in the reference](#the-jwt-template-in-detail).
-4. **Invite-only**, under Restrictions.
-5. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
+5. **Invite-only**, under Restrictions.
+6. **Invite the admin's account** — and add the data-use notice to Clerk's invitation email
    template while you are there ([Inviting evaluators](#inviting-evaluators-adr-0049)).
 
 > ⚠️ **The template must exist before the admin's first login.** Without the `email` claim the
