@@ -10,9 +10,12 @@
 
 [build]
   base = "frontend"
-  # Relative to `base`, like every other path here.
+  # Runs inside `base`.
   command = "npm run build"
-  publish = ".next"
+  # Relative to THIS FILE, not to `base`: that is how `publish` resolves in a netlify.toml
+  # (the dashboard resolves it from the base directory instead, which is the trap). `.next`
+  # alone points at a directory that does not exist at the repository root.
+  publish = "frontend/.next"
 
 [build.environment]
   # The version CI builds with. Left to Netlify's default, the two could drift apart and the
