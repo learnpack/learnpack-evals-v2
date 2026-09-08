@@ -174,15 +174,12 @@ And its environment:
 | `ADMIN_EMAILS` | the first admin's address. Provisioning, not authorization: it decides the role a **new** assessor is created with and never changes an existing one (ADR-0007) |
 | `ALLOWED_ORIGINS` | `https://<your domain>`, the console's origin from step 3. If you add more, this one stays **first**: the first entry is both what CORS allows and where Clerk's invitation link lands, and an invitation that lands on the wrong origin is found by the one person who cannot accept it |
 
-Every one of these is known by now, which is what steps 2 and 3 buy: no placeholders, and
-nothing to come back and edit.
-
 **What is deliberately absent:** `CLERK_JWKS_URL` (empty, it is derived from the issuer; a
 value copied from a local `.env` silently wins and points this instance at a development one) ·
 `LLM_API_KEY` (no assessor judges from here) · `LOCAL_SOURCE_ROOTS` (local trees are served
 only under `AUTH_MODE=local`).
 
-**The AI inside the course (ADR-0061) is optional, and takes four variables.** Left unset, the
+**The AI inside the course is optional, and takes four variables.** Left unset, the
 evaluator's course loads without its AI and the screen says why. Set them if the seats exist —
 an academy, a **non-SaaS** cohort, a service account and its role, created by hand and
 described in `.env.example`:
@@ -243,6 +240,12 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 
 `NEXT_PUBLIC_AUTH_MODE` is left unset on purpose: anything that is not `local` is `clerk`, so a
 missing or misspelled value fails safe.
+
+> ⚠️ **Do not tick "Contains secret values" on any of them.** A secret value never leaves
+> Netlify's own builders: what the CLI hands a build on this machine is the masked string
+> (`****************abcd`), and that is what would be baked into the bundle. The site is built
+> here, so its variables have to be plain. A variable already marked secret cannot be unmarked
+> — delete it and create it again.
 
 Check the wiring before publishing anything — `netlify build --dry` from the root builds
 nothing and prints what a real build would do:
@@ -544,6 +547,7 @@ itself; these hand you a screen that looks fine, or a check that never passes, a
 | An invitation answers `delivered: false` | That address is already a Clerk user, and Clerk refuses a second invitation for it | **Re-send**, or invite that person in Clerk by hand |
 | The console loads, and every request to the API fails | Its origin is not in `ALLOWED_ORIGINS` | Add it on Render, **first** in the list |
 | The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
+| The build says the Clerk publishable key is invalid, and shows it as `****************abcd` | The variable is marked secret in Netlify, so the CLI handed the local build the mask instead of the value | Delete the variable and create it again without "Contains secret values" — the same for every other one marked secret |
 | The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
 | Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
 
