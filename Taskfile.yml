@@ -356,9 +356,15 @@ tasks:
       # `pg_dump` speaks libpq, which does not know the SQLAlchemy driver prefix, so it is
       # stripped. The result is the identified record of what the panel answered: it holds
       # every SME's address and belongs outside the repository, which DUMP_DIR is for.
+      #
+      # Run from the image the local database uses rather than from a pg_dump on PATH: a
+      # developer's machine usually has none, or one older than the server — and pg_dump
+      # refuses a server newer than itself — while the image is the server's own major and is
+      # already pulled here. The dump streams through stdout instead of a mounted volume, so
+      # no host path crosses into the container.
       - |
         mkdir -p "$DUMP_DIR"
         out="$DUMP_DIR/$(date -u +%Y%m%dT%H%M%SZ).dump"
-        pg_dump --format=custom --no-owner --no-privileges \
-          --file="$out" "$(printf '%s' "$DATABASE_URL" | sed 's|^postgresql+psycopg://|postgresql://|')"
-        echo "wrote $out"
+        docker run --rm postgres:17-alpine pg_dump --format=custom --no-owner --no-privileges \
+          "$(printf '%s' "$DATABASE_URL" | sed 's|^postgresql+psycopg://|postgresql://|')" > "$out"
+        echo "wrote $out ($(wc -c < "$out") bytes)"

@@ -23,6 +23,7 @@ All of this lives outside the repository:
 | **Neon** | a project, in the region the API will run in |
 | **Render** | an account on a **paid** instance type: the pre-deploy command that runs the migrations does not exist on free |
 | **Netlify** | an account, and its CLI (`npm i -g netlify-cli`, then `netlify login`) |
+| **Docker**, running | it builds the API image (step 1) and runs the backup (`instance:dump`), so nothing else has to be installed for either |
 | **A domain you can add DNS records to** | Clerk's production instance requires one, and **its DNS can take up to 48 hours to propagate** — which is why step 3 comes first. Without a domain you are on a development instance: 100 users, emails prefixed `development`, and the session carried in the querystring instead of a cookie |
 | **A GitHub account to publish the image from** | Any account; it needs no relation to this repository. Two **classic** tokens — `write:packages` for you (step 1), `read:packages` for Render (step 4) |
 | **The courses, deployed** | An expert opens them in a browser, so each one needs a URL (ADR-0028) |
@@ -453,7 +454,8 @@ The migrations here do not destroy data, but that is a convention rather than a 
 this is thirty seconds against the only copy of what the panel answered. It writes outside the
 repository, to `DUMP_DIR`, deliberately: the dump is the **identified** record — it carries
 every expert's address — and it is what the campaign's results are read from once this instance
-is gone.
+is gone. `pg_dump` runs from the `postgres:17-alpine` image the local database uses, so it
+needs no install and is always the server's own version.
 
 ### When somebody leaves (ADR-0051)
 
