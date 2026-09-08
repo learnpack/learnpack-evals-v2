@@ -255,12 +255,33 @@ tasks:
       # What nothing in the app can author: the human reference instrument a campaign pins
       # when it opens (ADR-0056) and the reference data an instrument cites.
       - uv run python -m app.cli seed
+      # The data-requirements namespace, which nothing else here mints: a profile names what
+      # it extracted by ids that Evaluation Design has to have declared first (ADR-0014), and
+      # they are declared by importing an instrument. On a dev box `seed-workbench` imports
+      # this one; a campaign store has no workbench, so it is imported here — as a draft,
+      # never published, since no assessor judges from a deployed store. Without it every
+      # automatic profile aborts with "capabilities outside the data_requirements namespace"
+      # and the course stays unread.
+      - uv run python -m app.cli import-instrument --file ../docs/seed/instruments/learnpack-course-qa-v1.yaml
       # And what arms automatic profiling (ADR-0029). Without it every course registers
       # unread, and an item is withheld from a human only where a profile settles that its
       # datum is undeclared (ADR-0053) — so the four items a V1 course cannot answer would be
       # asked of every expert, with nothing raised anywhere.
       - uv run python -m app.cli accept-extraction --package-format LearnpackV1 --email $ADMIN_EMAIL
       - uv run python -m app.cli accept-extraction --package-format LearnpackV2 --email $ADMIN_EMAIL
+
+  instance:reprofile:
+    desc: Profile every course of FORMAT that has no ok profile yet (FORMAT=LearnpackV1|LearnpackV2)
+    dir: backend
+    dotenv: ['.env.instance']
+    requires:
+      vars: [FORMAT]
+    cmds:
+      - task: instance:guard
+      # For courses registered while profiling could not run — before `instance:seed`, or
+      # with the local API down for a V2 tree. Contents already profiled ok are skipped, so
+      # it is safe to run over everything. A V2 tree still needs `task backend` serving it.
+      - uv run python -m app.cli reprofile --package-format {{.FORMAT}}
 
   instance:generator:
     desc: Mint the generator lineage GENERATOR_NAME — once ever, and it refuses a second time
@@ -281,9 +302,15 @@ tasks:
     cmds:
       - task: instance:guard
       # Public locators, so this store can read these packages again by itself.
+      #
+      # `--register-new-version`, because on a fresh store the version does not exist yet and
+      # without the flag the whole list is refused. The flag exists to stop a typo attributing
+      # a batch to a phantom version; here the version is declared once in `.env.instance`,
+      # reviewed there rather than typed per run, which is the guard the flag asks for.
       - >
         uv run python -m app.cli register-package --from-csv $COURSES_V1_CSV
         --generator-name $GENERATOR_NAME --generator-version $GENERATOR_VERSION_V1
+        --register-new-version
 
   instance:courses:v2:
     desc: Register the LearnpackV2 courses of the V2_ROOT tree (needs the local API running)
