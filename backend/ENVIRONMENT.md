@@ -153,7 +153,7 @@ Netlify does not build this repository either, so the site is created and publis
 `netlify.toml` at the repository root declares the base directory, the build and the Node
 version, and the CLI reads it exactly as a hosted build would.
 
-**From the repository root**, not from `backend/` like the rest and not from `frontend/`:
+**From the repository root**:
 `netlify link` records the site in the directory it is run from, and the CLI looks for
 `netlify.toml` where it is standing. The root is where that file is, and its `base = "frontend"`
 does the rest — the same way a hosted build would.
@@ -182,8 +182,21 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 `NEXT_PUBLIC_AUTH_MODE` is left unset on purpose: anything that is not `local` is `clerk`, so a
 missing or misspelled value fails safe.
 
-Publish it with `task deploy:console` (`task deploy:console:preview` publishes to a draft URL
-instead, to look at before promoting).
+Check the wiring before publishing anything — `netlify build --dry` from the root builds
+nothing and prints what a real build would do:
+
+- **Config file** is the repository's `netlify.toml`, and **Current directory** the `frontend`
+  its `base` points at.
+- **Next.js Runtime** appears among the plugins. Without it a Next site still publishes, and
+  its server-rendered routes do not work.
+
+Then publish with `task deploy:console`, or `task deploy:console:preview` for a draft URL that
+leaves the live site alone.
+
+> ⚠️ **The environment has to be set before the build, not after.** `NEXT_PUBLIC_*` values are
+> baked into the bundle as it is built, so a site published before they exist points at
+> `http://localhost:8000` — the client's fallback — with no Clerk key, and says nothing about
+> it. Until step 5 gives you the Clerk keys, the draft URL is the one to use.
 
 > ⚠️ Now set `ALLOWED_ORIGINS` on Render to **the custom domain**, first in the list. That
 > first entry is both what CORS allows and where Clerk's invitation link lands
