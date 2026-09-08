@@ -283,72 +283,127 @@ no allowlist to touch. It needs `DATABASE_URL` and `ADMIN_EMAIL` in `backend/.en
 CONFIRM=<the neon host> task instance:promote-admin
 ```
 
+**`<the neon host>` is the host part of `DATABASE_URL`** — what sits between the `@` and the
+next `/`, `ep-xxx.region.aws.neon.tech` in the shape step 2 showed. You do not have to work
+it out: every task that writes to the deployed store starts by printing that host and stops
+if `CONFIRM` does not name it, so run it once bare and it tells you what to type:
+
+```text
+$ task instance:promote-admin
+This writes to ep-xxx.region.aws.neon.tech, as ada@yourcompany.com (AUTH_MODE=clerk).
+Re-run with CONFIRM=ep-xxx.region.aws.neon.tech to say that is the store you meant.
+
+$ CONFIRM=ep-xxx.region.aws.neon.tech task instance:promote-admin
+```
+
+The same `CONFIRM=<the neon host>` precedes every `instance:*` task from here on, and it
+always means this. These tasks live in the same file as `db:reset`, and typing the host is
+what makes writing to the campaign's store instead of the local one a deliberate act.
+
 That is the break-glass path — at this point there is no admin, so nobody could grant the role
 from the console, and this command has none of the console's guardrails. Which is why it is
 here and nowhere else.
 
-## 7. What the store has to hold
+## 7. Seed the store and register the courses
 
-`backend/.env.instance` has been filling up since step 1, and what is left is this step's own:
-**the generator** (`GENERATOR_NAME`, `GENERATOR_VERSION_V1`) and **the courses** — where the
-V1 list and the deployment list are, and which tree the V2 courses come from. Its `.example`
-says what each one is for.
+Five tasks, in this order, all from anywhere in the repository. Every one prints the host it is
+about to write to and refuses until `CONFIRM` names it, as step 6 showed.
 
-That file is what points these tasks at the deployed store, and values from it win over
-`backend/.env`, so your local environment is never edited to reach a deployed one.
+### 7.1 Complete `backend/.env.instance`
 
-Each task prints the host it is about to write to and refuses until `CONFIRM` names it back —
-they live in the same file as `db:reset`, and the two must never be confused.
+This step reads the last block of the file. What each variable needs:
+
+| Variable | Default in `.env.instance.example` | What to do |
+|---|---|---|
+| `GENERATOR_NAME` | `learnpack-generator` | Keep it, unless the generator has another name |
+| `GENERATOR_VERSION_V1` | `1.0.0` | **Set it** to the generator version the V1 courses were produced by |
+| `COURSES_V1_CSV` | `./courses-v1.csv` | Keep it; the path is relative to `backend/`. The file is written at 7.3 |
+| `V2_ROOT` | `generated` | Keep it. It is the name given to the tree in the next line |
+| `LOCAL_SOURCE_ROOTS` | `generated=D:\generator\datasets\generated` | **Set the folder** to where the generator's output is on this machine, keeping the `generated=` prefix |
+| `LOCAL_SOURCES_BASE_URL` | `http://localhost:8000/sources` | Keep it |
+| `DEPLOYMENTS_CSV` | `./deployments.csv` | Keep it; relative to `backend/`. The file is written at 7.5 |
+| `DUMP_DIR` | `../../learnpack-evals-dumps` | Keep it, or point it anywhere **outside** the repository. Used by [Backing up](#backing-up) |
+
+Two more, because the V2 courses are read through the local API (7.4): in **`backend/.env`**,
+the file `task backend` reads, set `AUTH_MODE=local` and add the **same** `LOCAL_SOURCE_ROOTS`
+line.
+
+### 7.2 Seed, and name the generator
 
 ```bash
 CONFIRM=<the neon host> task instance:seed        # re-runnable
 CONFIRM=<the neon host> task instance:generator   # once, ever
 ```
 
-`instance:seed` installs the two things nothing in the app can author — the **human reference
-instrument** (one Likert statement per quality, ADR-0052) and the **pedagogical reference
-data** — and then **accepts the extraction** for both package formats. `instance:generator` is
-separate because it is the one act here that must not be idempotent: a lineage takes a typed
-name, so a second one is a typo worth refusing (ADR-0031).
+`instance:seed` installs the human reference instrument and the reference data, imports the
+instrument that declares the data a profile can name, and turns on automatic profiling for
+both package formats. `instance:generator` registers the lineage `GENERATOR_NAME`, and
+refuses to run twice.
 
-> ⚠️ **Accepting the extraction is the step that is paid for in data.** It arms automatic
-> profiling on registration (ADR-0029), and an item is withheld from a human only where a
-> profile *settles* that its datum is undeclared (ADR-0053). A course with no profile settles
-> nothing — so the four items a `LearnpackV1` course cannot answer get **asked anyway**, of
-> every expert, with no error and no log. Accepting it *before* the courses are registered is
-> what makes profiling automatic; accepting it afterwards profiles nothing retroactively, and
-> those courses stay unread until somebody reads them from `/admin/profiles`. Recoverable right
-> up until an expert answers, and not one minute after.
+> ⚠️ **`instance:seed` goes before any course is registered.** A course registered earlier is
+> never profiled, so its evaluators are asked the items it cannot answer, with no error
+> anywhere. Recoverable until the first expert answers, and not after: run `instance:seed`,
+> then `CONFIRM=<the neon host> task instance:reprofile FORMAT=LearnpackV1` (or `LearnpackV2`,
+> with `task backend` serving the tree). It profiles every course that has no profile yet.
 
-**Then the courses**, in two ways, because the two formats are not reachable the same way:
+### 7.3 The V1 courses, from a list of URLs
+
+Write `backend/courses-v1.csv`: **one course URL per row, in the first column**. A header
+row, blank lines, other columns and rows starting with `#` are ignored. Then:
 
 ```bash
-CONFIRM=<host> task instance:courses:v1    # a spreadsheet of URLs
-CONFIRM=<host> task instance:courses:v2    # a tree on this machine
-CONFIRM=<host> task instance:deployments   # where each one is deployed
+CONFIRM=<the neon host> task instance:courses:v1
 ```
 
-- **`LearnpackV1`, from URLs.** Locators stay public, so this store can read those packages
-  again by itself later.
-- **`LearnpackV2`, from a local tree.** The generator's run output is served nowhere, so it is
-  read off disk — which takes **two processes**: `task backend` serving the tree in local mode,
-  and the task above writing to the deployed store. The tree has to be declared in
-  `LOCAL_SOURCE_ROOTS` in **both** files, `backend/.env` for the serving API and
-  `backend/.env.instance` for the task, under the same name, and `V2_ROOT` is that name. The
-  registered locators end up pointing at `localhost`, which costs a campaign nothing (the
-  evaluator's screen reads the stored profile and fetches nothing) and means only that the
-  deployed API can never re-read those packages.
-- **Deployments last**, because a course is usually deployed after it is registered. Its
-  `external_id` is declared by the package and printed by the registration, so the CSV —
-  `external_id,url` — is written *after* the two steps above, not before.
+Every course is attributed to `GENERATOR_NAME` `GENERATOR_VERSION_V1`, and the version is
+registered on the way if it does not exist yet. The URL a V1 course is registered from is the
+running course, so it is recorded as its deployment too: these courses need nothing at 7.5.
+
+### 7.4 The V2 courses, from the generator's tree
+
+The tree is the folder `LOCAL_SOURCE_ROOTS` points at, laid out the way the generator writes
+it: one folder per run named `<GENERATOR_NAME>-<version>` (`learnpack-generator-04a7dd5`, for
+example), and one course folder inside each. The version is read off the run folder's name.
+
+**Everything in the tree is registered, and there is no picking.** Every top-level folder
+has to be a run folder named that way — one that is not aborts the whole run — and every
+folder inside a run is registered as a course. So make the tree a folder of its own holding
+only the runs and courses this campaign wants, copied from the generator's output, and point
+`LOCAL_SOURCE_ROOTS` at it. Re-running is safe: an unchanged course is a reported no-op.
+
+1. In a second terminal, start the local API and leave it running: `task backend`. It serves
+   the tree; the task below reads through it and writes to the deployed store.
+2. Then:
+
+   ```bash
+   CONFIRM=<the neon host> task instance:courses:v2
+   ```
+
+**Keep the output**: it prints each course's `external_id`, which 7.5 needs. The stored
+locators point at `localhost`, which costs a campaign nothing: the evaluator's screen reads
+the stored profile and fetches nothing.
+
+### 7.5 Where each V2 course is deployed
+
+A V2 course was read off disk, so nothing says where an evaluator opens it. Write
+`backend/deployments.csv`, **two columns, `external_id,url`**: the id printed at 7.4, and the
+URL the course is deployed at. A header row is allowed. Then:
+
+```bash
+CONFIRM=<the neon host> task instance:deployments
+```
+
+Until a course has a deployment it cannot be assigned to anyone.
+
+### 7.6 Check that every course was read
+
+Open **`/admin/profiles`** in the console and confirm no course is marked unread. A package
+that failed to be read says so only there and in the summary line the task printed. Unread
+courses are profiled with `instance:reprofile` (7.2), or one at a time from that page.
 
 [Registering courses](README.md#registering-courses) and
 [Declaring the deployment](README.md#declaring-the-deployment-of-a-registered-course-declare-deployment)
-describe the commands underneath and what the files look like.
-
-> ⚠️ **Before opening the campaign, read `/admin/profiles`** and confirm no course was left
-> unread. A package that failed to be read says so only there and in the summary line the
-> command printed at the time.
+describe the commands underneath.
 
 ## 8. The campaign
 
