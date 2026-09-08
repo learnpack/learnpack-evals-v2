@@ -517,3 +517,22 @@ the console really sends an email.
 The two modes share one database and cannot collide — a local assessor is stored as
 `('local', <email>)` and a Clerk one as `('clerk', <sub>)`, so the same person signing in both
 ways is two assessors, which is what you want on a dev box.
+
+---
+
+## When something does not work
+
+Everything here fails **quietly** — that is what earns it a place. A loud failure explains
+itself; these hand you a screen that looks fine, or a check that never passes, and no reason.
+
+| What you see | What it is | What to do |
+|---|---|---|
+| Clerk keeps saying `unverified` | The records are at a provider the domain does not point at, or they have not propagated | `nslookup -type=NS <your domain>` — `dns1.p0N.nsone.net` means Netlify. If that is right, `nslookup -type=CNAME clerk.<your domain>` and wait; propagation can take 48 hours |
+| The admin signed in and is an `evaluator` | The JWT template was written after their first login, and `ADMIN_EMAILS` applies once, at row creation | `CONFIRM=<the neon host> task instance:promote-admin` |
+| Somebody signs in with the default role while their invitation still says `pending` | The token carries no `email_verified` claim, so the invitation could not be redeemed | Fix the template (step 3.4) and re-send. The backend logs a warning naming it every time |
+| An invitation answers `delivered: false` | That address is already a Clerk user, and Clerk refuses a second invitation for it | **Re-send**, or invite that person in Clerk by hand |
+| The console loads, and every request to the API fails | Its origin is not in `ALLOWED_ORIGINS` | Add it on Render, **first** in the list |
+| The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
+| The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
+| Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
+
