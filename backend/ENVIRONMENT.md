@@ -1,22 +1,20 @@
 # Deploying an instance
 
-One errand: **a human evaluation campaign**, where subject-matter experts who do not have this
-repository open a course in a browser and score it.
+A human evaluation campaign: subject-matter experts open a course in a browser and score it.
 
 Two things get deployed. **The API**, on Render with its database on Neon, and **the console**
 — the web application people open: the admin screens and the evaluators' own — on Netlify,
 with Clerk for identity. That is what "console" means throughout.
 
-**Follow this top to bottom, once per instance.** The order is not a preference: three of the
-steps degrade *silently* if they run late, and one of them stops being repairable the moment an
-expert answers.
+**Follow this top to bottom, once per instance.** Three of the steps degrade *silently* if they
+run late; one of them stops being repairable the moment an expert answers.
 
 Measuring a generator's output needs none of it — that runs on your machine in local mode.
 
 ## Before you start
 
-What the steps below need and do not create. Everything else — the Neon project, the Render
-service, the Netlify site, Clerk's production instance — is created at its step.
+Have these ready. Everything else — the Neon project, the Render service, the Netlify site,
+Clerk's production instance — is created at its step.
 
 | | |
 |---|---|
@@ -26,26 +24,22 @@ service, the Netlify site, Clerk's production instance — is created at its ste
 | **A domain you control at its registrar** | Clerk's production instance requires one, and step 3 points its nameservers at Netlify. **Its DNS can take up to 48 hours to propagate** |
 | **Two GitHub tokens** | **Classic** personal access tokens, from any account: one scoped `write:packages` (step 1), one scoped `read:packages` (step 4) |
 | **The first admin's email address** | used at steps 3 and 4 |
-| **The courses** | by step 7: the V1 courses as public URLs, the V2 courses as the generator's output on this machine, and for each V2 course the URL it is deployed at — an expert opens every course in a browser (ADR-0028) |
+| **The courses** | by step 7: the V1 courses as public URLs, the V2 courses as the generator's output on this machine, and for each V2 course the URL it is deployed at — an expert opens every course in a browser |
 
 Everything below runs **on your own machine**, never from a shell on the server. A `task …`
 works from anywhere in the repository; where a bare command has to run somewhere in
 particular, the step says where.
 
-> **Never run Clerk against your own machine?** Do it before step 1 —
-> [Clerk against your own machine](README.md#clerk-against-your-own-machine), in the backend
-> README. It rehearses, on a development instance, the identity order that cannot be repeated
-> once an instance exists: the JWT template, the first admin, an invitation redeemed. Nothing
-> done there reaches the instance built here.
+> To rehearse identity first — JWT template, first admin, an invitation redeemed — do
+> [Clerk against your own machine](README.md#clerk-against-your-own-machine) **before step 1**.
+> Nothing done there reaches the instance built here.
 
 ---
 
 ## 1. Publish the API image
 
-Render runs a **prebuilt image**, so one has to exist before the service is created at step 4.
-
-From `backend/`, create the instance file and fill in `IMAGE_REPO` — the name the image is
-published under; `.env.instance.example` says what it has to satisfy:
+From `backend/`, create the instance file and fill in `IMAGE_REPO` — `.env.instance.example`
+says what it has to satisfy:
 
 ```bash
 cp .env.instance.example .env.instance
@@ -54,7 +48,7 @@ cp .env.instance.example .env.instance
 **`backend/.env.instance` is filled in as you go**: every step below that hands you a value
 says to write it there.
 
-Then log in to the registry, giving the `write:packages` token as the password, and publish:
+Log in to the registry, giving the `write:packages` token as the password, and publish:
 
 ```bash
 docker login ghcr.io -u <your github user>
@@ -66,31 +60,32 @@ The first push creates the package; afterwards, **check in GitHub that it is pri
 
 ## 2. The database (Neon)
 
-Create the project. Three of its options matter:
+Create the project:
 
 | | |
 |---|---|
-| **Postgres version** | **17**, the version everything here is tested against |
-| **Region** | **You choose it here**, and Render's service goes in the same one at step 4 — the API queries the database many times per request. Neon names regions after AWS and Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
-| **Enable Neon Auth** | **Leave it off.** Identity is Clerk's job |
+| **Postgres version** | **17** |
+| **Region** | Choose it here; Render's service goes in the same one at step 4. Neon names regions after AWS, Render after cities: Virginia is `us-east-1`, Ohio `us-east-2`, Oregon `us-west-2`, Frankfurt `eu-central-1`, Singapore `ap-southeast-1` |
+| **Enable Neon Auth** | **Leave it off** |
 
-Then copy the connection string from the project's **Connect** panel. It goes in two places:
-`DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 4. **Neon
-hands you a `postgresql://…` string, and it needs one edit** — the driver prefix becomes
-`postgresql+psycopg://`, keeping the `?sslmode=require` that is already there:
+Copy the connection string from the project's **Connect** panel. It goes in two places:
+`DATABASE_URL` in `backend/.env.instance` **now**, and Render's environment at step 4.
+
+Neon hands you a `postgresql://…` string. Change the driver prefix to `postgresql+psycopg://`;
+keep `?sslmode=require`:
 
 ```text
 DATABASE_URL=postgresql+psycopg://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
 ```
 
-Create no tables: the API's first release runs the migrations (step 4).
+Do not create tables. The API's first release runs the migrations (step 4).
 
 ## 3. Clerk and the domain — all of it before anybody signs in
 
-**First of everything that follows**, because two waits start here and each can take up to 48
+Do this **before everything that follows**. Two waits start here and each can take up to 48
 hours: the nameservers, and the records Clerk verifies.
 
-**The domain is the console's.** The API stays on `onrender.com`.
+The domain is the console's. The API stays on `onrender.com`.
 
 1. **In the Netlify dashboard**, go to **DNS → Use Netlify DNS**, enter the domain name and
    click **Verify**.
@@ -120,8 +115,8 @@ hours: the nameservers, and the records Clerk verifies.
    Re-runnable. What it writes is [in the reference](#the-jwt-template-in-detail).
 6. **In Clerk**, under **User & Authentication → Access Mode**, set it to **Invite-only**.
 7. **Invite the admin**, from Clerk's **Invitations** page, at the address you chose for the
-   first admin. Invite-only means the first account has to arrive this way. This is Clerk's
-   invitation only: the `assessors` row appears when they sign in, at step 6.
+   first admin. This is Clerk's invitation only: the `assessors` row appears when they sign
+   in, at step 6.
 
 > ⚠️ **The JWT template (5) must exist before the admin's first login.** Without it the admin
 > is created as an `evaluator`, and writing the template afterwards does not change that
@@ -156,8 +151,7 @@ And its environment:
 | `ADMIN_EMAILS` | the first admin's address. It decides the role a **new** assessor is created with, and never changes an existing one |
 | `ALLOWED_ORIGINS` | `https://<your domain>`. If you add more, this one stays **first**: the first entry is also where Clerk's invitation link lands |
 
-**Leave unset:** `CLERK_JWKS_URL` (derived from the issuer), `LLM_API_KEY` and
-`LOCAL_SOURCE_ROOTS`.
+**Leave unset:** `CLERK_JWKS_URL`, `LLM_API_KEY` and `LOCAL_SOURCE_ROOTS`.
 
 **Optional: the AI inside the course.** Left unset, the evaluator's course loads without its AI
 and the screen says why. To turn it on, set the four variables described in `.env.example` —
@@ -183,12 +177,11 @@ and the schema is in. That URL is the API's address, which step 5 needs.
 
 Two values for `backend/.env.instance` come out of this step: **`ADMIN_EMAIL`**, the same
 address as `ADMIN_EMAILS` here, and **`RENDER_DEPLOY_HOOK`** from the service's *Settings →
-Deploy Hook*, which is what lets `task deploy:api` release without the dashboard.
+Deploy Hook*.
 
 ## 5. The console (Netlify)
 
-The site is created and published from **`frontend/`**, where `netlify.toml` is, and every
-`netlify` command in this step runs there:
+From **`frontend/`**, where `netlify.toml` is — every `netlify` command in this step runs there:
 
 ```bash
 netlify sites:create --name <the site>
@@ -210,15 +203,15 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 ```
 
 Leave `NEXT_PUBLIC_AUTH_MODE` unset. **All of it is read at build time**: changing any of it
-needs a new release, and a site published before they exist points at `localhost` with no
-Clerk key, and says nothing about it.
+needs a new release. A site published before they exist points at `localhost` with no Clerk
+key, and says nothing about it.
 
 > ⚠️ **Do not tick "Contains secret values" on any of them.** A build on this machine receives
 > the masked string (`****************abcd`) instead of the value, and bakes that in. A
 > variable already marked secret cannot be unmarked — delete it and create it again.
 
-Check the wiring before publishing anything — `netlify build --dry` from `frontend/` builds
-nothing and prints what a real build would do:
+Check the wiring before publishing — `netlify build --dry` from `frontend/` builds nothing and
+prints what a real build would do:
 
 - **Config file** is `frontend/netlify.toml`, and **Current directory** is `frontend`.
 - **Next.js Runtime** appears among the plugins. Without it the site publishes and its
@@ -246,9 +239,9 @@ CONFIRM=<the neon host> task instance:promote-admin
 ```
 
 **`<the neon host>` is the host part of `DATABASE_URL`** — what sits between the `@` and the
-next `/`, `ep-xxx.region.aws.neon.tech` in the shape step 2 showed. You do not have to work
-it out: every task that writes to the deployed database starts by printing that host and
-stops if `CONFIRM` does not name it, so run it once bare and it tells you what to type:
+next `/`, `ep-xxx.region.aws.neon.tech` in the shape step 2 showed. Every task that writes to
+the deployed database prints that host and stops if `CONFIRM` does not name it. Run it once
+bare and it tells you what to type:
 
 ```text
 $ task instance:promote-admin
@@ -258,9 +251,7 @@ Re-run with CONFIRM=ep-xxx.region.aws.neon.tech to say that is the store you mea
 $ CONFIRM=ep-xxx.region.aws.neon.tech task instance:promote-admin
 ```
 
-The same `CONFIRM=<the neon host>` precedes every `instance:*` task from here on, and it
-always means this. `instance:promote-admin` bypasses the console's guardrails on roles; it is
-for this moment, when there is no admin yet, and nothing else.
+The same `CONFIRM=<the neon host>` precedes every `instance:*` task from here on.
 
 ## 7. Seed the database and register the courses
 
@@ -269,7 +260,7 @@ about to write to and refuses until `CONFIRM` names it, as step 6 showed.
 
 ### 7.1 Complete `backend/.env.instance`
 
-This step reads the last block of the file. What each variable needs:
+This step reads the last block of the file:
 
 | Variable | Default in `.env.instance.example` | What to do |
 |---|---|---|
@@ -293,11 +284,6 @@ CONFIRM=<the neon host> task instance:seed        # re-runnable
 CONFIRM=<the neon host> task instance:generator   # once, ever
 ```
 
-`instance:seed` installs the human reference instrument and the reference data, imports the
-two instruments that declare the data a profile can name, and turns on automatic profiling
-for both package formats. `instance:generator` registers the lineage `GENERATOR_NAME`, and
-refuses to run twice.
-
 > ⚠️ **`instance:seed` goes before any course is registered.**
 
 ### 7.3 The V1 courses, from a list of URLs
@@ -309,9 +295,8 @@ row, blank lines, other columns and rows starting with `#` are ignored. Then:
 CONFIRM=<the neon host> task instance:courses:v1
 ```
 
-Every course is attributed to `GENERATOR_NAME` `GENERATOR_VERSION_V1`, and the version is
-registered on the way if it does not exist yet. The URL a V1 course is registered from is
-recorded as its deployment too: these courses need nothing at 7.5.
+Every course is attributed to `GENERATOR_NAME` `GENERATOR_VERSION_V1`. The URL a V1 course is
+registered from is recorded as its deployment too: these courses need nothing at 7.5.
 
 ### 7.4 The V2 courses, from the generator's tree
 
@@ -321,12 +306,11 @@ example), and one course folder inside each. The version is read off the run fol
 
 **Everything in the tree is registered, and there is no picking.** Every top-level folder
 has to be a run folder named that way — one that is not aborts the whole run — and every
-folder inside a run is registered as a course. So make the tree a folder of its own holding
-only the runs and courses this campaign wants, copied from the generator's output, and point
-`LOCAL_SOURCE_ROOTS` at it. Re-running is safe: an unchanged course is a reported no-op.
+folder inside a run is registered as a course. Point `LOCAL_SOURCE_ROOTS` at a folder that
+holds only the runs and courses this campaign wants. Re-running is safe: an unchanged course
+is a reported no-op.
 
-1. In a second terminal, start the local API and leave it running: `task backend`. It serves
-   the tree; the task below reads through it and writes to the deployed database.
+1. In a second terminal, start the local API and leave it running: `task backend`.
 2. Then:
 
    ```bash
@@ -344,8 +328,7 @@ the URL the course is deployed at. A header row is allowed. Then:
 CONFIRM=<the neon host> task instance:deployments
 ```
 
-Until a course has a deployment it cannot be assigned to anyone. The task looks the ids up
-among the V2 courses.
+Until a course has a deployment it cannot be assigned to anyone.
 
 ### 7.6 Check that every course was read
 
@@ -365,9 +348,8 @@ Both acts happen in the console:
   [Inviting evaluators](#inviting-evaluators-adr-0049) says what can go wrong.
 - **Open the campaign** from `/admin/campaigns` and assign courses to evaluators.
 
-Before inviting anyone real, run one course through end to end yourself: it is the only way to
-see that the course loads inside the frame from this origin, and that the right items are
-withheld from it.
+Before inviting anyone real, run one course through end to end yourself: that the course loads
+inside the frame from this origin, and that the right items are withheld from it.
 
 ---
 
@@ -385,9 +367,8 @@ task deploy:console    # builds and publishes the site
 Without a `RENDER_DEPLOY_HOOK` declared, `deploy:api` publishes and then says so — the release
 is *Manual Deploy* in the dashboard.
 
-A release **never touches the database**. What moves with the code is the schema: the
-pre-deploy command runs the migrations before traffic switches, and if it fails Render halts
-the release and the previous version keeps serving.
+A release **never touches the database**. The pre-deploy command runs the migrations before
+traffic switches; if it fails, Render halts the release and the previous version keeps serving.
 
 ### Backing up
 
@@ -397,15 +378,12 @@ the release and the previous version keeps serving.
 CONFIRM=<the neon host> task instance:dump
 ```
 
-It writes to `DUMP_DIR`, outside the repository: the dump carries every expert's address, and
-it is what the campaign's results are read from once this instance is gone. `pg_dump` runs
-from the `postgres:17-alpine` image the local database uses, so nothing has to be installed.
+It writes to `DUMP_DIR`, outside the repository: the dump carries every expert's address.
+`pg_dump` runs from the `postgres:17-alpine` image; nothing has to be installed.
 
 ### When somebody leaves (ADR-0051)
 
-Deactivate them from `/admin/assessors`. Nothing is deleted — their evaluations and the reports
-naming them stay — but they are offered no new work and every request they make answers 403.
-Reversible from the same row.
+Deactivate them from `/admin/assessors`. Nothing is deleted. Reversible from the same row.
 
 It does **not** cancel their open assignments; that lives in campaigns and stays a manual step.
 
@@ -415,23 +393,18 @@ It does **not** cancel their open assignments; that lives in campaigns and stays
 
 ### Roles and the first admin (ADR-0007)
 
-`assessors.role` is the source of truth for authorization, and **login never changes anyone's
-role**.
+`assessors.role` is the source of truth. **Login never changes anyone's role.**
 
-`ADMIN_EMAILS` is a **provisioning** allowlist, not an authorization one. It only decides the
-role a **new** assessor is created with:
+`ADMIN_EMAILS` only decides the role a **new** assessor is created with:
 
 - On the list, never signed in → created as `admin`.
 - On the list but already exists as `evaluator` → **stays** `evaluator`.
 - An existing `admin` removed from the list → **stays** `admin`.
 - No `email` claim (missing JWT template) → `evaluator`.
 
-This is safe **because access is invite-only**: nobody can register with an admin's email
-without the invitation. If you ever disable invite-only, revisit ADR-0007.
-
-Changing an existing assessor's role is done from `/admin/assessors` (ADR-0050), with two
-refusals: nobody changes their own role, and the last admin cannot be demoted. Every grant
-records its author. `set-role` is the break-glass version and enforces neither.
+Changing an existing assessor's role is done from `/admin/assessors` (ADR-0050): nobody
+changes their own role, and the last admin cannot be demoted. `set-role` is the break-glass
+version and enforces neither.
 
 ### Inviting evaluators (ADR-0049)
 
@@ -447,26 +420,17 @@ uv run python -m app.cli list-invitations
 
 Redeemable for seven days, at most one pending per address; re-sending reopens a window that
 closed, revoking frees the address. With `CLERK_SECRET_KEY` set this **also creates the Clerk
-invitation**, so it is one act — do not also invite them in Clerk by hand.
+invitation** — do not also invite them in Clerk by hand.
 
-The link lands on **`/accept-invitation`**, which renders a sign-up: an invited person has no
-account yet, and the sign-in form cannot complete the ticket. The console's
-`NEXT_PUBLIC_CLERK_SIGN_UP_URL` points at the same route.
+The link lands on **`/accept-invitation`**. The console's `NEXT_PUBLIC_CLERK_SIGN_UP_URL`
+points at the same route.
 
 > ⚠️ **Delivery can fail without the invitation failing.** Clerk refuses an address that is
 > already a Clerk user. The invitation is created here either way and the answer says
 > `delivered: false` with Clerk's own sentence; the remedies are **Re-send**, or inviting that
 > person in Clerk by hand.
 
-**The evaluator's screen is where the panel is told what happens to what they write**: one
-sentence under the rules they read before answering (`Your answers are recorded under an
-identifier, not your name`), shown only once something is assigned to them. Clerk's invitation
-email carries no notice, so its template needs no editing. If what is shared ever widens, that
-sentence is the one to change.
-
 ### The JWT template, in detail
-
-Clerk's default session token **carries neither email nor name**. The template adds them:
 
 ```json
 {
@@ -477,13 +441,11 @@ Clerk's default session token **carries neither email nor name**. The template a
 ```
 
 `setup-clerk-jwt-template` needs `CLERK_SECRET_KEY` and nothing else. `--name` is for a
-template called something other than `learnpack-evals`; it has to match the frontend's
-`NEXT_PUBLIC_CLERK_JWT_TEMPLATE`, because `getToken({ template })` against a name Clerk does not
-have returns nothing at all and the request arrives unauthenticated.
+template called something other than `learnpack-evals`; it has to match
+`NEXT_PUBLIC_CLERK_JWT_TEMPLATE`.
 
 `email` decides the first admin's initial role. `email_verified` gates **redeeming an
-invitation**. Quoted or unquoted both work; the backend reads a real boolean and the string
-`"true"` alike and, deliberately, reads `"false"` as false.
+invitation**. Quoted or unquoted both work.
 
 **Getting it wrong is quiet**: the person signs in and appears in the roster with the *default*
 role while their invitation still says `pending`. The backend logs a warning naming this
@@ -506,6 +468,6 @@ no reason.
 | The console talks to `localhost` | It was published before its variables existed: `NEXT_PUBLIC_*` are baked in at build time | Set them in Netlify, then `task deploy:console` again |
 | The build says the Clerk publishable key is invalid, and shows it as `****************abcd` | The variable is marked secret in Netlify, so the CLI handed the local build the mask instead of the value | Delete the variable and create it again without "Contains secret values" — the same for every other one marked secret |
 | The course loads without its AI | One of the four seat variables is missing. If the three `BREATHECODE_*` are set and `SEAT_EMAIL_TEMPLATE` is not, it fails per evaluator instead of switching off | The evaluator's screen names the reason |
-| The console shows *missing bearer token* on `/`, and an anonymous visitor gets `200` instead of a redirect to `/sign-in` | The deploy carries no edge functions, so the Clerk middleware never ran: the CLI reads them from `.netlify/` under the directory it was run from, and the build wrote them somewhere else | Run the deploy from `frontend/`, where `netlify.toml` is — `task deploy:console` does. `netlify api getDeploy` on the deploy shows `edge_functions_present: true` when it worked |
-| The console spins at *Signing you in…* and Clerk answers `400 origin_invalid` | The page is open on an origin that is not the domain — a `netlify.app` draft or the site's default address — and the production instance refuses every other one | Open it at `https://<your domain>`; a draft URL can never sign in |
+| The console shows *missing bearer token* on `/`, and an anonymous visitor gets `200` instead of a redirect to `/sign-in` | The deploy carries no edge functions: the CLI reads them from `.netlify/` under the directory it was run from, and the build wrote them somewhere else | Run the deploy from `frontend/`, where `netlify.toml` is — `task deploy:console` does. `netlify api getDeploy` on the deploy shows `edge_functions_present: true` when it worked |
+| The console spins at *Signing you in…* and Clerk answers `400 origin_invalid` | The page is open on an origin that is not the domain — a `netlify.app` draft or the site's default address | Open it at `https://<your domain>`; a draft URL can never sign in |
 | Every expert is asked all twelve items | The extraction was accepted **after** the courses were registered, so they were never profiled | Read them from `/admin/profiles` — and only answers given before that are affected, which cannot be undone |
