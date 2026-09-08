@@ -102,15 +102,15 @@ domain>` because if the two were not same-site the session cookie would need `Sa
 which Safari does not accept. The **API stays on `onrender.com`** — its token travels in the
 `Authorization` header, so it is cross-origin by design and needs no domain.
 
-1. **Put the domain's DNS in Netlify**, with **Domains → Add domain**. The DNS only; the site
-   comes at step 5.
+1. **In the Netlify dashboard**, go to **DNS → Use Netlify DNS**, enter the domain name and
+   click **Verify**.
 2. **Point the registrar at it.** Netlify answers with four nameservers; set those where the
-   domain was bought, replacing what is there — registrars usually call it *custom DNS*. Skip
-   this and Netlify serves records nobody asks it for, Clerk never verifies, and nothing says
-   why. `nslookup -type=NS <your domain>` is the check: `dns1.p0N.nsone.net` means Netlify.
-3. **Create the production instance.** Only now does Clerk show the five CNAME records, so this
-   is where they get added, into the DNS from (1). Values exactly as given: one character out
-   and the record stays unverified. Then press **Verify** — the check does not repeat itself.
+   domain was bought, replacing what is there — registrars usually call it *custom DNS*.
+3. **In Clerk, create the production instance**, then go to **Developers → Domains →
+   Configure**. Clerk shows five CNAME records; add them to the Netlify DNS from (1). Its
+   **AI prompt** button copies them out as instructions to paste into an assistant, which
+   saves transcribing them by hand — a single character out and the record stays unverified.
+   Then press **Verify** in Clerk.
 4. **Write the JWT template.** Put `CLERK_SECRET_KEY` in `backend/.env.instance` and:
 
    ```bash
