@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown, ExternalLink, MonitorPlay, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { BookOpen, ExternalLink, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { useCourseSession } from "@/lib/api/hooks";
 import type { Uuid } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -113,10 +114,11 @@ export function ConsumeContent({
               an evaluator is never told which platform serves it, only that what follows is
               the course itself and not part of the form beside it. */}
           <div className="flex items-center gap-2 border-b bg-muted/60 px-3 py-2">
-            <MonitorPlay className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             <p className="min-w-0 truncate text-xs font-medium">
               The course — as a learner sees it
             </p>
+            <CourseMap />
             {/* The action belongs to the frame, so it lives on the frame. */}
             <a
               href={src}
@@ -149,7 +151,6 @@ export function ConsumeContent({
               setBlocked(false);
             }}
           />
-          <CourseMap />
         </>
       )}
     </div>
@@ -192,46 +193,42 @@ function embedded(url: string): string {
  * what it measures is the frame's width, not the screen's: on a narrow laptop, or with the
  * form beside it, the same lesson can keep the button. Only the arrows are always there.
  *
- * It sits under the frame, folded, and it says where things are. It does **not** say what the
- * course's controls are not: a disclaimer beside somebody else's product buys a sentence of
- * doubt for every button it does not name.
+ * **A link on the bar rather than a strip under the frame.** Somebody who cannot find their
+ * way is looking at the top of the course, not at the bottom of our card — which on a laptop
+ * is the part they would have to scroll to reach. A modal also costs the frame no height,
+ * and this is read once.
+ *
+ * It says where things are. It does **not** say what the course's controls are not: a
+ * disclaimer beside somebody else's product buys a sentence of doubt for every button it does
+ * not name.
  */
 function CourseMap() {
   const [open, setOpen] = useState(false);
-  const bodyId = useId();
 
   return (
-    <div className="border-t bg-muted/30">
+    <>
       <button
         type="button"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        onClick={() => setOpen(true)}
+        className="shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-primary underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none",
-            !open && "-rotate-90",
-          )}
-        />
-        Finding your way around the course
+        Finding your way around
       </button>
-      <ul
-        id={bodyId}
-        hidden={!open}
-        className={cn(
-          "list-disc space-y-1 px-3 pb-2.5 pl-8 text-xs text-muted-foreground",
-          !open && "hidden",
-        )}
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Finding your way around the course"
+        description="Three things the course does not make obvious."
       >
-        <li>The lesson list is behind the menu icon at the top right of the course.</li>
-        <li>The arrows at the top left move between lessons.</li>
-        <li>
-          On lessons with code the course&apos;s own Continue button may not be there — the
-          arrows always are.
-        </li>
-      </ul>
-    </div>
+        <ul className="list-disc space-y-2.5 pl-5 text-sm text-muted-foreground">
+          <li>The lesson list is behind the menu icon at the top right of the course.</li>
+          <li>The arrows at the top left move between lessons.</li>
+          <li>
+            On lessons with code the course&apos;s own Continue button may not be there — the
+            arrows always are.
+          </li>
+        </ul>
+      </Dialog>
+    </>
   );
 }

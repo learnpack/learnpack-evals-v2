@@ -167,20 +167,37 @@ export default function AssignmentPage({
                 !focus && "lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_460px]",
               )}
             >
-              {/* Pinned to the viewport on desktop, so the course stays visible while scoring. */}
+              {/* Pinned to the viewport on desktop, so the course stays visible while scoring.
+
+                  The height is what makes it fit on arrival, and it is not the sticky offset:
+                  the card does not start where it sticks. It starts below the page header
+                  (4rem), this main's padding (1.5rem) and the heading block that names the
+                  course (~4.4rem) — so a height measured from `top-20` left its bottom edge,
+                  and with it the end of whatever lesson is open, under the fold until somebody
+                  scrolled. Measured from where it starts, it arrives whole; the price is that
+                  once it does stick, that difference is empty space below it. */}
               <ConsumeContent
                 url={assignment.consumable_url}
                 title={assignedCourseLabel(assignment.content_title, assignment.content_id)}
                 assignmentId={assignmentId}
-                className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-6.5rem)]"
+                className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-11rem)]"
               />
 
               {!focus ? (
                 <div className="space-y-4">
-                  {/* Closed, and here rather than only on the list: what the scale's bottom
-                      means against what the abstention means (ADR-0052 §4) is needed while
-                      scoring, not only before starting. */}
-                  <CollapsibleSection title="How this works" defaultOpen={false}>
+                  {/* Open, and here rather than only on the list: what the scale's bottom means
+                      against what the abstention means (ADR-0052 §4) is needed while scoring,
+                      not only before starting — and folded, on the one screen where it is
+                      needed, it was not being read at all.
+
+                      The form below stays open with it. Rule 1 is "read the statements first",
+                      so folding them would put a click between an evaluator and the
+                      instruction they have just read; opening this pushes the form down, which
+                      is the order we wanted anyway.
+
+                      Not "how this works": what works is ambiguous between our screen and the
+                      course inside it, and the answer has to be our screen. */}
+                  <CollapsibleSection title="How to review this course">
                     <HowThisWorks />
                   </CollapsibleSection>
                   {/* Above the form, because it is read once as context before answering —
