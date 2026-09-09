@@ -16,12 +16,19 @@ Design lives in `../docs/` — **it is the source of truth**. Where development 
 ## Setup
 
 ```bash
-cp .env.local.example .env.local     # ships in local mode: nothing to fill in
+cp .env.development.local.example .env.development.local   # local mode: nothing to fill in
 npm install
-npm run dev                          # http://localhost:3000
+npm run dev                                                # http://localhost:3000
 ```
 
 To use Clerk instead, remove `NEXT_PUBLIC_AUTH_MODE=local` and fill in the keys (below).
+
+**The name is a mode, not a machine.** Next reads `.env.development.local` under `next dev`
+and never under `next build`; a file called `.env.local` is read by both. A deploy builds in
+this directory (`task deploy:console`), and an env file fills any variable the process does
+not already carry — so under the other name whatever the Netlify site leaves undeclared would
+be published from here. `deploy:console` refuses to run while either name a production build
+reads is present.
 
 The backend must be running (`../backend`, `:8000` by default) with `ALLOWED_ORIGINS`
 including `http://localhost:3000`.
@@ -37,8 +44,8 @@ cannot complete it. Both go through the seam in `src/lib/auth/`, so neither page
 
 ## Local mode: no Clerk (ADR-0008)
 
-With `NEXT_PUBLIC_AUTH_MODE=local` (what `.env.local.example` ships) the app does not use
-Clerk: `/sign-in` shows the list of local users and you pick one. Switch users from the
+With `NEXT_PUBLIC_AUTH_MODE=local` (what `.env.development.local.example` ships) the app does
+not use Clerk: `/sign-in` shows the list of local users and you pick one. Switch users from the
 header menu — it reloads the page on purpose, so the previous user's query cache does not
 survive on screen.
 

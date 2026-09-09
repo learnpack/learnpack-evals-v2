@@ -195,6 +195,7 @@ management → Add a domain**.
 the Clerk keys come from step 3, the API's URL from step 4:
 
 ```text
+NEXT_PUBLIC_AUTH_MODE=clerk
 NEXT_PUBLIC_API_URL=https://<the render service>.onrender.com
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
 CLERK_SECRET_KEY=sk_live_...
@@ -202,9 +203,14 @@ NEXT_PUBLIC_CLERK_JWT_TEMPLATE=learnpack-evals
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/accept-invitation
 ```
 
-Leave `NEXT_PUBLIC_AUTH_MODE` unset. **All of it is read at build time**: changing any of it
-needs a new release. A site published before they exist points at `localhost` with no Clerk
-key, and says nothing about it.
+**All of it is read at build time**: changing any of it needs a new release. A site published
+before they exist points at `localhost` with no Clerk key, and says nothing about it.
+
+`NEXT_PUBLIC_AUTH_MODE` is declared even though anything other than `local` means Clerk
+anyway, because a variable the site leaves undeclared is not therefore absent from the build:
+the build runs on a developer's machine, and an env file there fills whatever the process does
+not already carry. Declaring it is what makes the site, and not that machine, the one that
+answers the question.
 
 > ⚠️ **Do not tick "Contains secret values" on any of them.** A build on this machine receives
 > the masked string (`****************abcd`) instead of the value, and bakes that in. A

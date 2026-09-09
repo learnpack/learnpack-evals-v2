@@ -118,7 +118,7 @@ def test_a_backend_in_local_mode_names_a_frontend_built_for_clerk(client, local_
     assert "AUTH_MODE=local" in detail
     assert "bearer token" in detail
     # It names both files, because the fix is on one side and the reader is on the other.
-    assert "backend/.env" in detail and "frontend/.env.local" in detail
+    assert "backend/.env" in detail and "frontend/.env.development.local" in detail
     assert "restart" in detail
 
 
@@ -129,7 +129,7 @@ def test_a_backend_in_clerk_mode_names_a_frontend_built_for_local(client, clerk_
     detail = response.json()["detail"]
     assert "AUTH_MODE=clerk" in detail
     assert DEV_USER_HEADER in detail
-    assert "backend/.env" in detail and "frontend/.env.local" in detail
+    assert "backend/.env" in detail and "frontend/.env.development.local" in detail
 
 
 def test_a_plain_missing_credential_is_still_reported_as_one(client, local_auth):
@@ -138,7 +138,7 @@ def test_a_plain_missing_credential_is_still_reported_as_one(client, local_auth)
     detail = client.get("/me").json()["detail"]
 
     assert DEV_USER_HEADER in detail
-    assert "frontend/.env.local" not in detail
+    assert "frontend/.env.development.local" not in detail
 
 
 def test_the_mismatch_sentence_is_ascii(client, clerk_auth):

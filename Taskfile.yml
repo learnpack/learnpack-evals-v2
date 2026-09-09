@@ -17,7 +17,7 @@ tasks:
     internal: true
     dir: frontend
     cmds:
-      - test -f .env.local || cp .env.local.example .env.local
+      - test -f .env.development.local || cp .env.development.local.example .env.development.local
 
   setup:deps:
     desc: Install backend and frontend dependencies
@@ -185,13 +185,39 @@ tasks:
       # `--build` runs the build here, and Netlify's CLI pulls the site's own environment down
       # for it — which is what keeps the NEXT_PUBLIC_* values (inlined at build time) the same
       # ones the dashboard declares.
+      - task: deploy:console:guard
       - netlify deploy --build --prod
 
   deploy:console:preview:
     desc: Same, to a draft URL — look at it before promoting
     dir: frontend
     cmds:
+      - task: deploy:console:guard
       - netlify deploy --build
+
+  deploy:console:guard:
+    internal: true
+    dir: frontend
+    cmds:
+      - |
+        # The build runs here, in the directory a developer also develops in, and `next build`
+        # reads `.env.local` and `.env.production.local` from it. An env file never overwrites
+        # a variable the process already carries, so what Netlify declares wins — but whatever
+        # the site does NOT declare is a hole, and a file left here fills it without a word,
+        # and then travels inside the deployed server function to be read again at runtime.
+        # That is how the console was once published in local auth mode.
+        #
+        # Development belongs in `.env.development.local`, which `next build` cannot see. These
+        # two names are the ones that would bring the failure back, so they stop the deploy.
+        for f in .env.local .env.production.local; do
+          if [ -e "$f" ]; then
+            echo "frontend/$f exists, and a production build reads it: what it declares would" >&2
+            echo "be published wherever the Netlify site declares nothing. Rename it to" >&2
+            echo ".env.development.local -- the name 'task setup:env' creates, and the one a" >&2
+            echo "production build cannot read -- and deploy again." >&2
+            exit 1
+          fi
+        done
 
   # --- The deployed instance ------------------------------------------------
   # These run the ordinary CLI against the DEPLOYED store, from this machine, because nothing
