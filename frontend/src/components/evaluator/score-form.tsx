@@ -369,13 +369,16 @@ export function ScoreForm({
         </p>
         {/* The counter stays in preview — clicking through the scale is how somebody
             reviewing the instrument notices that a statement reads wrong. What goes is the
-            act: no button, so there is nothing to press by mistake. */}
+            act: no button, so there is nothing to press by mistake.
+
+            The button is named after what it hands over, and after how much of it: it is the
+            whole course being reviewed, and there is one of these per course. */}
         {preview ? (
           <p className="text-xs text-muted-foreground">Nothing here is recorded</p>
         ) : (
           <Button type="submit" disabled={submitting}>
             {submitting ? <Spinner /> : null}
-            Submit evaluation
+            Submit your review of this course
           </Button>
         )}
       </div>

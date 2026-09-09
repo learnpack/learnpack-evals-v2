@@ -17,7 +17,21 @@ import { ScoreForm } from "@/components/evaluator/score-form";
 import { useAssignment, useOpenAssignment, useSubmitEvaluation } from "@/lib/api/hooks";
 import { assignedCourseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
+import type { AssignmentDetail } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+
+/**
+ * The evaluator's word for one of the things they are answering.
+ *
+ * A `likert` instrument asks for agreement with *statements* (ADR-0052 §3); the older
+ * `numeric` shape asks *items*, and still resolves for a campaign pinned to rubric v1. It
+ * follows the format rather than being written down once, because this word appears three
+ * times on the screen and two of them are next to a count.
+ */
+function unitWord({ response_format }: AssignmentDetail, count = 2): string {
+  const singular = response_format === "likert" ? "statement" : "item";
+  return count === 1 ? singular : `${singular}s`;
+}
 
 /**
  * One working screen instead of a wizard: the course stays pinned on the left while the
@@ -106,6 +120,15 @@ export default function AssignmentPage({
                 <h1 className="mt-1 truncate text-lg font-semibold tracking-tight">
                   {assignedCourseLabel(assignment.content_title, assignment.content_id)}
                 </h1>
+                {/* What is being asked for, said where the eye already is. The form sits beside
+                    one lesson, so the screen has to contradict the reading that proximity
+                    invites — the first expert to see it asked whether it was one form per
+                    lesson. The count comes from the items served and never from a literal:
+                    a course that declares less is asked fewer of them (ADR-0053). */}
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  One review per course · {assignment.items.length} {unitWord(assignment)},
+                  answered once at the end
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {/* "Open in new tab" is not here: it is an action on the course, so it lives on
@@ -158,9 +181,15 @@ export default function AssignmentPage({
                       the items that rest on it carry a pointer back up (ADR-0057). */}
                   <DeclaredData declared={assignment.declared} />
                   <CollapsibleSection
-                    title="Score"
-                    badge={`${assignment.items.length} items`}
+                    title="Your review of this course"
+                    badge={`${assignment.items.length} ${unitWord(assignment)}`}
                   >
+                    {/* The same thing the heading says, said again where the answering happens:
+                        by the time somebody has scrolled to the form, the heading is gone. */}
+                    <p className="mb-4 text-xs text-muted-foreground">
+                      Every {unitWord(assignment, 1)} is about the whole course, not the lesson
+                      you have open.
+                    </p>
                     {assignment.withheld_count > 0 ? (
                       /* Said, rather than left as a silent gap: an evaluator who scores two
                          courses notices a different number of items and reads it as a bug.
