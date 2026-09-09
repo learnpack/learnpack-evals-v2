@@ -141,7 +141,7 @@ export function ConsumeContent({
             </div>
           ) : null}
           <iframe
-            src={src}
+            src={embedded(src)}
             title={`${title} — the course being reviewed`}
             className="h-full w-full flex-1"
             onLoad={() => {
@@ -154,6 +154,30 @@ export function ConsumeContent({
       )}
     </div>
   );
+}
+
+/** What the course platform calls being embedded. */
+const EMBEDDED_QUERY_PARAM = "iframe=true";
+
+/**
+ * Ask the course to render as an embedded course.
+ *
+ * A LearnPack course takes a query parameter that drops the chrome which makes no sense
+ * inside somebody else's page — the language selector and the theme switch. Two fewer
+ * controls that belong to nobody on this screen.
+ *
+ * **Here and not in the backend, and not on the link out.** The URL the backend mints is also
+ * what "open in new tab" opens, and a course opened in its own tab is not embedded: hiding its
+ * language and theme there would be wrong. Being embedded is known only by whoever embeds.
+ * Applied to the fallback URL too, which is the other thing the backend could not reach.
+ *
+ * Hand-built rather than parsed and re-encoded, for the reason the backend's own appender
+ * gives: the stored URL is what an operator declared and what the platform serves, and a round
+ * trip through a query parser can reorder or re-escape it into something subtly different.
+ */
+function embedded(url: string): string {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${EMBEDDED_QUERY_PARAM}`;
 }
 
 /**
