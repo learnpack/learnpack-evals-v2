@@ -11,6 +11,7 @@ from app.modules.orchestration.application.ports import (
     AssessorsGatewayPort,
     AssignmentRepositoryPort,
     CampaignRepositoryPort,
+    ContentsGatewayPort,
     DatasetsGatewayPort,
 )
 from app.modules.orchestration.domain import events
@@ -38,6 +39,14 @@ class AssessorNotFound(Exception):
 
     `assessors` belongs to another module, so no foreign key says it — the same hole
     `UnknownDatasetVersion` fills for the scope, filled the same way.
+    """
+
+
+class ContentHasNoDeployment(Exception):
+    """The course declares no deployed instance, so there is nothing to open (ADR-0068).
+
+    Not the same as a course that is unfit to evaluate: it is a complete evaluand for the
+    automated path, and what it cannot take is a human being asked to read it.
     """
 
 
@@ -157,12 +166,14 @@ class AssignContent:
         campaigns: CampaignRepositoryPort,
         assignments: AssignmentRepositoryPort,
         assessors: AssessorsGatewayPort,
+        contents: ContentsGatewayPort,
         publisher: EventPublisherPort,
         uow: UnitOfWorkPort,
     ) -> None:
         self._campaigns = campaigns
         self._assignments = assignments
         self._assessors = assessors
+        self._contents = contents
         self._publisher = publisher
         self._uow = uow
 
@@ -186,6 +197,17 @@ class AssignContent:
             )
         if not assessee.is_active:
             raise AssessorCannotBeAsked("a deactivated assessor takes no new work")
+
+        # The other half of the same question: somebody to read it, and something to read
+        # (ADR-0068). `None` cannot happen through the campaign's own scope, which was copied
+        # from a dataset version — but the scope is a copy, and a copy can outlive its source.
+        deployed = self._contents.declares_a_deployment(command.content_id)
+        if deployed is None:
+            raise ContentNotInCampaign(str(command.content_id))
+        if not deployed:
+            raise ContentHasNoDeployment(
+                "this course declares no deployed instance, so there is nothing to open"
+            )
 
         # At most one ACTIVE assignment per (campaign, content, assessor) — the DB partial
         # unique index is the backstop; this gives a clean 409.
@@ -289,6 +311,7 @@ __all__ = [
     "CampaignNotFound",
     "CancelAssignment",
     "CloseCampaign",
+    "ContentHasNoDeployment",
     "ContentNotInCampaign",
     "DuplicateAssignment",
     "InvalidCampaign",

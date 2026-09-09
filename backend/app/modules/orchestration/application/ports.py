@@ -59,6 +59,17 @@ class AssessorsGatewayPort(Protocol):
     def get_assessee(self, assessor_id: UUID) -> Assessee | None: ...
 
 
+class ContentsGatewayPort(Protocol):
+    """Whether a course has a deployed instance a person could open (ADR-0068).
+
+    A boolean and not the URL: what the assignment path decides is whether there is anything
+    to hand somebody, and the address itself is the registry's to serve when the evaluator
+    asks for it. `None` means the store cannot resolve that content at all.
+    """
+
+    def declares_a_deployment(self, content_id: UUID) -> bool | None: ...
+
+
 class AssignmentRepositoryPort(Protocol):
     def get(self, assignment_id: UUID) -> Assignment | None: ...
 

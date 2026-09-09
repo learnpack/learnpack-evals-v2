@@ -4,6 +4,8 @@ Covers the two cases 08-code.md §11 calls out explicitly: a reassignment, and o
 satisfying two campaigns.
 """
 
+from uuid import UUID
+
 import pytest
 from conftest import declare_dataset_over, open_campaign_over
 from sqlalchemy import text
@@ -450,33 +452,88 @@ def test_cannot_assign_content_outside_the_campaign_scope(
     assert response.status_code == 422
 
 
-def test_an_assignment_for_a_content_with_no_deployed_instance_carries_null(
-    admin, evaluator, unique, cleanup
+@pytest.fixture
+def undeployed_campaign(admin, cleanup, unique):
+    """A campaign over one course that declares no deployed instance."""
+
+    def _make():
+        undeployed = admin.post(
+            "/admin/contents",
+            json={
+                "package_format": "LearnpackV1",
+                "external_id": f"undeployed-{unique}",
+                "generator_version_id": None,
+            },
+        ).json()
+        cleanup["contents"].append(undeployed["content_id"])
+        campaign = open_campaign_over(
+            admin,
+            cleanup,
+            [undeployed["content_id"]],
+            name="Campaign over an undeployed course",
+            instrument_version_id=RUBRIC,
+        )
+        return campaign["campaign_id"], undeployed["content_id"]
+
+    return _make
+
+
+def test_a_course_with_no_deployed_instance_cannot_be_assigned(
+    admin, evaluator, undeployed_campaign
 ):
-    """The end of the read path (ADR-0028): registry snapshot → assignment detail. The
-    assignment is *not* refused — the guard is advisory, the console prevents it and the
-    evaluator screen states the absence (STATUS names the enforced guard as deferred)."""
-    undeployed = admin.post(
-        "/admin/contents",
-        json={
-            "package_format": "LearnpackV1",
-            "external_id": f"undeployed-{unique}",
-            "generator_version_id": None,
-        },
-    ).json()
-    cleanup["contents"].append(undeployed["content_id"])
+    """ADR-0068, which closes the guard ADR-0028 §5 deferred by name. The course stays a
+    complete evaluand for the automated path; what it cannot take is a human."""
+    campaign_id, content_id = undeployed_campaign()
+    _, ada_id = evaluator("ada")
 
-    campaign = open_campaign_over(
-        admin,
-        cleanup,
-        [undeployed["content_id"]],
-        name="Campaign over an undeployed course",
-        instrument_version_id=RUBRIC,
+    refused = admin.post(
+        f"/admin/campaigns/{campaign_id}/assignments",
+        json={"content_id": content_id, "assessor_id": ada_id},
     )
-    client, assessor_id = evaluator("ada")
-    assignment_id = assign(admin, campaign["campaign_id"], undeployed["content_id"], assessor_id)
+    assert refused.status_code == 422, refused.text
+    assert "deployed" in refused.json()["detail"]
 
-    detail = client.get(f"/assignments/{assignment_id}")
+
+def test_declaring_the_deployment_makes_the_course_assignable(
+    admin, evaluator, undeployed_campaign
+):
+    """The refusal is repairable, which is what ADR-0054 changed and what made enforcing it
+    safe: declare the deployment, assign again."""
+    campaign_id, content_id = undeployed_campaign()
+    _, ada_id = evaluator("ada")
+
+    declared = admin.post(
+        f"/admin/contents/{content_id}/consumable-url", json={"consumable_url": COURSE_URL}
+    )
+    assert declared.status_code == 200, declared.text
+
+    assign(admin, campaign_id, content_id, ada_id)
+
+
+def test_an_assignment_made_before_the_rule_still_reads_as_null(
+    admin, evaluator, undeployed_campaign, session
+):
+    """The end of the read path (ADR-0028 §4): registry snapshot → assignment detail. Such a
+    row can no longer be created through the act (ADR-0068), and the ones already in the store
+    still have to be read — so it is written straight to the repository, which is what having
+    predated the rule looks like."""
+    from app.modules.orchestration.domain.assignment import Assignment
+    from app.modules.orchestration.infrastructure.repository import SqlAlchemyAssignmentRepository
+    from app.shared.domain.ids import new_id
+
+    campaign_id, content_id = undeployed_campaign()
+    client, assessor_id = evaluator("ada")
+
+    assignment = Assignment(
+        id=new_id(),
+        campaign_id=UUID(campaign_id),
+        content_id=UUID(content_id),
+        assessor_id=UUID(assessor_id),
+    )
+    SqlAlchemyAssignmentRepository(session).add(assignment)
+    session.commit()
+
+    detail = client.get(f"/assignments/{assignment.id}")
     assert detail.status_code == 200, detail.text
     assert detail.json()["consumable_url"] is None
 
