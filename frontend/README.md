@@ -156,6 +156,29 @@ camelCase: readiness, fitness, the criterion record and the report document are
 `dict[str, Any]` on the backend with no `response_model` to mirror, so those types are the
 frontend's own statement of what it expects — nothing checks them but the reader.
 
+## Theme
+
+Light, dark, or whatever the device is in — `system` is the default, and choosing one of the
+other two is choosing against the device, so it is remembered in the browser and wins from then
+on. The choice is per browser: nothing about it reaches the backend.
+
+`components/theme.tsx` holds the provider (`next-themes`, `attribute="class"`), which writes
+`dark` onto `<html>` **before the first paint** — the one part that cannot be written in React,
+and without which every load of a dark session flashes white. Tailwind is already configured for
+it (`darkMode: ["class"]`) and both halves of the palette live in `app/globals.css`, so
+components paint in either theme by using the tokens (`bg-background`, `text-muted-foreground`,
+`border`) and nothing else.
+
+The control is `components/ui/theme-toggle.tsx`, one button cycling light → dark → system, and
+it lives in `AppHeader` — the one chrome every screen inside the app mounts. The two doors
+(`/sign-in`, `/accept-invitation`) have no header and carry no toggle; they follow whatever was
+chosen or whatever the device says.
+
+Two surfaces paint themselves rather than through our tokens and are told the theme separately:
+the toaster (`ThemedToaster`) and Clerk's widgets, through `useClerkAppearance()` in
+`lib/auth/clerk.tsx` — on the widgets, not on `ClerkProvider`, which wraps `<html>` and sits
+above the theme.
+
 ## Content iframe
 
 LearnPack courses **allow embedding**, so the evaluator consumes the content without

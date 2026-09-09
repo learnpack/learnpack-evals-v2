@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { UserMenu } from "@/lib/auth";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { cn } from "@/lib/utils";
 
 export function AppHeader({
@@ -38,7 +39,11 @@ export function AppHeader({
             </nav>
           ) : null}
         </div>
-        <UserMenu />
+        {/* Where the theme is changed, on the one piece of chrome every screen mounts. */}
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <UserMenu />
+        </div>
       </div>
     </header>
   );
