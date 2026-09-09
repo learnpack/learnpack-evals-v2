@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BatchSummary } from "@/components/admin/batch-summary";
-import { CopyButton } from "@/components/admin/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   GeneratorVersionPicker,
   declaredGeneratorVersionId,

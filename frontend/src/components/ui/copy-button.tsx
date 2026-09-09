@@ -5,7 +5,7 @@ import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-/** Copying an identifier out of a report is a COPY task, not a read task.
+/** Copying an identifier off a screen is a COPY task, not a read task.
  *
  *  That distinction is the whole reason ids stopped being row labels: they are needed, but
  *  they are needed in an editor, not in a sentence. A monospace chip that hands itself over

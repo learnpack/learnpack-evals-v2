@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { CopyButton } from "@/components/admin/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { describeLocator } from "@/lib/locator";
 import { cn } from "@/lib/utils";
 

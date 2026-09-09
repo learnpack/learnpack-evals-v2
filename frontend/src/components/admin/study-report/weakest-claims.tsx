@@ -1,5 +1,5 @@
 import { ClaimStatusBadge } from "@/components/admin/claim-status";
-import { CopyButton } from "@/components/admin/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { DistributionBar } from "@/components/admin/distribution-bar";
 import { rankClaims } from "@/components/admin/study-report/rollup";
 import { ValidityBadge } from "@/components/admin/validity-badge";
