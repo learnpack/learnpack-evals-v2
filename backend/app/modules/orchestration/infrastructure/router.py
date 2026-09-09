@@ -19,6 +19,8 @@ from app.modules.evaluand_registry.public import (
 from app.modules.evaluation_design.public import RubricQueries, get_rubric_queries
 from app.modules.orchestration.application import queries
 from app.modules.orchestration.application.commands import (
+    AssessorCannotBeAsked,
+    AssessorNotFound,
     AssignContent,
     AssignContentCommand,
     AssignmentNotFound,
@@ -36,7 +38,7 @@ from app.modules.orchestration.application.commands import (
     UnknownDatasetVersion,
 )
 from app.modules.orchestration.domain.assignment import InvalidAssignmentTransition
-from app.modules.orchestration.infrastructure.gateways import DatasetsGateway
+from app.modules.orchestration.infrastructure.gateways import AssessorsGateway, DatasetsGateway
 from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
@@ -291,6 +293,7 @@ def assign_content(
     use_case = AssignContent(
         campaigns=campaigns,
         assignments=SqlAlchemyAssignmentRepository(uow.session),
+        assessors=AssessorsGateway(uow.session),
         publisher=uow.events,
         uow=uow,
     )
@@ -308,7 +311,11 @@ def assign_content(
         ) from exc
     except DuplicateAssignment as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    except (ContentNotInCampaign, InvalidCampaign) as exc:
+    except AssessorNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="assessor not found"
+        ) from exc
+    except (ContentNotInCampaign, InvalidCampaign, AssessorCannotBeAsked) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc

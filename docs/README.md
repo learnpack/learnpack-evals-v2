@@ -84,7 +84,9 @@ to the human it is asked of · `0058` a dataset is a named set, and changing it 
 inside the campaign that produced it · `0061` an evaluator reaches the course's AI through a
 seat we hold · `0062` the human side names qualities, not criteria · `0063` a campaign
 qualifies the assessor over courses it never judged · `0064` a claim is read validated where
-its instrument is tuned · `0065` an evaluation answers one assignment.
+its instrument is tuned · `0065` an evaluation answers one assignment · `0066` the embedded
+course carries the theme of the page around it · `0067` an assignment is given to a person who
+is still here.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:

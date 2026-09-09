@@ -1,5 +1,6 @@
 """Ports required by Orchestration's use cases. Implemented in infrastructure."""
 
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
@@ -31,6 +32,31 @@ class DatasetsGatewayPort(Protocol):
     """
 
     def get_version_members(self, version_id: UUID) -> list[UUID] | None: ...
+
+
+@dataclass(frozen=True)
+class Assessee:
+    """Whoever a course is about to be given to, in the only terms this module needs.
+
+    Two booleans rather than the roster's own vocabulary: Orchestration is not asking what
+    somebody is, it is asking whether there is anybody there to read a course. Identity's
+    `kind`, `role` and `status` stop at the gateway (ARCHITECTURE.md §3), and the role is
+    absent on purpose — it decides what somebody may do in the console, not whether they can
+    be asked to judge (ADR-0067 §3).
+    """
+
+    is_human: bool
+    is_active: bool
+
+
+class AssessorsGatewayPort(Protocol):
+    """Who the campaign is about to ask (ADR-0067).
+
+    `None` means the store cannot resolve that id at all — a different answer from somebody
+    who exists and cannot be asked, and the two are refused with different words.
+    """
+
+    def get_assessee(self, assessor_id: UUID) -> Assessee | None: ...
 
 
 class AssignmentRepositoryPort(Protocol):
