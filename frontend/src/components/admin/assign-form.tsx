@@ -33,9 +33,13 @@ function shorten(text: string): string {
 
 export function AssignForm({
   campaign,
+  contentId: preselected,
   onDone,
 }: {
   campaign: CampaignResponse;
+  /** The course the form opens on, when it was opened from that course's row. Preselected
+   *  and not locked: a misclick should cost a second click, not the whole dialog. */
+  contentId?: string;
   onDone: () => void;
 }) {
   const { data: contents } = useContents();
@@ -54,7 +58,7 @@ export function AssignForm({
     [assessors],
   );
 
-  const [contentId, setContentId] = useState("");
+  const [contentId, setContentId] = useState(preselected ?? "");
   const [assessorId, setAssessorId] = useState("");
   const selected = useMemo(
     () => evaluators.find((a) => a.assessor_id === assessorId),

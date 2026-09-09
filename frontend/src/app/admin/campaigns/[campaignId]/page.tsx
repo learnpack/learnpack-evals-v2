@@ -24,6 +24,7 @@ import {
   useReferenceInstruments,
 } from "@/lib/api/hooks";
 import { courseLabel } from "@/lib/courses";
+import { campaignLoad, staffingOf } from "@/lib/assignments";
 import { ApiError } from "@/lib/api/client";
 
 export default function CampaignDetailPage({
@@ -41,15 +42,28 @@ export default function CampaignDetailPage({
   const datasets = useDatasets();
   const cancelAssignment = useCancelAssignment(campaignId);
   const closeCampaign = useCloseCampaign();
-  const [assigning, setAssigning] = useState(false);
+  /** Null while closed; the course it opens on when it was opened from that course's row,
+   *  and `{}` when it was opened from the header, which commits to no course. */
+  const [assigning, setAssigning] = useState<{ contentId?: string } | null>(null);
   const [renaming, setRenaming] = useState(false);
 
   const campaign = campaigns.data?.find((c) => c.campaign_id === campaignId);
 
-  const contentName = useMemo(() => {
-    const map = new Map((contents.data ?? []).map((c) => [c.content_id, c]));
-    return (id: string) => courseLabel(map.get(id), id);
-  }, [contents.data]);
+  const contentById = useMemo(
+    () => new Map((contents.data ?? []).map((c) => [c.content_id, c])),
+    [contents.data],
+  );
+
+  const contentName = useMemo(
+    () => (id: string) => courseLabel(contentById.get(id), id),
+    [contentById],
+  );
+
+  /** How many seats each course has taken, counted from the assignment list this page already
+   *  fetches (`lib/assignments.ts`). It is a different question from `submitted_count`, which
+   *  keeps coming from the backend: one says whether anybody was asked, the other whether they
+   *  answered. */
+  const load = useMemo(() => campaignLoad(assignments.data), [assignments.data]);
 
   // The raw id while the list loads, and for a version the list no longer offers — a draft,
   // or one dropped from the store. A campaign keeps pinning it either way (ADR-0056).
@@ -108,6 +122,16 @@ export default function CampaignDetailPage({
   const p = progress.data;
   const canAssign = p.status === "open";
 
+  /** Until the assignments arrive, every course would count zero seats — and `0/2` beside a
+   *  call to action is not an unknown, it is a false claim that nobody was asked. So the
+   *  staffing reading waits, and the table says as much. */
+  const seatsKnown = assignments.data !== undefined;
+  const understaffed = seatsKnown
+    ? p.contents.filter(
+        (c) => staffingOf(c, load.perContent.get(c.content_id) ?? 0) === "understaffed",
+      ).length
+    : 0;
+
   return (
     <div className="max-w-5xl">
       <Link
@@ -161,7 +185,7 @@ export default function CampaignDetailPage({
             </Button>
           ) : null}
           {canAssign ? (
-            <Button onClick={() => setAssigning(true)}>
+            <Button onClick={() => setAssigning({})}>
               <Plus className="h-4 w-4" /> Assign
             </Button>
           ) : null}
@@ -176,32 +200,70 @@ export default function CampaignDetailPage({
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Per-course progress</CardTitle>
+          {/* The one number worth reading before any row: how much of the campaign is waiting
+              on an act of this console rather than on the panel. */}
+          {understaffed > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {understaffed} of {p.contents.length} courses below quorum in assignments.
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Course</TableHead>
+                <TableHead>Assigned</TableHead>
                 <TableHead>Submitted</TableHead>
-                <TableHead>Complete</TableHead>
+                <TableHead>Status</TableHead>
+                {canAssign ? <TableHead className="text-right">Actions</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {p.contents.map((c) => (
-                <TableRow key={c.content_id}>
-                  <TableCell className="font-medium">{contentName(c.content_id)}</TableCell>
-                  <TableCell>
-                    {c.submitted_count}/{c.required}
-                  </TableCell>
-                  <TableCell>
-                    {c.completed ? (
-                      <Badge variant="success">complete</Badge>
-                    ) : (
-                      <Badge variant="outline">in progress</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {p.contents.map((c) => {
+                const assigned = load.perContent.get(c.content_id) ?? 0;
+                const staffing = seatsKnown ? staffingOf(c, assigned) : null;
+                const course = contentById.get(c.content_id);
+                return (
+                  <TableRow key={c.content_id}>
+                    <TableCell className="font-medium">{contentName(c.content_id)}</TableCell>
+                    <TableCell>{seatsKnown ? `${assigned}/${c.required}` : "—"}</TableCell>
+                    <TableCell>
+                      {c.submitted_count}/{c.required}
+                    </TableCell>
+                    <TableCell>
+                      {/* Three states, because two hid the difference that matters: a course
+                          nobody was assigned to and a course whose panel has not answered yet
+                          are not the same situation, and only the first one is ours to fix. */}
+                      {staffing === "understaffed" ? (
+                        <Badge variant="warning">needs assignees</Badge>
+                      ) : c.completed ? (
+                        <Badge variant="success">complete</Badge>
+                      ) : (
+                        <Badge variant="outline">in progress</Badge>
+                      )}
+                    </TableCell>
+                    {canAssign ? (
+                      <TableCell className="text-right">
+                        {/* Offered on every row, not only the short ones: assigning past the
+                            quorum against expected dropout is deliberate. The badge carries
+                            the signal; the button carries the act. */}
+                        {course && !course.consumable_url ? (
+                          <span className="text-xs text-muted-foreground">not deployed</span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setAssigning({ contentId: c.content_id })}
+                          >
+                            Assign
+                          </Button>
+                        )}
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -266,12 +328,16 @@ export default function CampaignDetailPage({
       {campaign ? (
         <>
           <Dialog
-            open={assigning}
-            onClose={() => setAssigning(false)}
+            open={assigning !== null}
+            onClose={() => setAssigning(null)}
             title="Assign a course"
             description="Give an evaluator a course from this campaign."
           >
-            <AssignForm campaign={campaign} onDone={() => setAssigning(false)} />
+            <AssignForm
+              campaign={campaign}
+              contentId={assigning?.contentId}
+              onDone={() => setAssigning(null)}
+            />
           </Dialog>
 
           <Dialog
