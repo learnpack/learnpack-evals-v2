@@ -189,6 +189,14 @@ the iframe and, if no load is reported within ~3.5 s, shows a "cannot embed" not
 **"Open in a new tab"** button is always visible. If a course served from another domain
 shows up, check that it still works.
 
+The frame is also **served in the theme the console is in** (ADR-0066). The course platform
+takes a `theme` query parameter next to the `iframe=true` that hides its own language and theme
+controls, and it reads it once, while the player boots — there is no way to tell a course that
+is already loaded, so changing the theme with a course open reloads it. Nothing is lost by that
+and the evaluator keeps their place. Two things inside the course stay dark whatever the theme,
+because the player pins them: code blocks and the embedded editor. **"Open in a new tab" keeps
+the plain URL** — a course in its own tab is its own, switch included.
+
 ## Deploy (Netlify)
 
 - **Published from a developer's machine, never from a push**: `task deploy:console`

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, ExternalLink } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useCourseSession } from "@/lib/api/hooks";
@@ -16,9 +17,11 @@ import { cn } from "@/lib/utils";
  * returns the course URL with it already in it (ADR-0061). The evaluator sees none of that;
  * they signed in once, with Clerk.
  *
- * **The frame waits for the session.** Rendering the bare URL first and swapping it in would
- * load the course twice and, worse, leave the first load without AI — which is the state
- * this whole mechanism exists to avoid.
+ * **The frame waits for the session, and for the theme.** Rendering the bare URL first and
+ * swapping it in would load the course twice and, worse, leave the first load without AI —
+ * which is the state this whole mechanism exists to avoid. The theme is the same shape of
+ * problem: it is also spelled into the URL, and it is also unknown until the browser has run
+ * (the choice lives there, not on the server).
  *
  * Two silences that would otherwise show as a blank frame, and both are stated:
  *
@@ -65,6 +68,9 @@ export function ConsumeContent({
   className?: string;
 }) {
   const { data: session, isPending } = useCourseSession(assignmentId);
+  // Undefined until this has mounted in the browser, which is why the frame waits for it.
+  const { resolvedTheme } = useTheme();
+  const theme: CourseTheme | null = resolvedTheme ? asCourseTheme(resolvedTheme) : null;
   const [blocked, setBlocked] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,7 +97,7 @@ export function ConsumeContent({
         className,
       )}
     >
-      {isPending ? (
+      {isPending || !theme ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 py-16 text-center">
           <p className="text-sm text-muted-foreground">Opening the course…</p>
         </div>
@@ -141,7 +147,10 @@ export function ConsumeContent({
             </a>
           </div>
           <iframe
-            src={embedded(src)}
+            // Re-keyed by theme: the course is told which one it is in when it loads and
+            // never after, so the only way to move it is to load it again.
+            key={theme}
+            src={embedded(src, theme)}
             title={`${title} — the course being reviewed`}
             className="h-full w-full flex-1"
             onLoad={() => {
@@ -174,28 +183,38 @@ export function ConsumeContent({
  */
 const COURSE_MAX_WIDTH = "max-w-[1111px]";
 
-/** What the course platform calls being embedded. */
-const EMBEDDED_QUERY_PARAM = "iframe=true";
+/** The two themes the course platform accepts, spelled the way it spells them. */
+type CourseTheme = "light" | "dark";
+
+/** Anything that is not its own word for dark is light — including `system`, which is a
+ *  question about a device and not a theme. */
+function asCourseTheme(theme: string): CourseTheme {
+  return theme === "dark" ? "dark" : "light";
+}
 
 /**
- * Ask the course to render as an embedded course.
+ * Ask the course to render as an embedded course, in the theme of the page around it.
  *
- * A LearnPack course takes a query parameter that drops the chrome which makes no sense
- * inside somebody else's page — the language selector and the theme switch. Two fewer
- * controls that belong to nobody on this screen.
+ * A LearnPack course takes query parameters for both. `iframe=true` drops the chrome that
+ * makes no sense inside somebody else's page — the language selector and the theme switch —
+ * and `theme` is what replaces the second of them: the switch is gone because the course is no
+ * longer the one deciding, not because nobody is (ADR-0066). The platform validates the value
+ * against its own two words and silently ignores anything else, so it is spelled here and
+ * nowhere else.
  *
  * **Here and not in the backend, and not on the link out.** The URL the backend mints is also
  * what "open in new tab" opens, and a course opened in its own tab is not embedded: hiding its
- * language and theme there would be wrong. Being embedded is known only by whoever embeds.
- * Applied to the fallback URL too, which is the other thing the backend could not reach.
+ * language there, or holding it to this page's theme, would be wrong. Being embedded is known
+ * only by whoever embeds. Applied to the fallback URL too, which is the other thing the
+ * backend could not reach.
  *
  * Hand-built rather than parsed and re-encoded, for the reason the backend's own appender
  * gives: the stored URL is what an operator declared and what the platform serves, and a round
  * trip through a query parser can reorder or re-escape it into something subtly different.
  */
-function embedded(url: string): string {
+function embedded(url: string, theme: CourseTheme): string {
   const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}${EMBEDDED_QUERY_PARAM}`;
+  return `${url}${separator}iframe=true&theme=${theme}`;
 }
 
 /**
