@@ -7,29 +7,29 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/states";
-import { useAssessors, useAssignContent, useContents } from "@/lib/api/hooks";
+import { EvaluatorPicker } from "@/components/admin/evaluator-picker";
+import { toggleIn } from "@/components/admin/course-picker";
+import {
+  useAssessors,
+  useAssignContents,
+  useCampaignAssignments,
+  useCampaignProgress,
+  useContents,
+} from "@/lib/api/hooks";
+import { campaignLoad, holdsASeat } from "@/lib/assignments";
 import { courseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
 import type { CampaignResponse } from "@/lib/api/types";
 
 /**
- * How much of an expertise profile fits beside a name in a native `<option>`.
+ * How many assignments in this campaign is enough for one expert, as the form assumes it
+ * until somebody says otherwise.
  *
- * The control has a fixed width and its options carry no styling of their own, so a long
- * profile either pushes the name out of view or gets cut by the browser mid-word with no
- * sign that anything is missing. Cutting it here at least ends in an ellipsis, and the full
- * text is shown under the control once somebody is selected.
+ * Four is the ceiling the first panel was sized against, and it lives nowhere else: not in the
+ * domain, not in the campaign, not in the store. So it is a default of this control and
+ * nothing more — typed over on the spot, and never enforced.
  */
-const EXPERTISE_IN_OPTION = 48;
-
-function shorten(text: string): string {
-  const clean = text.trim();
-  if (clean.length <= EXPERTISE_IN_OPTION) return clean;
-  // Break on a space when there is one nearby, so the cut does not land mid-word.
-  const cut = clean.slice(0, EXPERTISE_IN_OPTION);
-  const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > EXPERTISE_IN_OPTION - 12 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
-}
+const ASSIGNMENTS_PER_EVALUATOR = "4";
 
 export function AssignForm({
   campaign,
@@ -44,7 +44,9 @@ export function AssignForm({
 }) {
   const { data: contents } = useContents();
   const { data: assessors } = useAssessors();
-  const assign = useAssignContent(campaign.campaign_id);
+  const { data: assignments } = useCampaignAssignments(campaign.campaign_id);
+  const { data: progress } = useCampaignProgress(campaign.campaign_id);
+  const assign = useAssignContents(campaign.campaign_id);
 
   const courses = useMemo(
     () => (contents ?? []).filter((c) => campaign.content_ids.includes(c.content_id)),
@@ -58,33 +60,80 @@ export function AssignForm({
     [assessors],
   );
 
+  const load = useMemo(() => campaignLoad(assignments), [assignments]);
+  const loadOf = useMemo(
+    () => (assessorId: string) => load.perAssessor.get(assessorId) ?? 0,
+    [load],
+  );
+
   const [contentId, setContentId] = useState(preselected ?? "");
-  const [assessorId, setAssessorId] = useState("");
-  const selected = useMemo(
-    () => evaluators.find((a) => a.assessor_id === assessorId),
-    [evaluators, assessorId],
+  const [assessorIds, setAssessorIds] = useState<string[]>([]);
+  const [onlyShort, setOnlyShort] = useState(true);
+  const [ceiling, setCeiling] = useState(ASSIGNMENTS_PER_EVALUATOR);
+
+  /** Who is on the chosen course already — the 409 the server would answer with, said before
+   *  it is provoked. Empty until a course is chosen, which is also when it means nothing. */
+  const alreadyOnCourse = useMemo(() => {
+    const on = new Set<string>();
+    if (!contentId) return on;
+    for (const a of assignments ?? []) {
+      if (a.content_id === contentId && holdsASeat(a)) on.add(a.assessor_id);
+    }
+    return on;
+  }, [assignments, contentId]);
+
+  /** Which courses of this campaign still have fewer evaluators than its quorum. */
+  const short = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of progress?.contents ?? []) {
+      if ((load.perContent.get(c.content_id) ?? 0) < c.required) ids.add(c.content_id);
+    }
+    return ids;
+  }, [progress, load]);
+
+  // Hidden, not disabled — and that is not the absence ADR-0028 argues against: this one the
+  // reader switched on, can switch off, and is told the size of. What that rule forbids is an
+  // option gone for a reason nobody can see.
+  // Until the progress arrives, no course is known to be short, and filtering on that would
+  // empty the list rather than shorten it.
+  const filtering = onlyShort && progress !== undefined;
+  const shown = useMemo(
+    () =>
+      filtering
+        ? courses.filter((c) => short.has(c.content_id) || c.content_id === contentId)
+        : courses,
+    [courses, filtering, short, contentId],
   );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!contentId || !assessorId) {
-      toast.error("Pick a course and an evaluator.");
+    if (!contentId || assessorIds.length === 0) {
+      toast.error("Pick a course and at least one evaluator.");
       return;
     }
     assign.mutate(
-      { content_id: contentId, assessor_id: assessorId },
+      { content_id: contentId, assessor_ids: assessorIds },
       {
-        onSuccess: () => {
-          toast.success("Assigned.");
-          onDone();
+        onSuccess: (outcome) => {
+          const asked = assessorIds.length;
+          if (outcome.assigned === asked) {
+            toast.success(asked === 1 ? "Assigned." : `Assigned to ${asked} evaluators.`);
+            onDone();
+            return;
+          }
+          // Partial, and said as such: what went through stays through, and the form stays
+          // open on the rest rather than closing over a half-done act.
+          const notes = [
+            outcome.duplicates > 0 ? `${outcome.duplicates} already assigned` : null,
+            ...outcome.errors,
+          ].filter(Boolean);
+          toast.warning(`Assigned to ${outcome.assigned} of ${asked}.`, {
+            description: notes.join(" · "),
+          });
+          if (outcome.assigned > 0) onDone();
         },
         onError: (err) => {
-          const e = err as ApiError;
-          if (e.status === 409) {
-            toast.error("That evaluator is already assigned to this course.");
-          } else {
-            toast.error("Could not assign.", { description: e.message });
-          }
+          toast.error("Could not assign.", { description: (err as ApiError).message });
         },
       },
     );
@@ -94,20 +143,35 @@ export function AssignForm({
     <form onSubmit={submit} className="space-y-4">
       <div className="space-y-1.5">
         <Label>Course</Label>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={onlyShort}
+            onChange={() => setOnlyShort((v) => !v)}
+            className="h-4 w-4"
+          />
+          Only courses below the quorum of {campaign.required_evaluations_per_content}
+        </label>
         {/* Disabled with its reason, not filtered out (ADR-0028): an absent option reads as
             a bug, a disabled one reads as a fact. This is the act that would put a human in
             front of nothing, so this is where the refusal belongs — advisory for now, the
             server does not enforce it (STATUS). */}
         <Select value={contentId} onChange={(e) => setContentId(e.target.value)}>
           <option value="">Select a course…</option>
-          {courses.map((c) => (
+          {shown.map((c) => (
             <option key={c.content_id} value={c.content_id} disabled={!c.consumable_url}>
               {courseLabel(c)} · v{c.version}
               {c.consumable_url ? "" : " — not deployed"}
             </option>
           ))}
         </Select>
-        {courses.some((c) => !c.consumable_url) ? (
+        {filtering && shown.length < courses.length ? (
+          <p className="text-xs text-muted-foreground">
+            {courses.length - shown.length} of {courses.length} courses hidden — they already
+            have the quorum assigned.
+          </p>
+        ) : null}
+        {shown.some((c) => !c.consumable_url) ? (
           <p className="text-xs text-muted-foreground">
             Courses marked <span className="font-medium">not deployed</span> declare no
             consumable URL, so there is nothing for an evaluator to open. They can still be
@@ -117,26 +181,16 @@ export function AssignForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label>Evaluator</Label>
-        <Select value={assessorId} onChange={(e) => setAssessorId(e.target.value)}>
-          <option value="">Select an evaluator…</option>
-          {/* The expertise profile rides in the label because this is the act it exists for:
-              deciding who should read *this* course. A native <option> takes no markup and
-              no width of its own, so it is appended and shortened; the whole profile of
-              whoever ends up selected is shown under the control, where it has room. */}
-          {evaluators.map((a) => (
-            <option key={a.assessor_id} value={a.assessor_id}>
-              {a.display_name ?? a.email ?? a.assessor_id.slice(0, 8)}
-              {a.expertise ? ` — ${shorten(a.expertise)}` : ""}
-            </option>
-          ))}
-        </Select>
-        {selected?.expertise ? (
-          <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Expertise:</span>{" "}
-            {selected.expertise}
-          </p>
-        ) : null}
+        <Label>Evaluators</Label>
+        <EvaluatorPicker
+          evaluators={evaluators}
+          loadOf={loadOf}
+          alreadyAssigned={alreadyOnCourse}
+          selected={assessorIds}
+          onToggle={(id) => setAssessorIds((ids) => toggleIn(ids, id))}
+          ceiling={ceiling}
+          onCeilingChange={setCeiling}
+        />
         {evaluators.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             No evaluators yet — invite them from{" "}
@@ -155,6 +209,7 @@ export function AssignForm({
         <Button type="submit" disabled={assign.isPending}>
           {assign.isPending ? <Spinner /> : null}
           Assign
+          {assessorIds.length > 1 ? ` to ${assessorIds.length}` : ""}
         </Button>
       </div>
     </form>
