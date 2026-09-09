@@ -100,6 +100,8 @@ export function ConsumeContent({
             nothing to open. Tell an admin — it can&apos;t be scored by hand until the course
             is deployed somewhere.
           </p>
+          {/* The one place the course cannot name itself, so this is what there is to quote. */}
+          <p className="text-xs text-muted-foreground">{title}</p>
         </div>
       ) : blocked ? (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 py-16 text-center">
@@ -107,6 +109,7 @@ export function ConsumeContent({
           <p className="max-w-sm text-sm text-muted-foreground">
             The site blocks embedding. Open it in a new tab and score it from this page.
           </p>
+          <p className="text-xs text-muted-foreground">{title}</p>
           <a href={src} target="_blank" rel="noopener noreferrer">
             <Button size="sm" type="button">
               Open course <ExternalLink className="h-4 w-4" />

@@ -121,20 +121,16 @@ export default function AssignmentPage({
                 >
                   <ArrowLeft className="h-4 w-4" /> Back to your evaluations
                 </Link>
-                {/* The screen says which course it is asking about (ADR-0059 §5): the name
-                    the course declares, and the reference to quote if it will not load. */}
-                <h1 className="mt-1 truncate text-lg font-semibold tracking-tight">
+                {/* The screen still says which course it is asking about (ADR-0059 §5) — it
+                    just no longer says it twice. The course prints its own name at the top of
+                    the frame, two centimetres below where this used to sit, so what is left
+                    here is the part a rendered title cannot do: the page's heading, for
+                    anybody navigating by structure, and the name for a reader who has no
+                    frame to read it from. The two states where the course does not load carry
+                    it themselves, in the message that names the problem. */}
+                <h1 className="sr-only">
                   {assignedCourseLabel(assignment.content_title, assignment.content_id)}
                 </h1>
-                {/* What is being asked for, said where the eye already is. The form sits beside
-                    one lesson, so the screen has to contradict the reading that proximity
-                    invites — the first expert to see it asked whether it was one form per
-                    lesson. The count comes from the items served and never from a literal:
-                    a course that declares less is asked fewer of them (ADR-0053). */}
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  One review per course · {assignment.items.length} {unitWord(assignment)},
-                  answered once at the end
-                </p>
               </div>
               <div className="flex items-center gap-2">
                 {/* "Open in new tab" is not here: it is an action on the course, so it lives on
@@ -171,16 +167,18 @@ export default function AssignmentPage({
 
                   The height is what makes it fit on arrival, and it is not the sticky offset:
                   the card does not start where it sticks. It starts below the page header
-                  (4rem), this main's padding (1.5rem) and the heading block that names the
-                  course (~4.4rem) — so a height measured from `top-20` left its bottom edge,
-                  and with it the end of whatever lesson is open, under the fold until somebody
-                  scrolled. Measured from where it starts, it arrives whole; the price is that
-                  once it does stick, that difference is empty space below it. */}
+                  (4rem), this main's padding (1.5rem) and the row above it, which is as tall
+                  as the focus button and its margin (3.25rem) — so a height measured from
+                  `top-20` left its bottom edge, and with it the end of whatever lesson is
+                  open, under the fold until somebody scrolled. Measured from where it starts,
+                  it arrives whole; the price is that once it does stick, that difference is
+                  empty space below it. Anything added back to that row has to be added here
+                  too. */}
               <ConsumeContent
                 url={assignment.consumable_url}
                 title={assignedCourseLabel(assignment.content_title, assignment.content_id)}
                 assignmentId={assignmentId}
-                className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-11rem)]"
+                className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-9rem)]"
               />
 
               {!focus ? (
@@ -207,11 +205,14 @@ export default function AssignmentPage({
                     title="Your review of this course"
                     badge={`${assignment.items.length} ${unitWord(assignment)}`}
                   >
-                    {/* The same thing the heading says, said again where the answering happens:
-                        by the time somebody has scrolled to the form, the heading is gone. */}
+                    {/* What one submission covers, said once and next to the thing it
+                        constrains. It carries the "when" too, which the heading above used to
+                        carry alone: the form sits beside a single lesson, and both halves of
+                        the misreading it invites — one form per lesson, answered as you go —
+                        are answered here. */}
                     <p className="mb-4 text-xs text-muted-foreground">
                       Every {unitWord(assignment, 1)} is about the whole course, not the lesson
-                      you have open.
+                      you have open. Answer them once, at the end.
                     </p>
                     {assignment.withheld_count > 0 ? (
                       /* Said, rather than left as a silent gap: an evaluator who scores two
