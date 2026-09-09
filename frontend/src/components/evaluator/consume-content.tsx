@@ -215,7 +215,6 @@ function CourseMap() {
         open={open}
         onClose={() => setOpen(false)}
         title="How to move between lessons"
-        description="Three things the course does not make obvious."
       >
         <ul className="list-disc space-y-2.5 pl-5 text-sm text-muted-foreground">
           <li>The lesson list is behind the menu icon at the top right of the course.</li>
