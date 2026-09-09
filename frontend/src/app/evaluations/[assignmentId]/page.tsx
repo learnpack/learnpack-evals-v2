@@ -67,7 +67,7 @@ export default function AssignmentPage({
       { assignment_id: assignmentId, scores },
       {
         onSuccess: () => {
-          toast.success("Evaluation submitted. Thank you!");
+          toast.success("Review submitted. Thank you!");
           router.push("/evaluations");
         },
         onError: (err) => {
@@ -96,7 +96,13 @@ export default function AssignmentPage({
         ) : alreadyDone ? (
           <Card className="mx-auto max-w-2xl">
             <CardContent className="py-10 text-center">
-              <p className="font-medium">This assignment is {assignment.status}.</p>
+              {/* A sentence per state, rather than the stored word dropped into a template:
+                  "This assignment is cancelled" is the model talking about itself. */}
+              <p className="font-medium">
+                {assignment.status === "submitted"
+                  ? "You have already sent this review."
+                  : "This review was cancelled."}
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 There is nothing left to do here.
               </p>
