@@ -184,9 +184,13 @@ function embedded(url: string): string {
  * How to move around inside a course nobody has seen before.
  *
  * Three things an evaluator cannot discover by looking, and the last of them is the one that
- * strands somebody: on a lesson that carries code the course hides its own forward button on a
- * wide screen, and we have told this reader they do not need to solve the exercise — so they
- * are standing on a lesson with no visible way out.
+ * strands somebody: on a lesson that carries code the course hides its own forward button once
+ * it has room for the editor, and we have told this reader they do not need to solve the
+ * exercise — so they are standing on a lesson with no visible way out.
+ *
+ * That last one is worded as *may* on purpose. The course hides the button above 769px, and
+ * what it measures is the frame's width, not the screen's: on a narrow laptop, or with the
+ * form beside it, the same lesson can keep the button. Only the arrows are always there.
  *
  * It sits under the frame, folded, and it says where things are. It does **not** say what the
  * course's controls are not: a disclaimer beside somebody else's product buys a sentence of
@@ -224,7 +228,8 @@ function CourseMap() {
         <li>The lesson list is behind the menu icon at the top right of the course.</li>
         <li>The arrows at the top left move between lessons.</li>
         <li>
-          On lessons with code the course hides its Continue button — use the arrows.
+          On lessons with code the course&apos;s own Continue button may not be there — the
+          arrows always are.
         </li>
       </ul>
     </div>
