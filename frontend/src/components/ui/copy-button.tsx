@@ -49,7 +49,7 @@ export function CopyButton({
     >
       <span className="truncate">{label ?? value}</span>
       {copied ? (
-        <Check className="h-3 w-3 shrink-0 text-emerald-600" />
+        <Check className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
       ) : (
         <Copy className="h-3 w-3 shrink-0" />
       )}

@@ -827,7 +827,7 @@ function CandidateNote({
 
   const notice =
     signal === "notice" ? (
-      <span className="block text-amber-700">
+      <span className="block text-amber-700 dark:text-amber-400">
         this package declares {candidate.declared_generator_name}{" "}
         {candidate.declared_generator_version}; registering as unknown
       </span>
@@ -903,7 +903,7 @@ function CandidateNote({
             </Button>
           ) : null}
           {candidate.can_attribute_generator && !declaredGenerator ? (
-            <span className="text-amber-700">its generator is unknown</span>
+            <span className="text-amber-700 dark:text-amber-400">its generator is unknown</span>
           ) : null}
         </span>
       </>
