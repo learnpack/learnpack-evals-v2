@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, ExternalLink, Sparkles } from "lucide-react";
+import { BookOpen, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useCourseSession } from "@/lib/api/hooks";
@@ -20,18 +20,24 @@ import { cn } from "@/lib/utils";
  * load the course twice and, worse, leave the first load without AI — which is the state
  * this whole mechanism exists to avoid.
  *
- * Three silences, all stated rather than shown as a blank frame:
+ * Two silences that would otherwise show as a blank frame, and both are stated:
  *
  * - **Framing refused.** Many sites block embedding with X-Frame-Options / CSP
  *   frame-ancestors (08-code.md §8), and that failure is silent. So we flip to a blocked
- *   notice if the frame hasn't reported a load within a short window; the page toolbar always
- *   offers "open in a new tab" too.
+ *   notice if the frame hasn't reported a load within a short window; the frame's own bar
+ *   always offers "open in a new tab" too.
  * - **Nothing to frame.** A content may declare no deployed instance (ADR-0028) — `url` is
  *   null. It cannot fall through to the iframe: an empty src resolves to the current document,
  *   `onLoad` fires, and the evaluator would get a recursive blank frame with no explanation.
- * - **No session.** The course loads and its AI will refuse. Said in a strip above the frame
- *   rather than in place of it, because a course without AI is still most of a course, and
- *   hiding it would cost more than the exercises the evaluator cannot run.
+ *
+ * A **missing session** is the third thing that can go wrong and is deliberately *not* said
+ * here. The course loads and its AI refuses, which costs the evaluator only the exercises —
+ * and they have already been told, in as many words, that completing those is not required.
+ * A permanent banner over the course to pre-empt something they were told not to do was the
+ * most expensive line on the screen: on a developer's machine it is always up, since local
+ * auth mints no session at all, and everywhere else it explains a failure most evaluators
+ * will never reach. `ai_session` and `reason` still come back on the response for whoever
+ * has to diagnose one.
  *
  * `url` is the plain consumable URL from the assignment, kept as a fallback: if the session
  * request itself fails, the evaluator still gets the course.
@@ -64,7 +70,6 @@ export function ConsumeContent({
 
   // The session's URL when we have one, the assignment's plain URL when the request failed.
   const src = session ? session.url : isPending ? null : url;
-  const withoutAi = session && session.url !== null && !session.ai_session;
 
   useEffect(() => {
     if (!src) return; // nothing will ever load: the blocked path would misname the cause
@@ -129,19 +134,6 @@ export function ConsumeContent({
               Open in new tab <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>
-          {withoutAi ? (
-            <div className="flex items-start gap-2 border-b bg-amber-50 px-3 py-2 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
-              <p className="text-xs">
-                The AI inside this course is unavailable, so exercises and open questions
-                won&apos;t be graded. Everything else works — score what you can see, and tell
-                an admin.
-                {session?.reason ? (
-                  <span className="block opacity-80">{session.reason}</span>
-                ) : null}
-              </p>
-            </div>
-          ) : null}
           <iframe
             src={embedded(src)}
             title={`${title} — the course being reviewed`}
