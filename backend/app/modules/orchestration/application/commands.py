@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.modules.orchestration.application.ports import (
+    AssessorsGatewayPort,
     AssignmentRepositoryPort,
     CampaignRepositoryPort,
     DatasetsGatewayPort,
@@ -30,6 +31,24 @@ class DuplicateAssignment(Exception):
 
 
 class ContentNotInCampaign(Exception): ...
+
+
+class AssessorNotFound(Exception):
+    """The assignment names somebody this store cannot resolve (ADR-0067 §2).
+
+    `assessors` belongs to another module, so no foreign key says it — the same hole
+    `UnknownDatasetVersion` fills for the scope, filled the same way.
+    """
+
+
+class AssessorCannotBeAsked(Exception):
+    """Somebody exists behind the id, and a course still cannot be given to them (ADR-0067).
+
+    One refusal for both reasons, because they are one fact from the campaign's side: there
+    will be no answer. The message says which, since that is what the console shows and the
+    two are undone differently — an automated assessor is run by a study instead, a
+    deactivated person is reactivated or replaced.
+    """
 
 
 class UnknownDatasetVersion(Exception):
@@ -137,11 +156,13 @@ class AssignContent:
         self,
         campaigns: CampaignRepositoryPort,
         assignments: AssignmentRepositoryPort,
+        assessors: AssessorsGatewayPort,
         publisher: EventPublisherPort,
         uow: UnitOfWorkPort,
     ) -> None:
         self._campaigns = campaigns
         self._assignments = assignments
+        self._assessors = assessors
         self._publisher = publisher
         self._uow = uow
 
@@ -152,6 +173,19 @@ class AssignContent:
         campaign.ensure_accepts_assignments()
         if not campaign.includes(command.content_id):
             raise ContentNotInCampaign(str(command.content_id))
+
+        # Before anything is written, and before the duplicate lookup: whether there is
+        # somebody there to read the course is a question about the act itself, and an
+        # assignment nobody can answer is worse than none (ADR-0067).
+        assessee = self._assessors.get_assessee(command.assessor_id)
+        if assessee is None:
+            raise AssessorNotFound(str(command.assessor_id))
+        if not assessee.is_human:
+            raise AssessorCannotBeAsked(
+                "an automated assessor is run against an instrument, never assigned a course"
+            )
+        if not assessee.is_active:
+            raise AssessorCannotBeAsked("a deactivated assessor takes no new work")
 
         # At most one ACTIVE assignment per (campaign, content, assessor) — the DB partial
         # unique index is the backstop; this gives a clean 409.
@@ -247,6 +281,8 @@ class CloseCampaign:
 
 
 __all__ = [
+    "AssessorCannotBeAsked",
+    "AssessorNotFound",
     "AssignContent",
     "AssignContentCommand",
     "AssignmentNotFound",

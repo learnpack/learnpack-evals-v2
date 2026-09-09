@@ -55,8 +55,9 @@ export function AssignForm({
   );
   // Deactivated people are dropped rather than disabled: unlike a course with no consumable
   // URL, there is nothing here for a reason to explain — they left, and offering the row
-  // would only invite an act that the server refuses anyway (ADR-0051). Automated assessors
-  // are dropped for a stronger reason — there is nobody there to open the course.
+  // would only invite an act the server now refuses (ADR-0067). Automated assessors are
+  // dropped for a stronger reason — there is nobody there to open the course. Admins are
+  // dropped for a weaker one: the server accepts them, and this list is the panel.
   const evaluators = useMemo(() => (assessors ?? []).filter(isAssignableEvaluator), [assessors]);
 
   const load = useMemo(() => campaignLoad(assignments), [assignments]);

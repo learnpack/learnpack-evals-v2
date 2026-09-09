@@ -289,7 +289,7 @@ from app.modules.orchestration.application.commands import (
     OpenCampaign,
     OpenCampaignCommand,
 )
-from app.modules.orchestration.infrastructure.gateways import DatasetsGateway
+from app.modules.orchestration.infrastructure.gateways import AssessorsGateway, DatasetsGateway
 from app.modules.orchestration.infrastructure.repository import (
     SqlAlchemyAssignmentRepository,
     SqlAlchemyCampaignRepository,
@@ -3974,6 +3974,7 @@ def _seed_demo_assignments(
                 assign = AssignContent(
                     campaigns=SqlAlchemyCampaignRepository(session),
                     assignments=SqlAlchemyAssignmentRepository(session),
+                    assessors=AssessorsGateway(session),
                     publisher=uow.events,
                     uow=uow,
                 )

@@ -481,6 +481,88 @@ def test_an_assignment_for_a_content_with_no_deployed_instance_carries_null(
     assert detail.json()["consumable_url"] is None
 
 
+def _register_automated(session, cleanup, unique: str) -> str:
+    """An instrument package's identity row — the kind of assessor that is run, never asked."""
+    from app.modules.identity.domain.assessor import Assessor, Kind
+    from app.modules.identity.infrastructure.repository import SqlAlchemyAssessorRepository
+    from app.shared.domain.ids import new_id
+
+    assessor = Assessor(
+        id=new_id(),
+        auth_provider=None,
+        auth_subject=None,
+        display_name=f"bot-{unique}",
+        kind=Kind.AUTOMATED,
+        source_config={
+            "name": f"bot-{unique}",
+            "version": "1",
+            "instrumentId": "learnpack-pedagogical",
+        },
+    )
+    SqlAlchemyAssessorRepository(session).add(assessor)
+    session.commit()
+    cleanup["assessors"].append(assessor.id)
+    return str(assessor.id)
+
+
+def test_an_automated_assessor_cannot_be_assigned_a_course(
+    admin, content, make_campaign, session, cleanup, unique
+):
+    """ADR-0067: two kinds, two doors. It takes the defaults every assessor takes —
+    `evaluator`, `active` — so nothing but this gate tells it apart from an expert."""
+    campaign_id = make_campaign(required=1)
+    bot_id = _register_automated(session, cleanup, unique)
+
+    refused = admin.post(
+        f"/admin/campaigns/{campaign_id}/assignments",
+        json={"content_id": content, "assessor_id": bot_id},
+    )
+    assert refused.status_code == 422, refused.text
+    assert "automated" in refused.json()["detail"]
+
+
+def test_a_deactivated_evaluator_cannot_be_assigned_a_course(
+    admin, evaluator, content, make_campaign
+):
+    """ADR-0051's "no new work" made true of the system and not only of the picker."""
+    campaign_id = make_campaign(required=1)
+    _, ada_id = evaluator("ada")
+    left = admin.post(f"/admin/assessors/{ada_id}/active", json={"active": False})
+    assert left.status_code == 200, left.text
+
+    refused = admin.post(
+        f"/admin/campaigns/{campaign_id}/assignments",
+        json={"content_id": content, "assessor_id": ada_id},
+    )
+    assert refused.status_code == 422, refused.text
+    assert "deactivated" in refused.json()["detail"]
+
+
+def test_an_unknown_assessor_cannot_be_assigned_a_course(admin, content, make_campaign):
+    """No foreign key says the id exists — `assessors` is another module's (ADR-0067 §2)."""
+    campaign_id = make_campaign(required=1)
+
+    refused = admin.post(
+        f"/admin/campaigns/{campaign_id}/assignments",
+        json={"content_id": content, "assessor_id": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert refused.status_code == 422, refused.text
+
+
+def test_an_admin_can_be_assigned_a_course(admin, content, make_campaign):
+    """ADR-0067 §3, the clause that would rot silently: the act refuses what is impossible,
+    not who you would normally ask. An assessor holds one role, so requiring `evaluator`
+    would lock an admin out of the instrument their own console runs."""
+    campaign_id = make_campaign(required=1)
+    admin_id = admin.get("/me").json()["assessor_id"]
+
+    accepted = admin.post(
+        f"/admin/campaigns/{campaign_id}/assignments",
+        json={"content_id": content, "assessor_id": admin_id},
+    )
+    assert accepted.status_code == 201, accepted.text
+
+
 def test_closed_campaign_rejects_new_assignments(admin, evaluator, content, make_campaign):
     campaign_id = make_campaign(required=1)
     _, ada_id = evaluator("ada")
