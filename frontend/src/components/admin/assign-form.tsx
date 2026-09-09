@@ -16,6 +16,7 @@ import {
   useCampaignProgress,
   useContents,
 } from "@/lib/api/hooks";
+import { isAssignableEvaluator } from "@/lib/assessors";
 import { campaignLoad, holdsASeat } from "@/lib/assignments";
 import { courseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
@@ -54,11 +55,9 @@ export function AssignForm({
   );
   // Deactivated people are dropped rather than disabled: unlike a course with no consumable
   // URL, there is nothing here for a reason to explain — they left, and offering the row
-  // would only invite an act that the server refuses anyway (ADR-0051).
-  const evaluators = useMemo(
-    () => (assessors ?? []).filter((a) => a.role === "evaluator" && a.status === "active"),
-    [assessors],
-  );
+  // would only invite an act that the server refuses anyway (ADR-0051). Automated assessors
+  // are dropped for a stronger reason — there is nobody there to open the course.
+  const evaluators = useMemo(() => (assessors ?? []).filter(isAssignableEvaluator), [assessors]);
 
   const load = useMemo(() => campaignLoad(assignments), [assignments]);
   const loadOf = useMemo(
