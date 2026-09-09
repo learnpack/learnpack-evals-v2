@@ -6,7 +6,7 @@ import { ClerkProvider, SignIn, SignUp, UserButton, useAuth } from "@clerk/nextj
 import { useCallback } from "react";
 
 // If a named Clerk JWT template carries the email/name claims, set this; otherwise the
-// (customized) default session token is used. See .env.local.example.
+// (customized) default session token is used. See .env.development.local.example.
 const JWT_TEMPLATE = process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -174,7 +174,7 @@ CLERK_SECRET_KEY=sk_test_...
 # DATABASE_URL stays the local container; ALLOWED_ORIGINS already covers localhost:3000
 ```
 
-`frontend/.env.local`:
+`frontend/.env.development.local`:
 
 ```text
 NEXT_PUBLIC_AUTH_MODE=clerk

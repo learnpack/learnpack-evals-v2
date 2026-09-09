@@ -86,8 +86,8 @@ _MISMATCH = {
 
 _REMEDY = (
     "The frontend and the backend are configured for different auth modes. Set AUTH_MODE in "
-    "backend/.env and NEXT_PUBLIC_AUTH_MODE in frontend/.env.local to the same mode, then "
-    "restart both - neither value is re-read while running."
+    "backend/.env and NEXT_PUBLIC_AUTH_MODE in frontend/.env.development.local to the same "
+    "mode, then restart both - neither value is re-read while running."
 )
 
 
