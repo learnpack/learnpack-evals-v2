@@ -49,7 +49,8 @@ import { cn } from "@/lib/utils";
  * ground of its own, and the course's name in the frame's accessible title.
  *
  * The frame fills whatever height the parent gives it (the evaluation page pins it to the
- * viewport), so this component only owns the box, not its size.
+ * viewport). Its **width** is this component's, because the number comes from the course and
+ * not from our layout — see `COURSE_MAX_WIDTH`.
  */
 export function ConsumeContent({
   url,
@@ -84,7 +85,9 @@ export function ConsumeContent({
   return (
     <div
       className={cn(
-        "relative flex min-h-[320px] flex-col overflow-hidden rounded-xl border bg-muted/30 shadow-sm",
+        "relative mx-auto flex w-full flex-col overflow-hidden rounded-xl border bg-muted/30 shadow-sm",
+        COURSE_MAX_WIDTH,
+        "min-h-[320px]",
         className,
       )}
     >
@@ -151,6 +154,25 @@ export function ConsumeContent({
     </div>
   );
 }
+
+/**
+ * The widest the course is worth giving, and it is the course's own number.
+ *
+ * The player centres itself at `min(100%, 1111px)` — that is the measure its lessons are set
+ * for. Embedded, it drops that: `#main-container.iframe-mode` overrides the width with
+ * `100vw`, on the assumption that whoever embeds it has already chosen how wide the frame
+ * should be. So this is us choosing, and the honest choice is the width the course would have
+ * given itself.
+ *
+ * Left wide it is not merely long-lined. The lesson list opens as a 460px column beside a
+ * content pane fixed at 65%, in a row that does not wrap: past about 1400px those two stop
+ * adding up to the whole and leave a strip of dead ground on the right. Under this cap the row
+ * is over-full, the two columns shrink to fit, and the strip cannot appear.
+ *
+ * The two-column layout already hands the frame less than this, so the cap is only felt in
+ * focus mode — which is exactly where there was nothing else to bound it.
+ */
+const COURSE_MAX_WIDTH = "max-w-[1111px]";
 
 /** What the course platform calls being embedded. */
 const EMBEDDED_QUERY_PARAM = "iframe=true";
