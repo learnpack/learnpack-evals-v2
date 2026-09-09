@@ -190,6 +190,11 @@ function embedded(url: string): string {
  * is the part they would have to scroll to reach. A modal also costs the frame no height,
  * and this is read once.
  *
+ * **Named after the question, not after the topic.** All three notes are one thing — the
+ * lesson list, the arrows and the missing button are three ways of getting from one lesson to
+ * the next — so the label can be as literal as the reader's own question. It carries no idiom
+ * and no phrasal verb on purpose: a panel reading English is not a panel that grew up in it.
+ *
  * It says where things are. It does **not** say what the course's controls are not: a
  * disclaimer beside somebody else's product buys a sentence of doubt for every button it does
  * not name.
@@ -204,12 +209,12 @@ function CourseMap() {
         onClick={() => setOpen(true)}
         className="shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-primary underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Finding your way around
+        How to move between lessons
       </button>
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title="Finding your way around the course"
+        title="How to move between lessons"
         description="Three things the course does not make obvious."
       >
         <ul className="list-disc space-y-2.5 pl-5 text-sm text-muted-foreground">
