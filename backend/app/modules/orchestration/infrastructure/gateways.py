@@ -11,6 +11,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.modules.datasets.public import DatasetsQueries
+from app.modules.evaluand_registry.public import EvaluandRegistryQueries
 from app.modules.identity.public import IdentityQueries
 from app.modules.orchestration.application.ports import Assessee
 
@@ -40,3 +41,19 @@ class AssessorsGateway:
         if assessor is None:
             return None
         return Assessee(is_human=assessor.kind == "human", is_active=assessor.is_active)
+
+
+class ContentsGateway:
+    """The registry, reduced to the one thing the assignment path asks of it (ADR-0068).
+
+    The snapshot carries the URL; this hands over only whether there is one. A declared
+    consumable URL is the registry's way of saying a human-consumable instance exists
+    (ADR-0028), and that assertion is the whole question here.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._queries = EvaluandRegistryQueries(session)
+
+    def declares_a_deployment(self, content_id: UUID) -> bool | None:
+        snapshot = self._queries.get_content_snapshot(content_id)
+        return None if snapshot is None else snapshot.consumable_url is not None

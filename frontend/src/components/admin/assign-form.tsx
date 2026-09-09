@@ -153,9 +153,9 @@ export function AssignForm({
           Only courses below the quorum of {campaign.required_evaluations_per_content}
         </label>
         {/* Disabled with its reason, not filtered out (ADR-0028): an absent option reads as
-            a bug, a disabled one reads as a fact. This is the act that would put a human in
-            front of nothing, so this is where the refusal belongs — advisory for now, the
-            server does not enforce it (STATUS). */}
+            a bug, a disabled one reads as a fact. The server refuses this one too (ADR-0068);
+            what the disabled option adds is the reason, before the request rather than after,
+            and the repair — declare the deployment, then assign. */}
         <Select value={contentId} onChange={(e) => setContentId(e.target.value)}>
           <option value="">Select a course…</option>
           {shown.map((c) => (

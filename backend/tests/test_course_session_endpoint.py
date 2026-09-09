@@ -124,6 +124,45 @@ def assign(admin, cleanup):
     return _assign
 
 
+@pytest.fixture
+def assign_predating_the_rule(admin, cleanup, session):
+    """An assignment over a course with no deployed instance.
+
+    The act refuses to make one now (ADR-0068), and the rows already in the store still have
+    to be answered for — so this writes straight to the repository. What it stands for is a
+    row from before the rule.
+    """
+
+    def _assign(content_id: str, assessor_id: str) -> str:
+        from uuid import UUID
+
+        from app.modules.orchestration.domain.assignment import Assignment
+        from app.modules.orchestration.infrastructure.repository import (
+            SqlAlchemyAssignmentRepository,
+        )
+        from app.shared.domain.ids import new_id
+
+        campaign = open_campaign_over(
+            admin,
+            cleanup,
+            [content_id],
+            name="Course session campaign",
+            instrument_version_id=RUBRIC,
+            required_evaluations_per_content=1,
+        )
+        assignment = Assignment(
+            id=new_id(),
+            campaign_id=UUID(campaign["campaign_id"]),
+            content_id=UUID(content_id),
+            assessor_id=UUID(assessor_id),
+        )
+        SqlAlchemyAssignmentRepository(session).add(assignment)
+        session.commit()
+        return str(assignment.id)
+
+    return _assign
+
+
 # ---- the session
 
 
@@ -203,12 +242,12 @@ def test_an_unreachable_platform_still_serves_the_course(provider, evaluator, ma
 
 
 def test_a_course_with_no_deployed_instance_mints_nothing(
-    provider, evaluator, make_content, assign
+    provider, evaluator, make_content, assign_predating_the_rule
 ):
     """A different absence from a missing session, and the page says it differently."""
     stub = provider()
     client, assessor_id = evaluator("barbara")
-    assignment_id = assign(make_content(url=None), assessor_id)
+    assignment_id = assign_predating_the_rule(make_content(url=None), assessor_id)
 
     body = client.get(f"/assignments/{assignment_id}/course-session").json()
 
