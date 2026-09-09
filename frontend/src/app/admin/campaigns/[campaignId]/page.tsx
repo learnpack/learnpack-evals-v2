@@ -11,13 +11,12 @@ import { Dialog } from "@/components/ui/dialog";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AssignForm } from "@/components/admin/assign-form";
+import { CampaignAssignments } from "@/components/admin/campaign-assignments";
 import { RenameCampaignForm } from "@/components/admin/rename-campaign-form";
 import {
-  useAssessors,
   useCampaignAssignments,
   useCampaignProgress,
   useCampaigns,
-  useCancelAssignment,
   useCloseCampaign,
   useContents,
   useDatasets,
@@ -37,10 +36,8 @@ export default function CampaignDetailPage({
   const progress = useCampaignProgress(campaignId);
   const assignments = useCampaignAssignments(campaignId);
   const contents = useContents();
-  const assessors = useAssessors();
   const instruments = useReferenceInstruments();
   const datasets = useDatasets();
-  const cancelAssignment = useCancelAssignment(campaignId);
   const closeCampaign = useCloseCampaign();
   /** Null while closed; the course it opens on when it was opened from that course's row,
    *  and `{}` when it was opened from the header, which commits to no course. */
@@ -86,27 +83,6 @@ export default function CampaignDetailPage({
     }
     return null;
   }, [campaign, datasets.data]);
-
-  const assessorName = useMemo(() => {
-    const map = new Map(
-      (assessors.data ?? []).map((a) => [a.assessor_id, a.display_name ?? a.email ?? a.assessor_id]),
-    );
-    return (id: string) => map.get(id) ?? id.slice(0, 8);
-  }, [assessors.data]);
-
-  function handleCancel(assignmentId: string) {
-    cancelAssignment.mutate(assignmentId, {
-      onSuccess: () => toast.success("Assignment cancelled."),
-      onError: (err) => {
-        const e = err as ApiError;
-        if (e.status === 409) {
-          toast.error("A submitted assignment can't be cancelled.");
-        } else {
-          toast.error("Could not cancel.", { description: e.message });
-        }
-      },
-    });
-  }
 
   function handleClose() {
     closeCampaign.mutate(campaignId, {
@@ -269,61 +245,12 @@ export default function CampaignDetailPage({
         </CardContent>
       </Card>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Assignments</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {assignments.isLoading ? (
-            <div className="p-6">
-              <LoadingState />
-            </div>
-          ) : !assignments.data || assignments.data.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">No assignments yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Evaluator</TableHead>
-                  <TableHead>Course</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {assignments.data.map((a) => {
-                  const cancellable = a.status === "assigned" || a.status === "opened";
-                  return (
-                    <TableRow key={a.assignment_id}>
-                      <TableCell className="font-medium">{assessorName(a.assessor_id)}</TableCell>
-                      <TableCell>{contentName(a.content_id)}</TableCell>
-                      <TableCell>
-                        <Badge variant={a.status === "submitted" ? "success" : "secondary"}>
-                          {a.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {cancellable ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCancel(a.assignment_id)}
-                            disabled={cancelAssignment.isPending}
-                          >
-                            Cancel
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* No card around it: each evaluator is a card already, and one nested in another reads
+          as a mistake. */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold tracking-tight">Assignments</h2>
+        <CampaignAssignments campaignId={campaignId} />
+      </section>
 
       {campaign ? (
         <>
