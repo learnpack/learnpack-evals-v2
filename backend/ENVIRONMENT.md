@@ -370,6 +370,11 @@ is *Manual Deploy* in the dashboard.
 A release **never touches the database**. The pre-deploy command runs the migrations before
 traffic switches; if it fails, Render halts the release and the previous version keeps serving.
 
+Re-run `CONFIRM=<the neon host> task instance:seed` (7.2) when the repo changes any of:
+the questions an expert is asked, the pedagogical reference those questions rest on, or
+what the instance needs in order to read a course (new data a format extracts, or a newly
+accepted reader). A code-only release does not.
+
 ### Backing up
 
 **Before every release while a campaign is open:**
