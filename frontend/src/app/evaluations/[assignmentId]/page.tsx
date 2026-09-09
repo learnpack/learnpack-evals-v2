@@ -4,7 +4,7 @@ import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ExternalLink, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -108,14 +108,9 @@ export default function AssignmentPage({
                 </h1>
               </div>
               <div className="flex items-center gap-2">
-                {/* No URL, no button: an anchor with no href would navigate to this page. */}
-                {assignment.consumable_url ? (
-                  <a href={assignment.consumable_url} target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="sm" type="button">
-                      Open in new tab <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </a>
-                ) : null}
+                {/* "Open in new tab" is not here: it is an action on the course, so it lives on
+                    the course's own bar, and it opens the URL the session was minted into
+                    rather than the plain one this page holds. */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -146,6 +141,7 @@ export default function AssignmentPage({
               {/* Pinned to the viewport on desktop, so the course stays visible while scoring. */}
               <ConsumeContent
                 url={assignment.consumable_url}
+                title={assignedCourseLabel(assignment.content_title, assignment.content_id)}
                 assignmentId={assignmentId}
                 className="h-[70vh] lg:sticky lg:top-20 lg:h-[calc(100vh-6.5rem)]"
               />

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, Sparkles } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { ChevronDown, ExternalLink, MonitorPlay, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCourseSession } from "@/lib/api/hooks";
 import type { Uuid } from "@/lib/api/types";
@@ -35,15 +35,24 @@ import { cn } from "@/lib/utils";
  * `url` is the plain consumable URL from the assignment, kept as a fallback: if the session
  * request itself fails, the evaluator still gets the course.
  *
+ * **The frame is given chrome of our own.** An iframe mounted bare reads as one more region of
+ * this page, so an evaluator who has never seen a LearnPack course takes its controls for ours
+ * — the first one asked whether its `Continue` meant "continue evaluating". We cannot change
+ * what is inside, so the fix is to frame it: a bar above that says whose it is, a border, a
+ * ground of its own, and the course's name in the frame's accessible title.
+ *
  * The frame fills whatever height the parent gives it (the evaluation page pins it to the
  * viewport), so this component only owns the box, not its size.
  */
 export function ConsumeContent({
   url,
+  title,
   assignmentId,
   className,
 }: {
   url: string | null;
+  /** What to call the course — the label the page already shows in its heading (ADR-0059). */
+  title: string;
   assignmentId: Uuid;
   className?: string;
 }) {
@@ -100,6 +109,24 @@ export function ConsumeContent({
         </div>
       ) : (
         <>
+          {/* Whose half of the screen this is. It names the course rather than the product:
+              an evaluator is never told which platform serves it, only that what follows is
+              the course itself and not part of the form beside it. */}
+          <div className="flex items-center gap-2 border-b bg-muted/60 px-3 py-2">
+            <MonitorPlay className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <p className="min-w-0 truncate text-xs font-medium">
+              The course — as a learner sees it
+            </p>
+            {/* The action belongs to the frame, so it lives on the frame. */}
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Open in new tab <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
           {withoutAi ? (
             <div className="flex items-start gap-2 border-b bg-amber-50 px-3 py-2 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
@@ -115,15 +142,67 @@ export function ConsumeContent({
           ) : null}
           <iframe
             src={src}
-            title="Course content"
+            title={`${title} — the course being reviewed`}
             className="h-full w-full flex-1"
             onLoad={() => {
               setLoaded(true);
               setBlocked(false);
             }}
           />
+          <CourseMap />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * How to move around inside a course nobody has seen before.
+ *
+ * Three things an evaluator cannot discover by looking, and the last of them is the one that
+ * strands somebody: on a lesson that carries code the course hides its own forward button on a
+ * wide screen, and we have told this reader they do not need to solve the exercise — so they
+ * are standing on a lesson with no visible way out.
+ *
+ * It sits under the frame, folded, and it says where things are. It does **not** say what the
+ * course's controls are not: a disclaimer beside somebody else's product buys a sentence of
+ * doubt for every button it does not name.
+ */
+function CourseMap() {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+
+  return (
+    <div className="border-t bg-muted/30">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none",
+            !open && "-rotate-90",
+          )}
+        />
+        Finding your way around the course
+      </button>
+      <ul
+        id={bodyId}
+        hidden={!open}
+        className={cn(
+          "list-disc space-y-1 px-3 pb-2.5 pl-8 text-xs text-muted-foreground",
+          !open && "hidden",
+        )}
+      >
+        <li>The lesson list is behind the menu icon at the top right of the course.</li>
+        <li>The arrows at the top left move between lessons.</li>
+        <li>
+          On lessons with code the course hides its Continue button — use the arrows.
+        </li>
+      </ul>
     </div>
   );
 }
