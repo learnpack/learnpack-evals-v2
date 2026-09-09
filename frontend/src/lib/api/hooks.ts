@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { useAuthHeaders } from "@/lib/auth";
-import { apiFetch, type RequestOptions } from "./client";
+import { ApiError, apiFetch, type RequestOptions } from "./client";
 import type {
   AcceptExtractionResponse,
   AssessorPackageResponse,
@@ -1005,15 +1005,52 @@ export function useCancelStudyEvaluation(studyId: Uuid) {
   });
 }
 
-export function useAssignContent(campaignId: Uuid) {
+/** What giving one course to several evaluators came to. Reported as a partial result rather
+ *  than as one verdict: a duplicate is somebody else's doing and does not undo the rest. */
+export interface AssignOutcome {
+  assigned: number;
+  /** Whoever the server said was already assigned to that course — a 409, not a failure. */
+  duplicates: number;
+  /** Anything else that went wrong, one message per evaluator, to show as it came. */
+  errors: string[];
+}
+
+/**
+ * Assign one course to one or more evaluators.
+ *
+ * The requests go one at a time against the endpoint that already exists, rather than through
+ * a bulk act: assigning to three people is not a different act from assigning three times, and
+ * the events the campaign records must stay the ones it would have recorded either way. What
+ * the loop buys is a single invalidation and a single answer.
+ */
+export function useAssignContents(campaignId: Uuid) {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: AssignContentRequest) =>
-      api<AssignmentResponse>(`/admin/campaigns/${campaignId}/assignments`, {
-        method: "POST",
-        body,
-      }),
+    mutationFn: async ({
+      content_id,
+      assessor_ids,
+    }: {
+      content_id: Uuid;
+      assessor_ids: Uuid[];
+    }): Promise<AssignOutcome> => {
+      const outcome: AssignOutcome = { assigned: 0, duplicates: 0, errors: [] };
+      for (const assessor_id of assessor_ids) {
+        try {
+          const body: AssignContentRequest = { content_id, assessor_id };
+          await api<AssignmentResponse>(`/admin/campaigns/${campaignId}/assignments`, {
+            method: "POST",
+            body,
+          });
+          outcome.assigned += 1;
+        } catch (err) {
+          const e = err as ApiError;
+          if (e.status === 409) outcome.duplicates += 1;
+          else outcome.errors.push(e.message);
+        }
+      }
+      return outcome;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.campaignAssignments(campaignId) });
       qc.invalidateQueries({ queryKey: queryKeys.campaignProgress(campaignId) });
