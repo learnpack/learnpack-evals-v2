@@ -13,6 +13,7 @@ import {
   useCancelAssignment,
   useContents,
 } from "@/lib/api/hooks";
+import { isAssignableEvaluator } from "@/lib/assessors";
 import { holdsASeat } from "@/lib/assignments";
 import { courseLabel } from "@/lib/courses";
 import { ApiError } from "@/lib/api/client";
@@ -78,11 +79,12 @@ export function CampaignAssignments({ campaignId }: { campaignId: Uuid }) {
   }, [assignments.data, assessors.data]);
 
   /** Nobody with nothing assigned can appear above, and that absence is the point: an
-   *  evaluator this campaign never asked anything of is the first person to ask. */
+   *  evaluator this campaign never asked anything of is the first person to ask. People
+   *  only — an automated assessor is not somebody with room for another course. */
   const idle = useMemo(() => {
     const carrying = new Set(groups.filter((g) => g.assigned > 0).map((g) => g.assessorId));
     return (assessors.data ?? []).filter(
-      (a) => a.role === "evaluator" && a.status === "active" && !carrying.has(a.assessor_id),
+      (a) => isAssignableEvaluator(a) && !carrying.has(a.assessor_id),
     ).length;
   }, [groups, assessors.data]);
 
