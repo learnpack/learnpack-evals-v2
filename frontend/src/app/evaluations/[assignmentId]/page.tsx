@@ -214,16 +214,15 @@ export default function AssignmentPage({
                       Every {unitWord(assignment, 1)} is about the whole course, not the lesson
                       you have open. Answer them once, at the end.
                     </p>
-                    {assignment.withheld_count > 0 ? (
-                      /* Said, rather than left as a silent gap: an evaluator who scores two
-                         courses notices a different number of items and reads it as a bug.
-                         It names no generator and no version — the panel stays blind to
-                         which one made a course (ADR-0053). */
-                      <p className="mb-5 rounded-md border border-dashed bg-muted/40 p-3 text-xs text-muted-foreground">
-                        Some items are not shown for this course, because it does not declare
-                        what they ask about. Answer the ones below.
-                      </p>
-                    ) : null}
+                    {/* Nothing is said here about the items this course was not asked.
+                        ADR-0052 §7 closes with a line for the rater — a neutral one, naming
+                        no generator and no version — so that a different count between two
+                        courses does not read as a bug. It is dropped on the ground that it
+                        explains a discrepancy nobody can see yet: on the course in front of
+                        them there is no other count to compare against, and the panel's real
+                        problem is a first screen carrying more than it can hold. What is left
+                        for it to say, if the first campaign asks, is `withheld_count`, which
+                        the response still carries. */}
                     <ScoreForm
                       items={[...assignment.items].sort((a, b) => a.order - b.order)}
                       scaleMin={assignment.scale_min}
