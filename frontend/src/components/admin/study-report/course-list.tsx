@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { assessorLabel } from "@/components/admin/assessor-label";
 import { ClaimStatusBadge } from "@/components/admin/claim-status";
-import { CopyButton } from "@/components/admin/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { EvidenceQuote } from "@/components/admin/evidence-quote";
 import { OutcomeBadge } from "@/components/admin/outcome-badge";
 import { byCourse } from "@/components/admin/study-report/rollup";

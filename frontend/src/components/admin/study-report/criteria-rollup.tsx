@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, FlaskConical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { CopyButton } from "@/components/admin/copy-button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { EvidenceQuote, QuoteLine } from "@/components/admin/evidence-quote";
 import { TALLY_LABEL, TALLY_ORDER, TALLY_VARIANT } from "@/components/admin/outcome-badge";
 import { rankCriteria, type CriterionRow } from "@/components/admin/study-report/rollup";
