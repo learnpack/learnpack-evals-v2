@@ -370,7 +370,7 @@ function CalibrationConsole() {
               ))}
             </Select>
             {selectedPackage?.uses_llm ? (
-              <p className="text-xs text-amber-700">
+              <p className="text-xs text-amber-700 dark:text-amber-400">
                 This assessor carries LLM criteria: each run spends a few real model calls and
                 needs <code>LLM_API_KEY</code> configured on the backend.
               </p>

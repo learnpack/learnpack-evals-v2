@@ -107,7 +107,7 @@ function VersionCard({
               <>
                 {" · "}
                 {read} read
-                {notRead > 0 ? <span className="text-amber-700"> · {notRead} not read</span> : null}
+                {notRead > 0 ? <span className="text-amber-700 dark:text-amber-400"> · {notRead} not read</span> : null}
                 {failed > 0 ? (
                   <span className="text-destructive"> · {failed} could not be read</span>
                 ) : null}
@@ -118,7 +118,7 @@ function VersionCard({
           {/* A course with no commission can never enter a round — the dataset is composed
               by brief — and nothing else in the console says so. */}
           {group.withoutBrief > 0 ? (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
               {group.withoutBrief} {group.withoutBrief === 1 ? "course has" : "courses have"} no
               commission recorded, so {group.withoutBrief === 1 ? "it cannot" : "they cannot"}{" "}
               enter a round.

@@ -63,7 +63,7 @@ export function BatchSummary({ batch, format }: { batch: Batch | null; format: s
       {known ? (
         <p className="mt-1 tabular-nums text-muted-foreground">
           {read} read
-          {notRead > 0 ? <span className="text-amber-700"> · {notRead} not read</span> : null}
+          {notRead > 0 ? <span className="text-amber-700 dark:text-amber-400"> · {notRead} not read</span> : null}
           {failed > 0 ? (
             <span className="text-destructive"> · {failed} could not be read</span>
           ) : null}
@@ -86,7 +86,7 @@ export function BatchSummary({ batch, format }: { batch: Batch | null; format: s
             )}
           />
           {notRead === batch.contentIds.length ? (
-            <p className="text-xs text-amber-700">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
               Nothing in this lot was read, so a round over it would answer nothing — usually
               because no one has accepted this format&apos;s extraction yet.
             </p>

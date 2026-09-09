@@ -425,7 +425,7 @@ export default function ImportCourseListPage() {
               </div>
 
               {run.stopped ? (
-                <p className="text-sm text-amber-700">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
                   Stopped after {run.done} of {run.rows.length}. The rest were never asked for
                   — register the same file again to finish it.
                 </p>
