@@ -9,11 +9,11 @@ import { Select } from "@/components/ui/select";
 import { EmptyState, LoadingState } from "@/components/ui/states";
 import { ReadinessLine } from "@/components/admin/readiness-line";
 import { useGeneratorVersions } from "@/lib/api/hooks";
-import type { ContentResponse, GeneratorVersionResponse, Uuid } from "@/lib/api/types";
+import type { ContentResponse, Uuid } from "@/lib/api/types";
 import { courseLabel, courseRef } from "@/lib/courses";
 import { summarizeMembership } from "@/lib/datasets";
 import { cn } from "@/lib/utils";
-import { groupByVersion, UNKNOWN_VERSION } from "@/lib/versions";
+import { generatorName, groupByVersion, UNKNOWN_VERSION } from "@/lib/versions";
 
 /** Both lists, the same box: tall enough to read a set by, and never taller than a window. */
 const LIST_BOX = "h-[60vh] min-h-72 min-w-0 overflow-y-auto rounded-md border p-2";
@@ -37,18 +37,6 @@ const generatorKey = (course: ContentResponse) => course.generator_version_id ??
 
 const byName = (a: ContentResponse, b: ContentResponse) =>
   courseLabel(a).localeCompare(courseLabel(b));
-
-/**
- * A generator version as it is named everywhere, "<lineage> <version>".
- *
- * No resolved version means two different things — the declared void of ADR-0024, or a
- * version whose list has not loaded yet — and they must never read the same, for the reason
- * `summarizeMembership` gives: "unknown" where the truth is "not known yet" is a false fact.
- */
-function generatorName(key: string, version: GeneratorVersionResponse | null | undefined): string {
-  if (version) return `${version.name} ${version.version}`;
-  return key === UNKNOWN_VERSION ? "Unknown generator" : "Generator …";
-}
 
 /** What the available list shows: both filters at once, each ignored while it is empty. */
 function matchesFilter(course: ContentResponse, text: string, versionKey: string): boolean {

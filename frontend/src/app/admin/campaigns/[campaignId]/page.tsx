@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { Fragment, use, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeft, BarChart3, Pencil, Plus } from "lucide-react";
@@ -20,11 +20,18 @@ import {
   useCloseCampaign,
   useContents,
   useDatasets,
+  useGeneratorVersions,
   useReferenceInstruments,
 } from "@/lib/api/hooks";
 import { courseLabel } from "@/lib/courses";
 import { campaignLoad, staffingOf } from "@/lib/assignments";
+import { generatorName, groupByVersion } from "@/lib/versions";
 import { ApiError } from "@/lib/api/client";
+import type { ContentProgress } from "@/lib/api/types";
+
+/** A run of the progress table under one heading. A null title is the table before it can
+ *  be grouped: one run, no heading, rather than a heading that guesses. */
+type ProgressSection = { key: string; title: string | null; rows: ContentProgress[] };
 
 export default function CampaignDetailPage({
   params,
@@ -36,6 +43,7 @@ export default function CampaignDetailPage({
   const progress = useCampaignProgress(campaignId);
   const assignments = useCampaignAssignments(campaignId);
   const contents = useContents();
+  const generatorVersions = useGeneratorVersions();
   const instruments = useReferenceInstruments();
   const datasets = useDatasets();
   const closeCampaign = useCloseCampaign();
@@ -61,6 +69,40 @@ export default function CampaignDetailPage({
    *  keeps coming from the backend: one says whether anybody was asked, the other whether they
    *  answered. */
   const load = useMemo(() => campaignLoad(assignments.data), [assignments.data]);
+
+  /**
+   * The campaign's courses read by the generator version that made them, with the grouping the
+   * course list and the dataset picker already use (`lib/versions.ts`) — a second definition
+   * of "a version's courses" would come to disagree with the first.
+   *
+   * The version is the course's current attribution, not a copy taken when the campaign
+   * opened: a course attributed later moves group, as it does everywhere else in the console.
+   *
+   * Flat until both lists arrive. Grouped early, every course would sit under a heading that
+   * says "unknown" where the truth is "not known yet".
+   */
+  const sections = useMemo((): ProgressSection[] => {
+    const rows = progress.data?.contents ?? [];
+    if (contents.data === undefined || generatorVersions.data === undefined) {
+      return [{ key: "all", title: null, rows }];
+    }
+    const progressById = new Map(rows.map((row) => [row.content_id, row]));
+    const courses = contents.data.filter((course) => progressById.has(course.content_id));
+    const grouped = groupByVersion(courses, generatorVersions.data).map((group) => ({
+      key: group.key,
+      title: generatorName(group.key, group.version),
+      rows: [...group.courses]
+        .sort((a, b) => courseLabel(a).localeCompare(courseLabel(b)))
+        .map((course) => progressById.get(course.content_id)!),
+    }));
+    // Not expected — content is never retired (ADR-0033) — but a course the list cannot
+    // resolve is still one the campaign judges, and it must not drop out of the table.
+    const listed = new Set(courses.map((course) => course.content_id));
+    const unresolved = rows.filter((row) => !listed.has(row.content_id));
+    return unresolved.length
+      ? [...grouped, { key: "unresolved", title: "Not in the course list", rows: unresolved }]
+      : grouped;
+  }, [progress.data, contents.data, generatorVersions.data]);
 
   // The raw id while the list loads, and for a version the list no longer offers — a draft,
   // or one dropped from the store. A campaign keeps pinning it either way (ADR-0056).
@@ -102,11 +144,10 @@ export default function CampaignDetailPage({
    *  call to action is not an unknown, it is a false claim that nobody was asked. So the
    *  staffing reading waits, and the table says as much. */
   const seatsKnown = assignments.data !== undefined;
-  const understaffed = seatsKnown
-    ? p.contents.filter(
-        (c) => staffingOf(c, load.perContent.get(c.content_id) ?? 0) === "understaffed",
-      ).length
-    : 0;
+  const understaffedIn = (rows: ContentProgress[]) =>
+    rows.filter((c) => staffingOf(c, load.perContent.get(c.content_id) ?? 0) === "understaffed")
+      .length;
+  const understaffed = seatsKnown ? understaffedIn(p.contents) : 0;
 
   return (
     <div className="max-w-5xl">
@@ -196,50 +237,62 @@ export default function CampaignDetailPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {p.contents.map((c) => {
-                const assigned = load.perContent.get(c.content_id) ?? 0;
-                const staffing = seatsKnown ? staffingOf(c, assigned) : null;
-                const course = contentById.get(c.content_id);
-                return (
-                  <TableRow key={c.content_id}>
-                    <TableCell className="font-medium">{contentName(c.content_id)}</TableCell>
-                    <TableCell>{seatsKnown ? `${assigned}/${c.required}` : "—"}</TableCell>
-                    <TableCell>
-                      {c.submitted_count}/{c.required}
-                    </TableCell>
-                    <TableCell>
-                      {/* Three states, because two hid the difference that matters: a course
-                          nobody was assigned to and a course whose panel has not answered yet
-                          are not the same situation, and only the first one is ours to fix. */}
-                      {staffing === "understaffed" ? (
-                        <Badge variant="warning">needs assignees</Badge>
-                      ) : c.completed ? (
-                        <Badge variant="success">complete</Badge>
-                      ) : (
-                        <Badge variant="outline">in progress</Badge>
-                      )}
-                    </TableCell>
-                    {canAssign ? (
-                      <TableCell className="text-right">
-                        {/* Offered on every row, not only the short ones: assigning past the
-                            quorum against expected dropout is deliberate. The badge carries
-                            the signal; the button carries the act. */}
-                        {course && !course.consumable_url ? (
-                          <span className="text-xs text-muted-foreground">not deployed</span>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setAssigning({ contentId: c.content_id })}
-                          >
-                            Assign
-                          </Button>
-                        )}
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                );
-              })}
+              {sections.map((section) => (
+                <Fragment key={section.key}>
+                  {section.title !== null ? (
+                    <SectionHeading
+                      title={section.title}
+                      rows={section.rows}
+                      understaffed={seatsKnown ? understaffedIn(section.rows) : null}
+                      columns={canAssign ? 5 : 4}
+                    />
+                  ) : null}
+                  {section.rows.map((c) => {
+                    const assigned = load.perContent.get(c.content_id) ?? 0;
+                    const staffing = seatsKnown ? staffingOf(c, assigned) : null;
+                    const course = contentById.get(c.content_id);
+                    return (
+                      <TableRow key={c.content_id}>
+                        <TableCell className="font-medium">{contentName(c.content_id)}</TableCell>
+                        <TableCell>{seatsKnown ? `${assigned}/${c.required}` : "—"}</TableCell>
+                        <TableCell>
+                          {c.submitted_count}/{c.required}
+                        </TableCell>
+                        <TableCell>
+                          {/* Three states, because two hid the difference that matters: a course
+                              nobody was assigned to and a course whose panel has not answered yet
+                              are not the same situation, and only the first one is ours to fix. */}
+                          {staffing === "understaffed" ? (
+                            <Badge variant="warning">needs assignees</Badge>
+                          ) : c.completed ? (
+                            <Badge variant="success">complete</Badge>
+                          ) : (
+                            <Badge variant="outline">in progress</Badge>
+                          )}
+                        </TableCell>
+                        {canAssign ? (
+                          <TableCell className="text-right">
+                            {/* Offered on every row, not only the short ones: assigning past the
+                                quorum against expected dropout is deliberate. The badge carries
+                                the signal; the button carries the act. */}
+                            {course && !course.consumable_url ? (
+                              <span className="text-xs text-muted-foreground">not deployed</span>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setAssigning({ contentId: c.content_id })}
+                              >
+                                Assign
+                              </Button>
+                            )}
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </TableBody>
           </Table>
         </CardContent>
@@ -278,5 +331,43 @@ export default function CampaignDetailPage({
         </>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One generator version's heading, with where its courses stand.
+ *
+ * The subtotals are why the table is grouped at all: which version is behind, and which one
+ * is short of assignees, read without counting rows. `understaffed` is null while the seats
+ * are not known, and then the heading says nothing about them — as the rows do.
+ */
+function SectionHeading({
+  title,
+  rows,
+  understaffed,
+  columns,
+}: {
+  title: string;
+  rows: ContentProgress[];
+  understaffed: number | null;
+  columns: number;
+}) {
+  const complete = rows.filter((row) => row.completed).length;
+  return (
+    <TableRow className="bg-muted/40 hover:bg-muted/40">
+      <TableCell colSpan={columns} className="py-2 text-xs tabular-nums text-muted-foreground">
+        <span className="font-medium text-foreground">{title}</span>
+        {" · "}
+        {rows.length} {rows.length === 1 ? "course" : "courses"}
+        {" · "}
+        {complete} complete
+        {understaffed ? (
+          <span className="text-amber-700 dark:text-amber-400">
+            {" · "}
+            {understaffed} {understaffed === 1 ? "needs" : "need"} assignees
+          </span>
+        ) : null}
+      </TableCell>
+    </TableRow>
   );
 }
