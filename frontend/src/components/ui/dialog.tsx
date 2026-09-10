@@ -62,13 +62,17 @@ export function Dialog({
 
   if (!open || !mounted) return null;
 
+  // Centred by the panel's own auto margins, not by `items-center` on the backdrop: a centred
+  // flex item taller than its scrolling container overflows at the top as well as the
+  // bottom, and the top is out of reach of the scroll. Auto margins centre what fits and
+  // collapse to zero for what does not, so a tall dialog starts at its title.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative w-full max-w-lg rounded-xl border bg-card p-6 shadow-lg",
+          "relative w-full max-w-lg rounded-xl border bg-card p-6 shadow-lg sm:my-auto",
           className,
         )}
       >

@@ -4,7 +4,7 @@ import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DatasetVersionForm } from "@/components/admin/dataset-version-form";
+import { ReadinessLine } from "@/components/admin/readiness-line";
 import { RenameDatasetForm } from "@/components/admin/rename-dataset-form";
 import { useBriefs, useContents, useDataset, useGeneratorVersions } from "@/lib/api/hooks";
 import { courseLabel, courseRef } from "@/lib/courses";
@@ -25,7 +25,6 @@ import {
   summarizeMembership,
   versionHistory,
   type MembershipDiff,
-  type MembershipSummary,
 } from "@/lib/datasets";
 import type {
   ContentResponse,
@@ -49,7 +48,6 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
   const { data: generators } = useGeneratorVersions();
 
   const [renaming, setRenaming] = useState(false);
-  const [versioning, setVersioning] = useState(false);
   // Null means "whichever is latest", so a new version selects itself instead of leaving the
   // page pointing at the one that was newest when it loaded.
   const [selectedId, setSelectedId] = useState<Uuid | null>(null);
@@ -108,9 +106,12 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
             <Button variant="outline" onClick={() => setRenaming(true)}>
               <Pencil className="h-4 w-4" /> Rename
             </Button>
-            <Button onClick={() => setVersioning(true)}>
+            <Link
+              href={`/admin/datasets/${dataset.dataset_id}/versions/new`}
+              className={buttonVariants()}
+            >
               <Plus className="h-4 w-4" /> New version
-            </Button>
+            </Link>
           </div>
         </div>
       </div>
@@ -179,7 +180,7 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
         </CardContent>
       </Card>
 
-      {/* Outside the cards, so neither can unmount one mid-flight. */}
+      {/* Outside the cards, so neither can unmount it mid-flight. */}
       <Dialog
         open={renaming}
         onClose={() => setRenaming(false)}
@@ -188,33 +189,8 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
       >
         <RenameDatasetForm dataset={dataset} onDone={() => setRenaming(false)} />
       </Dialog>
-
-      <Dialog
-        open={versioning}
-        onClose={() => setVersioning(false)}
-        title="Freeze a new version"
-        description="Edit the membership and say what changed. The version is immutable once frozen."
-      >
-        <DatasetVersionForm dataset={dataset} onDone={() => setVersioning(false)} />
-      </Dialog>
     </div>
   );
-}
-
-/** What this membership is made of, in one line: totals first, then only what is missing. */
-function ReadinessLine({ summary }: { summary: MembershipSummary }) {
-  const facts = [
-    `${summary.total} ${summary.total === 1 ? "course" : "courses"}`,
-    summary.undeployed ? `${summary.undeployed} not deployed` : null,
-    summary.withoutBrief ? `${summary.withoutBrief} without a brief` : null,
-    summary.generatorVersions
-      ? `${summary.generatorVersions} generator ${summary.generatorVersions === 1 ? "version" : "versions"}`
-      : null,
-    summary.withoutGenerator ? `${summary.withoutGenerator} without a generator` : null,
-    summary.formats.length > 1 ? summary.formats.join(" + ") : null,
-  ].filter(Boolean);
-
-  return <p className="text-sm text-muted-foreground">{facts.join(" · ")}</p>;
 }
 
 /** One member, read-only. Declaring a deployment or attributing a generator are acts of

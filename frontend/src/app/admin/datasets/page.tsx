@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog } from "@/components/ui/dialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import {
   Table,
@@ -16,13 +14,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DatasetForm } from "@/components/admin/dataset-form";
 import { useDatasets } from "@/lib/api/hooks";
 import { latestVersion } from "@/lib/datasets";
 
 export default function DatasetsPage() {
   const { data: datasets, isLoading, error } = useDatasets();
-  const [creating, setCreating] = useState(false);
 
   return (
     <div className="max-w-5xl">
@@ -34,9 +30,9 @@ export default function DatasetsPage() {
             versions, so two rounds can say whether they ran on the same one.
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>
+        <Link href="/admin/datasets/new" className={buttonVariants()}>
           <Plus className="h-4 w-4" /> New dataset
-        </Button>
+        </Link>
       </div>
 
       {isLoading ? (
@@ -97,15 +93,6 @@ export default function DatasetsPage() {
           </CardContent>
         </Card>
       )}
-
-      <Dialog
-        open={creating}
-        onClose={() => setCreating(false)}
-        title="Declare a dataset"
-        description="Name the set and pick its courses. Declaring it freezes its first version."
-      >
-        <DatasetForm onDone={() => setCreating(false)} />
-      </Dialog>
     </div>
   );
 }

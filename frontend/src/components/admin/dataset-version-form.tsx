@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/states";
-import { CoursePicker, toggleIn } from "@/components/admin/course-picker";
+import { CoursePicker } from "@/components/admin/course-picker";
+import { FormActions } from "@/components/admin/form-actions";
 import { useContents, useMintDatasetVersion } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 import { latestVersion } from "@/lib/datasets";
@@ -17,16 +20,14 @@ import type { DatasetResponse } from "@/lib/api/types";
  *
  * **Prefilled with the current one**, because a version is a set and not a patch: the act
  * sends the whole membership, so starting from an empty picker would make "add one course"
- * read as "replace the set with one course". The counts underneath say what the act will
- * record before it is performed.
+ * read as "replace the set with one course". The counts in the action bar say what the act
+ * will record before it is performed.
+ *
+ * Mounted only once the dataset has loaded: the membership is read once, into state, and a
+ * form mounted before it arrived would start from an empty set.
  */
-export function DatasetVersionForm({
-  dataset,
-  onDone,
-}: {
-  dataset: DatasetResponse;
-  onDone: () => void;
-}) {
+export function DatasetVersionForm({ dataset }: { dataset: DatasetResponse }) {
+  const router = useRouter();
   const { data: courses } = useContents();
   const mint = useMintDatasetVersion(dataset.dataset_id);
 
@@ -44,6 +45,7 @@ export function DatasetVersionForm({
   }, [current, contentIds]);
 
   const unchanged = change.added === 0 && change.removed === 0;
+  const datasetHref = `/admin/datasets/${dataset.dataset_id}`;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +62,7 @@ export function DatasetVersionForm({
       {
         onSuccess: (updated) => {
           toast.success(`Frozen as v${latestVersion(updated)?.ordinal ?? "?"}.`);
-          onDone();
+          router.push(datasetHref);
         },
         onError: (err) => {
           const e = err as ApiError;
@@ -78,8 +80,8 @@ export function DatasetVersionForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-5">
-      <div className="space-y-1.5">
+    <form onSubmit={submit} className="space-y-6">
+      <div className="max-w-2xl space-y-1.5">
         <Label htmlFor="version-note">What changed, and why</Label>
         <Input
           id="version-note"
@@ -94,40 +96,31 @@ export function DatasetVersionForm({
         </p>
       </div>
 
-      <div className="space-y-2">
-        <Label>Courses in this version</Label>
-        <CoursePicker
-          courses={courses}
-          selected={contentIds}
-          onToggle={(id) => setContentIds(toggleIn(contentIds, id))}
-        />
-        <p className="text-xs text-muted-foreground">
-          This is the whole membership of the new version, not what is being added — it starts
-          from v{current?.ordinal ?? "?"}.
-        </p>
-      </div>
+      <CoursePicker
+        courses={courses}
+        selected={contentIds}
+        onChange={setContentIds}
+        baseline={
+          current ? { contentIds: current.content_ids, ordinal: current.ordinal } : undefined
+        }
+      />
 
-      <p
-        className={
+      <FormActions
+        warn={unchanged}
+        status={
           unchanged
-            ? "rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground"
-            : "text-xs text-muted-foreground"
+            ? `Identical to v${current?.ordinal ?? "?"}. Saving would record nothing, so it is refused.`
+            : `${change.added} added · ${change.removed} removed · ${contentIds.length} ${contentIds.length === 1 ? "course" : "courses"} in total`
         }
       >
-        {unchanged
-          ? `Identical to v${current?.ordinal ?? "?"}. Saving would record nothing, so it is refused.`
-          : `${change.added} added · ${change.removed} removed · ${contentIds.length} courses in total.`}
-      </p>
-
-      <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="outline" onClick={onDone} disabled={mint.isPending}>
+        <Link href={datasetHref} className={buttonVariants({ variant: "outline" })}>
           Cancel
-        </Button>
+        </Link>
         <Button type="submit" disabled={mint.isPending || unchanged}>
           {mint.isPending ? <Spinner /> : null}
           Freeze version
         </Button>
-      </div>
+      </FormActions>
     </form>
   );
 }
