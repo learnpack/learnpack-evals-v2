@@ -18,6 +18,14 @@ import { groupByVersion, UNKNOWN_VERSION } from "@/lib/versions";
 /** Both lists, the same box: tall enough to read a set by, and never taller than a window. */
 const LIST_BOX = "h-[60vh] min-h-72 min-w-0 overflow-y-auto rounded-md border p-2";
 
+/** How a course differs from the version being edited, in the console's soft palette: an
+ *  accent border over a faint fill. Leaving the set is amber, not red — red here means that
+ *  something failed, and taking a course out is a change the note explains, not an error. */
+const ADDED_BADGE =
+  "shrink-0 border-emerald-600/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+const REMOVED_BADGE =
+  "shrink-0 border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+
 /** The generator filter's "no filter" value — distinct from `UNKNOWN_VERSION`, which filters
  *  *to* the courses that declare no generator. */
 const ALL_VERSIONS = "";
@@ -264,7 +272,7 @@ export function CoursePicker({
                 {/* It was a member of the version this one starts from: taking it out is
                     part of the change being recorded. */}
                 {baselineSet?.has(course.content_id) ? (
-                  <Badge variant="outline" className="shrink-0">
+                  <Badge variant="outline" className={REMOVED_BADGE}>
                     in v{baseline?.ordinal}
                   </Badge>
                 ) : null}
@@ -349,7 +357,7 @@ function MemberRow({
         {detail ? <span className="text-xs text-muted-foreground">· {detail}</span> : null}
       </span>
       {isNew ? (
-        <Badge variant="secondary" className="shrink-0">
+        <Badge variant="outline" className={ADDED_BADGE}>
           new
         </Badge>
       ) : null}
