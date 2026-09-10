@@ -8,6 +8,21 @@ import type {
 /** The declared void of ADR-0024 as a group key: courses that name no generator. */
 export const UNKNOWN_VERSION = "unknown";
 
+/**
+ * A generator version as it is named everywhere, "<lineage> <version>".
+ *
+ * No resolved version means two different things — the declared void of ADR-0024, or a
+ * version whose list has not loaded yet — and they must never read the same: "unknown" where
+ * the truth is "not known yet" is a false fact.
+ */
+export function generatorName(
+  key: string,
+  version: GeneratorVersionResponse | null | undefined,
+): string {
+  if (version) return `${version.name} ${version.version}`;
+  return key === UNKNOWN_VERSION ? "Unknown generator" : "Generator …";
+}
+
 /** One generator version and everything registered against it. `version: null` is the
  *  declared void — a group, but never something a round can measure. */
 export type VersionGroup = {
