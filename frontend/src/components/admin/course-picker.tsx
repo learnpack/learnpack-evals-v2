@@ -12,7 +12,11 @@ import { useGeneratorVersions } from "@/lib/api/hooks";
 import type { ContentResponse, GeneratorVersionResponse, Uuid } from "@/lib/api/types";
 import { courseLabel, courseRef } from "@/lib/courses";
 import { summarizeMembership } from "@/lib/datasets";
+import { cn } from "@/lib/utils";
 import { groupByVersion, UNKNOWN_VERSION } from "@/lib/versions";
+
+/** Both lists, the same box: tall enough to read a set by, and never taller than a window. */
+const LIST_BOX = "h-[60vh] min-h-72 min-w-0 overflow-y-auto rounded-md border p-2";
 
 /** The generator filter's "no filter" value — distinct from `UNKNOWN_VERSION`, which filters
  *  *to* the courses that declare no generator. */
@@ -140,139 +144,153 @@ export function CoursePicker({
     onChange(selected.filter((id) => !dropped.has(id)));
   };
 
+  // One grid of eight cells rather than two columns of four: each row is as tall as its
+  // taller cell, so the two lists start and end together whatever sits above or below them.
+  // When the columns collapse, `order` restacks the cells into two whole areas, the set
+  // first — it is the one that must never be out of sight.
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* First in the DOM, so it is also first when the columns stack. */}
-      <section aria-label="In this set" className="min-w-0 space-y-2">
-        <h3 className="text-sm font-medium">In this set</h3>
-        {summary ? <ReadinessLine summary={summary} /> : null}
-        <div className="h-80 space-y-3 overflow-y-auto rounded-md border p-2">
-          {selected.length === 0 ? (
-            <p className="px-2 py-3 text-sm text-muted-foreground">
-              Nothing in this set yet — add courses from the list.
-            </p>
-          ) : (
-            <>
-              {chosenGroups.map((group) => (
-                <MemberGroup
-                  key={group.key}
-                  title={`${generatorName(group.key, group.version)} · ${group.courses.length}`}
-                  onRemoveAll={() => remove(group.courses.map((course) => course.content_id))}
-                >
-                  {[...group.courses].sort(byName).map((course) => (
-                    <MemberRow
-                      key={course.content_id}
-                      label={courseLabel(course)}
-                      detail={`v${course.version}${course.consumable_url ? "" : " · not deployed"}`}
-                      isNew={baselineSet !== null && !baselineSet.has(course.content_id)}
-                      onRemove={() => remove([course.content_id])}
-                    />
-                  ))}
-                </MemberGroup>
-              ))}
-              {unresolved.length ? (
-                <MemberGroup
-                  title={`Not in the course list · ${unresolved.length}`}
-                  onRemoveAll={() => remove(unresolved)}
-                >
-                  {unresolved.map((id) => (
-                    <MemberRow
-                      key={id}
-                      label={`Course ${courseRef(id)}`}
-                      detail={null}
-                      isNew={false}
-                      onRemove={() => remove([id])}
-                    />
-                  ))}
-                </MemberGroup>
-              ) : null}
-            </>
-          )}
-        </div>
-      </section>
+    <div className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
+      <h3 className="order-1 text-sm font-medium md:order-none">In this set</h3>
+      <h3 className="order-5 mt-4 text-sm font-medium md:order-none md:mt-0">Available</h3>
 
-      <section aria-label="Available" className="min-w-0 space-y-2">
-        <h3 className="text-sm font-medium">Available</h3>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            // The picker sits inside a form: Enter here means "done typing", never "freeze
-            // the set".
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.preventDefault();
-            }}
-            placeholder="Filter by course…"
-            aria-label="Filter available courses by name"
-          />
-          <Select
-            value={versionKey}
-            onChange={(e) => setVersionKey(e.target.value)}
-            aria-label="Filter available courses by generator version"
-          >
-            <option value={ALL_VERSIONS}>All generator versions</option>
-            {versionOptions.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.name} · {option.available} available
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="h-80 space-y-1 overflow-y-auto rounded-md border p-2">
-          {available.length === 0 ? (
-            <p className="px-2 py-3 text-sm text-muted-foreground">
-              Every registered course is in this set.
-            </p>
-          ) : shown.length === 0 ? (
-            <p className="px-2 py-3 text-sm text-muted-foreground">
-              No available course matches the filter.
-            </p>
-          ) : (
-            shown.map((course) => {
-              const key = generatorKey(course);
-              return (
-                <button
-                  key={course.content_id}
-                  type="button"
-                  onClick={() => add([course.content_id])}
-                  aria-label={`Add ${courseLabel(course)}`}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
-                >
-                  <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1">
-                    {courseLabel(course)}{" "}
-                    <span className="text-xs text-muted-foreground">
-                      · v{course.version} · {generatorName(key, versionById.get(key))}
-                      {course.consumable_url ? null : " · not deployed"}
-                    </span>
-                  </span>
-                  {/* It was a member of the version this one starts from: taking it out is
-                      part of the change being recorded. */}
-                  {baselineSet?.has(course.content_id) ? (
-                    <Badge variant="outline" className="shrink-0">
-                      in v{baseline?.ordinal}
-                    </Badge>
-                  ) : null}
-                </button>
-              );
-            })
-          )}
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            {available.length} available{filtering ? ` · ${shown.length} shown` : ""}
+      <div className="order-2 flex min-h-10 min-w-0 items-center md:order-none">
+        {summary ? <ReadinessLine summary={summary} /> : null}
+      </div>
+      <div className="order-6 grid min-w-0 gap-2 sm:grid-cols-2 md:order-none">
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          // The picker sits inside a form: Enter here means "done typing", never "freeze
+          // the set".
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
+          placeholder="Filter by course…"
+          aria-label="Filter available courses by name"
+        />
+        <Select
+          value={versionKey}
+          onChange={(e) => setVersionKey(e.target.value)}
+          aria-label="Filter available courses by generator version"
+        >
+          <option value={ALL_VERSIONS}>All generator versions</option>
+          {versionOptions.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.name} · {option.available} available
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div
+        role="region"
+        aria-label="Courses in this set"
+        className={cn(LIST_BOX, "order-3 space-y-3 md:order-none")}
+      >
+        {selected.length === 0 ? (
+          <p className="px-2 py-3 text-sm text-muted-foreground">
+            Nothing in this set yet — add courses from the list.
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={shown.length === 0}
-            onClick={() => add(shown.map((course) => course.content_id))}
-          >
-            <Plus className="h-3.5 w-3.5" /> Add all {shown.length} shown
-          </Button>
-        </div>
-      </section>
+        ) : (
+          <>
+            {chosenGroups.map((group) => (
+              <MemberGroup
+                key={group.key}
+                title={`${generatorName(group.key, group.version)} · ${group.courses.length}`}
+                onRemoveAll={() => remove(group.courses.map((course) => course.content_id))}
+              >
+                {[...group.courses].sort(byName).map((course) => (
+                  <MemberRow
+                    key={course.content_id}
+                    label={courseLabel(course)}
+                    detail={`v${course.version}${course.consumable_url ? "" : " · not deployed"}`}
+                    isNew={baselineSet !== null && !baselineSet.has(course.content_id)}
+                    onRemove={() => remove([course.content_id])}
+                  />
+                ))}
+              </MemberGroup>
+            ))}
+            {unresolved.length ? (
+              <MemberGroup
+                title={`Not in the course list · ${unresolved.length}`}
+                onRemoveAll={() => remove(unresolved)}
+              >
+                {unresolved.map((id) => (
+                  <MemberRow
+                    key={id}
+                    label={`Course ${courseRef(id)}`}
+                    detail={null}
+                    isNew={false}
+                    onRemove={() => remove([id])}
+                  />
+                ))}
+              </MemberGroup>
+            ) : null}
+          </>
+        )}
+      </div>
+      <div
+        role="region"
+        aria-label="Available courses"
+        className={cn(LIST_BOX, "order-7 space-y-1 md:order-none")}
+      >
+        {available.length === 0 ? (
+          <p className="px-2 py-3 text-sm text-muted-foreground">
+            Every registered course is in this set.
+          </p>
+        ) : shown.length === 0 ? (
+          <p className="px-2 py-3 text-sm text-muted-foreground">
+            No available course matches the filter.
+          </p>
+        ) : (
+          shown.map((course) => {
+            const key = generatorKey(course);
+            return (
+              <button
+                key={course.content_id}
+                type="button"
+                onClick={() => add([course.content_id])}
+                aria-label={`Add ${courseLabel(course)}`}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  {courseLabel(course)}{" "}
+                  <span className="text-xs text-muted-foreground">
+                    · v{course.version} · {generatorName(key, versionById.get(key))}
+                    {course.consumable_url ? null : " · not deployed"}
+                  </span>
+                </span>
+                {/* It was a member of the version this one starts from: taking it out is
+                    part of the change being recorded. */}
+                {baselineSet?.has(course.content_id) ? (
+                  <Badge variant="outline" className="shrink-0">
+                    in v{baseline?.ordinal}
+                  </Badge>
+                ) : null}
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      <p className="order-4 flex min-h-9 items-center text-xs text-muted-foreground md:order-none">
+        Grouped by the generator version that made them.
+      </p>
+      <div className="order-8 flex min-h-9 flex-wrap items-center justify-between gap-2 md:order-none">
+        <p className="text-xs text-muted-foreground">
+          {available.length} available{filtering ? ` · ${shown.length} shown` : ""}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={shown.length === 0}
+          onClick={() => add(shown.map((course) => course.content_id))}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add all {shown.length} shown
+        </Button>
+      </div>
     </div>
   );
 }
