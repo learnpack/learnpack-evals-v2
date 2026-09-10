@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/states";
-import { CoursePicker, toggleIn } from "@/components/admin/course-picker";
+import { CoursePicker } from "@/components/admin/course-picker";
 import { useContents, useMintDatasetVersion } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 import { latestVersion } from "@/lib/datasets";
@@ -95,11 +95,14 @@ export function DatasetVersionForm({
       </div>
 
       <div className="space-y-2">
-        <Label>Courses in this version</Label>
+        <Label>Courses</Label>
         <CoursePicker
           courses={courses}
           selected={contentIds}
-          onToggle={(id) => setContentIds(toggleIn(contentIds, id))}
+          onChange={setContentIds}
+          baseline={
+            current ? { contentIds: current.content_ids, ordinal: current.ordinal } : undefined
+          }
         />
         <p className="text-xs text-muted-foreground">
           This is the whole membership of the new version, not what is being added — it starts

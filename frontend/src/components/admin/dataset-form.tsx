@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/states";
-import { CoursePicker, toggleIn } from "@/components/admin/course-picker";
+import { CoursePicker } from "@/components/admin/course-picker";
 import { useContents, useDeclareDataset } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
 
@@ -103,12 +103,8 @@ export function DatasetForm({ onDone }: { onDone: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <Label>Courses in this set</Label>
-        <CoursePicker
-          courses={courses}
-          selected={contentIds}
-          onToggle={(id) => setContentIds(toggleIn(contentIds, id))}
-        />
+        <Label>Courses</Label>
+        <CoursePicker courses={courses} selected={contentIds} onChange={setContentIds} />
       </div>
 
       <div className="flex justify-end gap-2 pt-1">

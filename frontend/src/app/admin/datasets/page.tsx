@@ -103,6 +103,7 @@ export default function DatasetsPage() {
         onClose={() => setCreating(false)}
         title="Declare a dataset"
         description="Name the set and pick its courses. Declaring it freezes its first version."
+        className="max-w-4xl"
       >
         <DatasetForm onDone={() => setCreating(false)} />
       </Dialog>

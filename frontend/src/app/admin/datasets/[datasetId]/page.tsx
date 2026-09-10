@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DatasetVersionForm } from "@/components/admin/dataset-version-form";
+import { ReadinessLine } from "@/components/admin/readiness-line";
 import { RenameDatasetForm } from "@/components/admin/rename-dataset-form";
 import { useBriefs, useContents, useDataset, useGeneratorVersions } from "@/lib/api/hooks";
 import { courseLabel, courseRef } from "@/lib/courses";
@@ -25,7 +26,6 @@ import {
   summarizeMembership,
   versionHistory,
   type MembershipDiff,
-  type MembershipSummary,
 } from "@/lib/datasets";
 import type {
   ContentResponse,
@@ -194,27 +194,12 @@ export default function DatasetPage({ params }: { params: Promise<{ datasetId: s
         onClose={() => setVersioning(false)}
         title="Freeze a new version"
         description="Edit the membership and say what changed. The version is immutable once frozen."
+        className="max-w-4xl"
       >
         <DatasetVersionForm dataset={dataset} onDone={() => setVersioning(false)} />
       </Dialog>
     </div>
   );
-}
-
-/** What this membership is made of, in one line: totals first, then only what is missing. */
-function ReadinessLine({ summary }: { summary: MembershipSummary }) {
-  const facts = [
-    `${summary.total} ${summary.total === 1 ? "course" : "courses"}`,
-    summary.undeployed ? `${summary.undeployed} not deployed` : null,
-    summary.withoutBrief ? `${summary.withoutBrief} without a brief` : null,
-    summary.generatorVersions
-      ? `${summary.generatorVersions} generator ${summary.generatorVersions === 1 ? "version" : "versions"}`
-      : null,
-    summary.withoutGenerator ? `${summary.withoutGenerator} without a generator` : null,
-    summary.formats.length > 1 ? summary.formats.join(" + ") : null,
-  ].filter(Boolean);
-
-  return <p className="text-sm text-muted-foreground">{facts.join(" · ")}</p>;
 }
 
 /** One member, read-only. Declaring a deployment or attributing a generator are acts of
