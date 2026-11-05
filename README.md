@@ -18,11 +18,28 @@ Two rules hold everywhere, and most of the design follows from them:
 - **A verdict cites its evidence** — a quote and its location in the package, or an explicit
   record that there was none. "The model said so" is not a result.
 
+## How a criterion is decided
+
+An instrument's criteria say *what* is verified; the assessor that executes them decides *how*,
+criterion by criterion. There are three ways, and an assessor may also decline:
+
+| | What a model does | What code does |
+|---|---|---|
+| **deterministic** | nothing | counts, checks presence and order, computes measures such as lexical load |
+| **model extracts, code decides** | reads the course and returns grounded data: the outcomes it states, the level of each objective, which task measures which objective, where each concept appears | applies the pass condition to that data — a count, an order, a trajectory |
+| **model judges** | answers the pass condition itself, citing a passage | checks the citation, asks again, takes the majority |
+| **abstains** | — | nothing: the criterion is `not_assessed`, and only a human judges it |
+
+How many criteria each assessor decides each way, and which, is in `docs/MEASUREMENT.md` — a
+test fails when that table stops matching the code.
+
 ## Run it
 
-Everything runs on your machine: Postgres in a container, no accounts, no cloud. You need
-Docker, [Task](https://taskfile.dev/installation/), [uv](https://docs.astral.sh/uv/) and
-Node 20+.
+Everything runs on your machine: Postgres in a container, no accounts to create, nothing to
+deploy. You need Docker, [Task](https://taskfile.dev/installation/),
+[uv](https://docs.astral.sh/uv/) and Node 20+. The one thing that leaves the machine is a model
+call: measuring with an assessor that extracts or judges through a model needs an OpenRouter key
+in `LLM_API_KEY` (`backend/README.md`); the deterministic ones need nothing.
 
 ```bash
 task setup   # once: env files, dependencies, database, migrations, seed
@@ -45,10 +62,13 @@ over from an empty database.
 | find out why a criterion answered that | `docs/RUNBOOK-calibrating.md` |
 | write or revise an instrument | `docs/RUNBOOK-authoring-an-instrument.md` |
 | teach the system a new package format | `docs/RUNBOOK-adding-a-format.md` |
+| know how each criterion is decided — code, a model's data, or a model's verdict | `docs/MEASUREMENT.md` |
 | run the backend, find a command or a setting | `backend/README.md` |
+| make a batch faster, or find which ceiling holds it back | `backend/TUNING.md` |
 | work on the console | `frontend/README.md` |
 | deploy an instance for an expert campaign | `backend/ENVIRONMENT.md` |
 | know what is built and what is not | `STATUS.md` |
+| find the decision behind a rule | `docs/README.md` — the index of every ADR |
 
 ## The repo
 
@@ -56,6 +76,7 @@ over from an empty database.
 backend/    FastAPI + Postgres. Hexagonal, events-first.
 frontend/   Next.js + Tailwind. The evaluator's flow and the admin console.
 docs/       Why every boundary is where it is.
+courses/    The packages under measurement, one folder per generator version. Never versioned.
 ```
 
 ## Reading the documentation
