@@ -1,12 +1,103 @@
 # Measurement — what the engine computes, and where its thresholds come from
 
-Some criteria are decided by a number: a count, a ratio, an index over the text. This document
-says **where such a number is computed, what each one means, and on what evidence its threshold
-was set** — so that a threshold is never a figure someone once liked, and so that a measure that
-was tried and rejected is not tried again.
+Some criteria are decided by a number: a count, a ratio, an index over the text. Others are
+decided over what a model read, and some by a model outright. This document says **how each
+criterion is decided** by the assessors the workbench registers, and, for the ones decided by a
+number, **where that number is computed, what it means, and on what evidence its threshold was
+set** — so that a threshold is never a figure someone once liked, and so that a measure that was
+tried and rejected is not tried again.
 
 Its companion is `GLOSSARY.md` (`ComputedMetric`, `CriterionScore`), which defines the terms this
 document uses.
+
+## How each criterion is decided
+
+A criterion says **what** is verified; the assessor's version says **how** (ADR-0016). The
+mechanism is an internal detail of the assessor and never part of the criterion: the same
+criterion can be decided by code in one assessor and by a model in another, and moving it from one
+to the other is a new assessor version. So what follows describes **assessors**, not instruments.
+
+Whatever the mechanism, an executed criterion ends the same way — `pass` or `fail`, with a verbatim
+quote and its locator (ADR-0009). It gets there in one of three ways, or the assessor declines it:
+
+- **deterministic** — code over the profile: a count, a presence or order check, a measure such
+  as `lexical_load` (below). No model is called, and the same profile always gets the same
+  verdict.
+- **model extracts, code decides** — a model reads the course and returns *data*: the outcomes
+  the opening lesson states, the cognitive level of each objective, which tasks bear on which
+  objective, where each concept is stated and what each module does with it. Every item is
+  grounded — a quote checked verbatim against the text, or an identifier from a closed list — and
+  the pass condition is applied to it in code: a count, an order, a trajectory rule. The model
+  supplies data, never the verdict.
+- **model judges** — the pass condition has no mechanical proxy ("does the closing lesson
+  integrate what the course taught?"), so the model answers with the verdict itself, asked with
+  the instrument's `pass_condition` and failure modes verbatim. The answer must cite a passage
+  that is checked against the text; it is asked twice, a third time only when the two disagree,
+  and the majority is taken in code. A criterion about several objectives is answered one
+  objective at a time and added up in code.
+- **abstains** — the assessor declares that it does not decide the criterion (ADR-0018). The
+  criterion derives `not_assessed`, leaves the denominator, and is left to a human.
+
+An assessor that decides anything through a model calls it through OpenRouter, so measuring with
+it needs `LLM_API_KEY` (`backend/README.md`).
+
+The labels are read off the code, not off its comments: `backend/tests/test_decision_mechanisms_doc.py`
+walks each executor's calls and fails as soon as a table below stops matching the registry.
+
+### By assessor
+
+The instrument is the version the workbench publishes for the assessor's lineage
+(`docs/seed/workbench.yaml`).
+
+| Assessor | Instrument | Criteria | deterministic | model extracts, code decides | model judges | abstains |
+|---|---|---|---|---|---|---|
+| `structural` v1 | `learnpack-course-qa-v1` | 27 | 9 | 0 | 0 | 18 |
+| `drafts-structural` v1 | `course-drafts-qa-v10` | 30 | 7 | 0 | 0 | 23 |
+| `drafts-hybrid` v13 | `course-drafts-qa-v10` | 30 | 7 | 9 | 5 | 9 |
+
+### Criterion by criterion: `drafts-hybrid` v13 over `course-drafts-qa-v10`
+
+In the instrument's order. The last column does not depend on the assessor: it says whether the
+derivation lets the criterion reach **any** assessor on a `LearnpackV1` course. That format's
+adapter supplies no declared objectives, audience, prerequisites, per-lesson concepts or proposed
+assessment, so a criterion that requires one of them derives `not_applicable` there (ADR-0018) —
+reading them out of the lesson bodies would be inference (ADR-0009).
+
+| Criterion | How it is decided | On a `LearnpackV1` course |
+|---|---|---|
+| `cr-objectives-min-count` | deterministic | not applicable |
+| `cr-objectives-observable-verbs` | model extracts, code decides | not applicable |
+| `cr-outcomes-present` | model extracts, code decides | runs |
+| `cr-outcomes-observable-verbs` | model extracts, code decides | runs |
+| `cr-objectives-verb-level-band` | abstains | runs |
+| `cr-objectives-non-decreasing-demand` | model extracts, code decides | not applicable |
+| `cr-every-objective-is-developed-somewhere` | abstains | not applicable |
+| `cr-every-substantive-lesson-serves-an-objective` | abstains | not applicable |
+| `cr-lesson-works-at-the-level-its-objective-demands` | abstains | not applicable |
+| `cr-every-objective-has-an-assessment-item` | model extracts, code decides | not applicable |
+| `cr-assessment-matches-the-declared-verification` | model judges | not applicable |
+| `cr-new-instruction-is-preceded-by-a-problem` | abstains | runs |
+| `cr-opening-lesson-connects-backwards` | model judges | runs |
+| `cr-closing-lesson-integrates` | model judges | runs |
+| `cr-closing-lesson-projects-forward` | model judges | runs |
+| `cr-skill-lessons-carry-a-worked-example` | abstains | runs |
+| `cr-course-opens-with-general-intro` | deterministic | runs |
+| `cr-course-has-development` | deterministic | runs |
+| `cr-arc-character` | model judges | runs |
+| `cr-lessons-build-within-their-module` | model extracts, code decides | not applicable |
+| `cr-modules-build-on-earlier-modules` | model extracts, code decides | not applicable |
+| `cr-assessment-retrieves-earlier-taught-material` | model extracts, code decides | not applicable |
+| `cr-module-structure-well-formed` | deterministic | runs |
+| `cr-module-single-topic` | abstains | runs |
+| `cr-adjacent-pair-has-a-bridge` | abstains | runs |
+| `cr-concepts-introduced-before-use` | abstains | runs |
+| `cr-audience-declared` | deterministic | not applicable |
+| `cr-prerequisites-declared` | deterministic | not applicable |
+| `cr-no-lesson-spikes-in-lexical-load` | deterministic | runs |
+| `cr-cognitive-demand-rises-across-the-course` | model extracts, code decides | not applicable |
+
+Why each abstention is one is written next to it, in the assessor's `ABSTENTIONS`
+(`backend/app/modules/evaluation/infrastructure/assessors/drafts_hybrid/__init__.py`).
 
 ## Where a measurement is computed
 
