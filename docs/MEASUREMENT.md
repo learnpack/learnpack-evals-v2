@@ -36,7 +36,9 @@ quote and its locator (ADR-0009). It gets there in one of three ways, or the ass
   and the majority is taken in code. A criterion about several objectives is answered one
   objective at a time and added up in code.
 - **abstains** — the assessor declares that it does not decide the criterion (ADR-0018). The
-  criterion derives `not_assessed`, leaves the denominator, and is left to a human.
+  criterion derives `not_assessed`: nobody decides it, human or automated. A report shows it as
+  a gap in coverage, and the fitness projection leaves it out rather than charging it to the
+  generator (ADR-0023).
 
 An assessor that decides anything through a model calls it through OpenRouter, so measuring with
 it needs `LLM_API_KEY` (`backend/README.md`).
