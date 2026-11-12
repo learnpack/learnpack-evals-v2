@@ -88,6 +88,16 @@ app.add_middleware(
 )
 
 
+# Two questions, two endpoints. `/livez` asks "does the process answer?" and is what the host
+# probes, every few seconds. `/health` asks "does it reach the database?" and is opened by
+# hand. A periodic probe must never touch the database: Neon suspends its compute only after
+# minutes without activity (ADR-0003), so a probe that queries it keeps it awake — and billed
+# — around the clock.
+@app.get("/livez")
+def livez() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.get("/health")
 def health(session: Annotated[Session, Depends(get_session)]) -> dict[str, str]:
     session.execute(text("SELECT 1"))
