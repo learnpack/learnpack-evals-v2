@@ -47,7 +47,9 @@ task dev       # daily: the containers, the API on :8000, the console on :3000
 | `task backend` · `task frontend` | one server at a time, when you do not want both |
 | `task db` · `task db:down` | the Postgres containers alone; `db:down` keeps the dev volume |
 
-`GET /health` verifies that the API boots and the DB responds.
+`GET /health` verifies that the API boots and the DB responds; open it by hand. `GET /livez`
+only says the process answers, without touching the DB — it is what a host probes
+periodically, so the probe never keeps Neon's compute awake.
 
 **The same setup by hand**, from `backend/`, when you want to vary a step or see what one did:
 

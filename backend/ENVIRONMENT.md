@@ -136,7 +136,7 @@ The rest of the form:
 |---|---|
 | Region | the one Neon is in (step 2) |
 | Instance type | any **paid** one — the pre-deploy command does not exist on free |
-| Health check path | `/health` |
+| Health check path | `/livez` — **not** `/health`: Render probes it every few seconds, and `/health` queries the database, so Neon's compute would never suspend and would bill the whole month |
 | Pre-deploy command | `alembic upgrade head` |
 
 And its environment:
