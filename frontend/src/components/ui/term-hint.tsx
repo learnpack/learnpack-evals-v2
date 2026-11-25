@@ -9,7 +9,7 @@ import { TERMS, type Term } from "@/lib/terms";
 export function TermHint({ term }: { term: Term }) {
   return (
     <Popover
-      label={`What is a ${term}?`}
+      label={`What is ${/^[aeiou]/.test(term) ? "an" : "a"} ${term}?`}
       trigger={<HelpCircle className="ml-1 h-3.5 w-3.5" aria-hidden="true" />}
     >
       <span className="mb-1 block font-medium capitalize">{term}</span>
