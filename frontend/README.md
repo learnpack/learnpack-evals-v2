@@ -106,22 +106,24 @@ src/
     sign-in/[[...sign-in]]/        # <SignInScreen/> of the active adapter
     accept-invitation/[[...]]/     # the second door — see above
     evaluations/                   # evaluator flow (list + one scoring screen)
-    admin/                         # admin console. page.tsx is the loop (versions nobody
-                                   # measured + last rounds), and layout.tsx groups the
-                                   # destinations by how often they are needed:
-                                   #   Measure           contents, studies
-                                   #   Definitions       instruments (with Publish), rubrics,
-                                   #                     assessors (with Ratify), generators,
-                                   #                     briefs, datasets, profiles
-                                   #   Human evaluation  campaigns, calibration,
-                                   #                     evaluator workload
+    admin/                         # admin console. page.tsx opens on three tasks, then
+                                   # what is pending (versions nobody measured, latest
+                                   # studies); layout.tsx groups the destinations by task:
+                                   #   Evaluate     home, measure (local only), contents,
+                                   #                studies
+                                   #   Experts      campaigns, evaluator workload
+                                   #   Understand   instruments (with Publish), assessors
+                                   #                (with Ratify)
+                                   #   Setup        folded: generators, briefs, datasets,
+                                   #                profiles, rubrics, calibration
   components/
-    ui/                            # UI kit (button, card, table, dialog, select,
-                                   # collapsible-section…)
+    ui/                            # UI kit (button, card, table, dialog, popover,
+                                   # select, collapsible-section, term-hint — the "?"
+                                   # beside a term, ADR-0069 — …)
     evaluator/                     # consume-content (iframe+fallback), score-form,
                                    # declared-data (what the course says about itself, for
                                    # the items resting on it — ADR-0057), how-this-works
-                                   # (what a rater is told before answering)
+                                   # (what an evaluator is told before answering)
     admin/                         # forms (content, campaign, assign), the shared badges
                                    # and palettes (study-status, outcome-badge,
                                    # claim-status), the quote/copy/distribution
@@ -139,7 +141,7 @@ src/
     datasets.ts                    # set math over a dataset's version line (ADR-0058)
     csv.ts                         # the console's one download: quoting, BOM, filename
     versions.ts                    # courses grouped by the version that made them, and
-                                   # which versions a round has actually measured
+                                   # which versions a study has actually measured
     generator-declaration.ts       # whether a package's own declaration agrees with the
                                    # one the operator made for a batch
     course-list.ts                 # the course URLs a .csv names, read as forgivingly as
@@ -217,23 +219,23 @@ the plain URL** — a course in its own tab is its own, switch included.
 ## Courses read by generator version
 
 `/admin/contents` opens grouped by the version that made each course, because that is the
-grain a round measures. A card says what that version brought — courses, commissions, how
+grain a study measures. A card says what that version brought — courses, briefs, how
 many were read — and carries the two acts that start from there:
 
 - **Measure this version** links to `/admin/studies/new?versions=<id>`.
-- **Compare with…** offers every other version with the number of commissions **both**
+- **Compare with…** offers every other version with the number of briefs **both**
   answered, zero included and in amber. It is the earliest point at which anyone can see
-  that two versions are not answering the same work; the round is not refused, because a
+  that two versions are not answering the same work; the study is not refused, because a
   cross-format A/B is deliberately legitimate (ADR-0044 §7).
 
-The link carries the versions and nothing else. The study's name and its commissions are
+The link carries the versions and nothing else. The study's name and its briefs are
 derived where it lands (`app/admin/studies/new/page.tsx`), so how a dataset is composed is
-decided in one place rather than encoded in a query string. The commissions prefilled are the
+decided in one place rather than encoded in a query string. The briefs prefilled are the
 **union** of what those versions answered — the form's own per-version counts and its unpaired
 warning are what tell the reader the rest.
 
-Two things a card says that nothing else does: courses with **no commission** can never enter
-a round, and the **unknown generator** group can never be measured, since a round names the
+Two things a card says that nothing else does: courses with **no brief** can never enter
+a study, and the **unknown generator** group can never be measured, since a study names the
 versions it measures (ADR-0024, ADR-0044 §6). Its courses are attributed in the flat **List**
 view, which also keeps the format/generator/version filters.
 
@@ -336,7 +338,7 @@ console is arranged around:
    (`LOCAL_SOURCE_ROOTS`, see `../backend/README.md`), previews what registering each folder
    would do, registers the ones you tick, and then says how many of the lot came back read.
 3. **Measure** — `StudyForm`, the very same one `/admin/studies/new` renders, prefilled with
-   the version declared in 1 and the commissions its courses brought. Composing a dataset in
+   the version declared in 1 and the briefs its courses brought. Composing a dataset in
    a second place would be a second set of rules to keep in step.
 
 That third stretch reads its initial values once, at mount, so the page rebuilds it when the
@@ -406,8 +408,8 @@ they are invited and appear in the picker after their first sign-in.
 2. `/admin/campaigns`: new campaign (quorum, courses).
 3. Assign the course to two evaluators in `/admin/campaigns/[id]`.
 4. Log in as an evaluator → `/evaluations` → the course and the form side by side → submit.
-5. Back to admin → progress `1/1` in the campaign detail, then **Report** for what the round
+5. Back to admin → progress `1/1` in the campaign detail, then **Report** for what the campaign
    found (ADR-0060): agreement per item, the panel's profile per dimension, each expert's
    answers side by side, and golden `usable`. A result is read inside its own campaign, so
    there is no cross-campaign scores page; `/admin/workload` answers the one question that
-   does span rounds — who is carrying what.
+   does span campaigns — who is carrying what.

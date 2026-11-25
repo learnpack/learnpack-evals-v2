@@ -3,29 +3,54 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Play, Plus } from "lucide-react";
+import { ArrowRight, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, LoadingState } from "@/components/ui/states";
 import { StudyStatusBadge } from "@/components/admin/study-status";
 import { useContents, useGeneratorVersions, useStudies } from "@/lib/api/hooks";
 import { groupByVersion, measuredVersionIds, type VersionGroup } from "@/lib/versions";
+import { IS_LOCAL_AUTH } from "@/lib/auth";
 import type { StudyResponse } from "@/lib/api/types";
 
 /** How many rounds the front page carries. Enough to see where things stand, few enough
  *  that the list stays a glance rather than a second Studies page. */
 const RECENT_ROUNDS = 5;
 
+/** The three things a person comes to the console to do, written from their side of the
+ *  screen. The first one depends on the mode: importing from a folder exists only on a local
+ *  setup, and a deployed console composes a study from courses already registered. */
+const TASKS = [
+  {
+    title: "Evaluate a batch of courses",
+    body: "Measure what one generator version produced, criterion by criterion, with the passage behind each verdict.",
+    href: IS_LOCAL_AUTH ? "/admin/measure" : "/admin/studies/new",
+    action: "Start",
+  },
+  {
+    title: "Try one course",
+    body: "See how a single course does against an instrument. Nothing is saved, so you can try as often as you like.",
+    href: "/admin/calibration",
+    action: "Pick a course",
+  },
+  {
+    title: "Ask experts",
+    body: "Have subject-matter experts rate courses, and check whether the automated verdicts follow them.",
+    href: "/admin/campaigns",
+    action: "Campaigns",
+  },
+];
+
 /**
- * The console's front page answers one question: what is left to do?
+ * The console's front page answers two questions, in the order somebody arriving asks them:
+ * what can I do here, and what is left to do?
  *
- * It used to be seven cards linking to the same pages as the nav — a toll of one click that
- * carried no information. The nav groups those destinations now, so this is free to say the
- * one thing only the console knows: which registered versions nobody has measured, and how
- * the last rounds ended.
+ * The first is the three tasks, because a reader who does not know the model yet cannot
+ * start from the nav, which is a list of the things the model is made of. The second is what
+ * only the console knows: which registered versions nobody has measured, and how the latest
+ * studies ended.
  */
 export default function AdminHome() {
-  const router = useRouter();
   const studies = useStudies();
   const contents = useContents();
   const generatorVersions = useGeneratorVersions();
@@ -45,25 +70,42 @@ export default function AdminHome() {
 
   return (
     <div className="max-w-4xl space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Admin console</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">What do you want to find out?</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Register what a generator version made, measure it against an instrument, read
-            what came back.
+            The instruments and assessors are already set up. Pick a task to start.
           </p>
         </div>
-        <Button className="shrink-0" onClick={() => router.push("/admin/studies/new")}>
-          <Plus className="h-4 w-4" /> New study
-        </Button>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {TASKS.map((task, index) => (
+            <Link
+              key={task.title}
+              href={task.href}
+              className={
+                index === 0
+                  ? "flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
+                  : "flex flex-col gap-2 rounded-lg border bg-card p-4 transition-colors hover:bg-accent/40"
+              }
+            >
+              <span className="font-medium">{task.title}</span>
+              <span className="text-sm text-muted-foreground">{task.body}</span>
+              <span className="mt-auto flex items-center gap-1 pt-1 text-sm font-medium text-primary">
+                {task.action} <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </Link>
+          ))}
+        </div>
       </div>
+
+      <h2 className="border-t pt-6 text-lg font-semibold tracking-tight">Pending</h2>
 
       {loading ? (
         <LoadingState />
       ) : (
         <>
           <section className="space-y-3">
-            <h2 className="text-sm font-medium">Versions nobody has measured</h2>
+            <h3 className="text-sm font-medium">Versions nobody has measured</h3>
             {unmeasured.length === 0 ? (
               <EmptyState
                 title="Every registered version has been measured"
@@ -80,7 +122,7 @@ export default function AdminHome() {
 
           <section className="space-y-3">
             <div className="flex items-baseline justify-between gap-4">
-              <h2 className="text-sm font-medium">Latest studies</h2>
+              <h3 className="text-sm font-medium">Latest studies</h3>
               <Link
                 href="/admin/studies"
                 className="text-xs text-muted-foreground hover:underline"
