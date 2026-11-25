@@ -48,6 +48,7 @@ function generatorLabel(generator: ReportBody["generatorLevel"][number]): string
 function groupClaims(body: ReportBody, instrument: InstrumentResponse): Group[] {
   const groups: Group[] = [];
   for (const claim of instrument.claims) {
+    // One quality per claim (ADR-0026), so the first is the only one.
     const qualityId = claim.quality_ids[0] ?? null;
     const dimensionId = qualityId ? (instrument.quality_dimensions[qualityId] ?? null) : null;
     const row: Row = {
@@ -77,11 +78,14 @@ function groupClaims(body: ReportBody, instrument: InstrumentResponse): Group[] 
 export function ClaimsByDimension({
   body,
   instrument,
+  instrumentError,
   vocabulary,
   validity,
 }: {
   body: ReportBody;
   instrument: InstrumentResponse | undefined;
+  /** Why the instrument is missing, when it failed to load rather than is still loading. */
+  instrumentError?: Error | null;
   vocabulary: QualityReferenceResponse[] | undefined;
   validity?: Map<string, ClaimValidity>;
 }) {
@@ -94,7 +98,13 @@ export function ClaimsByDimension({
     );
   }
   if (!instrument) {
-    return <p className="text-sm text-muted-foreground">Reading the instrument…</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {instrumentError
+          ? `The instrument could not be read, so the claims cannot be grouped: ${instrumentError.message}. Weakest first still lists them.`
+          : "Reading the instrument…"}
+      </p>
+    );
   }
 
   const qualityName = new Map((vocabulary ?? []).map((q) => [q.quality_id, q.quality_name]));
@@ -208,6 +218,7 @@ function Reading({
         {supported} supported · {refuted} refuted · {insufficient} insufficient ·{" "}
         {claim.coverage.evaluated} of {claim.coverage.of} courses evaluated
         {claim.excludedNotApplicable ? ` · ${claim.excludedNotApplicable} not applicable` : ""}
+        {claim.notEvaluated ? ` · ${claim.notEvaluated} not evaluated` : ""}
       </span>
     </div>
   );
