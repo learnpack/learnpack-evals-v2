@@ -38,7 +38,11 @@ rename removes.
    assessor is an *assessor*, never a *judge*. A brief is a *brief*, never a *commission*. A
    synonym that has been used for convenience is removed, not added to a list of accepted
    alternatives. *Evaluator* stays: it is the role the model gives a human assessor
-   (ADR-0049, ADR-0050), not another word for the assessor.
+   (ADR-0049, ADR-0050), not another word for the assessor. *Expert* is not a name for
+   anything in the model either: the console uses it only to say who evaluators are,
+   subject-matter experts, in the *Experts* heading and the *Ask experts* task, as the README
+   does. A rubric stays a *rubric*, its GLOSSARY name; *reference instrument* is the role it
+   plays, and documents may say so in a sentence but do not use it as a second name.
 2. **A term the reader may not know carries a short definition where it appears.** It is one
    plain sentence, written as console copy and kept beside the code that shows it. The full
    definition stays in the GLOSSARY, and the short one points to it rather than restating it.
@@ -53,8 +57,10 @@ rename removes.
    verbatim; anything frozen in a published report (ADR-0041); and the pedagogical names of
    the decision mechanisms in `docs/MEASUREMENT.md` ("model judges" names a mechanism, not
    an assessor).
-6. **The GLOSSARY's own collision is fixed.** The `EvaluationStudy` entry stops calling itself
-   "the commission".
+6. **The GLOSSARY's own collision is fixed.** Neither the `GenerationBrief` entry nor the
+   `EvaluationStudy` entry calls itself "the commission" any more, and the GLOSSARY's other
+   definitions stop saying *round* for a study. Each entry notes the older word once ("older
+   documents call it…"), which is what lets a reader of an immutable ADR resolve it.
 7. **A newcomer's first documents follow the same rule.** The root `README.md` and
    `docs/RUNBOOK-measuring.md` drop *round*, *judge* and *commission* as nouns. They are the
    first two documents a newcomer reads, and teaching a synonym there would undo the console.

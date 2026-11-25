@@ -127,9 +127,9 @@ export interface InstrumentResponse {
   claims: InstrumentClaim[];
   criteria: InstrumentCriterion[];
   bindings: InstrumentBinding[];
-  /** `{qualityId: dimensionId}`, frozen when this version was published (ADR-0023 §8); empty
-   *  while it is a draft. What a reader groups this version's results by, never the live
-   *  vocabulary. */
+  /** `{qualityId: dimensionId}`, frozen when this version was published (ADR-0023 §8). What a
+   *  reader groups a published version's results by, never the live vocabulary. On a draft it
+   *  means nothing (empty, or backfilled by a migration). */
   quality_dimensions: Record<string, string>;
 }
 

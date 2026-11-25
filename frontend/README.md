@@ -114,9 +114,10 @@ src/
                                    #                option), contents,
                                    #                studies
                                    #   Experts      campaigns, evaluator workload
-                                   #   Understand   how-it-works (what is checked, how
-                                   #                it is decided, what an outcome
-                                   #                means), instruments (with Publish),
+                                   #   Understand   how-it-works (what is checked, who
+                                   #                decides it, what an outcome means,
+                                   #                why there is no overall score),
+                                   #                instruments (with Publish),
                                    #                assessors (with Ratify)
                                    #   Setup        folded: generators, briefs, datasets,
                                    #                profiles, rubrics, calibration
