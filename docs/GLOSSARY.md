@@ -74,7 +74,8 @@
   with `from`, `to` and who); declaring the URL a content already has is a no-op and emits
   nothing; clearing one is refused. The act writes one column and **fetches nothing** — the
   profile is built from artifact locators, which this field is not one of.
-- **GenerationBrief** — the generation commission: **its own aggregate, immutable, with identity**
+- **GenerationBrief** — the request a course was generated from (older documents call it the
+  *commission*): **its own aggregate, immutable, with identity**
   (`briefId`) that `ContentVersion`s reference — the key to the **paired design** across
   `GeneratorVersion`s (same briefs, new products). Lean content: free text + only the typed
   fields that task variables consume (demand-driven). Absent brief = absent registration (it
@@ -185,7 +186,8 @@
   adapter's mapping (Content Profiling). Claims and evidence models are portable; only the
   binding is redone per type — reusing an instrument on a new type = **a new version that adds
   the binding**.
-- **EvaluationStudy** — **one measurement** of generator versions, carrying a `name` and an
+- **EvaluationStudy** — **one measurement** of generator versions (older documents call it a
+  *round*), carrying a `name` and an
   optional `description`. Its *purpose* (initial / regression / comparison) is a typology the
   model names and does not yet build — the word is reserved for it, never for the title
   (ADR-0043 §7) — and it is not built because the recipe's **`GeneratorScope`** already says
@@ -199,7 +201,7 @@
   takes responsibility for it, ADR-0041 and ADR-0043 §8). **Its result is a triple** — dataset × `instrumentVersion` × `Assessor`
   (ADR-0042): the assessor is pinned before opening the way the norm is, only that
   assessor's judgments count, and a study that predates the pin reads by recency with its
-  mixture declared in the report. Comparing rounds (`CompareStudies`) requires the same
+  mixture declared in the report. Comparing studies (`CompareStudies`) requires the same
   `instrumentVersion` **and the same assessor** +
   sets paired by briefs; the "line" is a derived grouping, not an entity.
   **Industry mapping:** see §"Equivalences with the evals industry".
@@ -213,23 +215,23 @@
   results*).
 - **Dataset** *(ADR-0058)* — a **named, reusable set of evaluands**, and an aggregate of its
   own. It is the concept people refer to ("the SME reference set"); its name is a label and
-  binds nothing, so renaming it changes nothing any round measured. Distinct from the
+  binds nothing, so renaming it changes nothing any study measured. Distinct from the
   `EvaluationDataset` above, which is a study's own composed set — the two are told apart by
   who composes them: a `Dataset` is enumerated by a person, a study's is derived from its
   recipe, and a hand-enumerated one is **not admissible** as a study's (ADR-0044 §9,
-  ADR-0058 §7). What a round *actually* measured is neither: that is the **sample**, a derived
+  ADR-0058 §7). What a study *actually* measured is neither: that is the **sample**, a derived
   read, and the thing a validity coefficient belongs to (ADR-0058 §9).
 - **DatasetVersion** — a `Dataset`'s **frozen membership**, numbered from 1 per dataset and
   immutable: editing means minting the next one. It carries a **required note** saying why it
-  exists — without it, earlier rounds become invalid and uninterpretable at the same time —
+  exists — without it, earlier studies become invalid and uninterpretable at the same time —
   and a `memberSetHash`, which detects the no-op (a membership equal to the current one is
   refused, not recorded) and keeps the set joinable across a rebuilt database, the way
-  `briefHash` does for a commission.
-- **GeneratorScope** — the recipe's second axis: which generator versions the round measures,
+  `briefHash` does for a brief.
+- **GeneratorScope** — the recipe's second axis: which generator versions the study measures,
   either **every one the briefs bring** or **exactly these** (a non-empty list). **Declared,
   never defaulted** (ADR-0044 §1, ADR-0024's rule at the other end of the same axis): without
-  it a round that means to measure one version silently measures every version that answered
-  the same commission. It is the fourth thing opening fixes, and the dataset is always
+  it a study that means to measure one version silently measures every version that answered
+  the same brief. It is the fourth thing opening fixes, and the dataset is always
   `briefs × scope` — contents are never picked one by one, because pairing by brief is what
   makes comparing versions an experiment rather than two samples.
 
