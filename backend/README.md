@@ -698,7 +698,7 @@ finished stay persisted, the ones in flight stop at their next call, and the sum
 Nothing needs undoing — an evaluation that does not reach its end writes nothing. How many courses
 and how many requests run at once, and what bounds each, is [`TUNING.md`](TUNING.md).
 
-**The same batch from the console.** `/admin/studies/<id>` carries an *Evaluation* card with the
+**The same batch from the console.** `/admin/studies/<id>`, under its *Study* tab, carries an *Evaluation* card with the
 identical work behind it — one use case, two doors. It opens on the **durable** count ("12 of 20
 courses judged"), a query over the judgments rather than a run's memory: still right after a
 restart, and it counts a batch someone ran from a terminal. It only offers assessors that have
