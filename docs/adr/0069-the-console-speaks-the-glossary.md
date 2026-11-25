@@ -20,8 +20,8 @@ A reader who knows the model translates these without noticing. A reader who doe
 tell whether *round* and *study* are two things or one, and the console is where most people
 first meet the model. Two other habits make it worse. Identifiers such as
 `cr-no-lesson-spikes-in-lexical-load` are often the main text of a row, with the sentence they
-stand for hidden in a tooltip. And on-screen copy cites ADRs and environment variables: these
-explain a design to whoever maintains it and tell a reader nothing.
+stand for hidden in a tooltip. And on-screen copy cites ADRs and internal settings to justify
+itself: that explains a design to whoever maintains it and tells a reader nothing.
 
 The GLOSSARY has the same fault in one place: it calls the `GenerationBrief` "the generation
 commission" and the `EvaluationStudy` "the commission". One word, two concepts.
@@ -45,8 +45,10 @@ rename removes.
 3. **An identifier is secondary text.** Where a claim, criterion or instrument version is
    shown, its sentence or name is the main text. The id follows it in a smaller, monospaced,
    copyable form, because cross-referencing the YAML is a real need, only a different one.
-4. **On-screen copy does not cite ADRs, environment variables or module names.** Where a
-   maintainer needs the reason, it goes in a `title` or a code comment.
+4. **On-screen copy does not explain the design.** It cites no ADR and no internal setting
+   to justify itself. Where a maintainer needs the reason, it goes in a `title` or a code
+   comment. An instruction the reader has to follow is not an explanation and stays: a command
+   to run, or a setting to configure for an act the console cannot do itself.
 5. **Three things keep their words:** the backend's error messages, which the console relays
    verbatim; anything frozen in a published report (ADR-0041); and the pedagogical names of
    the decision mechanisms in `docs/MEASUREMENT.md` ("model judges" names a mechanism, not
