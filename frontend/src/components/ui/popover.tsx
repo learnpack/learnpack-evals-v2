@@ -8,8 +8,9 @@ import { cn } from "@/lib/utils";
  * dependency, the same reasoning as `Dialog`. It is not modal. Escape and a click anywhere
  * outside close it, and nothing behind it is locked.
  *
- * The panel is positioned in CSS, under the trigger, which is all a one-paragraph popover
- * needs. Anything longer belongs in a `Dialog`.
+ * The panel opens under the trigger, aligned to its left edge, or to its right edge when the
+ * trigger sits too close to the right of the window for the panel to fit. That is all a
+ * one-paragraph popover needs. Anything longer belongs in a `Dialog`.
  */
 export function Popover({
   trigger,
@@ -25,6 +26,8 @@ export function Popover({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Measured when it opens, not on every render: the trigger does not move while it is open.
+  const [alignRight, setAlignRight] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   const panelId = useId();
 
@@ -51,7 +54,12 @@ export function Popover({
         aria-label={label}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => setOpen((previous) => !previous)}
+        onClick={() => {
+          const box = root.current?.getBoundingClientRect();
+          // 18rem is the panel's width (`w-72`), plus a margin from the window's edge.
+          if (box) setAlignRight(box.left + 18 * 16 + 16 > window.innerWidth);
+          setOpen((previous) => !previous);
+        }}
         className="inline-flex items-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {trigger}
@@ -61,7 +69,8 @@ export function Popover({
           id={panelId}
           role="note"
           className={cn(
-            "absolute left-0 top-full z-30 mt-1.5 block w-72 max-w-[80vw] rounded-md border bg-card p-3 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-card-foreground shadow-md",
+            "absolute top-full z-30 mt-1.5 block w-72 max-w-[80vw] rounded-md border bg-card p-3 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-card-foreground shadow-md",
+            alignRight ? "right-0" : "left-0",
             className,
           )}
         >
