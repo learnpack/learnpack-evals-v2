@@ -124,6 +124,7 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
         <ClaimsByDimension
           body={body}
           instrument={instrument}
+          instrumentError={instruments.error as Error | null}
           vocabulary={vocabulary.data}
           validity={validityByClaim}
         />

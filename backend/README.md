@@ -16,12 +16,12 @@ and it does not need this file.
 | find a command or a setting | [Commands](#commands) · [Configuration](#configuration) |
 | understand the code's shape | [Code shape](#code-shape) |
 | register courses | [Registering courses](#registering-courses) |
-| run a round and read its result | [Evaluating](#evaluating) |
+| run a study and read its result | [Evaluating](#evaluating) |
 | deploy an instance for an SME campaign | [`ENVIRONMENT.md`](ENVIRONMENT.md) |
 | make a batch bigger or faster | [`TUNING.md`](TUNING.md) |
 | teach the system a new package format | [`../docs/RUNBOOK-adding-a-format.md`](../docs/RUNBOOK-adding-a-format.md) |
 | write or revise an instrument | [`../docs/RUNBOOK-authoring-an-instrument.md`](../docs/RUNBOOK-authoring-an-instrument.md) |
-| find out why a judge answered that | [`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md) |
+| find out why an assessor answered that | [`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md) |
 
 ## Setup
 
@@ -238,7 +238,7 @@ any of them is authoritative. What each one is *for*:
 | `ratify-assessor` | make an instrument version evaluable by an automated assessor |
 | `evaluate` · `evaluate-study` · `measure` | one content · every course of an open study · a folder, register to score |
 | `dump-concept-touches` · `dump-concept-map` | the two calibration dumps ([`../docs/RUNBOOK-calibrating.md`](../docs/RUNBOOK-calibrating.md)) |
-| `declare-study` · `update-study` · `open-study` | declare a round, shape it, then pin it |
+| `declare-study` · `update-study` · `open-study` | declare a study, shape it, then pin it |
 | `show-preview` · `sign-off-study` | the report a study *would* publish · compose, freeze and sign it |
 | `show-report` · `show-fitness` | the signed-off report · the fitness projection (ADR-0023) |
 
@@ -430,7 +430,7 @@ package emits nothing — `profile-content --content-id` is the repair, exactly 
 
 ### Naming a set of courses (`create-dataset`, `add-dataset-version`)
 
-A set of courses with a name of its own, so a second round can run on the same one and say so
+A set of courses with a name of its own, so a second study can run on the same one and say so
 (ADR-0058). Declaring it freezes its first version; changing the membership freezes the next.
 
 ```bash
@@ -447,7 +447,7 @@ uv run python -m app.cli add-dataset-version --dataset-id <uuid> \
 Two things the flags do not make obvious. **`--from-csv` names the whole membership of the new
 version, not what is being added** — a version is a set, not a patch. And **`--note` is
 required**, because a version whose reason nobody wrote down leaves the numbers of every
-earlier round unusable *and* unexplained.
+earlier study unusable *and* unexplained.
 
 A membership identical to the current one is refused rather than recorded, so re-running the
 same file is safe and says so. Courses are named by `external_id` (see the table below); a slug
@@ -486,7 +486,7 @@ logical course and the same string under two formats is two courses.
 **Which name.** Discovery reads one too — `title` in `learn.json` for `LearnpackV1`, the lesson
 plan's `course_title` for `LearnpackV2` — and it is what every screen calls the course
 (ADR-0059). It describes where the `external_id` identifies: nothing is looked up by it, two
-courses from one commission may declare the same one, and no act can edit it, because the
+courses from one brief may declare the same one, and no act can edit it, because the
 package is the author of its own name. A course registered by hand, or one whose package
 declares no title, has none: the console falls back to the `external_id`, and
 `backfill-content-titles` recovers the name of anything registered before the field was kept,
@@ -711,7 +711,7 @@ and runs live in memory. Runs are forgotten on restart; what they wrote is not.
 ### Measuring a generation the generator just wrote
 
 When the courses are a folder rather than a study, `measure` chains the whole loop — register, open
-a round over exactly those courses, evaluate it, print the score:
+a study over exactly those courses, evaluate it, print the score:
 
 ```bash
 uv run python -m app.cli measure --root generated --path learnpack-generator-04a7dd5-dirty \
@@ -725,20 +725,20 @@ way. Nothing new happens in it: it is the six commands a person ran by hand, wit
 were copied between them derived instead. The rest is what the derivation refuses to guess:
 
 - **The folder's name declares the generator version**, and that version — one, not "all of them" —
-  is the round's scope (ADR-0044). That is the defect the chaining removes, not the typing: a round
+  is the study's scope (ADR-0044). That is the defect the chaining removes, not the typing: a study
   that measures a dataset nobody meant to name. A folder declaring `unknown` is refused likewise.
-- **The norm and the judge are derived only when the derivation has one answer**: the instrument is
-  the published version bound to the format, the judge is the assessor that has ratified it, and two
+- **The norm and the assessor are derived only when the derivation has one answer**: the instrument is
+  the published version bound to the format, the assessor is the one that has ratified it, and two
   of either means the command asks. `--assessor` takes `name` or `name:version`, so a daily loop
   need not be edited on every bump. Both are resolved **before** the folder is registered, since
   registering is a fetch per lesson per course.
-- **Re-running resumes** rather than declaring a second round: an open study with the same name,
-  norm, judge and dataset is continued, and anything less than an identical match is a new one.
+- **Re-running resumes** rather than declaring a second study: an open study with the same name,
+  norm, assessor and dataset is continued, and anything less than an identical match is a new one.
 - **A course keeps the generator version it was first registered with** (ADR-0035 §9), so a store
   that already holds these courses under another version measures them *there* — and `measure`
   names each one instead of composing an empty dataset.
 - **One JSON document comes out**, `{"batch": …, "fitness": …}`: reading the run and the score
-  separately is where a value gets paired with the wrong round.
+  separately is where a value gets paired with the wrong study.
 
 The console does the same thing on `/admin/measure`; this is the scriptable path.
 

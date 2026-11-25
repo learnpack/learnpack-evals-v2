@@ -71,8 +71,9 @@ class InstrumentResponse(BaseModel):
     claims: list[ClaimResponse]
     criteria: list[CriterionSpecResponse]
     bindings: list[BindingResponse]
-    # `{qualityId: dimensionId}`, frozen when this version was published (ADR-0023 §8), and
-    # empty while it is a draft. What a reader groups this version's results by.
+    # `{qualityId: dimensionId}`, frozen when this version was published (ADR-0023 §8). What
+    # a reader groups a published version's results by. On a draft it means nothing: a draft
+    # imported since then carries it empty, and one migration 0013 backfilled carries a map.
     quality_dimensions: dict[str, str]
 
     @classmethod

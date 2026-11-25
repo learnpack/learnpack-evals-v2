@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  * reasoning as `Dialog`. The panels that are not showing are not rendered, so a tab that
  * fetches does so only when it is opened.
  *
- * Arrow keys move between tabs, as the WAI-ARIA tabs pattern expects.
+ * Arrow keys, Home and End move between tabs, as the WAI-ARIA tabs pattern expects.
  */
 export function Tabs<T extends string>({
   value,
@@ -26,8 +26,8 @@ export function Tabs<T extends string>({
   const id = useId();
   const index = tabs.findIndex((tab) => tab.value === value);
 
-  function move(step: number) {
-    const next = tabs[(index + step + tabs.length) % tabs.length];
+  function go(at: number) {
+    const next = tabs[(at + tabs.length) % tabs.length];
     onChange(next.value);
     document.getElementById(`${id}-${next.value}`)?.focus();
   }
@@ -39,8 +39,12 @@ export function Tabs<T extends string>({
         aria-label={label}
         className="flex flex-wrap gap-1 border-b"
         onKeyDown={(event) => {
-          if (event.key === "ArrowRight") move(1);
-          if (event.key === "ArrowLeft") move(-1);
+          if (event.key === "ArrowRight") go(index + 1);
+          else if (event.key === "ArrowLeft") go(index - 1);
+          else if (event.key === "Home") go(0);
+          else if (event.key === "End") go(tabs.length - 1);
+          else return;
+          event.preventDefault();
         }}
       >
         {tabs.map((tab) => {

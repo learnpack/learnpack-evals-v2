@@ -116,13 +116,14 @@ export function EvidenceLadder({ initial = 3 }: { initial?: number }) {
 
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="From a dimension to its evidence" className="grid gap-1.5 sm:grid-cols-5">
+      {/* Toggle buttons rather than a tablist: five steps of one example, read in any order,
+          and a group of pressed buttons needs no arrow-key contract to be accessible. */}
+      <div role="group" aria-label="From a dimension to its evidence" className="grid gap-1.5 sm:grid-cols-5">
         {RUNGS.map((step, index) => (
           <button
             key={step.level}
             type="button"
-            role="tab"
-            aria-selected={index === current}
+            aria-pressed={index === current}
             onClick={() => setCurrent(index)}
             className={cn(
               "flex min-w-0 flex-col rounded-md border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -143,7 +144,7 @@ export function EvidenceLadder({ initial = 3 }: { initial?: number }) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="space-y-2 border-l-2 border-primary pl-4 text-sm">
+      <div aria-live="polite" className="space-y-2 border-l-2 border-primary pl-4 text-sm">
         <p className="font-medium">
           {rung.level}: {rung.name}
         </p>

@@ -41,7 +41,7 @@ rename. This is the step with the least code and the most consequences.
 Copy one real, representative package into `backend/tests/fixtures/<your_format>/`. The fixture
 comes first, not last: every later step is verified against it, and the contract kit
 requires it. Prefer a package that exercises the format's full surface — every artifact
-kind, and the commission if the format carries one (see the `FormatCase` fields).
+kind, and the brief if the format carries one (see the `FormatCase` fields).
 
 ## Step 2 — Discovery adapter (required; makes the format registrable)
 
@@ -57,7 +57,7 @@ Rules that are easy to miss:
 
 - Discovery is **hard-failing** by design (ADR-0027): if a manifest is missing or lies,
   raise `PackageDiscoveryError` — a mis-discovered package would *be* the evaluand,
-  wrong. The one allowed soft spot is the commission artifact (LearnpackV1's carrier is
+  wrong. The one allowed soft spot is the brief artifact (LearnpackV1's carrier is
   its syllabus), whose absence is a recorded state.
 - Discovery is the **sole writer of the artifact `kind` vocabulary** for your format.
   Your extraction adapter (step 3) will read exactly these kinds.
@@ -99,7 +99,7 @@ format, plus one entry in `ADAPTERS_BY_FORMAT` (`adapters/__init__.py`). Impleme
 - Extraction is deterministic and fails whole (`ExtractionError` → a `failed` profile),
   never half-profiles.
 
-## Step 4 — Brief intake (only if your format carries the commission)
+## Step 4 — Brief intake (only if your format carries the brief)
 
 File: `backend/app/modules/evaluand_registry/infrastructure/brief_intake.py`. If your packages
 embed the instruction they were generated from (LearnpackV1:
@@ -109,12 +109,12 @@ a `DerivedBrief`. Intake is best-effort and non-blocking (ADR-0022): any miss lo
 registers the brief absent — a valid state, not an error. If your format carries nothing,
 skip this step entirely; skipping is correct.
 
-A commission is written by a person, so **what carries it is structured and what it says is
+A brief is written by a person, so **what carries it is structured and what it says is
 not**: both formats wrap free prose (LearnpackV1 in a syllabus field, LearnpackV2 in a
 `{"content": …}` envelope). Parse the carrier, then leave the instruction alone — reading
 fields out of the prose would substitute your reading for the creator's words. If the
 carrier is ever plain text with no envelope at all, `derive()` has to say for itself what
-"not a commission" looks like, because there is no parse step to fail it; the kit probes
+"not a brief" looks like, because there is no parse step to fail it; the kit probes
 that case.
 
 Hash the **instruction**, not the payload: a brief's identity is what was asked, so the
@@ -159,9 +159,9 @@ names, and only in local mode (ADR-0045). Replaying a decision is not making one
 ## Step 7 — Verify end to end
 
 `register-package` → auto-profile (or `profile-content`) → `evaluate --dry-run` while the
-instrument is a draft → `declare-study` (name it, and choose its instrument, judge, briefs
+instrument is a draft → `declare-study` (name it, and choose its instrument, assessor, briefs
 and **generator scope** then or later with `update-study` — the scope is
-`--all-generator-versions` or one `--generator-version-id` per version the round measures,
+`--all-generator-versions` or one `--generator-version-id` per version the study measures,
 and `open-study` refuses a study that never said which, ADR-0044) → `open-study` (**this is
 what pins the triple**)
 → `evaluate-study` (the whole dataset in one run) → `show-preview` (what signing off would
