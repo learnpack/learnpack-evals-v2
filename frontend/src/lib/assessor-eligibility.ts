@@ -16,3 +16,21 @@ export function ratifiedFor(
       ),
   );
 }
+
+/** What an assessor will decide on courses of one format: of the instrument's criteria, how
+ *  many the format can supply the data for, and how many of those this assessor executes
+ *  rather than abstains from. `null` while the format's matching is still loading, so "we do
+ *  not know yet" never reads as "none". */
+export function assessorReach(
+  pkg: AssessorPackageResponse,
+  matching: { criteria: { criterionId: string; missingData: string[] }[] } | undefined,
+): { decides: number; supplied: number; total: number } | null {
+  if (!matching) return null;
+  const supplied = matching.criteria.filter((criterion) => criterion.missingData.length === 0);
+  const executes = new Set(pkg.executes);
+  return {
+    decides: supplied.filter((criterion) => executes.has(criterion.criterionId)).length,
+    supplied: supplied.length,
+    total: matching.criteria.length,
+  };
+}

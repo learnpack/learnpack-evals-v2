@@ -254,7 +254,8 @@ Two more worth knowing before they surprise you:
 - `/admin/studies/<id>` — the study. *Results* groups its claims by dimension and quality
   (or weakest first), down to the most-failed criteria and the passage the assessor quoted
   for each; the score above is under *Optimization signal*, apart from the report.
-- `/admin/measure` — the same loop as the command, in the frontend.
+- `/admin/measure` — the same loop as the command, in the frontend, as three guided steps.
+  `/admin/measure/all` has every option on one page.
 - `/admin/calibration` — run one course against one instrument without persisting anything,
   and read every LLM call it made.
 - `backend/README.md` — everything else, including how instruments and assessors are built.
