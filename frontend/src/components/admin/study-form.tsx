@@ -13,21 +13,18 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/states";
-import { ApiError } from "@/lib/api/client";
 import { TermHint } from "@/components/ui/term-hint";
 import type { Term } from "@/lib/terms";
 import {
   useAssessorPackages,
   useBriefs,
   useContents,
-  useDeclareStudy,
   useGeneratorVersions,
   useInstruments,
   useMatchings,
-  useOpenStudy,
-  useStartRound,
-  useUpdateStudyDraft,
 } from "@/lib/api/hooks";
+import { ratifiedFor } from "@/lib/assessor-eligibility";
+import { useSaveAndStart, type StudyDraftBody } from "@/lib/use-save-and-start";
 import type {
   AssessorPackageResponse,
   GeneratorScope,
@@ -76,10 +73,7 @@ export function StudyForm({
   const contents = useContents();
   const generatorVersions = useGeneratorVersions();
 
-  const declare = useDeclareStudy();
-  const update = useUpdateStudyDraft();
-  const openStudy = useOpenStudy();
-  const startRound = useStartRound();
+  const { saveDraft, saveAndEvaluate, saving, busy } = useSaveAndStart(study);
 
   const [name, setName] = useState(study?.name ?? initialName ?? "");
   const [description, setDescription] = useState(study?.description ?? "");
@@ -136,8 +130,6 @@ export function StudyForm({
   const complete = Boolean(
     name.trim() && instrumentId && assessorId && scopeDeclared && selectedCourses.length,
   );
-  const busy =
-    declare.isPending || update.isPending || openStudy.isPending || startRound.isPending;
 
   /** Re-pointing at a norm the current judge never ratified drops the judge, here rather
    *  than in the request: the endpoint refuses that pair instead of guessing which of the
@@ -154,62 +146,16 @@ export function StudyForm({
     setBriefIds((prev) => (prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]));
   }
 
-  /** Create or update, and answer with the study either way — the two differ in one verb. */
-  async function save(): Promise<StudyResponse | null> {
-    const body = {
+  /** The draft as it stands on screen, in the shape saving takes. */
+  function draft(): StudyDraftBody {
+    return {
       name: name.trim(),
       description: description.trim() || null,
       instrument_version_id: instrumentId || undefined,
       assessor_id: (assessorId || null) as Uuid | null,
       brief_ids: briefIds,
-      // Omitted while undeclared: absent leaves it alone, and `null` would be refused —
-      // there is no way to say "un-declare", by design.
       generator_scope: scopeDeclared ? (scope as GeneratorScope) : undefined,
     };
-    try {
-      if (study) {
-        return await update.mutateAsync({ studyId: study.study_id, body });
-      }
-      return await declare.mutateAsync(body);
-    } catch (err) {
-      toast.error("Could not save the study.", { description: (err as ApiError).message });
-      return null;
-    }
-  }
-
-  async function saveDraft() {
-    const saved = await save();
-    if (!saved) return;
-    toast.success("Draft saved.", { description: "Nothing is fixed yet — come back any time." });
-    if (!study) router.push(`/admin/studies/${saved.study_id}`);
-  }
-
-  /** Save, open, evaluate — three requests on purpose. A failure in the middle leaves a
-   *  valid draft, which is the state this whole redesign exists to make safe; a compound
-   *  endpoint would trade that away for one round trip. */
-  async function saveAndEvaluate() {
-    const saved = await save();
-    if (!saved) return;
-    try {
-      await openStudy.mutateAsync({ studyId: saved.study_id });
-    } catch (err) {
-      setConfirming(false);
-      toast.error("Saved, but the study did not start.", {
-        description: (err as ApiError).message,
-      });
-      if (!study) router.push(`/admin/studies/${saved.study_id}`);
-      return;
-    }
-    try {
-      await startRound.mutateAsync({ studyId: saved.study_id, body: { re_evaluate: false } });
-      toast.success("Evaluating", { description: "It reports as it goes, and can be stopped." });
-    } catch (err) {
-      toast.error("The study is open, but the batch did not start.", {
-        description: (err as ApiError).message,
-      });
-    }
-    setConfirming(false);
-    router.push(`/admin/studies/${saved.study_id}`);
   }
 
   return (
@@ -356,8 +302,8 @@ export function StudyForm({
             <Button variant="ghost" onClick={() => router.push("/admin/studies")} disabled={busy}>
               Cancel
             </Button>
-            <Button variant="outline" onClick={saveDraft} disabled={busy || !name.trim()}>
-              {update.isPending || declare.isPending ? <Spinner /> : null} Save draft
+            <Button variant="outline" onClick={() => saveDraft(draft())} disabled={busy || !name.trim()}>
+              {saving ? <Spinner /> : null} Save draft
             </Button>
             <Button onClick={() => setConfirming(true)} disabled={busy || !complete}>
               <Play className="h-3.5 w-3.5" /> Save &amp; evaluate
@@ -384,7 +330,7 @@ export function StudyForm({
         courses={selectedCourses.length}
         arms={arms}
         pending={busy}
-        onConfirm={saveAndEvaluate}
+        onConfirm={() => saveAndEvaluate(draft(), () => setConfirming(false))}
       />
     </Card>
   );
@@ -863,20 +809,6 @@ function scopeSummary(arms: Arm[]) {
   if (arms.length === 0) return "no courses to measure";
   if (arms.length === 1) return `measuring ${arms[0].label}`;
   return `comparing ${arms.length} generator versions`;
-}
-
-function ratifiedFor(
-  packages: AssessorPackageResponse[],
-  instrumentVersionId: string,
-): AssessorPackageResponse[] {
-  if (!instrumentVersionId) return [];
-  return packages.filter(
-    (pkg) =>
-      pkg.assessor_id !== null &&
-      pkg.lineage_versions.some(
-        (version) => version.instrument_version_id === instrumentVersionId && version.ratified,
-      ),
-  );
 }
 
 /** How many of the instrument's criteria have no datum to read in this format. `null` while
