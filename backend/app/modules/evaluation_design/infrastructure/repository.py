@@ -454,6 +454,29 @@ class SqlAlchemyReferenceDataRepository:
         )
         return {row["id"]: row["dimension_id"] for row in rows}
 
+    def vocabulary(self) -> list[dict[str, str | None]]:
+        """Each quality with its name and its dimension's, as the vocabulary is today.
+
+        For display only. Grouping a published instrument's results reads the map that
+        version froze at publish (ADR-0023 §8), never this; the names are what the frozen map
+        does not carry."""
+        rows = (
+            self._session.execute(
+                text(
+                    """
+                    SELECT q.id AS quality_id, q.name AS quality_name,
+                           q.dimension_id, d.name AS dimension_name
+                    FROM qualities q
+                    LEFT JOIN pedagogical_dimensions d ON d.id = q.dimension_id
+                    ORDER BY q.id
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [dict(row) for row in rows]
+
     def framework_ids(self) -> set[str]:
         rows = self._session.execute(text("SELECT id FROM pedagogical_frameworks")).scalars().all()
         return set(rows)

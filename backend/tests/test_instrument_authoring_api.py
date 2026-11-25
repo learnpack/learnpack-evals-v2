@@ -253,6 +253,9 @@ def test_publish_emits_the_snapshot_and_locks_the_version(admin_client, cleanup,
         {"id": instrument_id},
     ).scalar_one()
     assert frozen == {"objectives-observable": "objectives-quality"}
+    # And the API serves that frozen map, which is what a reader groups results by.
+    served = admin_client.get(f"/admin/instruments/{instrument_id}").json()
+    assert served["quality_dimensions"] == {"objectives-observable": "objectives-quality"}
 
     # Published means locked: publishing again and re-importing both fail.
     assert admin_client.post(f"/admin/instruments/{instrument_id}/publish").status_code == 409
@@ -296,6 +299,8 @@ def test_the_real_draft_imports_clean_and_would_publish(admin_client, cleanup, u
     real_id = import_spec(cleanup, real_spec)
     body = admin_client.get(f"/admin/instruments/{real_id}").json()
     assert body["status"] == "draft"
+    # Nothing is frozen until publishing (ADR-0023 §8).
+    assert body["quality_dimensions"] == {}
     assert len(body["claims"]) == 17
     assert len(body["criteria"]) == 27
     # ADR-0026: every claim asserts about exactly one quality, so the criterion → claim edge
