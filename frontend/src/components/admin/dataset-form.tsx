@@ -93,7 +93,7 @@ export function DatasetForm() {
           />
           <p className="text-xs text-muted-foreground">
             Required. Every version carries one: it is what tells a later reader why the numbers
-            from an earlier round cannot be compared with the next.
+            from an earlier study cannot be compared with the next.
           </p>
         </div>
 

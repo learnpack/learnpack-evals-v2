@@ -91,7 +91,7 @@ export function DatasetVersionForm({ dataset }: { dataset: DatasetResponse }) {
           autoFocus
         />
         <p className="text-xs text-muted-foreground">
-          Required. Without it, the results of rounds that ran on v{current?.ordinal ?? "?"}{" "}
+          Required. Without it, the results of studies that ran on v{current?.ordinal ?? "?"}{" "}
           become unusable and unexplained at the same time.
         </p>
       </div>

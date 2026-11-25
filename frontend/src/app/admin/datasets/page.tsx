@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { useDatasets } from "@/lib/api/hooks";
 import { latestVersion } from "@/lib/datasets";
+import { TermHint } from "@/components/ui/term-hint";
 
 export default function DatasetsPage() {
   const { data: datasets, isLoading, error } = useDatasets();
@@ -24,10 +25,13 @@ export default function DatasetsPage() {
     <div className="max-w-5xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Datasets</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+          Datasets
+          <TermHint term="dataset" />
+        </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            A named set of courses, reusable across rounds. Its membership is frozen into
-            versions, so two rounds can say whether they ran on the same one.
+            A named set of courses, reusable across studies. Its membership is frozen into
+            versions, so two studies can say whether they ran on the same one.
           </p>
         </div>
         <Link href="/admin/datasets/new" className={buttonVariants()}>

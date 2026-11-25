@@ -349,7 +349,7 @@ function DiscordantEntry({
       {course.experts_agree === false ? (
         <p className="mt-2 rounded border border-dashed bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
           The experts did not agree with each other on this course, so there is no human answer
-          here for the assessor to have matched. Read the item before reading the judge.
+          here for the assessor to have matched. Read the item before reading the assessor.
         </p>
       ) : null}
 
@@ -395,7 +395,7 @@ function DiscordantEntry({
       {/* The instrument before the assessor. A criterion whose threshold was never written
           makes every assessor look equally bad, so starting at the prompt chases ghosts. */}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-2 text-xs">
-        <span className="text-muted-foreground">Is this the check, or the judge?</span>
+        <span className="text-muted-foreground">Is this the check, or the assessor?</span>
         <Link
           href={{
             pathname: "/admin/calibration",

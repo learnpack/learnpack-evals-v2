@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StudyStatusBadge } from "@/components/admin/study-status";
 import { useAssessorPackages, useStudies } from "@/lib/api/hooks";
 import type { StudyResponse } from "@/lib/api/types";
+import { TermHint } from "@/components/ui/term-hint";
 
 /** A list, and only a list. Everything done to a study — building it, evaluating it,
  *  signing it off — lives on a page of its own, and creating one is the same form a draft
@@ -29,9 +30,12 @@ export default function StudiesPage() {
     <div className="max-w-5xl">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Evaluation studies</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+          Studies
+          <TermHint term="study" />
+        </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            One named round: an instrument, a judge and a set of courses. It stays a draft
+            One named measurement: an instrument, an assessor and a set of courses. It stays a draft
             until you start it — that is what fixes the three — and it ends when somebody
             signs its report off.
           </p>
@@ -59,7 +63,7 @@ export default function StudiesPage() {
                   <TableHead>Study</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Instrument</TableHead>
-                  <TableHead>Judge</TableHead>
+                  <TableHead>Assessor</TableHead>
                   <TableHead className="text-right">Briefs → courses</TableHead>
                   <TableHead className="text-right">Created</TableHead>
                 </TableRow>

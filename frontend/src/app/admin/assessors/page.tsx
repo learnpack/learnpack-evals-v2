@@ -39,6 +39,7 @@ import type {
   LineageVersion,
   RatificationDelta,
 } from "@/lib/api/types";
+import { TermHint } from "@/components/ui/term-hint";
 
 /**
  * Who can judge — the two kinds of assessor, which are structurally different and not two
@@ -77,7 +78,10 @@ export default function AssessorsPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Assessors</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Assessors
+          <TermHint term="assessor" />
+        </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Who produces evaluation results. An automated assessor is declared in code and
           becomes able to persist judgments only once it is{" "}

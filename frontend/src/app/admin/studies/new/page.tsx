@@ -55,8 +55,8 @@ function NewStudy() {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">New study</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          A study is one round: an instrument, a judge and a set of courses. Everything here
-          can change until the round starts.
+          A study is one measurement: an instrument, an assessor and a set of courses. Everything
+          here can change until the study starts.
         </p>
       </div>
 

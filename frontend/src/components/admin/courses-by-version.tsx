@@ -102,7 +102,7 @@ function VersionCard({
             {group.courses.length} {group.courses.length === 1 ? "course" : "courses"}
             {" · "}
             {group.briefIds.size}{" "}
-            {group.briefIds.size === 1 ? "commission" : "commissions"}
+            {group.briefIds.size === 1 ? "brief" : "briefs"}
             {known ? (
               <>
                 {" · "}
@@ -120,14 +120,14 @@ function VersionCard({
           {group.withoutBrief > 0 ? (
             <p className="text-xs text-amber-700 dark:text-amber-400">
               {group.withoutBrief} {group.withoutBrief === 1 ? "course has" : "courses have"} no
-              commission recorded, so {group.withoutBrief === 1 ? "it cannot" : "they cannot"}{" "}
-              enter a round.
+              brief recorded, so {group.withoutBrief === 1 ? "it cannot" : "they cannot"}{" "}
+              enter a study.
             </p>
           ) : null}
 
           {group.version === null ? (
             <p className="text-xs text-muted-foreground">
-              A round names the versions it measures, and these declare none — so they stay
+              A study names the versions it measures, and these declare none — so they stay
               out of every one. Attribute a generator to bring them in.
             </p>
           ) : null}
@@ -148,7 +148,7 @@ function VersionCard({
                 title={
                   measurable
                     ? undefined
-                    : "No commission recorded for these courses, so there is no dataset to compose."
+                    : "No brief recorded for these courses, so there is no dataset to compose."
                 }
                 onClick={() => router.push(`/admin/studies/new?versions=${group.key}`)}
               >
@@ -195,7 +195,7 @@ function CompareDialog({
           ? `Compare ${group.version.name} ${group.version.version} with…`
           : "Compare with…"
       }
-      description="Two versions are comparable over the commissions both answered. The rest are still included — the round just says less about them."
+      description="Two versions are comparable over the briefs both answered. The rest are still included — the study just says less about them."
     >
       {others.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -225,10 +225,10 @@ function CompareDialog({
                   </span>
                 </span>
                 {shared === 0 ? (
-                  <Badge variant="warning">no shared commissions</Badge>
+                  <Badge variant="warning">no shared briefs</Badge>
                 ) : (
                   <Badge variant="secondary">
-                    {shared} shared {shared === 1 ? "commission" : "commissions"}
+                    {shared} shared {shared === 1 ? "brief" : "briefs"}
                   </Badge>
                 )}
               </button>

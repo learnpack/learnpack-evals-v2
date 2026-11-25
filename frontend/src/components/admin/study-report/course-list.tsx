@@ -40,7 +40,7 @@ export function CourseList({
         <h3 className="font-medium">Course by course</h3>
         <p className="text-xs text-muted-foreground">
           {body.contents.length} course{body.contents.length === 1 ? "" : "s"} in this
-          dataset. Everything the judges recorded is in here.
+          dataset. Everything the assessors recorded is in here.
         </p>
       </div>
       <ul className="divide-y">

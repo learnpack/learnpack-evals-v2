@@ -87,7 +87,7 @@ export function BatchSummary({ batch, format }: { batch: Batch | null; format: s
           />
           {notRead === batch.contentIds.length ? (
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              Nothing in this lot was read, so a round over it would answer nothing — usually
+              Nothing in this lot was read, so a study over it would answer nothing — usually
               because no one has accepted this format&apos;s extraction yet.
             </p>
           ) : null}

@@ -81,7 +81,7 @@ export default function ImportCoursesPage() {
       <div className="max-w-3xl">
         <EmptyState
           title="Importing from disk is a local development affordance"
-          hint="It reads folders on the machine running the API, so it exists only under AUTH_MODE=local. In a deployed console the same errand is two screens: Courses → Add course, then Studies → New study."
+          hint="It reads folders on the machine running the API, so it exists only on a local setup. In a deployed console the same errand is two screens: Courses → Add course, then Studies → New study."
         />
       </div>
     );
@@ -289,9 +289,9 @@ function ImportFromDisk() {
         <h1 className="text-2xl font-semibold tracking-tight">Import &amp; measure</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           One errand, top to bottom: say which generator version made these courses, bring
-          them in from a folder on the machine running the API, and start the round that
+          them in from a folder on the machine running the API, and start the study that
           measures them. Every folder inside the one you scan is one course. Nothing is fixed
-          until you start the round. Local development only.
+          until you start the study. It works only on a local setup.
         </p>
       </div>
 
@@ -622,8 +622,8 @@ function ComposeRound({
     return (
       <p className="rounded border bg-muted/40 p-3 text-sm text-muted-foreground">
         {generatorDeclared
-          ? "These courses declare no generator, and a round names the versions it measures — so there is nothing here to compose. Attribute one from Courses to bring them in."
-          : "Declare above which generator version made these courses. A round measures versions, so it cannot be composed until one is named."}
+          ? "These courses declare no generator, and a study names the versions it measures — so there is nothing here to compose. Attribute one from Courses to bring them in."
+          : "Declare above which generator version made these courses. A study measures versions, so it cannot be composed until one is named."}
       </p>
     );
   }
@@ -645,7 +645,7 @@ function ComposeRound({
     return (
       <p className="rounded border bg-muted/40 p-3 text-sm text-muted-foreground">
         Nothing is registered against {version ? `${version.name} ${version.version}` : "this version"}{" "}
-        yet. Register the courses above and the round will compose itself from what they
+        yet. Register the courses above and the study will compose itself from what they
         brought.
       </p>
     );
