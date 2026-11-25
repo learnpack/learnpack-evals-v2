@@ -75,9 +75,13 @@ function StepLine({ step }: { step: PreviewRunStep }) {
 export function RunFailure({
   error,
   contentId,
+  calibration = false,
 }: {
   error: PreviewRunError;
   contentId: Uuid | "";
+  /** On Calibration, which runs drafts and shows the model calls below the run. The advice
+   *  for two of the failures depends on both. */
+  calibration?: boolean;
 }) {
   const titles: Record<PreviewRunError["kind"], string> = {
     profile_missing: "This content has no ok profile.",
@@ -96,13 +100,17 @@ export function RunFailure({
       ) : null}
       {error.kind === "instrument_missing" ? (
         <p className="text-xs text-muted-foreground">
-          Re-import the YAML and pick the version again — this page runs drafts on purpose.
+          {calibration
+            ? "Re-import the YAML and pick the version again — this page runs drafts on purpose."
+            : "Choose the instrument again: the list offers the versions published now."}
         </p>
       ) : null}
       {error.kind === "assessor_failed" ? (
         <p className="text-xs text-muted-foreground">
-          Nothing was saved, so running it again is the retry. If it keeps happening, the
-          trace below has the prompt each task sent and the raw text it got back.
+          Nothing was saved, so running it again is the retry.
+          {calibration
+            ? " If it keeps happening, the trace below has the prompt each task sent and the raw text it got back."
+            : " If it keeps happening, Calibration runs the same thing and shows every model call."}
         </p>
       ) : null}
       {error.kind === "unexpected" ? (

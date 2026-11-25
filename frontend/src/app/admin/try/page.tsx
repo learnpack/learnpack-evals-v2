@@ -59,10 +59,13 @@ export default function TryOneCoursePage() {
   const [contentId, setContentId] = useState<Uuid | "">("");
   const [instrumentId, setInstrumentId] = useState("");
   const [assessorId, setAssessorId] = useState("");
-  // The instrument travels with the run, so the result is read against what actually ran.
-  const [started, setStarted] = useState<{ runId: Uuid; instrument: InstrumentResponse } | null>(
-    null,
-  );
+  // The course and the instrument travel with the run, so the result is read against what
+  // actually ran, whatever the selects say now.
+  const [started, setStarted] = useState<{
+    runId: Uuid;
+    contentId: Uuid;
+    instrument: InstrumentResponse;
+  } | null>(null);
   const run = usePreviewRun(started?.runId ?? null);
 
   /** A course can be tried once it has been read: the dry run reads its profile. */
@@ -106,6 +109,8 @@ export default function TryOneCoursePage() {
 
   function chooseCourse(next: Uuid | "") {
     setContentId(next);
+    // A result belongs to the course it ran on; another course clears it.
+    setStarted(null);
     // A different format can make the chosen instrument unreadable: start the choice over.
     setInstrumentId("");
     setAssessorId("");
@@ -129,7 +134,7 @@ export default function TryOneCoursePage() {
         assessor_version: assessor.version,
       },
       {
-        onSuccess: (data) => setStarted({ runId: data.run_id, instrument }),
+        onSuccess: (data) => setStarted({ runId: data.run_id, contentId, instrument }),
         onError: (err) =>
           toast.error("The run could not be started.", { description: (err as ApiError).message }),
       },
@@ -210,7 +215,9 @@ export default function TryOneCoursePage() {
       {run.data ? (
         <div className="space-y-4">
           <RunProgress run={run.data} />
-          {run.data.error ? <RunFailure error={run.data.error} contentId={contentId} /> : null}
+          {run.data.error && started ? (
+            <RunFailure error={run.data.error} contentId={started.contentId} />
+          ) : null}
           {run.data.result && started ? (
             <TryResults
               result={run.data.result}

@@ -421,7 +421,7 @@ function CalibrationConsole() {
             <>
               <RunProgress run={run.data} />
               {run.data.error ? (
-                <RunFailure error={run.data.error} contentId={contentId} />
+                <RunFailure error={run.data.error} contentId={contentId} calibration />
               ) : null}
               <RunTrace trace={trace.data ?? null} />
               {run.data.result && started ? (
