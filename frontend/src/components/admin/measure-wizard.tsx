@@ -28,8 +28,8 @@ import {
   useMatchings,
 } from "@/lib/api/hooks";
 import { ratifiedFor } from "@/lib/assessor-eligibility";
-import { looksLikeSameGeneratorName } from "@/lib/generator-declaration";
-import { useImportBatch } from "@/lib/use-import-batch";
+import { declarationSignal, looksLikeSameGeneratorName } from "@/lib/generator-declaration";
+import { REGISTRABLE, useImportBatch } from "@/lib/use-import-batch";
 import { useSaveAndStart } from "@/lib/use-save-and-start";
 import { groupByVersion } from "@/lib/versions";
 import type { EditProvenance, ScanCandidate, ScanVerdict, Uuid } from "@/lib/api/types";
@@ -67,6 +67,8 @@ export function MeasureWizard() {
   const [stoppedUnknown, setStoppedUnknown] = useState(false);
   const [instrumentId, setInstrumentId] = useState("");
   const [assessorId, setAssessorId] = useState("");
+  // Held here rather than in step 3, so going back a step does not lose what was typed.
+  const [studyName, setStudyName] = useState("");
 
   if (batchImport.roots.isLoading || batchImport.formats.isLoading) return <LoadingState />;
   const loadError = batchImport.roots.error ?? batchImport.formats.error;
@@ -91,10 +93,22 @@ export function MeasureWizard() {
 
       {step === 1 ? (
         stoppedUnknown ? (
-          <StoppedUnknown />
+          <StoppedUnknown
+            registered={batchImport.batch?.created ?? 0}
+            onStartOver={() => {
+              setStoppedUnknown(false);
+              batchImport.setGenerator("");
+              batchImport.invalidateScan();
+            }}
+          />
         ) : (
           <FolderStep
             batchImport={batchImport}
+            onFormatChange={() => {
+              // An instrument is chosen for a format; another format starts that choice over.
+              setInstrumentId("");
+              setAssessorId("");
+            }}
             onContinue={() => {
               if (batchImport.declaredGenerator === null) setStoppedUnknown(true);
               else setStep(2);
@@ -124,6 +138,8 @@ export function MeasureWizard() {
           generatorVersionId={batchImport.declaredGenerator}
           instrumentId={instrumentId}
           assessorId={assessorId}
+          name={studyName}
+          onName={setStudyName}
           onBack={() => setStep(2)}
         />
       ) : null}
@@ -162,9 +178,11 @@ function Stepper({ step }: { step: Step }) {
 
 function FolderStep({
   batchImport,
+  onFormatChange,
   onContinue,
 }: {
   batchImport: ReturnType<typeof useImportBatch>;
+  onFormatChange: () => void;
   onContinue: () => void;
 }) {
   const {
@@ -183,9 +201,11 @@ function FolderStep({
     path,
     setPath,
     scan,
-    selected,
+    outcomes,
     progress,
+    setGenerator,
     generatorDeclared,
+    declaredGenerator,
     invalidateScan,
     goTo,
     runScan,
@@ -195,11 +215,32 @@ function FolderStep({
   const supported = formats.data ?? [];
   const mountBroken = scan?.result.mount_ok === false;
   const candidates = scan?.result.candidates ?? [];
-  const toRegister = selected.length;
   const registering = progress !== null;
 
+  // Decided now, from the answer on screen, rather than from a selection made at scan time:
+  // there are no checkboxes here to put back a row an earlier answer took out.
+  const fresh = candidates.filter(
+    (candidate) => REGISTRABLE.includes(candidate.verdict) && !outcomes[candidate.path],
+  );
+  const conflicting = fresh.filter(
+    (candidate) =>
+      declarationSignal(candidate, declaredGenerator, generatorDeclared) === "conflict",
+  );
+  const toRegister = fresh.filter((candidate) => !conflicting.includes(candidate));
+
+  /** Other courses are another question: an answer about who made one folder is not an
+   *  answer about the next, so it is asked again (ADR-0024). */
+  function forgetGenerator() {
+    setGenerator("");
+  }
+
+  function navigate(next: string) {
+    goTo(next);
+    forgetGenerator();
+  }
+
   async function next() {
-    if (toRegister > 0) await registerSelected();
+    if (toRegister.length > 0) await registerSelected(toRegister.map((c) => c.path));
     onContinue();
   }
 
@@ -221,6 +262,8 @@ function FolderStep({
                   onClick={() => {
                     setFormat(name);
                     invalidateScan();
+                    forgetGenerator();
+                    onFormatChange();
                   }}
                   className={cn(
                     "rounded-md border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -240,7 +283,7 @@ function FolderStep({
           <p className="text-xs text-muted-foreground">
             Every folder inside the one you scan is one course.
           </p>
-          <FolderBreadcrumb root={root} path={path} onNavigate={goTo} />
+          <FolderBreadcrumb root={root} path={path} onNavigate={navigate} />
           {folder.isLoading ? (
             <LoadingState label="Reading the folder…" />
           ) : folder.error ? (
@@ -255,7 +298,7 @@ function FolderStep({
                 <li key={entry.path}>
                   <button
                     type="button"
-                    onClick={() => goTo(entry.path)}
+                    onClick={() => navigate(entry.path)}
                     className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
                   >
                     <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -328,6 +371,7 @@ function FolderStep({
                 onChange={(event) => {
                   setVersion(event.target.value);
                   invalidateScan();
+                  forgetGenerator();
                 }}
               />
               <p className="text-xs text-muted-foreground">
@@ -357,6 +401,7 @@ function FolderStep({
                     setRoot(event.target.value);
                     setPath("");
                     invalidateScan();
+                    forgetGenerator();
                   }}
                 >
                   {(roots.data ?? []).map((source) => (
@@ -377,15 +422,21 @@ function FolderStep({
               Answer who made these courses to continue.
             </p>
           ) : null}
+          {generatorDeclared && conflicting.length > 0 ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              {conflicting.length} {conflicting.length === 1 ? "course declares" : "courses declare"}{" "}
+              another generator version and {conflicting.length === 1 ? "is" : "are"} skipped.
+            </p>
+          ) : null}
           <Button
             onClick={next}
             disabled={!scan || mountBroken || !generatorDeclared || registering}
           >
             {registering ? <Spinner className="mr-2" /> : null}
             {progress
-              ? `Registering ${progress.done + 1} of ${progress.total}…`
-              : toRegister > 0
-                ? `Register ${toRegister} ${toRegister === 1 ? "course" : "courses"} and continue`
+              ? `Registering ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+              : toRegister.length > 0
+                ? `Register ${toRegister.length} ${toRegister.length === 1 ? "course" : "courses"} and continue`
                 : "Continue"}
           </Button>
         </div>
@@ -558,11 +609,21 @@ function UnknownNote() {
   );
 }
 
-function StoppedUnknown() {
+function StoppedUnknown({
+  registered,
+  onStartOver,
+}: {
+  registered: number;
+  onStartOver: () => void;
+}) {
   return (
     <Card>
       <CardContent className="space-y-3 pt-6 text-sm">
-        <p className="font-medium">The courses are registered, with an unknown generator.</p>
+        <p className="font-medium">
+          {registered > 0
+            ? `${registered} ${registered === 1 ? "course is" : "courses are"} registered, with an unknown generator.`
+            : "Nothing new was registered: these courses were already there."}
+        </p>
         <p className="text-muted-foreground">
           A study measures named generator versions, so there is nothing to measure here yet.
           When you know which version made them, attribute it from{" "}
@@ -571,6 +632,9 @@ function StoppedUnknown() {
           </Link>
           , and come back.
         </p>
+        <Button variant="outline" onClick={onStartOver}>
+          Start over
+        </Button>
       </CardContent>
     </Card>
   );
@@ -627,13 +691,19 @@ function ThoroughStep({
   const matchings = useMatchings(instrumentId || null, format ? [format] : []);
 
   if (instruments.isLoading || packages.isLoading) return <LoadingState />;
+  const loadError = instruments.error ?? packages.error;
+  if (loadError) return <ErrorState message={(loadError as Error).message} />;
 
   const readable = (instruments.data ?? []).filter(
     (instrument) =>
       instrument.status === "published" &&
       instrument.bindings.some((binding) => binding.package_format === format),
   );
-  const eligible = ratifiedFor(packages.data ?? [], instrumentId);
+  // A choice made for another format does not carry over: it counts only if it is offered.
+  const chosen = readable.some((i) => i.instrument_version_id === instrumentId)
+    ? instrumentId
+    : "";
+  const eligible = ratifiedFor(packages.data ?? [], chosen);
 
   return (
     <Card>
@@ -644,7 +714,7 @@ function ThoroughStep({
         <BatchSummary batch={batch} format={format} />
         <InstrumentChoice
           instruments={readable}
-          value={instrumentId}
+          value={chosen}
           onChange={(next) =>
             onInstrument(
               next,
@@ -652,7 +722,7 @@ function ThoroughStep({
             )
           }
         />
-        {instrumentId ? (
+        {chosen ? (
           <AssessorChoice
             assessors={eligible}
             matching={matchings.byFormat.get(format)}
@@ -672,7 +742,10 @@ function ThoroughStep({
           <Button variant="ghost" onClick={onBack}>
             Back
           </Button>
-          <Button onClick={onContinue} disabled={!instrumentId || !assessorId}>
+          <Button
+            onClick={onContinue}
+            disabled={!chosen || !eligible.some((pkg) => pkg.assessor_id === assessorId)}
+          >
             Continue
           </Button>
         </div>
@@ -687,11 +760,15 @@ function StartStep({
   generatorVersionId,
   instrumentId,
   assessorId,
+  name,
+  onName: setName,
   onBack,
 }: {
   generatorVersionId: Uuid;
   instrumentId: string;
   assessorId: string;
+  name: string;
+  onName: (name: string) => void;
   onBack: () => void;
 }) {
   const contents = useContents();
@@ -704,12 +781,10 @@ function StartStep({
   const version = (generatorVersions.data ?? []).find(
     (candidate) => candidate.generator_version_id === generatorVersionId,
   );
-  const [name, setName] = useState(version ? `${version.name} ${version.version}` : "");
-  // The version may still be loading on the first render; name the study after it once it
-  // arrives, unless somebody has typed a name already.
+  // Named after the version once it is known, unless somebody has typed a name already.
   useEffect(() => {
-    if (version) setName((current) => current || `${version.name} ${version.version}`);
-  }, [version]);
+    if (version && !name) setName(`${version.name} ${version.version}`);
+  }, [version, name, setName]);
 
   if (contents.data === undefined || generatorVersions.data === undefined) {
     return <LoadingState label="Reading what this version made…" />;
@@ -725,6 +800,14 @@ function StartStep({
   const briefIds = [...(group?.briefIds ?? [])];
   const courses = (group?.courses ?? []).filter((course) => course.brief_id !== null).length;
   const calls = assessor?.uses_llm ? courses * assessor.executes.length : 0;
+  // The study takes every course of the version, in whatever format; the instrument was
+  // chosen for one. Courses in a format it does not read come back not applicable.
+  const unread = (group?.courses ?? []).filter(
+    (course) =>
+      course.brief_id !== null &&
+      !(instrument?.bindings ?? []).some((b) => b.package_format === course.package_format),
+  );
+  const unreadFormats = [...new Set(unread.map((course) => course.package_format))];
   const label = version ? `${version.name} ${version.version}` : "this version";
 
   const body = {
@@ -781,6 +864,14 @@ function StartStep({
               : "No model calls"}
           </dd>
         </dl>
+
+        {unread.length > 0 ? (
+          <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-muted-foreground">
+            {unread.length} of these courses {unread.length === 1 ? "is" : "are"} in{" "}
+            {unreadFormats.join(", ")}, which this instrument does not read. Their criteria
+            will come back not applicable. The study still runs; the report will say so.
+          </p>
+        ) : null}
 
         {courses === 0 ? (
           <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-muted-foreground">

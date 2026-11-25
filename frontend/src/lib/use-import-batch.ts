@@ -166,9 +166,12 @@ export function useImportBatch() {
     );
   }
 
-  async function registerSelected() {
+  /** Registers the rows ticked, or `only` these paths when a caller decides them itself
+   *  at the moment of the click (the guided flow has no checkboxes). */
+  async function registerSelected(only?: string[]) {
+    const paths = only ?? selected;
     const chosen = (scan?.result.candidates ?? []).filter((candidate) =>
-      selected.includes(candidate.path),
+      paths.includes(candidate.path),
     );
     setProgress({ done: 0, total: chosen.length });
     let created = 0;

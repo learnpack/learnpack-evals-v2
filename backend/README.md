@@ -528,11 +528,13 @@ Adding a root needs a restart, because the trees are mounted when the app assemb
 one of the two things `--root <key>` names when it refuses a key: never declared, or declared after
 the API started. `--root` works on `register-package` and on `measure`, and defaults to `courses`.
 
-Every declared root is also browsable from **`/admin/measure`** in local mode, which is the page
-the console is arranged around: declare the format and generator version once, walk to the folder
-that holds the courses, and the scan says per subfolder what registering would do — `new`,
-`new_version`, `unchanged`, `conflict` or `unreadable` — before anything is written. Ticking the
-ones you want registers them, and the same page then opens the round over them. One thing the console cannot do, and says so: re-registering a course
+Every declared root is also browsable from the console in local mode. **`/admin/measure`** is a
+guided flow (ADR-0070): pick the folder, confirm which generator version made the courses, choose
+the instrument and the assessor, start. **`/admin/measure/all`** has every option on one page:
+declare the format and generator version once, walk to the folder that holds the courses, and the
+scan says per subfolder what registering would do — `new`, `new_version`, `unchanged`, `conflict`
+or `unreadable` — before anything is written. Ticking the ones you want registers them, and the
+same page then opens the study over them. One thing the console cannot do, and says so: re-registering a course
 that was registered with an unknown generator does **not** fill it in. That registration is a no-op
 (the bytes match), so the declared generator is discarded — attribution is its own act, offered on
 the row (ADR-0024).
@@ -626,8 +628,8 @@ touches the network: the transport is faked at the `runtime.get_client` seam.
 ## Evaluating
 
 **The everyday path is the last one here**: a generation lands in a folder and
-[`measure`](#measuring-a-generation-the-generator-just-wrote) — or `/admin/measure` — takes it
-from folder to score in one act. The rest is what that chains together, and what to reach for
+[`measure`](#measuring-a-generation-the-generator-just-wrote) takes it from folder to score in one
+act; in the console, `/admin/measure` does it in three guided steps. The rest is what that chains together, and what to reach for
 when a step needs doing on its own.
 
 ### One content
@@ -740,7 +742,8 @@ were copied between them derived instead. The rest is what the derivation refuse
 - **One JSON document comes out**, `{"batch": …, "fitness": …}`: reading the run and the score
   separately is where a value gets paired with the wrong study.
 
-The console does the same thing on `/admin/measure`; this is the scriptable path.
+The console does the same thing on `/admin/measure`, asking for the instrument and the assessor
+instead of deriving them; this is the scriptable path.
 
 ### When a criterion is not measuring what you meant
 
