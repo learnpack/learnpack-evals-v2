@@ -728,7 +728,7 @@ were copied between them derived instead. The rest is what the derivation refuse
   is the study's scope (ADR-0044). That is the defect the chaining removes, not the typing: a study
   that measures a dataset nobody meant to name. A folder declaring `unknown` is refused likewise.
 - **The norm and the assessor are derived only when the derivation has one answer**: the instrument is
-  the published version bound to the format, the assessor is the assessor that has ratified it, and two
+  the published version bound to the format, the assessor is the one that has ratified it, and two
   of either means the command asks. `--assessor` takes `name` or `name:version`, so a daily loop
   need not be edited on every bump. Both are resolved **before** the folder is registered, since
   registering is a fetch per lesson per course.
