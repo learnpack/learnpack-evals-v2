@@ -30,7 +30,7 @@ const TASKS = [
   {
     title: "Try one course",
     body: "See how a single course does against an instrument. Nothing is saved, so you can try as often as you like.",
-    href: "/admin/calibration",
+    href: "/admin/try",
     action: "Pick a course",
   },
   {

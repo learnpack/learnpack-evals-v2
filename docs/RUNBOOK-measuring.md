@@ -256,6 +256,8 @@ Two more worth knowing before they surprise you:
   for each; the score above is under *Optimization signal*, apart from the report.
 - `/admin/measure` — the same loop as the command, in the frontend, as three guided steps.
   `/admin/measure/all` has every option on one page.
-- `/admin/calibration` — run one course against one instrument without persisting anything,
-  and read every LLM call it made.
+- `/admin/try` — run one course against a published instrument and a ratified assessor
+  without persisting anything, and read its claims and evidence the way a study reads them.
+- `/admin/calibration` — the same dry run against any instrument and any assessor, with
+  every LLM call it made.
 - `backend/README.md` — everything else, including how instruments and assessors are built.
