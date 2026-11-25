@@ -149,7 +149,13 @@ export default function StudyDetailPage({
               </p>
               <ExplainButton topic="outcomes">How it counts</ExplainButton>
             </div>
-            {fitness.data ? <FitnessPanel fitness={fitness.data} /> : <LoadingState />}
+            {fitness.data ? (
+              <FitnessPanel fitness={fitness.data} />
+            ) : fitness.error ? (
+              <ErrorState message={(fitness.error as Error).message} />
+            ) : (
+              <LoadingState />
+            )}
           </div>
         ) : null}
       </Tabs>

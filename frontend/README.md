@@ -114,9 +114,10 @@ src/
                                    #                option), try (one course, a dry
                                    #                run), contents, studies
                                    #   Experts      campaigns, evaluator workload
-                                   #   Understand   how-it-works (what is checked, how
-                                   #                it is decided, what an outcome
-                                   #                means), instruments (with Publish),
+                                   #   Understand   how-it-works (what is checked, who
+                                   #                decides it, what an outcome means,
+                                   #                why there is no overall score),
+                                   #                instruments (with Publish),
                                    #                assessors (with Ratify)
                                    #   Setup        folded: generators, briefs, datasets,
                                    #                profiles, rubrics, calibration
@@ -343,13 +344,20 @@ declaration, not silence — except in attribution, where naming the version is 
    accepted), the folder, a scan, and who made them. When the packages agree on the generator
    version they declare, the question is a confirmation (*Yes*, *Choose another*, *Unknown*)
    and nothing is chosen until it is answered (ADR-0024). The course version, whether a person
-   edited them and the source root wait under *More options*. Continuing registers what the
-   scan marked as new. Courses declared *Unknown* are registered, and the flow stops there:
-   it measures one named version.
+   edited them and the source root wait under *More options*, and changing the folder, the
+   format, the version or the root asks who made them again. Continuing registers what the
+   scan marked as new, minus the courses whose packages declare another generator version,
+   which it counts; the list is decided at that click, not at scan time. Courses declared
+   *Unknown* are registered, and the flow stops there, with *Start over*: it measures one
+   named version.
 2. **How thorough** — the instrument, then the assessor, each chosen on cards and never
    preselected (ADR-0042). An assessor's card says how many of the criteria the format can
    supply it decides, and whether it spends model calls (`components/admin/measurement-choice.tsx`).
-3. **Start** — a summary, the name, and the same confirmation the study form has.
+3. **Start** — a summary, the name, a warning when the version also has courses in a format
+   the instrument does not read, and a confirmation worded like the study form's.
+
+Step 2 opens with the batch summary, so a lot that came back unread offers **Read them now**
+there too.
 
 It runs on the same logic as the view with every option, so the two cannot disagree about
 what an act does: `useImportBatch` for the import, `useSaveAndStart` for the study.
@@ -400,7 +408,8 @@ produced, so **Read them now** comes first.
 Reading is not one of the three — it writes a profile, but it decides nothing and can be
 repeated. It is offered per format on `/admin/profiles`, per failed profile as **Try
 again** (nothing else ever retries one: the policy stands down when a row exists, in either
-state), and over a lot that came back unread on `/admin/measure/all`. Always as an explicit
+state), and over a lot that came back unread on `/admin/measure` (step 2) and
+`/admin/measure/all`. Always as an explicit
 batch, one request per course, never a cascade.
 
 **Ratify an assessor** (`/admin/assessors`) is what lets an automated assessor's judgments

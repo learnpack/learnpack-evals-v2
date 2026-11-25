@@ -383,7 +383,7 @@ function ImportFromDisk() {
                   />
 
                   <div className="flex flex-wrap items-center gap-3">
-                    <Button onClick={registerSelected} disabled={!canRegister || progress !== null}>
+                    <Button onClick={() => registerSelected()} disabled={!canRegister || progress !== null}>
                       {progress ? <Spinner className="mr-2" /> : null}
                       {progress
                         ? `Registering ${progress.done + 1} of ${progress.total}…`

@@ -45,7 +45,7 @@ Each term below is the name the code and the rest of the documentation use, and
 | **assessor** | versioned software that decides an instrument's criteria. A different algorithm, prompt or model is a different assessor |
 | **study** | one measurement: the generator versions to compare, the courses each wrote from the same briefs, and the instrument version and assessor that measure them, ending in a frozen report |
 | **campaign** | one rating by experts, with its own courses and its own result |
-| **reference instrument** | what the experts answer: one 1–5 statement per quality. It is not the automated instrument; the two share only the qualities |
+| **rubric** | the reference instrument: what the experts answer, one 1–5 statement per quality. It is not the automated instrument; the two share only the qualities |
 
 ## An example, end to end
 
