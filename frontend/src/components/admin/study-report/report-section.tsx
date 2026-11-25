@@ -99,7 +99,9 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-muted-foreground">
           Each claim is read as how many courses supported it, refuted it or left it without a
-          verdict. Nothing is added up across claims. <ExplainButton topic="ladder">How to read a claim</ExplainButton>
+          verdict. Nothing is added up across claims.{" "}
+          <ExplainButton topic="ladder">How to read a claim</ExplainButton>{" "}
+          <ExplainButton topic="total">Why no overall score</ExplainButton>
         </p>
         <div className="flex items-center gap-1 text-xs" role="group" aria-label="Order the claims">
           {(["dimension", "weakest"] as const).map((value) => (

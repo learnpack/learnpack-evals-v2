@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DecisionMechanisms } from "@/components/explain/decision-mechanisms";
 import { EvidenceLadder } from "@/components/explain/evidence-ladder";
+import { NoOverallScore } from "@/components/explain/no-overall-score";
 import { OutcomesCalculator } from "@/components/explain/outcomes-calculator";
 
 /**
@@ -10,29 +12,6 @@ import { OutcomesCalculator } from "@/components/explain/outcomes-calculator";
  * It explains the model; it holds no data, so it renders without a request. The copy uses
  * the GLOSSARY's words (ADR-0069) and links to the pages where each thing lives.
  */
-const MECHANISMS: { name: string; model: string; code: string }[] = [
-  {
-    name: "Code decides",
-    model: "Nothing.",
-    code: "Counts, checks presence and order, computes measures such as lexical load, and applies the pass condition.",
-  },
-  {
-    name: "A model reads, code decides",
-    model: "Reads the course and returns data, each item tied to a quote: which task measures which objective, where each concept appears.",
-    code: "Checks every quote against the text and applies the pass condition to the data: a count, an order, a trajectory.",
-  },
-  {
-    name: "A model judges",
-    model: "Answers the pass condition itself, citing a passage. Used where no mechanical check exists.",
-    code: "Checks the citation, asks twice, a third time only if the two answers disagree, and takes the majority.",
-  },
-  {
-    name: "Nobody decides",
-    model: "—",
-    code: "The assessor declares it does not check this criterion. It ends not assessed: a gap in coverage, not a fail.",
-  },
-];
-
 export default function HowItWorksPage() {
   return (
     <div className="max-w-4xl space-y-6">
@@ -70,26 +49,7 @@ export default function HowItWorksPage() {
             last word on its own, and a different algorithm, prompt or model is a different
             assessor.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead>
-                <tr className="border-b text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <th className="py-2 pr-3 font-medium">How</th>
-                  <th className="py-2 pr-3 font-medium">What a model does</th>
-                  <th className="py-2 font-medium">What code does</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {MECHANISMS.map((mechanism) => (
-                  <tr key={mechanism.name} className="align-top">
-                    <td className="py-2 pr-3 font-medium">{mechanism.name}</td>
-                    <td className="py-2 pr-3 text-muted-foreground">{mechanism.model}</td>
-                    <td className="py-2 text-muted-foreground">{mechanism.code}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DecisionMechanisms />
           <p className="text-xs text-muted-foreground">
             The Assessors page says how many criteria each assessor decides, and whether it
             spends model calls to do it.
@@ -118,14 +78,14 @@ export default function HowItWorksPage() {
           <p>
             A course is never reduced to one number. Adding five dimensions into one takes
             weights, and the weights are a judgment about what matters: with different
-            weights, two generator versions can swap places. That judgment is not the
-            instrument&apos;s to make.
+            weights, two generator versions can swap places.
           </p>
           <p>
             So results are read claim by claim and criterion by criterion. Where a number is
-            computed, it covers one declared set and travels with its coverage. If your work
-            needs a single number, choose the weights yourself and write them down.
+            computed, it covers one declared set and travels with its coverage. Move the
+            weights below and watch the order change.
           </p>
+          <NoOverallScore />
         </CardContent>
       </Card>
 
