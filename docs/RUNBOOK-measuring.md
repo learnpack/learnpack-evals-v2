@@ -19,10 +19,11 @@ your work needs one number, you define how to collapse them — see
 
 Two words used throughout, because the system uses them:
 
-- A **commission** (`brief`) is the request a course was generated from. The generator writes
-  it into the package, and the system reads it from there.
-- A **round** (`study`) is one measurement: a set of courses, one instrument version, one
-  judge. All three are fixed when the round opens, which is what makes a result reproducible.
+- A **brief** is the request a course was generated from. The generator writes it into the
+  package, and the system reads it from there.
+- A **study** is one measurement: a set of courses, one instrument version, one assessor (the
+  software that decides the criteria). All three are fixed when the study opens, which is what
+  makes a result reproducible.
 
 ## Setting up, once
 
@@ -40,7 +41,7 @@ Then two lines in `backend/.env`:
 # becomes part of the URL the tree is served at, so pick one and keep it.
 LOCAL_SOURCE_ROOTS=generated=/path/to/your/generator/datasets/generated
 
-# An OpenRouter key — the judges are pinned to models served there. Only the assessors
+# An OpenRouter key — the assessors are pinned to models served there. Only the assessors
 # that carry an LLM need it.
 LLM_API_KEY=<your OpenRouter key>
 ```
@@ -77,7 +78,7 @@ task db:reset   # destroys the local database and rebuilds all of the above
 ```
 
 The name of the middle folder **declares which generator version made those courses**, which
-is what a round is about. `learnpack-generator-04a7dd5-dirty` means the lineage
+is what a study is about. `learnpack-generator-04a7dd5-dirty` means the lineage
 `learnpack-generator` at version `04a7dd5-dirty`; the version can be a commit sha, a tag,
 anything — it is matched against the registered lineage, and the rest is the version.
 
@@ -94,13 +95,13 @@ uv run python -m app.cli measure --root generated \
                                  --assessor drafts-hybrid > run.json
 ```
 
-That one command registers every course in the folder, reads each one, opens a round scoped to
-exactly that generator version, judges every course, and prints the result.
+That one command registers every course in the folder, reads each one, opens a study scoped to
+exactly that generator version, assesses every course, and prints the result.
 
 **Progress goes to the screen and the result goes to the file.** That split is deliberate:
 `> run.json` gives you the complete document while you still watch the batch advance.
 
-**Re-running the same command resumes** — courses this judge already scored are skipped — so
+**Re-running the same command resumes** — courses this assessor already scored are skipped — so
 an interrupted batch is continued by repeating it. Ctrl-C stops it cleanly: what finished
 stays, what was in flight writes nothing, and you still get the summary.
 
@@ -138,17 +139,17 @@ arithmetic:
 | `fail` | there is evidence and it does not | denominator |
 | `no_evidence` | the package could carry it and does not | denominator |
 | `not_applicable` | no adapter for this format can supply the datum at all | **out** |
-| `not_assessed` | the judge declares it does not check this criterion | **out** |
+| `not_assessed` | the assessor declares it does not check this criterion | **out** |
 | `execution_error` | the run failed on that criterion — a fact about the run, not the course | **out** |
 
 The last three are excluded on purpose: a generator should not be scored for a question
 nobody asked. `not_assessed` in particular is **not a zero** — it is the visible backlog of
-criteria no judge executes yet.
+criteria no assessor executes yet.
 
 ### Three levels, and one to start from
 
 The document carries the same shape at three levels: `contents[]` (per course),
-`generators[]` (per generator version) and `study` (the whole round). Use `study` for a
+`generators[]` (per generator version) and `study` (the whole study). Use `study` for a
 score, and the other two when a number surprises you.
 
 ```json
@@ -181,20 +182,20 @@ Each course carries its qualities with the counts behind them, so any number can
 }
 ```
 
-Two criteria, both failed, so 0/2. To see *why* they failed — the passage the judge read and
+Two criteria, both failed, so 0/2. To see *why* they failed — the passage the assessor read and
 the failure mode it named — open `/admin/studies/<id>` in the frontend and expand the
 criterion.
 
-Each course also carries its `briefId`, which is how you group results by commission. **The
-system deliberately does not average per commission**: if you generate more than one course
-from the same commission, it hands you each one labelled, because averaging them would erase
-exactly the spread that repeating a commission exists to reveal. The mean and the dispersion
+Each course also carries its `briefId`, which is how you group results by brief. **The
+system deliberately does not average per brief**: if you generate more than one course
+from the same brief, it hands you each one labelled, because averaging them would erase
+exactly the spread that repeating a brief exists to reveal. The mean and the dispersion
 are yours to compute.
 
 ## The one rule that will bite you
 
 **Only compare values computed over the same coverage, with the same formula version, the
-same instrument version and the same judge.**
+same instrument version and the same assessor.**
 
 A run where four criteria ended in `execution_error` has a smaller denominator than one where
 none did. Both values are correct; their *difference* is not. The same holds if you change the
@@ -217,7 +218,7 @@ If you need a scalar, you define it. The minimum it has to handle:
 - **`undefined`.** Skip it. A dimension answers `undefined` when none of its qualities was
   measured; reading that as `0` scores the generator on a question nobody asked, and it is the
   mistake that quietly wrecks a comparison.
-- **How many courses.** A round over two courses and a round over twenty are both valid and
+- **How many courses.** A study over two courses and a study over twenty are both valid and
   are not equally trustworthy.
 
 Keep the raw document, not just your scalar. The scalar is a summary you may want to redefine
@@ -232,7 +233,7 @@ later; the document is the measurement.
 | `INVALID … could not read artifact` | that package is missing a file the format requires; the other courses still register |
 | `N assessors have ratified …` | pass `--assessor` |
 | `N published instrument versions bind …` | pass `--instrument-version-id` |
-| `folder 'unknown' declares no generator version` | a round measures named versions; name the version in the folder |
+| `folder 'unknown' declares no generator version` | a study measures named versions; name the version in the folder |
 | `already registered under a different generator version` | those courses were first registered under another version and keep it. Measure the version that holds them, or start clean with `task db:reset` |
 | `is behind` / `alembic upgrade head` | the database is older than the code |
 
@@ -240,18 +241,18 @@ Two more worth knowing before they surprise you:
 
 - **A course's identity is its content.** Registering the same bytes twice returns the course
   that already exists, keeping the generator version it was first registered with. If two
-  versions produce a byte-identical course, the second round will not include it — and will
+  versions produce a byte-identical course, the second study will not include it — and will
   say so, per course.
-- **The judge is not perfectly consistent.** Repeated runs over identical input mostly agree,
-  but not always, so a small difference between two batches may be the judge rather than the
+- **The assessor is not perfectly consistent.** Repeated runs over identical input mostly agree,
+  but not always, so a small difference between two batches may be the assessor rather than the
   generator. That is one more reason to keep the per-course values and not only the mean. What
-  repeated runs have shown, and how to tell a wobbling judge from a criterion with no threshold
+  repeated runs have shown, and how to tell a wobbling assessor from a criterion with no threshold
   written down, is in [RUNBOOK-calibrating.md](RUNBOOK-calibrating.md#what-repeated-runs-tell-you).
 
 ## Where to look next
 
-- `/admin/studies/<id>` — the round: the weakest claims, the most-failed criteria, and the
-  passage the judge quoted for each.
+- `/admin/studies/<id>` — the study: the weakest claims, the most-failed criteria, and the
+  passage the assessor quoted for each.
 - `/admin/measure` — the same loop as the command, in the frontend.
 - `/admin/calibration` — run one course against one instrument without persisting anything,
   and read every LLM call it made.

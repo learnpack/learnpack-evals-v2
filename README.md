@@ -36,14 +36,15 @@ Each term below is the name the code and the rest of the documentation use, and
 | Term | In plain words |
 |---|---|
 | **generator version** | one version of the course generator being measured |
+| **brief** | the request a course was generated from. Courses written from the same brief are what a study compares |
 | **package** | everything a generator delivers for one course. Its **format** says how to read it: `LearnpackV1` is a finished course, `LearnpackV2` a draft |
 | **profile** | what a package says, extracted **verbatim** with the location of each piece — never inferred, never summarized |
 | **quality** | one pedagogical property a course can have, such as how its cognitive demand progresses. Qualities are grouped into **dimensions** |
 | **instrument** | a versioned, published set of **claims** — one-sentence assertions, each about one quality — and of the **criteria** that evidence them |
 | **criterion** | one verifiable condition with a written **pass condition**, e.g. "no lesson's vocabulary runs far above the rest of the course" |
 | **assessor** | versioned software that decides an instrument's criteria. A different algorithm, prompt or model is a different assessor |
-| **study** | one measurement round: the generator versions to compare, the courses each wrote from the same commissions, and the instrument version that measures them, ending in a frozen report |
-| **campaign** | one round of expert rating, with its own courses and its own result |
+| **study** | one measurement: the generator versions to compare, the courses each wrote from the same briefs, and the instrument version and assessor that measure them, ending in a frozen report |
+| **campaign** | one rating by experts, with its own courses and its own result |
 | **reference instrument** | what the experts answer: one 1–5 statement per quality. It is not the automated instrument; the two share only the qualities |
 
 ## An example, end to end

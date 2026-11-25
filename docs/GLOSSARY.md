@@ -185,7 +185,7 @@
   adapter's mapping (Content Profiling). Claims and evidence models are portable; only the
   binding is redone per type — reusing an instrument on a new type = **a new version that adds
   the binding**.
-- **EvaluationStudy** — the **commission**: an evaluation round, carrying a `name` and an
+- **EvaluationStudy** — **one measurement** of generator versions, carrying a `name` and an
   optional `description`. Its *purpose* (initial / regression / comparison) is a typology the
   model names and does not yet build — the word is reserved for it, never for the title
   (ADR-0043 §7) — and it is not built because the recipe's **`GeneratorScope`** already says
