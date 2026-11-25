@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AppHeader } from "@/components/app-header";
 import { LoadingState } from "@/components/ui/states";
 import { useMe } from "@/lib/api/hooks";
@@ -151,16 +151,16 @@ function SideNav({ pathname }: { pathname: string }) {
           const heading =
             "px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
           if (section.collapsed) {
-            // Open by itself when the current page is inside it, so the reader is never on a
-            // page the rail hides.
-            const holdsCurrent = section.items.some((item) => isCurrent(pathname, item));
             return (
-              <details key={section.group} className="min-w-0" open={holdsCurrent || undefined}>
-                <summary className={cn(heading, "cursor-pointer select-none hover:text-foreground")}>
-                  {section.group}
-                </summary>
+              <FoldedGroup
+                key={section.group}
+                title={section.group}
+                headingClassName={heading}
+                holdsCurrent={section.items.some((item) => isCurrent(pathname, item))}
+                pathname={pathname}
+              >
                 {links}
-              </details>
+              </FoldedGroup>
             );
           }
           return (
@@ -172,5 +172,42 @@ function SideNav({ pathname }: { pathname: string }) {
         })}
       </div>
     </nav>
+  );
+}
+
+/**
+ * A group the rail folds away, which opens by itself whenever the current page is inside it,
+ * so the reader is never on a page the rail hides. The reader can still fold it again; the
+ * next navigation into it opens it once more.
+ */
+function FoldedGroup({
+  title,
+  headingClassName,
+  holdsCurrent,
+  pathname,
+  children,
+}: {
+  title: string;
+  headingClassName: string;
+  holdsCurrent: boolean;
+  pathname: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(holdsCurrent);
+  useEffect(() => {
+    if (holdsCurrent) setOpen(true);
+  }, [holdsCurrent, pathname]);
+
+  return (
+    <details
+      className="min-w-0"
+      open={open}
+      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className={cn(headingClassName, "cursor-pointer select-none hover:text-foreground")}>
+        {title}
+      </summary>
+      {children}
+    </details>
   );
 }
