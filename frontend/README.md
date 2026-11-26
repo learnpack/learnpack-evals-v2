@@ -109,7 +109,9 @@ src/
     admin/                         # admin console. page.tsx opens on three tasks, then
                                    # what is pending (versions nobody measured, latest
                                    # studies); layout.tsx groups the destinations by task:
-                                   #   Evaluate     home, measure (local only), contents,
+                                   #   Evaluate     home, measure (local only: a guided
+                                   #                flow, and measure/all with every
+                                   #                option), contents,
                                    #                studies
                                    #   Experts      campaigns, evaluator workload
                                    #   Understand   how-it-works (what is checked, who
@@ -321,6 +323,7 @@ unaccepted format may well have been read. Acceptance only explains a *missing* 
 ## Declaring which generator version made something
 
 Every form that asks for one — *Add course*, *Import from a list*, *Import &amp; measure*, the
+guided flow when the packages declare no single version, the
 attribution act — asks
 with the same control (`components/admin/generator-version-picker.tsx`): the lineage, then
 its version, with **New** beside it. Versions change often in early development, so
@@ -333,10 +336,34 @@ stops a typo becoming a second lineage (ADR-0031) needs the undivided attention 
 The control carries the three states of ADR-0024, and *unknown* is one of them — a
 declaration, not silence — except in attribution, where naming the version is the whole act.
 
-## Import &amp; measure (local mode only)
+## Evaluate courses (local mode only)
 
-`/admin/measure` is one errand in three stretches, top to bottom, and it is the page the
-console is arranged around:
+`/admin/measure` is a guided flow in three steps (ADR-0070), `components/admin/measure-wizard.tsx`:
+
+1. **Folder** — what kind of courses they are (asked only when more than one format is
+   accepted), the folder, a scan, and who made them. When the packages agree on the generator
+   version they declare, the question is a confirmation (*Yes*, *Choose another*, *Unknown*)
+   and nothing is chosen until it is answered (ADR-0024). When several source roots are
+   declared, the first segment of the folder path chooses among them. The course version and
+   whether a person edited them wait under *More options*, and changing the folder, the
+   format, the version or the root asks who made them again. Continuing registers what the
+   scan marked as new, minus the courses whose packages declare another generator version,
+   which it counts; the list is decided at that click, not at scan time. Courses declared
+   *Unknown* are registered, and the flow stops there, with *Start over*: it measures one
+   named version.
+2. **How thorough** — the instrument, then the assessor, each chosen on cards and never
+   preselected (ADR-0042). An assessor's card says how many of the criteria the format can
+   supply it decides, and whether it spends model calls (`components/admin/measurement-choice.tsx`).
+3. **Start** — a summary, the name, a warning when the version also has courses in a format
+   the instrument does not read, and a confirmation worded like the study form's.
+
+Step 2 opens with the batch summary, so a lot that came back unread offers **Read them now**
+there too.
+
+It runs on the same logic as the view with every option, so the two cannot disagree about
+what an act does: `useImportBatch` for the import, `useSaveAndStart` for the study.
+
+`/admin/measure/all` is that view: one errand in three stretches, top to bottom.
 
 1. **What made these courses** — the generator version, the course format, whether a person
    edited the output.
@@ -352,11 +379,11 @@ declared version changes and when a batch finishes — otherwise the courses jus
 would not be ticked. A batch therefore discards anything already typed below it, which the
 top-to-bottom order makes rare: you import, and then you scroll down.
 
-The whole page is behind a build-time constant, so it never reaches a deployed console — the
+Both pages are behind a build-time constant, so they never reach a deployed console — the
 scan endpoints answer 404 outside local mode anyway. There the same errand is two screens:
 *Courses → Add course*, then *Studies → New study*.
 
-Two things the page says that are easy to misread as bugs: a folder marked **conflict** needs
+Two things the long view says that are easy to misread as bugs: a folder marked **conflict** needs
 the course version bumped (a registered version is immutable, ADR-0005), and an **already
 registered** course whose generator is unknown cannot be fixed by registering it again —
 re-registering an unchanged package is a no-op, so the row offers the attribution act instead
@@ -382,7 +409,8 @@ produced, so **Read them now** comes first.
 Reading is not one of the three — it writes a profile, but it decides nothing and can be
 repeated. It is offered per format on `/admin/profiles`, per failed profile as **Try
 again** (nothing else ever retries one: the policy stands down when a row exists, in either
-state), and over a lot that came back unread on `/admin/measure`. Always as an explicit
+state), and over a lot that came back unread on `/admin/measure` (step 2) and
+`/admin/measure/all`. Always as an explicit
 batch, one request per course, never a cascade.
 
 **Ratify an assessor** (`/admin/assessors`) is what lets an automated assessor's judgments
@@ -398,8 +426,8 @@ realizes. That is not a formality: changing an executor is a new assessor versio
 ## Two happy paths
 
 **Measuring a generator** is the automated one, and it has its own guide:
-`../docs/RUNBOOK-measuring.md`. In the console it is one page — `/admin/measure` — and the result is
-read on `/admin/studies/[id]`.
+`../docs/RUNBOOK-measuring.md`. In the console it is the guided flow at `/admin/measure`, and
+the result is read on `/admin/studies/[id]`.
 
 **Human evaluation** is the other, and it needs evaluators. In local mode
 `task seed:demo` installs them with two courses and an open campaign to work on; with Clerk

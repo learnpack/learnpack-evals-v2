@@ -88,7 +88,8 @@ qualifies the assessor over courses it never judged · `0064` a claim is read va
 its instrument is tuned · `0065` an evaluation answers one assignment · `0066` the embedded
 course carries the theme of the page around it · `0067` an assignment is given to a person who
 is still here · `0068` a course nobody can open is not assigned · `0069` the console speaks
-the GLOSSARY: one word per concept.
+the GLOSSARY: one word per concept · `0070` measuring opens as a guided flow, on a local
+setup.
 
 **Snapshots (`design/`, frozen)**
 Steps 01–08 of the modelling process (slice 1, historical) · the 09–13 series (generator QA:
