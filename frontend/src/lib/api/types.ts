@@ -127,6 +127,10 @@ export interface InstrumentResponse {
   claims: InstrumentClaim[];
   criteria: InstrumentCriterion[];
   bindings: InstrumentBinding[];
+  /** `{qualityId: dimensionId}`, frozen when this version was published (ADR-0023 §8). What a
+   *  reader groups a published version's results by, never the live vocabulary. On a draft it
+   *  means nothing (empty, or backfilled by a migration). */
+  quality_dimensions: Record<string, string>;
 }
 
 export interface ProfileEntryResponse {
@@ -1305,7 +1309,9 @@ export interface RegisterLocalResponse {
 /** One quality of the pedagogical vocabulary, with the dimension it groups under. */
 export interface QualityReferenceResponse {
   quality_id: string;
+  quality_name: string;
   dimension_id: string | null;
+  dimension_name: string | null;
 }
 
 /** One version of a package's lineage, and whether that package may judge with it.

@@ -71,6 +71,10 @@ class InstrumentResponse(BaseModel):
     claims: list[ClaimResponse]
     criteria: list[CriterionSpecResponse]
     bindings: list[BindingResponse]
+    # `{qualityId: dimensionId}`, frozen when this version was published (ADR-0023 §8). What
+    # a reader groups a published version's results by. On a draft it means nothing: a draft
+    # imported since then carries it empty, and one migration 0013 backfilled carries a map.
+    quality_dimensions: dict[str, str]
 
     @classmethod
     def from_snapshot(cls, snapshot: InstrumentSnapshot) -> "InstrumentResponse":
@@ -84,6 +88,7 @@ class InstrumentResponse(BaseModel):
             claims=[ClaimResponse(**c.__dict__) for c in snapshot.claims],
             criteria=[CriterionSpecResponse(**c.__dict__) for c in snapshot.criteria],
             bindings=[BindingResponse(**b.__dict__) for b in snapshot.bindings],
+            quality_dimensions=dict(snapshot.quality_dimensions),
         )
 
 
@@ -232,8 +237,10 @@ def get_reference_instrument(
 
 class QualityReferenceResponse(BaseModel):
     quality_id: str
+    quality_name: str
     # Null for a quality that groups under no dimension — it rolls up nowhere.
     dimension_id: str | None
+    dimension_name: str | None
 
 
 @reference_router.get("/qualities", response_model=list[QualityReferenceResponse])
@@ -242,9 +249,12 @@ def list_quality_reference(admin: AdminAssessor, uow: Uow) -> list[QualityRefere
 
     What the calibration page's local fitness projection groups by. LIVE reference data on
     purpose: a dry run reads the current vocabulary; the map frozen per instrument version
-    at publish (ADR-0023) exists to protect *published studies*, and a preview is neither."""
-    mapping = SqlAlchemyReferenceDataRepository(uow.session).quality_dimensions()
+    at publish (ADR-0023) exists to protect *published studies*, and a preview is neither.
+
+    It also carries the NAMES, which is all a reader of a published study takes from here:
+    the frozen map on the instrument says which dimension a quality belongs to, and this says
+    what to call them."""
     return [
-        QualityReferenceResponse(quality_id=quality_id, dimension_id=dimension_id)
-        for quality_id, dimension_id in sorted(mapping.items())
+        QualityReferenceResponse.model_validate(row)
+        for row in SqlAlchemyReferenceDataRepository(uow.session).vocabulary()
     ]

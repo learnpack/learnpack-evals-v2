@@ -148,6 +148,15 @@ def test_quality_reference_maps_qualities_to_dimensions(admin):
     assert len(by_quality) >= 21  # the seeded vocabulary, at least
 
 
+def test_quality_reference_names_qualities_and_dimensions(admin):
+    """The names are what a reader of a published study takes from here: the frozen map on
+    the instrument says where a quality belongs, this says what to call it."""
+    rows = {row["quality_id"]: row for row in admin.get("/admin/reference/qualities").json()}
+    demand = rows["progression-cognitive-demand"]
+    assert demand["quality_name"] == "Increasing and level-appropriate cognitive demand"
+    assert demand["dimension_name"] == "Learning progression"
+
+
 # ---------------------------------------------------------------------------- preview
 #
 # The dry-run is started, not awaited (it takes minutes with LLM criteria), so every test
