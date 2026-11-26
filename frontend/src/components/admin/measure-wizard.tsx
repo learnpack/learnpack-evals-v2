@@ -430,7 +430,9 @@ function FolderStep({
           ) : null}
           <Button
             onClick={next}
-            disabled={!scan || mountBroken || !generatorDeclared || registering}
+            disabled={
+              !scan || mountBroken || !generatorDeclared || registering || scanFolder.isPending
+            }
           >
             {registering ? <Spinner className="mr-2" /> : null}
             {progress
@@ -471,7 +473,14 @@ function ScanSummary({ candidates }: { candidates: ScanCandidate[] }) {
  * is the picker. Either way nothing is chosen until the reader clicks.
  */
 function GeneratorQuestion({ batchImport }: { batchImport: ReturnType<typeof useImportBatch> }) {
-  const { scan, generator, setGenerator, assistedRegister, setAssistedRegister } = batchImport;
+  const {
+    scan,
+    generator,
+    setGenerator,
+    assistedRegister,
+    setAssistedRegister,
+    adoptNewGeneratorVersion,
+  } = batchImport;
   const generators = useGenerators();
   const [choosing, setChoosing] = useState(false);
 
@@ -508,10 +517,7 @@ function GeneratorQuestion({ batchImport }: { batchImport: ReturnType<typeof use
       generatorName={assistedRegister?.generatorName ?? ""}
       initialVersion={assistedRegister?.version ?? ""}
       onClose={() => setAssistedRegister(null)}
-      onCreated={(generatorVersionId) => {
-        setGenerator(generatorVersionId);
-        setAssistedRegister(null);
-      }}
+      onCreated={adoptNewGeneratorVersion}
     />
   );
 
