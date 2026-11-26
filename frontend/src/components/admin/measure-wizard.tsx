@@ -283,7 +283,18 @@ function FolderStep({
           <p className="text-xs text-muted-foreground">
             Every folder inside the one you scan is one course.
           </p>
-          <FolderBreadcrumb root={root} path={path} onNavigate={navigate} />
+          <FolderBreadcrumb
+            root={root}
+            path={path}
+            onNavigate={navigate}
+            roots={roots.data}
+            onRootChange={(next) => {
+              setRoot(next);
+              setPath("");
+              invalidateScan();
+              forgetGenerator();
+            }}
+          />
           {folder.isLoading ? (
             <LoadingState label="Reading the folder…" />
           ) : folder.error ? (
@@ -391,28 +402,6 @@ function FolderStep({
                 <option value="human_edited">Yes</option>
               </Select>
             </div>
-            {(roots.data ?? []).length > 1 ? (
-              <div className="space-y-1.5">
-                <Label htmlFor="wizard-root">Source root</Label>
-                <Select
-                  id="wizard-root"
-                  value={root}
-                  onChange={(event) => {
-                    setRoot(event.target.value);
-                    setPath("");
-                    invalidateScan();
-                    forgetGenerator();
-                  }}
-                >
-                  {(roots.data ?? []).map((source) => (
-                    <option key={source.key} value={source.key} disabled={!source.exists}>
-                      {source.key}
-                      {source.exists ? "" : " (missing on disk)"}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ) : null}
           </div>
         </details>
 
