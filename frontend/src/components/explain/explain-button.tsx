@@ -4,7 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { HelpCircle } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
+import { DecisionMechanisms } from "@/components/explain/decision-mechanisms";
 import { EvidenceLadder } from "@/components/explain/evidence-ladder";
+import { NoOverallScore } from "@/components/explain/no-overall-score";
 import { OutcomesCalculator } from "@/components/explain/outcomes-calculator";
 
 /** The explanations a screen can open where the question comes up. Each is also a section
@@ -14,9 +16,17 @@ const TOPICS = {
     title: "From a course to the evidence",
     render: () => <EvidenceLadder />,
   },
+  mechanisms: {
+    title: "How a criterion is decided",
+    render: () => <DecisionMechanisms />,
+  },
   outcomes: {
     title: "Six outcomes, and where they count",
     render: () => <OutcomesCalculator />,
+  },
+  total: {
+    title: "Why there is no overall score",
+    render: () => <NoOverallScore />,
   },
 } as const;
 

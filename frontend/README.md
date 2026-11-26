@@ -125,7 +125,9 @@ src/
     ui/                            # UI kit (button, card, table, dialog, popover, tabs,
                                    # select, collapsible-section, term-hint — the "?"
                                    # beside a term, ADR-0069 — …)
-    explain/                       # the explanations how-it-works is made of, and
+    explain/                       # the explanations how-it-works is made of (the
+                                   # evidence ladder, how a criterion is decided, the
+                                   # six outcomes, why there is no overall score), and
                                    # explain-button, which opens one in a dialog beside
                                    # what it explains
     evaluator/                     # consume-content (iframe+fallback), score-form,

@@ -202,6 +202,7 @@ export default function TryOneCoursePage() {
               {running ? <Spinner className="mr-2" /> : null}
               {running ? "Running… a model can take a while" : "Run it"}
             </Button>
+            <ExplainButton topic="mechanisms">How an assessor decides</ExplainButton>
             {assessor?.uses_llm ? (
               <p className="text-xs text-muted-foreground">
                 This assessor calls a model, so a run spends calls on the backend&apos;s key.

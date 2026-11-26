@@ -19,6 +19,7 @@ import {
   UNKNOWN_GENERATOR,
 } from "@/components/admin/generator-version-picker";
 import { AssessorChoice, InstrumentChoice } from "@/components/admin/measurement-choice";
+import { ExplainButton } from "@/components/explain/explain-button";
 import {
   useAssessorPackages,
   useContents,
@@ -728,10 +729,7 @@ function ThoroughStep({
         ) : null}
         <p className="text-xs text-muted-foreground">
           Not sure what the difference is?{" "}
-          <Link href="/admin/how-it-works" className="text-primary hover:underline">
-            How evaluation works
-          </Link>{" "}
-          explains how an assessor decides a criterion.
+          <ExplainButton topic="mechanisms">How an assessor decides a criterion</ExplainButton>
         </p>
         <div className="flex flex-wrap justify-between gap-3 border-t pt-4">
           <Button variant="ghost" onClick={onBack}>
