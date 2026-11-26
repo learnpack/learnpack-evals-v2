@@ -345,8 +345,9 @@ declaration, not silence — except in attribution, where naming the version is 
 1. **Folder** — what kind of courses they are (asked only when more than one format is
    accepted), the folder, a scan, and who made them. When the packages agree on the generator
    version they declare, the question is a confirmation (*Yes*, *Choose another*, *Unknown*)
-   and nothing is chosen until it is answered (ADR-0024). The course version, whether a person
-   edited them and the source root wait under *More options*, and changing the folder, the
+   and nothing is chosen until it is answered (ADR-0024). When several source roots are
+   declared, the first segment of the folder path chooses among them. The course version and
+   whether a person edited them wait under *More options*, and changing the folder, the
    format, the version or the root asks who made them again. Continuing registers what the
    scan marked as new, minus the courses whose packages declare another generator version,
    which it counts; the list is decided at that click, not at scan time. Courses declared

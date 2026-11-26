@@ -53,9 +53,10 @@ option.**
      only one of them is eligible.
    - The start is confirmed in a dialog that names what becomes fixed and what it costs.
 3. **What has a safe default is folded away.** The course version (`1`), whether a person
-   edited the courses (`unknown`) and, when several are declared, the source root go under
-   *More options*. They keep their defaults until somebody opens the section and changes
-   them.
+   edited the courses (`unknown`) go under *More options*. They keep their defaults until
+   somebody opens the section and changes them. The source root is not folded away: when
+   several are declared, it is the first segment of the folder path, where the reader looks
+   for the courses.
 4. **An assessor is described by what it does, not by its name alone.** The flow shows how
    many of the criteria the courses' format can supply it decides, and whether it calls a
    model and so spends calls. The numbers come from the assessor's declared coverage and from
