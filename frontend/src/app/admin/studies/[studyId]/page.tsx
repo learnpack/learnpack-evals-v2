@@ -22,6 +22,8 @@ import { assessorLabel } from "@/components/admin/assessor-label";
 import { StudyStatusBadge } from "@/components/admin/study-status";
 import { StudyForm } from "@/components/admin/study-form";
 import { StudyReportSection } from "@/components/admin/study-report/report-section";
+import { ExplainButton } from "@/components/explain/explain-button";
+import { Tabs } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api/client";
 import {
   useAssessorPackages,
@@ -48,11 +50,18 @@ import type {
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-/** Everything one study needs doing happens here, in the order a round actually goes:
- *  build it, evaluate it, sign the report off. The list is a list.
+type StudyTab = "results" | "study" | "signal";
+
+/** One study, in three tabs, opened on the one a reader came for.
  *
- *  While it is a draft this page renders the same form `/admin/studies/new` does — with an
- *  id, and nothing else different. They were two screens for one job (ADR-0043 §1). */
+ *  - **Results** is what the study found, and where an open or signed-off study opens: the
+ *    report's claims, grouped by dimension and quality, down to the passages (ADR-0041).
+ *  - **Study** is the work of running it: while it is a draft, the same form
+ *    `/admin/studies/new` renders (ADR-0043 §1); once open, evaluating it and signing it off;
+ *    and whether it can answer what it asks. A draft opens here, since it has no results.
+ *  - **Optimization signal** is the fitness projection, apart from the report on purpose
+ *    (ADR-0023 §11): it is a number to optimize a generator against, and it counts
+ *    differently. */
 export default function StudyDetailPage({
   params,
 }: {
@@ -64,6 +73,9 @@ export default function StudyDetailPage({
   const evaluations = useStudyEvaluations(studyId);
   const readiness = useStudyReadiness(studyId);
   const fitness = useStudyFitness(studyId);
+  // Null until the reader picks one: the default depends on the study's status, which is
+  // not known until it loads.
+  const [tab, setTab] = useState<StudyTab | null>(null);
 
   if (isLoading) return <LoadingState />;
   if (error) return <ErrorState message={(error as Error).message} />;
@@ -73,37 +85,80 @@ export default function StudyDetailPage({
   // at all — every card below appears only while it has something a reader can act on.
   const inSetup = study.status === "declared" || study.status === "prepared";
   const signedOff = study.status === "signed_off";
+  const current: StudyTab = tab ?? (inSetup ? "study" : "results");
 
   return (
     <div className="max-w-5xl space-y-6">
       <StudyHeader study={study} />
 
-      {inSetup ? <StudyForm study={study} /> : null}
+      <Tabs
+        label="Study sections"
+        value={current}
+        onChange={setTab}
+        tabs={[
+          { value: "results", label: "Results" },
+          { value: "study", label: inSetup ? "Set up" : "Study" },
+          { value: "signal", label: "Optimization signal" },
+        ]}
+      >
+        {current === "results" ? (
+          // Readable before the irreversible act: signing off freezes a report, it does not
+          // reveal one. Not while still being set up, though: there is nothing to read yet.
+          inSetup ? (
+            <EmptyState
+              title="Nothing to read yet"
+              hint="Results appear once the study starts and its courses are evaluated. Finish setting it up under Set up."
+            />
+          ) : (
+            <StudyReportSection study={study} />
+          )
+        ) : null}
 
-      {/* Evaluating and signing off are what an OPEN study is for. Once it is signed off a
-          batch is refused and the report already states how many judgments it used, so the
-          card would be a count you have and a paragraph about an act you cannot perform. */}
-      {study.status === "open" ? (
-        <>
-          <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
-          <SignOffCard study={study} evaluations={evaluations.data ?? null} />
-        </>
-      ) : null}
+        {current === "study" ? (
+          <div className="space-y-6">
+            {inSetup ? <StudyForm study={study} /> : null}
 
-      {/* Readable before the irreversible act: signing off freezes a report, it does not
-          reveal one. Not while still being set up, though — there is nothing to report yet
-          and the setup card is the whole job. */}
-      {inSetup ? null : <StudyReportSection study={study} />}
+            {/* Evaluating and signing off are what an OPEN study is for. Once it is signed
+                off a batch is refused and the report already states how many judgments it
+                used, so the card would be a count you have and an act you cannot perform. */}
+            {study.status === "open" ? (
+              <>
+                <EvaluationCard study={study} evaluations={evaluations.data ?? null} />
+                <SignOffCard study={study} evaluations={evaluations.data ?? null} />
+              </>
+            ) : null}
 
-      {/* Below the phase it informs, never above it, and never on a signed-off study: it is
-          computed from TODAY's ratifications and adapters, so on a frozen report it can
-          contradict the document it sits next to. */}
-      {!signedOff && readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
+            {/* Never on a signed-off study: it is computed from TODAY's ratifications and
+                adapters, so on a frozen report it can contradict the document. */}
+            {!signedOff && readiness.data ? <ReadinessPanel readiness={readiness.data} /> : null}
 
-      {/* Apart from the report on purpose (ADR-0023 §11): the juxtaposition is useful, the
-          conflation is not — the report publishes no aggregate score, and this denominator
-          is not the report's. */}
-      {fitness.data ? <FitnessPanel fitness={fitness.data} /> : null}
+            {signedOff ? (
+              <p className="text-sm text-muted-foreground">
+                This study is signed off. Its report is frozen, and nothing here can change it.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {current === "signal" ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+              <p className="max-w-2xl">
+                A number to optimize a generator against, not a judgment and not part of the
+                report. It counts outcomes differently from the report&apos;s claims.
+              </p>
+              <ExplainButton topic="outcomes">How it counts</ExplainButton>
+            </div>
+            {fitness.data ? (
+              <FitnessPanel fitness={fitness.data} />
+            ) : fitness.error ? (
+              <ErrorState message={(fitness.error as Error).message} />
+            ) : (
+              <LoadingState />
+            )}
+          </div>
+        ) : null}
+      </Tabs>
     </div>
   );
 }
@@ -808,7 +863,8 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
     <CollapsibleSection
       title="Is the generator getting better?"
       badge="optimization signal — not a judgment, and not part of the report"
-      defaultOpen={false}
+      // Open: it has a tab of its own now, so opening the tab is the act of asking.
+      defaultOpen
       className="border-dashed bg-muted/10"
       contentClassName="space-y-4 text-sm"
       meta={

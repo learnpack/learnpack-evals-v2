@@ -110,7 +110,7 @@ function CourseEntry({
             </p>
           ) : (
             <>
-              <ClaimList claims={claims} />
+              <ClaimList claims={claims} instrument={instrument} />
               {outcomes ? (
                 <CriterionTable
                   outcomes={outcomes}
@@ -127,8 +127,17 @@ function CourseEntry({
   );
 }
 
-function ClaimList({ claims }: { claims: NonNullable<StudyReportContent["claims"]> }) {
+function ClaimList({
+  claims,
+  instrument,
+}: {
+  claims: NonNullable<StudyReportContent["claims"]>;
+  instrument: InstrumentResponse | undefined;
+}) {
   if (claims.length === 0) return null;
+  // The sentence is the row; the id follows it, for whoever cross-references the YAML
+  // (ADR-0069 §3). Joined from the instrument, as everywhere else in the report.
+  const statementOf = new Map((instrument?.claims ?? []).map((c) => [c.claim_id, c.statement]));
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -138,7 +147,10 @@ function ClaimList({ claims }: { claims: NonNullable<StudyReportContent["claims"
         {claims.map((claim) => (
           <li key={claim.claimId} className="flex flex-wrap items-center gap-2 text-xs">
             <ClaimStatusBadge status={claim.status} />
-            <span title={claim.claimId}>{claim.claimId}</span>
+            <span>{statementOf.get(claim.claimId) ?? claim.claimId}</span>
+            {statementOf.has(claim.claimId) ? (
+              <span className="font-mono text-[11px] text-muted-foreground">{claim.claimId}</span>
+            ) : null}
             {claim.insufficiencyCause ? (
               <span className="text-muted-foreground">({claim.insufficiencyCause})</span>
             ) : null}

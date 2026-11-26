@@ -120,7 +120,7 @@ src/
                                    #   Setup        folded: generators, briefs, datasets,
                                    #                profiles, rubrics, calibration
   components/
-    ui/                            # UI kit (button, card, table, dialog, popover,
+    ui/                            # UI kit (button, card, table, dialog, popover, tabs,
                                    # select, collapsible-section, term-hint — the "?"
                                    # beside a term, ADR-0069 — …)
     explain/                       # the explanations how-it-works is made of, and

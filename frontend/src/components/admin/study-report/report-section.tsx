@@ -10,9 +10,12 @@ import { CourseList } from "@/components/admin/study-report/course-list";
 import { CriteriaRollup } from "@/components/admin/study-report/criteria-rollup";
 import { DocumentBand } from "@/components/admin/study-report/document-band";
 import { WeakestClaims } from "@/components/admin/study-report/weakest-claims";
+import { ClaimsByDimension } from "@/components/admin/study-report/claims-by-dimension";
+import { ExplainButton } from "@/components/explain/explain-button";
 import {
   useClaimValidity,
   useInstruments,
+  useQualityReference,
   useStudyCriterionOutcomes,
   useStudyReport,
   useStudyReportPreview,
@@ -43,6 +46,10 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
   const preview = useStudyReportPreview(study.study_id);
   const outcomes = useStudyCriterionOutcomes(study.study_id);
   const instruments = useInstruments();
+  const vocabulary = useQualityReference();
+  // Grouped by dimension by default, because that is how a reader thinks about a course;
+  // worst-first is the other question, "what should be fixed first".
+  const [order, setOrder] = useState<"dimension" | "weakest">("dimension");
 
   // The reader's choice of campaign lives here because two things answer to it: the validity
   // table below, and the badge each claim carries above it (ADR-0063 §7).
@@ -88,7 +95,42 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
       </div>
 
       <DocumentBand source={source} />
-      <WeakestClaims body={body} validity={validityByClaim} />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          Each claim is read as how many courses supported it, refuted it or left it without a
+          verdict. Nothing is added up across claims. <ExplainButton topic="ladder">How to read a claim</ExplainButton>
+        </p>
+        <div className="flex items-center gap-1 text-xs" role="group" aria-label="Order the claims">
+          {(["dimension", "weakest"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={order === value}
+              onClick={() => setOrder(value)}
+              className={
+                order === value
+                  ? "rounded-md bg-accent px-2 py-1 font-medium text-foreground"
+                  : "rounded-md px-2 py-1 text-muted-foreground hover:text-foreground"
+              }
+            >
+              {value === "dimension" ? "By dimension" : "Weakest first"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {order === "dimension" ? (
+        <ClaimsByDimension
+          body={body}
+          instrument={instrument}
+          instrumentError={instruments.error as Error | null}
+          vocabulary={vocabulary.data}
+          validity={validityByClaim}
+        />
+      ) : (
+        <WeakestClaims body={body} validity={validityByClaim} />
+      )}
       {outcomes.data ? (
         <CriteriaRollup
           outcomes={outcomes.data}
