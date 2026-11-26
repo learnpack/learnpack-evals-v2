@@ -47,6 +47,7 @@ const NAV: NavGroup[] = [
   {
     group: "Understand",
     items: [
+      { href: "/admin/how-it-works", label: "How evaluation works" },
       { href: "/admin/instruments", label: "Instruments" },
       { href: "/admin/assessors", label: "Assessors" },
     ],

@@ -96,6 +96,13 @@ export default function AdminHome() {
             </Link>
           ))}
         </div>
+        <p className="text-sm text-muted-foreground">
+          New here?{" "}
+          <Link href="/admin/how-it-works" className="font-medium text-primary hover:underline">
+            How evaluation works
+          </Link>{" "}
+          explains what is checked and how to read a result, in about three minutes.
+        </p>
       </div>
 
       <h2 className="border-t pt-6 text-lg font-semibold tracking-tight">Pending</h2>

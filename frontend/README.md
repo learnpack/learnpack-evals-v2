@@ -112,14 +112,20 @@ src/
                                    #   Evaluate     home, measure (local only), contents,
                                    #                studies
                                    #   Experts      campaigns, evaluator workload
-                                   #   Understand   instruments (with Publish), assessors
-                                   #                (with Ratify)
+                                   #   Understand   how-it-works (what is checked, who
+                                   #                decides it, what an outcome means,
+                                   #                why there is no overall score),
+                                   #                instruments (with Publish),
+                                   #                assessors (with Ratify)
                                    #   Setup        folded: generators, briefs, datasets,
                                    #                profiles, rubrics, calibration
   components/
     ui/                            # UI kit (button, card, table, dialog, popover,
                                    # select, collapsible-section, term-hint — the "?"
                                    # beside a term, ADR-0069 — …)
+    explain/                       # the explanations how-it-works is made of, and
+                                   # explain-button, which opens one in a dialog beside
+                                   # what it explains
     evaluator/                     # consume-content (iframe+fallback), score-form,
                                    # declared-data (what the course says about itself, for
                                    # the items resting on it — ADR-0057), how-this-works
