@@ -30,6 +30,7 @@ const NAV: NavGroup[] = [
       // Local only, and behind a build-time constant, so it leaves a deployed bundle
       // entirely: the scan endpoints it needs do not exist outside local mode (ADR-0035).
       ...(IS_LOCAL_AUTH ? [{ href: "/admin/measure", label: "Evaluate courses" }] : []),
+      { href: "/admin/try", label: "Try one course" },
       { href: "/admin/contents", label: "Courses" },
       { href: "/admin/studies", label: "Studies" },
     ],

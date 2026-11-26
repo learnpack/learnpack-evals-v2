@@ -111,8 +111,8 @@ src/
                                    # studies); layout.tsx groups the destinations by task:
                                    #   Evaluate     home, measure (local only: a guided
                                    #                flow, and measure/all with every
-                                   #                option), contents,
-                                   #                studies
+                                   #                option), try (one course, a dry
+                                   #                run), contents, studies
                                    #   Experts      campaigns, evaluator workload
                                    #   Understand   how-it-works (what is checked, who
                                    #                decides it, what an outcome means,

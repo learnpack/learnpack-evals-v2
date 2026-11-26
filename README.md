@@ -115,6 +115,7 @@ over from an empty database.
 | You want to… | Read |
 |---|---|
 | measure what a generator produced | `docs/RUNBOOK-measuring.md` — self-contained, start here |
+| see how one course does, without saving anything | *Try one course* in the console (`/admin/try`) |
 | find out why a criterion answered that | `docs/RUNBOOK-calibrating.md` |
 | write or revise an instrument | `docs/RUNBOOK-authoring-an-instrument.md` |
 | teach the system a new package format | `docs/RUNBOOK-adding-a-format.md` |
