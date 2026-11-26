@@ -139,6 +139,15 @@ export function useImportBatch() {
     invalidateScan();
   }
 
+  /** A version just registered from the dialog: declare it, and scan again. The scan
+   *  resolved each package's declaration when that version did not exist yet, so until it is
+   *  read again every package would look as if it declared another version (ADR-0027 §5). */
+  function adoptNewGeneratorVersion(generatorVersionId: string) {
+    setGenerator(generatorVersionId);
+    setAssistedRegister(null);
+    if (scan) runScan();
+  }
+
   function runScan() {
     scanFolder.mutate(
       { root, path, package_format: format, version },
@@ -258,6 +267,7 @@ export function useImportBatch() {
     invalidateScan,
     goTo,
     runScan,
+    adoptNewGeneratorVersion,
     registerSelected,
   };
 }

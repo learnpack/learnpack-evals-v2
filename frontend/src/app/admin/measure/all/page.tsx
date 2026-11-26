@@ -99,6 +99,7 @@ function ImportFromDisk() {
     invalidateScan,
     goTo,
     runScan,
+    adoptNewGeneratorVersion,
     registerSelected,
   } = useImportBatch();
 
@@ -232,10 +233,7 @@ function ImportFromDisk() {
             generatorName={assistedRegister?.generatorName ?? ""}
             initialVersion={assistedRegister?.version ?? ""}
             onClose={() => setAssistedRegister(null)}
-            onCreated={(generatorVersionId) => {
-              setGenerator(generatorVersionId);
-              setAssistedRegister(null);
-            }}
+            onCreated={adoptNewGeneratorVersion}
           />
 
           <div className="space-y-1.5">
