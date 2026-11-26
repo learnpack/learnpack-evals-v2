@@ -32,7 +32,7 @@ export function Verdict({
         <Figure
           label="Experts"
           value={String(quorum.assessor_count)}
-          detail="with an active assignment in this round"
+          detail="with an active assignment in this campaign"
         />
       </div>
 

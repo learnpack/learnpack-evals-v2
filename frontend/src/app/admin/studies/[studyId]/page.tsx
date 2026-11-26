@@ -129,7 +129,7 @@ function StudyHeader({ study }: { study: StudyResponse }) {
         {study.instrument_version_id ?? "no instrument chosen"} ·{" "}
         {study.assessor_id
           ? (assessor?.display_name ?? study.assessor_id)
-          : "no judge chosen"}{" "}
+          : "no assessor chosen"}{" "}
         · {study.brief_ids.length} briefs → {study.content_ids.length} courses
       </p>
     </div>
@@ -339,7 +339,7 @@ function ProgressLine({
         <p className="text-muted-foreground">
           {judged} of {courses} courses already carry a judgment{under}. Running the batch
           again evaluates only the {courses - judged} that do not: it resumes an interrupted
-          round rather than repeating it, and pays for no LLM call twice.
+          batch rather than repeating it, and pays for no LLM call twice.
         </p>
       ) : (
         <p className="text-muted-foreground">
@@ -401,7 +401,7 @@ function RunProgress({ run }: { run: BatchRun }) {
           this assessor had already judged {run.skipped === 1 ? "it" : "them"} under{" "}
           <code>{run.instrument_version_id}</code>, so the run did not pay for{" "}
           {run.skipped === 1 ? "it" : "them"} a second time. That is what makes running the
-          batch again the way to resume an interrupted round.
+          batch again the way to resume an interrupted batch.
         </p>
       ) : null}
 
@@ -530,7 +530,7 @@ function StartEvaluation({
             <p className="rounded border p-2 text-sm">
               Judged by <span className="font-medium">{chosen?.display_name ?? study.assessor_id}</span>
               <span className="block text-xs text-muted-foreground">
-                The study chose it before opening, and it cannot change now: a round judged half
+                The study chose it before opening, and it cannot change now: a study judged half
                 by one assessor and half by another is not one result.
                 {chosen ? ` ${chosen.executes.length} criteria executed.` : ""}
               </span>
@@ -555,7 +555,7 @@ function StartEvaluation({
                 <span className="block text-xs text-muted-foreground">
                   For repairing a course that finished degraded: a criterion that errored is
                   this run&apos;s failure, not the course&apos;s. It replaces the previous
-                  judgment rather than adding to it, so it never samples the judge — that is
+                  judgment rather than adding to it, so it never samples the assessor — that is
                   what a calibration dry run is for. Off by default, which is what makes
                   running the batch again the way to resume an interrupted one.
                 </span>
@@ -892,7 +892,7 @@ function FitnessPanel({ fitness }: { fitness: StudyFitness }) {
                 ? fitness.assessorCoverage.assessorsUsed.map(assessorLabel).join(", ")
                 : "nobody yet"}
               {(fitness.assessorCoverage.assessorsUsed?.length ?? 0) > 1
-                ? " — these values pool more than one judge and are not comparable with a single-judge round"
+                ? " — these values pool more than one assessor and are not comparable with a single-assessor study"
                 : ""}
               · {fitness.assessorCoverage.notAssessed ?? 0} criteria left unassessed ·{" "}
               {fitness.assessorCoverage.executionErrors ?? 0} execution error(s)
@@ -926,7 +926,7 @@ function ByGeneratorVersion({ fitness }: { fitness: StudyFitness }) {
       <p className="font-medium">
         By generator version
         <span className="ml-2 text-xs font-normal text-muted-foreground">
-          the same commissions, one column each
+          the same briefs, one column each
         </span>
       </p>
       <div className="overflow-x-auto">
@@ -973,7 +973,7 @@ function ByGeneratorVersion({ fitness }: { fitness: StudyFitness }) {
       <p className="text-xs text-muted-foreground">
         Read the spread under <em>By brief</em> before reading a gap here: a difference
         between two columns only means something if it is larger than how much one version
-        varies with itself on the same commission (ADR-0039).
+        varies with itself on the same brief.
       </p>
     </div>
   );
@@ -1030,7 +1030,7 @@ function ByBrief({ fitness }: { fitness: StudyFitness }) {
       <p className="font-medium">
         By brief
         <span className="ml-2 text-xs font-normal text-muted-foreground">
-          grouped, never pooled — one row per course, so repeats of a commission can be
+          grouped, never pooled — one row per course, so repeats of a brief can be
           compared
         </span>
       </p>
@@ -1058,7 +1058,7 @@ function ByBrief({ fitness }: { fitness: StudyFitness }) {
             </p>
             {courses.length === 0 ? (
               <p className="text-xs italic text-muted-foreground">
-                no course in this study answers this commission
+                no course in this study answers this brief
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -1116,7 +1116,7 @@ function ReadinessPanel({ readiness }: { readiness: StudyReadiness }) {
 
   return (
     <CollapsibleSection
-      title="Can this round answer what it asks?"
+      title="Can this study answer what it asks?"
       badge="informs, never blocks"
       defaultOpen={gaps > 0}
       contentClassName="space-y-3 text-sm"

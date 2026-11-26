@@ -80,7 +80,7 @@ export default function AdminHome() {
 
           <section className="space-y-3">
             <div className="flex items-baseline justify-between gap-4">
-              <h2 className="text-sm font-medium">Last rounds</h2>
+              <h2 className="text-sm font-medium">Latest studies</h2>
               <Link
                 href="/admin/studies"
                 className="text-xs text-muted-foreground hover:underline"
@@ -90,8 +90,8 @@ export default function AdminHome() {
             </div>
             {recent.length === 0 ? (
               <EmptyState
-                title="No rounds yet"
-                hint="A round is an instrument, a judge and a set of courses."
+                title="No studies yet"
+                hint="A study is an instrument, an assessor and a set of courses."
               />
             ) : (
               <Card>
@@ -127,7 +127,7 @@ function UnmeasuredRow({ group }: { group: VersionGroup }) {
           </p>
           <p className="text-sm tabular-nums text-muted-foreground">
             {group.courses.length} {group.courses.length === 1 ? "course" : "courses"} ·{" "}
-            {commissions} {commissions === 1 ? "commission" : "commissions"} ·{" "}
+            {commissions} {commissions === 1 ? "brief" : "briefs"} ·{" "}
             {group.formats.join(", ")}
           </p>
         </div>
@@ -136,7 +136,7 @@ function UnmeasuredRow({ group }: { group: VersionGroup }) {
           disabled={commissions === 0}
           title={
             commissions === 0
-              ? "No commission recorded for these courses, so there is no dataset to compose."
+              ? "No brief recorded for these courses, so there is no dataset to compose."
               : undefined
           }
           onClick={() => router.push(`/admin/studies/new?versions=${group.key}`)}
@@ -160,7 +160,7 @@ function RoundRow({ study }: { study: StudyResponse }) {
           {study.content_ids.length}{" "}
           {study.content_ids.length === 1 ? "course" : "courses"} ·{" "}
           {study.brief_ids.length}{" "}
-          {study.brief_ids.length === 1 ? "commission" : "commissions"}
+          {study.brief_ids.length === 1 ? "brief" : "briefs"}
           {study.opened_at
             ? ` · started ${new Date(study.opened_at).toLocaleDateString()}`
             : ""}

@@ -202,13 +202,13 @@ export function caveatRows(body: ReportBody): CaveatRow[] {
       key: "briefCompleteness",
       label: "Incomplete briefs",
       detail: c.briefCompleteness.length
-        ? `${c.briefCompleteness.length} commission(s) with no prompt recorded`
+        ? `${c.briefCompleteness.length} brief(s) with no prompt recorded`
         : "every brief records its prompt",
       raised: c.briefCompleteness.length > 0,
     },
     {
       key: "mixedAssessors",
-      label: "More than one judge",
+      label: "More than one assessor",
       detail: mixed.length
         ? `${mixed.map(assessorLabel).join(" · ")} — every distribution below pools courses judged by different artifacts`
         : "one assessor produced every judgment",

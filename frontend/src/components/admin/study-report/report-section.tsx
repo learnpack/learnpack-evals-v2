@@ -74,7 +74,7 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <FileText className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-lg font-semibold tracking-tight">What this round found</h2>
+        <h2 className="text-lg font-semibold tracking-tight">What this study found</h2>
         <span className="text-xs text-muted-foreground">
           {body.instrumentVersionId ?? "no instrument pinned"} · dataset of{" "}
           {body.dataset.size} · {Object.keys(body.judgmentIdsUsed).length} judgments
@@ -82,7 +82,7 @@ export function StudyReportSection({ study }: { study: StudyResponse }) {
               ADR-0042, which are read as the records they are rather than annotated with a
               guess. */}
           {body.assessorsUsed?.length
-            ? ` · judged by ${body.assessorsUsed.map(assessorLabel).join(", ")}`
+            ? ` · assessed by ${body.assessorsUsed.map(assessorLabel).join(", ")}`
             : ""}
         </span>
       </div>

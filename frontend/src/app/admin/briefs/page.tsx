@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/s
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useBriefs, useContents, useCreateBrief } from "@/lib/api/hooks";
 import { ApiError } from "@/lib/api/client";
+import { TermHint } from "@/components/ui/term-hint";
 
 export default function BriefsPage() {
   const { data: briefs, isLoading, error } = useBriefs();
@@ -32,12 +33,15 @@ export default function BriefsPage() {
     <div className="max-w-5xl">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Briefs</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+          Briefs
+          <TermHint term="brief" />
+        </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             The assignment a course was generated from, and the key that pairs generator
             versions over the same work. They <span className="font-medium text-foreground">
             arrive on their own</span> when a course is registered whose package carries its
-            commission (ADR-0022) — a format with no intake for it registers the brief absent.
+            brief. A format that cannot carry one registers the course without a brief.
           </p>
         </div>
         {/* Secondary on purpose: typing one by hand is the rare case, for a course whose

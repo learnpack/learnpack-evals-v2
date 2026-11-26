@@ -683,7 +683,7 @@ function ArrivedFromReport({
           this course the other way round from the assessor
           {named ? <>, over {named}</> : null} under this instrument version. Pick an assessor
           and run it: a dry run persists nothing, so this is the safe place to find out whether
-          the check asks the wrong thing or the judge reads it badly. Start with the check —
+          the check asks the wrong thing or the assessor reads it badly. Start with the check —
           a threshold nobody wrote makes every assessor look equally bad.
         </p>
       ) : (
@@ -815,7 +815,7 @@ function RunFailure({
       ) : null}
       {error.kind === "assessor_failed" ? (
         <p className="text-xs text-muted-foreground">
-          Nothing was persisted (ADR-0034): the run is the retry. If it keeps happening, the
+          Nothing was saved, so running it again is the retry. If it keeps happening, the
           trace below has the prompt each task sent and the raw text it got back.
         </p>
       ) : null}
@@ -1204,7 +1204,7 @@ function FitnessPreview({
       <div>
         <h3 className="text-sm font-medium">Fitness preview</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          The ADR-0023 optimization signal (formula v1: pass / (pass + fail + no_evidence)),
+          The optimization signal (formula v1: pass / (pass + fail + no_evidence)),
           computed locally over this single dry run — an orientation for calibration, not a
           verdict. The real fitness is read per study, from persisted judgments.
         </p>
@@ -1260,7 +1260,7 @@ function FitnessPreview({
       <p className="text-xs text-muted-foreground">
         Excluded = not_assessed + not_applicable, Errored = execution_error: all outside the
         denominator on purpose — the assessor&apos;s limits, unmet format demand and this
-        run&apos;s own failures are not the generator&apos;s fault (ADR-0037).
+        run&apos;s own failures are not the generator&apos;s fault.
       </p>
     </div>
   );

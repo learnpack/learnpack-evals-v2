@@ -27,7 +27,7 @@ export function Caveats({ report }: { report: CampaignReport }) {
         <Row
           label="Not asked"
           value={gaps.withheld}
-          detail="item-and-course pairs where the course declares nothing the item is about, so nobody was put in front of it and the value was derived (ADR-0053). A generator's omission, not a gap in the panel."
+          detail="item-and-course pairs where the course declares nothing the item is about, so nobody was put in front of it and the value was derived. A generator's omission, not a gap in the panel."
         />
         <Row
           label="Could not judge"

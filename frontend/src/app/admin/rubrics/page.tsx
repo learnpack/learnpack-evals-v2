@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCampaigns, useReferenceInstruments } from "@/lib/api/hooks";
+import { TermHint } from "@/components/ui/term-hint";
 
 export default function RubricsPage() {
   const { data: rubrics, isLoading, error } = useReferenceInstruments();
@@ -20,7 +21,10 @@ export default function RubricsPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Rubrics</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Rubrics
+          <TermHint term="rubric" />
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           The human reference instrument: what a subject-matter expert is asked, directly about
           the qualities of a course, by taking it. Not the evidential argument under{" "}

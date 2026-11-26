@@ -14,6 +14,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/states";
 import { ApiError } from "@/lib/api/client";
+import { TermHint } from "@/components/ui/term-hint";
+import type { Term } from "@/lib/terms";
 import {
   useAssessorPackages,
   useBriefs,
@@ -144,7 +146,7 @@ export function StudyForm({
     setInstrumentId(next);
     if (assessorId && !ratifiedFor(packages.data ?? [], next).some((p) => p.assessor_id === assessorId)) {
       setAssessorId("");
-      if (next) toast.info("The judge was cleared: it has not ratified that version.");
+      if (next) toast.info("The assessor was cleared: it has not ratified that version.");
     }
   }
 
@@ -192,7 +194,7 @@ export function StudyForm({
       await openStudy.mutateAsync({ studyId: saved.study_id });
     } catch (err) {
       setConfirming(false);
-      toast.error("Saved, but the round did not start.", {
+      toast.error("Saved, but the study did not start.", {
         description: (err as ApiError).message,
       });
       if (!study) router.push(`/admin/studies/${saved.study_id}`);
@@ -202,7 +204,7 @@ export function StudyForm({
       await startRound.mutateAsync({ studyId: saved.study_id, body: { re_evaluate: false } });
       toast.success("Evaluating", { description: "It reports as it goes, and can be stopped." });
     } catch (err) {
-      toast.error("The round is open, but the batch did not start.", {
+      toast.error("The study is open, but the batch did not start.", {
         description: (err as ApiError).message,
       });
     }
@@ -213,13 +215,13 @@ export function StudyForm({
   return (
     <Card>
       <CardContent className="space-y-6 pt-6">
-        <Field id="study-name" label="Name" hint="Names the round for whoever reads its report later.">
+        <Field id="study-name" label="Name" hint="Names the study for whoever reads its report later.">
           <Input
             id="study-name"
             autoFocus={autoFocusName && !study}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. LearnpackV2 — first QA round"
+            placeholder="e.g. LearnpackV2 — first QA study"
           />
         </Field>
 
@@ -227,7 +229,7 @@ export function StudyForm({
           id="study-description"
           label="Description"
           optional
-          hint="What this round is for, and what you expect to learn from it."
+          hint="What this study is for, and what you expect to learn from it."
         >
           <Textarea
             id="study-description"
@@ -242,7 +244,8 @@ export function StudyForm({
         <Field
           id="study-instrument"
           label="Instrument"
-          hint="The published version this round judges against. It decides which judges and which course formats can take part."
+          term="instrument"
+          hint="The published version this study measures against. It decides which assessors and which course formats can take part."
         >
           <Select
             id="study-instrument"
@@ -261,8 +264,9 @@ export function StudyForm({
 
         <Field
           id="study-judge"
-          label="Judge"
-          hint="Whose verdicts are this round's result. Only judges that have ratified the chosen version can take part."
+          label="Assessor"
+          term="assessor"
+          hint="Whose verdicts are this study's result. Only assessors that have ratified the chosen version can take part."
         >
           <JudgeField
             instrumentId={instrumentId}
@@ -275,7 +279,8 @@ export function StudyForm({
         <Field
           id="study-scope"
           label="Generator versions"
-          hint="What this round measures. One version is a measurement of that version; several are a comparison between them."
+          term="generator version"
+          hint="What this study measures. One version is a measurement of that version; several are a comparison between them."
         >
           <ScopeField
             versions={generatorVersions.data ?? []}
@@ -285,7 +290,7 @@ export function StudyForm({
           {scope === "all" && arms.length > 1 ? (
             <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
               These briefs brought courses from {arms.length} versions (
-              {arms.map((arm) => arm.label).join(", ")}), and the round&apos;s own header will
+              {arms.map((arm) => arm.label).join(", ")}), and the study&apos;s own header will
               read them as one population. Legitimate, and said here rather than discovered in
               the report — naming the versions instead separates them.
             </p>
@@ -295,13 +300,14 @@ export function StudyForm({
         <Field
           id="study-courses"
           label="Courses"
+          term="brief"
           hint="Picked by brief — each brief brings the courses registered from it, narrowed to the versions above."
         >
           <div className="space-y-2">
             {(briefs.data ?? []).length === 0 ? (
               <p className="rounded border bg-muted/40 p-2 text-xs text-muted-foreground">
-                No briefs registered yet. Briefs arrive mechanically when contents with a
-                syllabus are registered (ADR-0022), or manually in /admin/briefs.
+                No briefs registered yet. A brief arrives on its own when a course whose package
+                carries one is registered, and can be added by hand on the Briefs page.
               </p>
             ) : (
               (briefs.data ?? []).map((brief) => {
@@ -343,7 +349,7 @@ export function StudyForm({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <p className="max-w-lg text-xs text-muted-foreground">
             {complete
-              ? `${selectedCourses.length} course${selectedCourses.length === 1 ? "" : "s"} · ${scopeSummary(arms)} · judged by ${chosenAssessor?.display_name ?? assessorId} · against ${instrumentId}`
+              ? `${selectedCourses.length} course${selectedCourses.length === 1 ? "" : "s"} · ${scopeSummary(arms)} · assessed by ${chosenAssessor?.display_name ?? assessorId} · against ${instrumentId}`
               : `Still missing ${missing(name, instrumentId, assessorId, scopeDeclared, selectedCourses.length).join(", ")}.`}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -390,21 +396,29 @@ function Field({
   id,
   label,
   hint,
+  term,
   optional,
   children,
 }: {
   id: string;
   label: string;
   hint: string;
+  /** The GLOSSARY term this field names, when a reader may not know it (ADR-0069 §2). */
+  term?: Term;
   optional?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>
-        {label}
-        {optional ? <span className="ml-1 font-normal text-muted-foreground">(optional)</span> : null}
-      </Label>
+      {/* The hint sits beside the label, not inside it: a button inside a <label> would
+          focus the field instead of opening. */}
+      <div className="flex items-center">
+        <Label htmlFor={id}>
+          {label}
+          {optional ? <span className="ml-1 font-normal text-muted-foreground">(optional)</span> : null}
+        </Label>
+        {term ? <TermHint term={term} /> : null}
+      </div>
       <p className="text-xs text-muted-foreground">{hint}</p>
       {children}
     </div>
@@ -428,15 +442,15 @@ function JudgeField({
   if (!instrumentId) {
     return (
       <p className="rounded border bg-muted/40 p-2 text-xs text-muted-foreground">
-        Choose an instrument first — the list of judges depends on it.
+        Choose an instrument first — the list of assessors depends on it.
       </p>
     );
   }
   if (eligible.length === 0) {
     return (
       <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
-        No judge has ratified <code>{instrumentId}</code> yet. Ratifying is a human act and
-        lives in /admin/assessors — until it happens, no verdict on this version can be kept.
+        No assessor has ratified <code>{instrumentId}</code> yet. Ratifying is a human act, done on
+        the Assessors page. Until it happens, no verdict on this version can be kept.
       </p>
     );
   }
@@ -466,7 +480,7 @@ function JudgeField({
             <span className="block text-xs text-muted-foreground">
               {pkg.executes.length} criteria executed
               {Object.keys(pkg.abstains).length > 0
-                ? ` · ${Object.keys(pkg.abstains).length} left to another judge`
+                ? ` · ${Object.keys(pkg.abstains).length} left to another assessor`
                 : ""}
             </span>
           </span>
@@ -511,7 +525,7 @@ function ScopeField({
           Every version
           <span className="block text-xs text-muted-foreground">
             All the courses these briefs brought, whichever version made them. If that is more
-            than one, the round pools them and its report reads as a single population.
+            than one, the study pools them and its report reads as a single population.
           </span>
         </span>
       </label>
@@ -653,9 +667,9 @@ function UnpairedCommissions({
 
   return (
     <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
-      {unpaired.length} of these commissions produced courses for some versions and none for
+      {unpaired.length} of these briefs produced courses for some versions and none for
       others, so those versions are not answering the same work. Comparing them is still
-      legitimate — it is a comparison over fewer paired commissions, and the round will not
+      legitimate — it is a comparison over fewer paired briefs, and the study will not
       say which ones. Registering the missing courses first is what makes the two columns
       subtractable.
     </p>
@@ -726,7 +740,7 @@ function PartialCoverage({
   return (
     <p className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-muted-foreground">
       Kept, not hidden: {partial.join(", ")} will come back with those criteria left
-      unassessed. That is legitimate and the report will say so — but the round answers less
+      unassessed. That is legitimate and the report will say so — but the study answers less
       than the whole instrument asks.
     </p>
   );
@@ -762,14 +776,14 @@ function ConfirmRound({
     <Dialog
       open={open}
       onClose={onClose}
-      title={name ? `Start “${name}”?` : "Start this round?"}
+      title={name ? `Start “${name}”?` : "Start this study?"}
       description="This does two things at once, and neither can be undone."
     >
       <ul className="space-y-2 text-sm">
         <li className="rounded border p-2">
           <span className="font-medium">These three stop being editable</span>
           <span className="mt-1 block text-xs text-muted-foreground">
-            <code>{instrumentId}</code> · {assessor?.display_name ?? "the chosen judge"} · these{" "}
+            <code>{instrumentId}</code> · {assessor?.display_name ?? "the chosen assessor"} · these{" "}
             {courses} course{courses === 1 ? "" : "s"} · {scopeSummary(arms)}
             {arms.length > 1 ? ` (${arms.map((a) => `${a.label}: ${a.courses}`).join(", ")})` : ""}.
             Changing any of them afterwards means a new study.
@@ -882,7 +896,7 @@ function missing(
   const gaps: string[] = [];
   if (!name.trim()) gaps.push("a name");
   if (!instrumentId) gaps.push("an instrument");
-  if (!assessorId) gaps.push("a judge");
+  if (!assessorId) gaps.push("an assessor");
   if (!scopeDeclared) gaps.push("which generator versions it measures");
   if (courses === 0) gaps.push("at least one course");
   return gaps;

@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CampaignForm } from "@/components/admin/campaign-form";
 import { useCampaigns } from "@/lib/api/hooks";
+import { TermHint } from "@/components/ui/term-hint";
 
 function statusVariant(status: string) {
   if (status === "open") return "success" as const;
@@ -26,7 +27,10 @@ export default function CampaignsPage() {
     <div className="max-w-5xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Campaigns</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+          Campaigns
+          <TermHint term="campaign" />
+        </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Each campaign evaluates a set of courses against the pedagogical rubric.
           </p>

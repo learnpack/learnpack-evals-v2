@@ -23,6 +23,7 @@ import type {
   ProfileEntryResponse,
   ProfileResponse,
 } from "@/lib/api/types";
+import { TermHint } from "@/components/ui/term-hint";
 
 /**
  * The designer's workbench: the screen someone reads to decide whether an extraction
@@ -61,7 +62,10 @@ export default function ProfilesPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Content profiles</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Profiles
+          <TermHint term="profile" />
+        </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           What the extraction adapters read out of each course package, quoted verbatim.
           Nothing here is inferred: when a course does not declare something, the profile

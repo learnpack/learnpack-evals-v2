@@ -18,7 +18,7 @@ export function CollectionBand({ report }: { report: CampaignReport }) {
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm">
         <Badge variant="secondary">closed</Badge>
         <span className="text-muted-foreground">
-          This round is over. Nothing more will be collected, so these numbers are the ones it
+          This campaign is closed. Nothing more will be collected, so these numbers are the ones it
           produced — recomposed on read from the answers it holds, not a signed document.
         </span>
       </div>

@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, LoadingState, Spinner } from "@/components/ui/s
 import { ApiError } from "@/lib/api/client";
 import { useInstruments, usePublishInstrument } from "@/lib/api/hooks";
 import type { InstrumentResponse } from "@/lib/api/types";
+import { TermHint } from "@/components/ui/term-hint";
 
 export default function InstrumentsPage() {
   const { data: instruments, isLoading, error } = useInstruments();
@@ -18,7 +19,10 @@ export default function InstrumentsPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Instruments</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Instruments
+          <TermHint term="instrument" />
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Evidential arguments: claims, verifiable criteria and designed-for bindings.
           Authoring is file-based (<code>app.cli import-instrument</code>); publishing is a
